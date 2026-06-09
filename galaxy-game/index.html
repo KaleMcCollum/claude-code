@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#05060a">
+<title>Edge of the Outer Stars</title>
+<!--
+  EDGE OF THE OUTER STARS
+  A self-contained, text-based galaxy RPG that runs entirely in a single HTML file.
+  Open it in any phone or desktop browser. Progress autosaves to the browser, and you
+  can export/import a save file to back it up or move it between devices.
+
+  Architecture (kept simple on purpose so it's easy to grow):
+    DATA   - all game content (species, worlds, skills, items, creatures)
+    state  - the live save object for the current player
+    Game   - logic (character creation, exploring, combat, economy, saving)
+    UI     - screen rendering + a scrolling log
+  Add a world by pushing to DATA.worlds, a species to DATA.species, etc.
+-->
+<style>
+  :root{
+    --bg:#05060a; --panel:#0d1018; --panel2:#141a26; --line:#222c3d;
+    --ink:#cdd6e6; --dim:#7c8aa3; --gold:#e8c372; --blue:#5fd0ff;
+    --green:#6ee7a0; --red:#ff6b6b; --violet:#b98cff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--ink);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:16px;
+    line-height:1.45;}
+  body{max-width:680px; margin:0 auto; min-height:100vh; padding:0 14px 90px;}
+  h1,h2,h3{font-weight:700; line-height:1.2; margin:0 0 8px;}
+  h1{font-size:1.45rem; color:var(--gold); letter-spacing:.5px;}
+  h2{font-size:1.1rem; color:var(--blue);}
+  h3{font-size:.95rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px;}
+  p{margin:0 0 10px;}
+  a{color:var(--blue);}
+  .stars{position:fixed; inset:0; z-index:-1; background:
+    radial-gradient(1px 1px at 20% 30%, #fff8 0, transparent),
+    radial-gradient(1px 1px at 70% 60%, #fff6 0, transparent),
+    radial-gradient(1px 1px at 40% 80%, #fff5 0, transparent),
+    radial-gradient(2px 2px at 85% 20%, #fffa 0, transparent),
+    radial-gradient(1px 1px at 55% 12%, #fff7 0, transparent),
+    radial-gradient(1px 1px at 12% 70%, #fff6 0, transparent),
+    var(--bg);}
+  header{padding:16px 0 8px; text-align:center;}
+  header .sub{color:var(--dim); font-size:.8rem; letter-spacing:2px; text-transform:uppercase;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:14px; margin:0 0 12px;}
+  .row{display:flex; gap:8px; flex-wrap:wrap;}
+  .row.between{justify-content:space-between; align-items:center;}
+  button{font-family:inherit; font-size:.95rem; cursor:pointer; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    padding:11px 14px; transition:.12s; touch-action:manipulation;}
+  button:active{transform:scale(.97);}
+  button:hover{border-color:var(--blue);}
+  button.primary{background:linear-gradient(180deg,#1c2638,#141a26); border-color:var(--gold); color:var(--gold);}
+  button.full{display:block; width:100%; margin:6px 0; text-align:left;}
+  button.ghost{background:transparent;}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  button.sel{border-color:var(--gold); background:#1a2233; color:var(--gold);}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .pill{display:inline-block; background:var(--panel2); border:1px solid var(--line);
+    border-radius:999px; padding:3px 10px; font-size:.78rem; margin:2px 4px 2px 0; color:var(--dim);}
+  .pill.g{color:var(--gold); border-color:#4a3f22;}
+  .pill.b{color:var(--blue); border-color:#234a57;}
+  .pill.v{color:var(--violet); border-color:#3a2a57;}
+  input[type=text]{width:100%; font-family:inherit; font-size:1rem; padding:11px;
+    background:#070a11; color:var(--ink); border:1px solid var(--line); border-radius:10px;}
+  .dim{color:var(--dim);} .gold{color:var(--gold);} .green{color:var(--green);}
+  .red{color:var(--red);} .blue{color:var(--blue);} .violet{color:var(--violet);}
+  .bar{height:9px; background:#070a11; border:1px solid var(--line); border-radius:99px; overflow:hidden; margin:3px 0 8px;}
+  .bar > i{display:block; height:100%;}
+  .hpfill{background:linear-gradient(90deg,#ff6b6b,#ffae6b);}
+  .xpfill{background:linear-gradient(90deg,#5fd0ff,#b98cff);}
+  .enfill{background:linear-gradient(90deg,#6ee7a0,#5fd0ff);}
+  .statline{display:flex; justify-content:space-between; font-size:.9rem; padding:2px 0;}
+  .log{background:#070a11; border:1px solid var(--line); border-radius:10px; padding:10px;
+    height:160px; overflow-y:auto; font-size:.86rem;}
+  .log p{margin:0 0 5px;}
+  .log .sys{color:var(--dim);} .log .good{color:var(--green);} .log .bad{color:var(--red);}
+  .log .hit{color:var(--gold);}
+  nav{position:fixed; left:0; right:0; bottom:0; background:#0a0d14ee; backdrop-filter:blur(6px);
+    border-top:1px solid var(--line); display:flex; max-width:680px; margin:0 auto; z-index:10;}
+  nav button{flex:1; border:none; border-radius:0; background:transparent; padding:10px 2px;
+    font-size:.7rem; color:var(--dim); display:flex; flex-direction:column; align-items:center; gap:2px;}
+  nav button.on{color:var(--gold);}
+  nav .ico{font-size:1.1rem;}
+  .center{text-align:center;}
+  .small{font-size:.8rem;}
+  .divider{height:1px; background:var(--line); margin:12px 0;}
+  .tag{font-size:.72rem; padding:2px 7px; border-radius:6px; background:var(--panel2); color:var(--dim);}
+  .tier1{color:var(--green);} .tier2{color:var(--blue);} .tier3{color:var(--violet);} .tier4{color:var(--gold);}
+  .hidden{display:none;}
+  .flash{animation:flash .5s;}
+  @keyframes flash{0%{background:#1a2233;}100%{background:var(--panel);}}
+  .toast{position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:50;
+    background:#141a26; border:1px solid var(--gold); color:var(--gold); padding:10px 16px;
+    border-radius:10px; font-size:.85rem; opacity:0; transition:.25s; pointer-events:none; max-width:90%;}
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="stars"></div>
+<header>
+  <h1>EDGE OF THE OUTER STARS</h1>
+  <div class="sub">A galaxy text RPG</div>
+</header>
+
+<main id="app"><!-- screens render here --></main>
+
+<nav id="nav" class="hidden">
+  <button data-screen="hub"><span class="ico">&#9737;</span>World</button>
+  <button data-screen="char"><span class="ico">&#9670;</span>Character</button>
+  <button data-screen="bag"><span class="ico">&#9776;</span>Items</button>
+  <button data-screen="menagerie"><span class="ico">&#9758;</span>Beasts</button>
+  <button data-screen="save"><span class="ico">&#8635;</span>Save</button>
+</nav>
+
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================ DATA ===== */
+const DATA = {
+  /* --- Playable species. Each modifies base stats and grants a trait. --- */
+  species: [
+    { id:"terran", name:"Terran", blurb:"Adaptable wanderers from the inner colonies. Jacks of all trades.",
+      mods:{hp:10, force:1, might:1, agility:1, tech:1, charm:1}, trait:"Versatile: +5% XP from every source." },
+    { id:"voskan", name:"Voskan", blurb:"Stone-skinned highlanders bred for harsh worlds. Hard to put down.",
+      mods:{hp:30, might:3, force:0, agility:-1, tech:0, charm:0}, trait:"Stoneblood: take 1 less damage from every hit." },
+    { id:"sylith", name:"Sylith", blurb:"Slender forest-folk, quick and attuned to the unseen Current.",
+      mods:{hp:-5, agility:3, force:2, might:-1, tech:0, charm:1}, trait:"Currentborn: start with the Current Sense skill." },
+    { id:"keldari", name:"Keldari", blurb:"Reptilian desert nomads, deadly traders and sharper survivors.",
+      mods:{hp:5, charm:3, agility:1, might:1, force:-1, tech:0}, trait:"Silver Tongue: 15% better prices at any market." },
+    { id:"gromm", name:"Gromm", blurb:"Tinker-engineers raised in orbital scrapyards. They speak to machines.",
+      mods:{hp:5, tech:4, might:0, agility:0, force:-1, charm:0}, trait:"Machinist: tech items and vehicles cost 20% less." },
+    { id:"nytheri", name:"Nytheri", blurb:"Pale void-dwellers rumored to bend the Current with a thought.",
+      mods:{hp:-10, force:4, tech:1, might:-1, agility:1, charm:0}, trait:"Voidtouched: Current powers cost 25% less energy." },
+  ],
+
+  /* --- Specializations: choose ONE at creation; shapes your build. --- */
+  specializations: [
+    { id:"warden",   name:"Warden",   blurb:"Frontline blade-and-shield fighter.", grants:["Heavy Strike"], mods:{might:2,hp:15} },
+    { id:"ranger",   name:"Ranger",   blurb:"Tracker and marksman of the wild.", grants:["Steady Shot"], mods:{agility:2,hp:5} },
+    { id:"adept",    name:"Adept",    blurb:"Channels the Current as a weapon.", grants:["Current Bolt"], mods:{force:2,energy:15} },
+    { id:"smuggler", name:"Smuggler", blurb:"Fast talker, faster trigger, full pockets.", grants:["Lucky Find"], mods:{charm:2,agility:1} },
+    { id:"tamer",    name:"Tamer",    blurb:"Befriends and commands wild beasts.", grants:["Beast Bond"], mods:{charm:1,force:1} },
+  ],
+
+  /* --- Skills you can know. Some are combat actions, some passive. --- */
+  skills: {
+    "Heavy Strike":  { type:"attack", energy:6,  blurb:"A crushing blow. Damage scales with Might.", scale:"might", mult:2.2 },
+    "Steady Shot":   { type:"attack", energy:5,  blurb:"A precise ranged hit. Rarely misses; scales with Agility.", scale:"agility", mult:2.0, acc:0.95 },
+    "Current Bolt":  { type:"attack", energy:7,  blurb:"A lance of raw Current. Scales with Force.", scale:"force", mult:2.4 },
+    "Current Sense": { type:"passive", blurb:"You feel danger early: +10% to flee and first-strike chance." },
+    "Lucky Find":    { type:"passive", blurb:"Encounters drop more credits and loot." },
+    "Beast Bond":    { type:"passive", blurb:"Far better odds to tame defeated creatures." },
+    "Mend":          { type:"heal",   energy:6,  blurb:"Knit your wounds using the Current. Restores HP." },
+    "Focus":         { type:"buff",   energy:0,  blurb:"Center yourself: recover energy, slightly heal." },
+  },
+
+  /* --- Worlds. tier 1 = starter (easy). Higher tiers come later. --- */
+  worlds: [
+    { id:"dustwallow", name:"Dustwallow", tier:1, biome:"arid scrubland",
+      blurb:"A sun-bleached frontier moon of salt flats and rusted homesteads. Quiet, poor, and safe enough to learn the ropes.",
+      market:0.7, danger:1, creatures:["sandskitter","dusthound","saltcrawler"] },
+    { id:"green-hollow", name:"Green Hollow", tier:1, biome:"temperate forest",
+      blurb:"A misty woodland world dotted with trapper villages. Game is plentiful; trouble is small.",
+      market:0.8, danger:1, creatures:["thornhare","mossback","glimmer-moth"] },
+    { id:"tidepool", name:"Tidepool", tier:1, biome:"shallow archipelago",
+      blurb:"Warm island shallows and stilt-town markets. Fishers, divers, and the occasional snapping thing.",
+      market:0.85, danger:1, creatures:["reef-darter","shellback","brineling"] },
+    { id:"emberlow", name:"Emberlow", tier:1, biome:"volcanic lowlands",
+      blurb:"Black-rock badlands warmed by sleeping volcanoes. Scrap is cheap; the critters bite.",
+      market:0.75, danger:2, creatures:["cinder-rat","ashbeak","magma-slug"] },
+  ],
+
+  /* --- Creatures: catchable beasts / pets / enemies. --- */
+  creatures: {
+    "sandskitter": { name:"Sandskitter", hp:18, atk:4, xp:8,  tame:0.5, blurb:"A skittish six-legged lizard. Harmless in packs of one." },
+    "dusthound":   { name:"Dusthound", hp:26, atk:7, xp:14, tame:0.35, blurb:"Lean scavenger that hunts the salt flats at dusk." },
+    "saltcrawler": { name:"Saltcrawler", hp:34, atk:9, xp:20, tame:0.25, blurb:"An armored grub the size of a speeder. Slow but tough." },
+    "thornhare":   { name:"Thornhare", hp:16, atk:5, xp:9,  tame:0.55, blurb:"A quick, bristle-backed hopper. Good first pet." },
+    "mossback":    { name:"Mossback", hp:30, atk:6, xp:16, tame:0.4,  blurb:"A placid grazing beast camouflaged in living moss." },
+    "glimmer-moth":{ name:"Glimmer-moth", hp:12, atk:8, xp:12, tame:0.45, blurb:"Palm-sized, fast, and faintly luminous." },
+    "reef-darter": { name:"Reef-darter", hp:14, atk:6, xp:10, tame:0.5,  blurb:"A darting amphibious fish-lizard." },
+    "shellback":   { name:"Shellback", hp:38, atk:5, xp:18, tame:0.3,  blurb:"A boulder-shelled crawler of the shallows." },
+    "brineling":   { name:"Brineling", hp:20, atk:9, xp:15, tame:0.35, blurb:"A stinging jelly-thing that drifts the tide pools." },
+    "cinder-rat":  { name:"Cinder-rat", hp:15, atk:7, xp:11, tame:0.45, blurb:"A heat-loving rodent with smoldering fur." },
+    "ashbeak":     { name:"Ashbeak", hp:24, atk:10,xp:19, tame:0.3,  blurb:"A bad-tempered flightless bird of the badlands." },
+    "magma-slug":  { name:"Magma-slug", hp:40, atk:8, xp:24, tame:0.2,  blurb:"A molten gastropod. Tough, slow, and very hot." },
+  },
+
+  /* --- Items: consumables, gear, vehicles. value scales prices. --- */
+  items: {
+    "medpack":     { name:"Medpack", kind:"consumable", value:25, blurb:"Restores 40 HP.", heal:40 },
+    "ration":      { name:"Field Ration", kind:"consumable", value:8, blurb:"Restores 12 HP and 10 energy.", heal:12, energy:10 },
+    "energy-cell":{ name:"Energy Cell", kind:"consumable", value:18, blurb:"Restores 30 energy.", energy:30 },
+    "stim":        { name:"Combat Stim", kind:"consumable", value:40, blurb:"+50% damage for the next fight.", buff:"stim" },
+    "vibroblade":  { name:"Vibroblade", kind:"weapon", value:120, blurb:"+5 Might in combat.", mods:{might:5} },
+    "scout-rifle": { name:"Scout Rifle", kind:"weapon", value:140, blurb:"+5 Agility in combat.", mods:{agility:5} },
+    "hide-vest":   { name:"Hide Vest", kind:"armor", value:90, blurb:"+15 max HP.", mods:{hp:15} },
+    "current-focus":{ name:"Current Focus", kind:"relic", value:160, blurb:"+4 Force, +10 max energy.", mods:{force:4,energy:10} },
+    "scrap":       { name:"Scrap", kind:"trade", value:5, blurb:"Salvaged parts. Sells well to tinkers." },
+    "pelt":        { name:"Beast Pelt", kind:"trade", value:12, blurb:"A cured hide. Trade goods." },
+    "speeder":     { name:"Dust Speeder", kind:"vehicle", value:500, blurb:"A battered repulsor bike. Faster exploring, better finds." },
+  },
+
+  /* Starter loadout granted to every new character. */
+  startKit: [ ["ration",3], ["medpack",1], ["energy-cell",1] ],
+};
+
+/* What each market on a starter world stocks. */
+const STARTER_STOCK = ["ration","medpack","energy-cell","stim","vibroblade","scout-rifle","hide-vest","pelt","scrap"];
+
+/* ============================================================ STATE ==== */
+const SAVE_KEY = "eots_save_v1";
+let state = null;        // current player save
+let combat = null;       // transient combat object
+let creating = {};       // transient char-creation choices
+
+/* ============================================================ UTIL ===== */
+const $ = (sel,el=document)=>el.querySelector(sel);
+const app = $("#app");
+const rnd = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+const chance = p => Math.random() < p;
+const cap = s => s.charAt(0).toUpperCase()+s.slice(1);
+
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+/* ============================================================ SAVE ===== */
+const Game = {
+  hasSave(){ try{ return !!localStorage.getItem(SAVE_KEY); }catch(e){ return false; } },
+  save(){
+    if(!state) return;
+    state.updated = Date.now();
+    try{ localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }catch(e){ toast("Save failed (storage off?)"); }
+  },
+  load(){
+    try{ const raw = localStorage.getItem(SAVE_KEY); if(!raw) return false;
+      state = JSON.parse(raw); return true; }catch(e){ return false; }
+  },
+  wipe(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} state=null; },
+
+  /* ---- character creation ---- */
+  newCharacter(name, speciesId, specId){
+    const sp = DATA.species.find(s=>s.id===speciesId);
+    const spec = DATA.specializations.find(s=>s.id===specId);
+    const base = { hp:60, energy:40, force:3, might:3, agility:3, tech:3, charm:3 };
+    const apply = mods => { for(const k in mods){ base[k] = (base[k]||0) + mods[k]; } };
+    apply(sp.mods); apply(spec.mods);
+
+    const skills = new Set();
+    spec.grants.forEach(s=>skills.add(s));
+    if(sp.trait.includes("Current Sense")) skills.add("Current Sense");
+    skills.add("Focus"); // everyone can focus
+
+    const world = pick(DATA.worlds.filter(w=>w.tier===1));
+
+    state = {
+      v:1, created:Date.now(), updated:Date.now(),
+      name, species:speciesId, spec:specId,
+      level:1, xp:0, xpNext:50,
+      stats:{ force:base.force, might:base.might, agility:base.agility, tech:base.tech, charm:base.charm },
+      maxHp:base.hp, hp:base.hp, maxEnergy:base.energy, energy:base.energy,
+      credits:120,
+      skills:[...skills],
+      inv:{}, equipped:{ weapon:null, armor:null, relic:null },
+      pets:[],
+      world:world.id,
+      visited:[world.id],
+      stimReady:false,
+      log:[],
+      flags:{},
+    };
+    DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
+    Game.logMsg(`You arrive on ${world.name}. A new life begins at the edge of the stars.`,"sys");
+    Game.save();
+  },
+
+  /* ---- derived combat stats incl. gear ---- */
+  effStat(key){
+    let v = state.stats[key] || 0;
+    for(const slot of ["weapon","armor","relic"]){
+      const id = state.equipped[slot];
+      if(id && DATA.items[id].mods && DATA.items[id].mods[key]) v += DATA.items[id].mods[key];
+    }
+    return v;
+  },
+  effMaxHp(){
+    let v = state.maxHp;
+    const a = state.equipped.armor; if(a && DATA.items[a].mods && DATA.items[a].mods.hp) v += DATA.items[a].mods.hp;
+    return v;
+  },
+  effMaxEnergy(){
+    let v = state.maxEnergy;
+    const r = state.equipped.relic; if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v += DATA.items[r].mods.energy;
+    return v;
+  },
+
+  /* ---- inventory ---- */
+  addItem(id,n=1){ state.inv[id] = (state.inv[id]||0)+n; },
+  removeItem(id,n=1){ if(!state.inv[id]) return; state.inv[id]-=n; if(state.inv[id]<=0) delete state.inv[id]; },
+
+  /* ---- economy: market multiplier from world + species trait ---- */
+  buyPrice(id){
+    const w = DATA.worlds.find(x=>x.id===state.world);
+    let p = DATA.items[id].value * (1 + w.market*0.5);
+    const sp = DATA.species.find(s=>s.id===state.species);
+    if(sp.trait.includes("Silver Tongue")) p *= 0.85;
+    if(sp.trait.includes("Machinist") && ["weapon","vehicle","relic"].includes(DATA.items[id].kind)) p *= 0.8;
+    return Math.max(1, Math.round(p));
+  },
+  sellPrice(id){
+    let p = DATA.items[id].value * 0.55;
+    const sp = DATA.species.find(s=>s.id===state.species);
+    if(sp.trait.includes("Silver Tongue")) p *= 1.15;
+    return Math.max(1, Math.round(p));
+  },
+
+  /* ---- XP / leveling ---- */
+  gainXp(n){
+    const sp = DATA.species.find(s=>s.id===state.species);
+    if(sp.trait.includes("Versatile")) n = Math.round(n*1.05);
+    state.xp += n;
+    let leveled = false;
+    while(state.xp >= state.xpNext){
+      state.xp -= state.xpNext; state.level++; leveled = true;
+      state.xpNext = Math.round(state.xpNext*1.4 + 20);
+      state.maxHp += 12; state.maxEnergy += 5;
+      state.hp = state.maxHp; state.energy = state.maxEnergy;
+      // small auto stat bump, rotating
+      const keys=["might","agility","force","tech","charm"];
+      state.stats[keys[(state.level)%keys.length]] += 1;
+    }
+    if(leveled) Game.logMsg(`You reached level ${state.level}! You feel stronger.`,"good");
+    return leveled;
+  },
+
+  logMsg(text,cls=""){ state.log.push({t:text,c:cls,ts:Date.now()});
+    if(state.log.length>60) state.log = state.log.slice(-60); },
+};
+
+/* ============================================================ COMBAT === */
+function startEncounter(){
+  const w = DATA.worlds.find(x=>x.id===state.world);
+  // chance of a peaceful event instead of a fight
+  if(chance(0.22)) return peacefulEvent(w);
+
+  const cid = pick(w.creatures);
+  const tpl = DATA.creatures[cid];
+  // scale lightly with player level on harder worlds
+  const lvlScale = 1 + (state.level-1)*0.06*(w.danger);
+  combat = {
+    cid, name:tpl.name,
+    maxHp:Math.round(tpl.hp*lvlScale), hp:Math.round(tpl.hp*lvlScale),
+    atk:Math.round(tpl.atk*lvlScale), xp:Math.round(tpl.xp*lvlScale),
+    tame:tpl.tame, blurb:tpl.blurb, over:false, stim:state.stimReady,
+  };
+  state.stimReady = false;
+  Game.logMsg(`A wild ${tpl.name} appears! ${tpl.blurb}`,"hit");
+  UI.render("combat");
+}
+
+function peacefulEvent(w){
+  const sp = DATA.species.find(s=>s.id===state.species);
+  const lucky = state.skills.includes("Lucky Find");
+  const roll = Math.random();
+  if(roll < 0.5){
+    let c = rnd(8,22) * (lucky?2:1);
+    state.credits += c;
+    Game.logMsg(`You find an abandoned cache and recover ${c} credits.`,"good");
+  } else if(roll < 0.8){
+    const id = pick(["scrap","pelt","ration","energy-cell"]);
+    const n = lucky?rnd(1,3):1;
+    Game.addItem(id,n);
+    Game.logMsg(`You salvage ${n}x ${DATA.items[id].name}.`,"good");
+  } else {
+    const xp = rnd(4,10);
+    Game.gainXp(xp);
+    Game.logMsg(`You study the ${w.biome} and learn something. +${xp} XP.`,"good");
+  }
+  Game.save();
+  UI.render("hub"); UI.flashLog();
+}
+
+function playerAttack(skillName){
+  if(!combat || combat.over) return;
+  const sk = DATA.skills[skillName];
+  const cost = sk.energy||0;
+  if(state.energy < cost){ toast("Not enough energy"); return; }
+  state.energy -= cost;
+  const sp = DATA.species.find(s=>s.id===state.species);
+  if(sp.trait.includes("Voidtouched") && skillName.includes("Current"))
+    state.energy = Math.min(Game.effMaxEnergy(), state.energy + Math.round(cost*0.25));
+
+  if(sk.type==="heal"){
+    const amt = 20 + Game.effStat("force")*3;
+    state.hp = Math.min(Game.effMaxHp(), state.hp+amt);
+    Game.logMsg(`You channel the Current and mend ${amt} HP.`,"good");
+  } else if(sk.type==="buff"){ // Focus
+    state.energy = Math.min(Game.effMaxEnergy(), state.energy+12);
+    state.hp = Math.min(Game.effMaxHp(), state.hp+5);
+    Game.logMsg(`You center yourself. +12 energy, +5 HP.`,"sys");
+  } else { // attack
+    const acc = sk.acc || 0.85;
+    if(!chance(acc + Game.effStat("agility")*0.01)){
+      Game.logMsg(`Your ${skillName} misses!`,"bad");
+    } else {
+      let dmg = Math.round(Game.effStat(sk.scale)*sk.mult + rnd(0,4));
+      if(combat.stim) dmg = Math.round(dmg*1.5);
+      const crit = chance(0.1+Game.effStat("agility")*0.005);
+      if(crit) dmg = Math.round(dmg*1.6);
+      combat.hp -= dmg;
+      Game.logMsg(`${skillName} hits ${combat.name} for ${dmg}${crit?" (CRIT!)":""}.`,"hit");
+    }
+  }
+  if(combat.hp<=0){ return winEncounter(); }
+  enemyTurn();
+}
+
+function enemyTurn(){
+  const sp = DATA.species.find(s=>s.id===state.species);
+  let dmg = combat.atk + rnd(0,3);
+  if(sp.trait.includes("Stoneblood")) dmg = Math.max(1, dmg-1);
+  // dodge
+  if(chance(Game.effStat("agility")*0.012)){
+    Game.logMsg(`You dodge the ${combat.name}'s attack.`,"good");
+  } else {
+    state.hp -= dmg;
+    Game.logMsg(`${combat.name} strikes you for ${dmg}.`,"bad");
+  }
+  if(state.hp<=0) return loseEncounter();
+  Game.save(); UI.render("combat");
+}
+
+function tryTame(){
+  if(!combat || combat.over) return;
+  // taming works best when the creature is weakened
+  const hpFrac = combat.hp/combat.maxHp;
+  let base = combat.tame * (1.2 - hpFrac); // lower hp => higher chance
+  base += Game.effStat("charm")*0.01;
+  if(state.skills.includes("Beast Bond")) base += 0.25;
+  base = Math.max(0.03, Math.min(0.92, base));
+  if(chance(base)){
+    state.pets.push({ cid:combat.cid, name:combat.name, hp:combat.maxHp, atk:combat.atk, level:1, nick:null });
+    Game.logMsg(`You bond with the ${combat.name}! It joins your menagerie.`,"good");
+    combat.over = true;
+    Game.gainXp(Math.round(combat.xp*0.5));
+    Game.save(); UI.render("hub"); UI.flashLog();
+  } else {
+    Game.logMsg(`The ${combat.name} resists your attempt to tame it!`,"bad");
+    enemyTurn();
+  }
+}
+
+function fleeEncounter(){
+  let p = 0.5 + Game.effStat("agility")*0.015;
+  if(state.skills.includes("Current Sense")) p += 0.1;
+  if(chance(p)){
+    Game.logMsg(`You slip away from the ${combat.name}.`,"sys");
+    combat.over=true; Game.save(); UI.render("hub"); UI.flashLog();
+  } else {
+    Game.logMsg(`You fail to escape!`,"bad");
+    enemyTurn();
+  }
+}
+
+function winEncounter(){
+  combat.over = true;
+  const lucky = state.skills.includes("Lucky Find");
+  let cr = rnd(6,18) * (lucky?2:1);
+  state.credits += cr;
+  Game.gainXp(combat.xp);
+  Game.logMsg(`You defeat the ${combat.name}! +${combat.xp} XP, +${cr} credits.`,"good");
+  // loot
+  if(chance(lucky?0.6:0.4)){
+    const id = pick(["scrap","pelt","ration"]);
+    Game.addItem(id,1); Game.logMsg(`Loot: ${DATA.items[id].name}.`,"good");
+  }
+  Game.save(); UI.render("hub"); UI.flashLog();
+}
+
+function loseEncounter(){
+  combat.over = true;
+  const lost = Math.min(state.credits, Math.round(state.credits*0.2));
+  state.credits -= lost;
+  state.hp = Math.max(1, Math.round(Game.effMaxHp()*0.3));
+  Game.logMsg(`You black out and wake at camp, ${lost} credits lighter. (HP restored partly.)`,"bad");
+  Game.save(); UI.render("hub"); UI.flashLog();
+}
+
+/* ============================================================ UI ======= */
+const UI = {
+  current:"title",
+  go(screen){ this.render(screen); },
+
+  render(screen){
+    this.current = screen;
+    $("#nav").classList.toggle("hidden", !state || screen==="title" || screen==="create");
+    [...$("#nav").children].forEach(b=>b.classList.toggle("on", b.dataset.screen===screen));
+    const fn = this["screen_"+screen];
+    app.innerHTML = fn ? fn() : "<p>?</p>";
+    this.bind(screen);
+    window.scrollTo(0,0);
+  },
+
+  /* ---------- TITLE ---------- */
+  screen_title(){
+    const cont = Game.hasSave();
+    return `
+    <div class="card center">
+      <p class="dim small">Somewhere past the trade lanes, on a quiet world,
+      a new name is about to be written into the galaxy's long ledger.</p>
+      <div class="divider"></div>
+      ${cont?`<button class="primary full center" id="btnContinue">&#9654; Continue Journey</button>`:""}
+      <button class="full center ${cont?'ghost':'primary'}" id="btnNew">&#10022; New Game</button>
+      ${cont?`<button class="full center ghost small" id="btnWipe">Delete saved game</button>`:""}
+    </div>
+    <div class="card small dim">
+      <h3>How to play on your phone</h3>
+      <p>This whole game is one file. Save it to your phone and open it in your browser,
+      or "Add to Home Screen" for an app-like icon. Progress saves automatically.
+      Use the <b>Save</b> tab to export a backup file.</p>
+    </div>`;
+  },
+
+  /* ---------- CREATION ---------- */
+  screen_create(){
+    const step = creating.step||1;
+    if(step===1){
+      return `
+      <div class="card">
+        <h2>Name your character</h2>
+        <p class="dim small">What will the galaxy call you?</p>
+        <input type="text" id="nameInput" maxlength="18" placeholder="e.g. Kael Voss" value="${creating.name||""}">
+        <div class="divider"></div>
+        <div class="row between">
+          <button class="ghost" id="backTitle">&larr; Back</button>
+          <button class="primary" id="toStep2">Next: Species &rarr;</button>
+        </div>
+      </div>`;
+    }
+    if(step===2){
+      return `
+      <div class="card">
+        <h2>Choose your species</h2>
+        <p class="dim small">Each people brings its own gifts.</p>
+      </div>
+      ${DATA.species.map(s=>`
+        <button class="full ${creating.species===s.id?'sel':''}" data-sp="${s.id}">
+          <b>${s.name}</b><br><span class="small dim">${s.blurb}</span><br>
+          <span class="small gold">Trait — ${s.trait}</span><br>
+          <span class="small">${statModStr(s.mods)}</span>
+        </button>`).join("")}
+      <div class="card row between">
+        <button class="ghost" id="backStep1">&larr; Back</button>
+        <button class="primary" id="toStep3" ${creating.species?"":"disabled"}>Next: Path &rarr;</button>
+      </div>`;
+    }
+    if(step===3){
+      return `
+      <div class="card">
+        <h2>Choose your path</h2>
+        <p class="dim small">Your specialization grants a signature skill.</p>
+      </div>
+      ${DATA.specializations.map(s=>`
+        <button class="full ${creating.spec===s.id?'sel':''}" data-spec="${s.id}">
+          <b>${s.name}</b><br><span class="small dim">${s.blurb}</span><br>
+          <span class="small blue">Skill — ${s.grants.join(", ")}</span><br>
+          <span class="small">${statModStr(s.mods)}</span>
+        </button>`).join("")}
+      <div class="card row between">
+        <button class="ghost" id="backStep2">&larr; Back</button>
+        <button class="primary" id="toStep4" ${creating.spec?"":"disabled"}>Review &rarr;</button>
+      </div>`;
+    }
+    // step 4 review
+    const sp = DATA.species.find(s=>s.id===creating.species);
+    const spec = DATA.specializations.find(s=>s.id===creating.spec);
+    return `
+    <div class="card">
+      <h2>Ready to begin?</h2>
+      <p><span class="dim">Name:</span> <b class="gold">${creating.name}</b></p>
+      <p><span class="dim">Species:</span> <b>${sp.name}</b> — <span class="small">${sp.trait}</span></p>
+      <p><span class="dim">Path:</span> <b>${spec.name}</b> — <span class="small blue">${spec.grants.join(", ")}</span></p>
+      <div class="divider"></div>
+      <p class="small dim">Your starter world will be chosen at random from the galaxy's
+      quiet frontier — limited resources, weaker beasts, thin markets. A gentle place to begin.</p>
+      <div class="row between">
+        <button class="ghost" id="backStep3">&larr; Back</button>
+        <button class="primary" id="beginGame">&#9654; Launch into the stars</button>
+      </div>
+    </div>`;
+  },
+
+  /* ---------- HUB (current world) ---------- */
+  screen_hub(){
+    const w = DATA.worlds.find(x=>x.id===state.world);
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <div class="row between">
+        <h2>&#9737; ${w.name}</h2>
+        <span class="tag tier${w.tier}">Tier ${w.tier} · ${["","Frontier","Settled","Wild","Hostile"][w.tier]}</span>
+      </div>
+      <p class="small dim">${w.biome}. ${w.blurb}</p>
+      <span class="pill b">danger ${w.danger}</span>
+      <span class="pill">market ${Math.round(w.market*100)}%</span>
+      <span class="pill v">${w.creatures.length} known beasts</span>
+    </div>
+    <div class="card">
+      <h3>Actions</h3>
+      <div class="grid">
+        <button id="actExplore" class="primary">&#9968; Explore</button>
+        <button id="actMarket">&#9879; Market</button>
+        <button id="actRest">&#9789; Rest</button>
+        <button id="actTravel">&#9992; Travel</button>
+      </div>
+    </div>
+    ${this.logCard()}
+    `;
+  },
+
+  /* ---------- COMBAT ---------- */
+  screen_combat(){
+    if(!combat) return this.screen_hub();
+    const c = combat;
+    const atkSkills = state.skills.filter(s=>DATA.skills[s].type==="attack");
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <div class="row between"><h2 class="red">${c.name}</h2>
+        <span class="small dim">${c.stim?'<span class="gold">stim primed</span>':''}</span></div>
+      <p class="small dim">${c.blurb}</p>
+      <div class="statline"><span>HP</span><span>${Math.max(0,c.hp)} / ${c.maxHp}</span></div>
+      <div class="bar"><i class="hpfill" style="width:${Math.max(0,c.hp/c.maxHp*100)}%"></i></div>
+      <span class="pill">atk ${c.atk}</span><span class="pill v">tame base ${Math.round(c.tame*100)}%</span>
+    </div>
+    <div class="card">
+      <h3>Your move</h3>
+      <div class="grid">
+        ${atkSkills.map(s=>`<button data-atk="${s}">${s}<br><span class="small dim">${DATA.skills[s].energy||0} en</span></button>`).join("")}
+        ${state.skills.includes("Mend")?`<button data-atk="Mend">Mend<br><span class="small dim">6 en</span></button>`:""}
+        <button data-atk="Focus" class="ghost">Focus<br><span class="small dim">+energy</span></button>
+        <button id="actTame">Tame</button>
+        <button id="actFlee" class="ghost">Flee</button>
+        <button id="actBag">Use item</button>
+      </div>
+    </div>
+    ${this.logCard()}
+    `;
+  },
+
+  /* ---------- CHARACTER ---------- */
+  screen_char(){
+    const sp = DATA.species.find(s=>s.id===state.species);
+    const spec = DATA.specializations.find(s=>s.id===state.spec);
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>${state.name}</h2>
+      <p><span class="dim">Species:</span> ${sp.name} · <span class="dim">Path:</span> ${spec.name}</p>
+      <p class="small gold">${sp.trait}</p>
+      <div class="divider"></div>
+      <h3>Attributes</h3>
+      ${["might","agility","force","tech","charm"].map(k=>{
+        const base=state.stats[k], eff=Game.effStat(k), bonus=eff-base;
+        return `<div class="statline"><span>${cap(k)}</span><span>${eff}${bonus?` <span class="green small">(+${bonus})</span>`:""}</span></div>`;
+      }).join("")}
+    </div>
+    <div class="card">
+      <h3>Skills known</h3>
+      ${state.skills.map(s=>`<p class="small"><b class="blue">${s}</b> — ${DATA.skills[s].blurb}</p>`).join("")}
+    </div>
+    <div class="card">
+      <h3>Equipment</h3>
+      ${["weapon","armor","relic"].map(slot=>{
+        const id=state.equipped[slot];
+        return `<div class="statline"><span class="dim">${cap(slot)}</span><span>${id?DATA.items[id].name:"<span class='dim'>— empty —</span>"}</span></div>`;
+      }).join("")}
+      <p class="small dim">Equip gear from the Items tab.</p>
+    </div>
+    `;
+  },
+
+  /* ---------- BAG / ITEMS ---------- */
+  screen_bag(){
+    const ids = Object.keys(state.inv);
+    const inCombat = combat && !combat.over;
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>&#9776; Inventory</h2>
+      <p class="small dim">Credits: <b class="gold">${state.credits}</b></p>
+      ${ids.length===0?`<p class="dim">Your pack is empty.</p>`:""}
+      ${ids.map(id=>{
+        const it=DATA.items[id], n=state.inv[id];
+        const equipped = Object.values(state.equipped).includes(id);
+        let btn="";
+        if(it.kind==="consumable") btn=`<button data-use="${id}">Use</button>`;
+        else if(["weapon","armor","relic"].includes(it.kind))
+          btn=`<button data-equip="${id}">${equipped?"Unequip":"Equip"}</button>`;
+        return `<div class="card" style="margin:8px 0;padding:10px">
+          <div class="row between"><b>${it.name} ${n>1?`<span class="dim">x${n}</span>`:""}</b>
+          <span class="tag">${it.kind}</span></div>
+          <p class="small dim" style="margin:4px 0">${it.blurb}</p>
+          <div class="row">${btn}<button class="ghost small" data-sell="${id}">Sell · ${Game.sellPrice(id)}c</button></div>
+        </div>`;
+      }).join("")}
+    </div>
+    ${inCombat?`<div class="card"><button id="backCombat" class="primary full center">&larr; Back to fight</button></div>`:""}
+    <div class="card">
+      <h3>Menagerie</h3>
+      <p class="small dim">${state.pets.length} companion(s). See the Beasts tab.</p>
+    </div>
+    `;
+  },
+
+  /* ---------- MENAGERIE ---------- */
+  screen_menagerie(){
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>&#9758; Menagerie</h2>
+      <p class="small dim">Beasts you have tamed travel with you. Defeat weakened creatures
+      and choose <b>Tame</b> to add them here.</p>
+      ${state.pets.length===0?`<p class="dim">You haven't tamed any creatures yet.</p>`:""}
+      ${state.pets.map((p,i)=>`
+        <div class="card" style="margin:8px 0;padding:10px">
+          <div class="row between"><b class="violet">${p.nick||p.name}</b>
+            <span class="tag">lv ${p.level}</span></div>
+          <p class="small dim" style="margin:4px 0">${DATA.creatures[p.cid].blurb}</p>
+          <span class="pill">HP ${p.hp}</span><span class="pill">ATK ${p.atk}</span>
+          <div class="row" style="margin-top:6px">
+            <button class="small" data-nick="${i}">Rename</button>
+            <button class="small ghost" data-release="${i}">Release</button>
+          </div>
+        </div>`).join("")}
+    </div>
+    `;
+  },
+
+  /* ---------- MARKET ---------- */
+  screen_market(){
+    const w = DATA.worlds.find(x=>x.id===state.world);
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>&#9879; ${w.name} Market</h2>
+      <p class="small dim">A thin frontier market. Stock is limited and prices run high.
+      Credits: <b class="gold">${state.credits}</b></p>
+    </div>
+    <div class="card">
+      <h3>For sale</h3>
+      ${STARTER_STOCK.map(id=>{
+        const it=DATA.items[id], price=Game.buyPrice(id);
+        return `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
+          <span><b>${it.name}</b><br><span class="small dim">${it.blurb}</span></span>
+          <button data-buy="${id}" ${state.credits<price?"disabled":""}>${price}c</button>
+        </div>`;
+      }).join("")}
+    </div>
+    <div class="card"><button id="leaveMarket" class="ghost full center">Leave market</button></div>
+    `;
+  },
+
+  /* ---------- TRAVEL ---------- */
+  screen_travel(){
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>&#9992; Travel</h2>
+      <p class="small dim">From this frontier world you can reach other quiet worlds.
+      (Deep-space lanes to dangerous worlds open up as you grow stronger — coming soon.)</p>
+    </div>
+    ${DATA.worlds.filter(w=>w.tier===1).map(w=>`
+      <button class="full ${w.id===state.world?'sel':''}" data-travel="${w.id}" ${w.id===state.world?"disabled":""}>
+        <b>${w.name}</b> ${state.visited.includes(w.id)?'<span class="small green">visited</span>':'<span class="small dim">new</span>'}<br>
+        <span class="small dim">${w.biome} · danger ${w.danger}</span>
+      </button>`).join("")}
+    <div class="card"><button id="leaveTravel" class="ghost full center">Stay here</button></div>
+    `;
+  },
+
+  /* ---------- SAVE / DATA ---------- */
+  screen_save(){
+    const d = new Date(state.updated||Date.now());
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>&#8635; Save &amp; Data</h2>
+      <p class="small dim">The game autosaves to this browser after every action.
+      Last saved: ${d.toLocaleString()}.</p>
+      <div class="divider"></div>
+      <button class="full center" id="btnExport">&#8681; Export save file</button>
+      <button class="full center" id="btnImport">&#8679; Import save file</button>
+      <input type="file" id="fileInput" accept=".json,application/json" class="hidden">
+      <div class="divider"></div>
+      <button class="full center ghost small red" id="btnReset">Delete this character</button>
+    </div>
+    <div class="card small dim">
+      <h3>Tips</h3>
+      <p>Export creates a small <b>.json</b> file you can save to your phone, cloud drive,
+      or email to yourself as a backup. Import it on any device to continue where you left off.</p>
+    </div>
+    `;
+  },
+
+  /* ---------- shared bits ---------- */
+  statHeader(){
+    const hpMax=Game.effMaxHp(), enMax=Game.effMaxEnergy();
+    return `
+    <div class="card">
+      <div class="row between">
+        <b>${state.name}</b>
+        <span class="small dim">Lv ${state.level} · <span class="gold">${state.credits}c</span></span>
+      </div>
+      <div class="statline"><span class="small">HP</span><span class="small">${Math.max(0,state.hp)} / ${hpMax}</span></div>
+      <div class="bar"><i class="hpfill" style="width:${Math.max(0,state.hp/hpMax*100)}%"></i></div>
+      <div class="statline"><span class="small">Energy</span><span class="small">${state.energy} / ${enMax}</span></div>
+      <div class="bar"><i class="enfill" style="width:${state.energy/enMax*100}%"></i></div>
+      <div class="statline"><span class="small">XP</span><span class="small">${state.xp} / ${state.xpNext}</span></div>
+      <div class="bar"><i class="xpfill" style="width:${state.xp/state.xpNext*100}%"></i></div>
+    </div>`;
+  },
+  logCard(){
+    const items = state.log.slice(-30).reverse();
+    return `<div class="card"><h3>Log</h3>
+      <div class="log" id="logBox">${items.map(l=>`<p class="${l.c}">${l.t}</p>`).join("")}</div></div>`;
+  },
+  flashLog(){ const el=$("#logBox"); if(el){ el.scrollTop=0; el.parentElement.classList.add("flash");
+    setTimeout(()=>el.parentElement.classList.remove("flash"),500);} },
+
+  /* ---------- event binding per screen ---------- */
+  bind(screen){
+    // nav
+    [...$("#nav").children].forEach(b=> b.onclick=()=>{ if(combat&&!combat.over&&b.dataset.screen!=="bag"){toast("Finish the encounter first");return;} UI.render(b.dataset.screen); });
+
+    if(screen==="title"){
+      const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:1}; UI.render("create"); };
+      const c=$("#btnContinue"); if(c) c.onclick=()=>{ Game.load(); UI.render("hub"); };
+      const w=$("#btnWipe"); if(w) w.onclick=()=>{ if(confirm("Delete your saved game permanently?")){Game.wipe(); UI.render("title");} };
+    }
+
+    if(screen==="create") this.bindCreate();
+
+    if(screen==="hub"){
+      $("#actExplore").onclick=()=>startEncounter();
+      $("#actMarket").onclick=()=>UI.render("market");
+      $("#actTravel").onclick=()=>UI.render("travel");
+      $("#actRest").onclick=()=>{
+        state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
+        Game.logMsg("You make camp and rest. HP and energy restored.","sys");
+        Game.save(); UI.render("hub"); UI.flashLog();
+      };
+    }
+
+    if(screen==="combat"){
+      app.querySelectorAll("[data-atk]").forEach(b=> b.onclick=()=>playerAttack(b.dataset.atk));
+      $("#actTame").onclick=()=>tryTame();
+      $("#actFlee").onclick=()=>fleeEncounter();
+      $("#actBag").onclick=()=>UI.render("bag");
+    }
+
+    if(screen==="bag"){
+      app.querySelectorAll("[data-use]").forEach(b=> b.onclick=()=>useItem(b.dataset.use));
+      app.querySelectorAll("[data-equip]").forEach(b=> b.onclick=()=>equipItem(b.dataset.equip));
+      app.querySelectorAll("[data-sell]").forEach(b=> b.onclick=()=>sellItem(b.dataset.sell));
+      const bc=$("#backCombat"); if(bc) bc.onclick=()=>UI.render("combat");
+    }
+
+    if(screen==="menagerie"){
+      app.querySelectorAll("[data-nick]").forEach(b=> b.onclick=()=>{
+        const i=+b.dataset.nick; const nn=prompt("Name your companion:", state.pets[i].nick||state.pets[i].name);
+        if(nn){ state.pets[i].nick=nn.slice(0,18); Game.save(); UI.render("menagerie"); }
+      });
+      app.querySelectorAll("[data-release]").forEach(b=> b.onclick=()=>{
+        const i=+b.dataset.release;
+        if(confirm(`Release ${state.pets[i].nick||state.pets[i].name} back to the wild?`)){
+          state.pets.splice(i,1); Game.save(); UI.render("menagerie"); }
+      });
+    }
+
+    if(screen==="market"){
+      app.querySelectorAll("[data-buy]").forEach(b=> b.onclick=()=>buyItem(b.dataset.buy));
+      $("#leaveMarket").onclick=()=>UI.render("hub");
+    }
+
+    if(screen==="travel"){
+      app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(b.dataset.travel));
+      $("#leaveTravel").onclick=()=>UI.render("hub");
+    }
+
+    if(screen==="save"){
+      $("#btnExport").onclick=exportSave;
+      $("#btnImport").onclick=()=>$("#fileInput").click();
+      $("#fileInput").onchange=importSave;
+      $("#btnReset").onclick=()=>{ if(confirm("Delete this character forever?")){ Game.wipe(); UI.render("title"); } };
+    }
+  },
+
+  bindCreate(){
+    const step=creating.step||1;
+    if(step===1){
+      $("#backTitle").onclick=()=>UI.render("title");
+      $("#toStep2").onclick=()=>{
+        const v=$("#nameInput").value.trim();
+        if(!v){ toast("Enter a name"); return; }
+        creating.name=v; creating.step=2; UI.render("create");
+      };
+    }
+    if(step===2){
+      app.querySelectorAll("[data-sp]").forEach(b=> b.onclick=()=>{ creating.species=b.dataset.sp; UI.render("create"); });
+      $("#backStep1").onclick=()=>{ creating.step=1; UI.render("create"); };
+      const n=$("#toStep3"); if(n) n.onclick=()=>{ creating.step=3; UI.render("create"); };
+    }
+    if(step===3){
+      app.querySelectorAll("[data-spec]").forEach(b=> b.onclick=()=>{ creating.spec=b.dataset.spec; UI.render("create"); });
+      $("#backStep2").onclick=()=>{ creating.step=2; UI.render("create"); };
+      const n=$("#toStep4"); if(n) n.onclick=()=>{ creating.step=4; UI.render("create"); };
+    }
+    if(step===4){
+      $("#backStep3").onclick=()=>{ creating.step=3; UI.render("create"); };
+      $("#beginGame").onclick=()=>{
+        Game.newCharacter(creating.name, creating.species, creating.spec);
+        creating={}; UI.render("hub");
+      };
+    }
+  },
+};
+
+/* ============================================================ ACTIONS == */
+function useItem(id){
+  const it=DATA.items[id]; if(!it || !state.inv[id]) return;
+  if(it.kind!=="consumable"){ toast("Can't use that"); return; }
+  let msg=[];
+  if(it.heal){ const before=state.hp; state.hp=Math.min(Game.effMaxHp(),state.hp+it.heal); msg.push(`+${state.hp-before} HP`); }
+  if(it.energy){ const before=state.energy; state.energy=Math.min(Game.effMaxEnergy(),state.energy+it.energy); msg.push(`+${state.energy-before} energy`); }
+  if(it.buff==="stim"){ state.stimReady=true; msg.push("combat stim primed"); }
+  Game.removeItem(id,1);
+  Game.logMsg(`Used ${it.name}: ${msg.join(", ")}.`,"good");
+  Game.save();
+  UI.render(combat&&!combat.over?"combat":"bag");
+}
+function equipItem(id){
+  const it=DATA.items[id];
+  const slot=it.kind==="weapon"?"weapon":it.kind==="armor"?"armor":"relic";
+  if(state.equipped[slot]===id){ state.equipped[slot]=null; toast("Unequipped"); }
+  else { state.equipped[slot]=id; toast(`Equipped ${it.name}`); }
+  state.hp=Math.min(state.hp,Game.effMaxHp()); state.energy=Math.min(state.energy,Game.effMaxEnergy());
+  Game.save(); UI.render("bag");
+}
+function sellItem(id){
+  if(!state.inv[id]) return;
+  if(Object.values(state.equipped).includes(id)){ toast("Unequip it first"); return; }
+  const p=Game.sellPrice(id); state.credits+=p; Game.removeItem(id,1);
+  Game.logMsg(`Sold ${DATA.items[id].name} for ${p}c.`,"sys");
+  Game.save(); UI.render("bag");
+}
+function buyItem(id){
+  const p=Game.buyPrice(id);
+  if(state.credits<p){ toast("Not enough credits"); return; }
+  state.credits-=p; Game.addItem(id,1);
+  Game.logMsg(`Bought ${DATA.items[id].name} for ${p}c.`,"sys");
+  Game.save(); UI.render("market");
+}
+function travelTo(id){
+  if(id===state.world) return;
+  const w=DATA.worlds.find(x=>x.id===id);
+  state.world=id; if(!state.visited.includes(id)) state.visited.push(id);
+  Game.logMsg(`You travel to ${w.name}. ${w.blurb}`,"sys");
+  Game.save(); UI.render("hub"); UI.flashLog();
+}
+
+/* ---- save file export/import ---- */
+function exportSave(){
+  Game.save();
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=`eots-${(state.name||"hero").replace(/\s+/g,"_")}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast("Save exported");
+}
+function importSave(e){
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{
+    const obj=JSON.parse(r.result);
+    if(!obj || !obj.name || !obj.stats) throw new Error("bad");
+    state=obj; Game.save(); toast("Save imported"); UI.render("hub");
+  }catch(err){ toast("Couldn't read that file"); } };
+  r.readAsText(f);
+}
+
+/* ---- helper for creation screens ---- */
+function statModStr(mods){
+  const names={hp:"HP",energy:"Energy",force:"Force",might:"Might",agility:"Agility",tech:"Tech",charm:"Charm"};
+  return Object.entries(mods).map(([k,v])=>`<span class="pill ${v>=0?'g':''}">${names[k]||k} ${v>=0?'+':''}${v}</span>`).join("");
+}
+
+/* ============================================================ BOOT ===== */
+(function init(){
+  // start on title; if a save exists the title offers Continue
+  UI.render("title");
+})();
+</script>
+</body>
+</html>
