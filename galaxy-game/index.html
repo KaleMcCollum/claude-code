@@ -1082,13 +1082,18 @@ function loseEncounter(){
 const UI = {
   current:"title",
   render(screen){
+    // keep your scroll position when re-rendering the SAME screen (e.g. buying in a loop);
+    // only jump to the top when you actually navigate somewhere new.
+    const sameScreen = screen===this.current;
+    const keepY = sameScreen ? (window.scrollY||window.pageYOffset||0) : 0;
     this.current=screen;
     const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive"||screen==="meet";
     $("#nav").classList.toggle("hidden", noNav);
     const navScreen = screen.indexOf("cx_")===0?"codex":screen;
     [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===navScreen));
     app.innerHTML=(this["screen_"+screen]||(()=> "<p>?</p>")).call(this);
-    this.bind(screen); window.scrollTo(0,0);
+    this.bind(screen);
+    window.scrollTo(0, keepY);
   },
 
   /* ---------- EPILOGUE (a life concluded — the game decides, not you) ---------- */
