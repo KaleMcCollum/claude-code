@@ -239,6 +239,9 @@ const LIFE = {
   startFraction:  0.20,  // you start at 20% of your species' age-of-maturity
   childPotential: 0.35,  // a young child performs at ~35% of adult potential (not worthless)
 };
+/* Time is action-based: every action (explore, rest, fly to/from a world) advances you,
+   and this many actions = one year of age — which triggers annual wages + maintenance. */
+const ACTIONS_PER_YEAR = 24;
 /* Life stages by fraction of maturity age (elder is handled via twilight). */
 const LIFE_STAGES = [
   { f:0.12, name:"infant" }, { f:0.30, name:"young child" }, { f:0.55, name:"child" },
@@ -872,7 +875,8 @@ const Game = {
   // backfill fields added after a save was created (multi-ship cargo/locations)
   migrate(){
     if(state.atSlot==null) state.atSlot=0;
-    if(state.lastBillYear==null) state.lastBillYear=Math.floor((state.daysElapsed||0)/365);
+    if(state.actions==null) state.actions=Math.round((state.daysElapsed||0)/15);   // old day-based saves -> actions
+    if(state.lastBillYear==null) state.lastBillYear=Math.floor((state.actions||0)/ACTIONS_PER_YEAR);
     (state.vehicles||[]).forEach(v=>{ if(!v.id) v.id=newVid(); if(!v.cargo) v.cargo={};
       if(!v.range) v.range=v.systemCapable?"system":"surface";   // migrate old systemCapable flag
       if(v.hold==null) v.hold=spaceworthy(v)?50:8; if(v.slot==null) v.slot=0;
@@ -945,7 +949,7 @@ const Game = {
       inv:{}, equipped:{weapon:null,armor:null,relic:null}, pets:[],
       // you begin as a YOUNG CHILD and grow toward your potential as time flows
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
-      daysElapsed:0, dead:false, deathCause:null, lastStage:null,
+      actions:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
       grounded:true, system:null, atSlot:0, activeShip:veh.id, bounties:[], crew:[], lastBillYear:0,
       stimReady:false, log:[],
@@ -1009,7 +1013,7 @@ const Game = {
   lightFeeder(){ const d=state.species.detail.diet; return d==="photovore"||d==="energivore"; },
 
   /* ---- time & aging: every action spends days; lifespan caps the campaign ---- */
-  age(){ return state.ageStart + state.daysElapsed/365; },
+  age(){ return state.ageStart + (state.actions||0)/ACTIONS_PER_YEAR; },
   lifespan(){ return state.species.lifespan.value; },
   twilight(){ return Game.lifespan()*0.85; },
   // vitality fades past the twilight of life; Stalwart temperament resists it
@@ -1046,11 +1050,12 @@ const Game = {
 /* ============================================================ TIME ===== */
 /* Every meaningful action spends days. Age creeps up; once you pass your kind's
    natural lifespan, the game (not you) decides when your story ends. */
-function advanceTime(days){
-  state.daysElapsed += days;
-  // natural healing as the days pass — faster for high Recovery, doubled at home
+function advanceTime(n){
+  n=n||1;
+  state.actions=(state.actions||0)+n;
+  // natural healing between actions — faster for high Recovery, doubled at home
   if(state.hp < Game.effMaxHp()){
-    const heal=Math.round(days*0.02*Game.bio("recovery")*(Game.atHome()?2:1));
+    const heal=Math.round(n*Game.bio("recovery")*0.3*(Game.atHome()?2:1));
     if(heal>0) state.hp=Math.min(Game.effMaxHp(), state.hp+heal);
   }
   // growing up: announce when you cross into a new life stage
@@ -1063,8 +1068,8 @@ function advanceTime(days){
     else Game.logMsg(`Age settles into your bones — you are an elder now.`,"sys");
     state.lastStage=st;
   }
-  // yearly upkeep: bill wages + maintenance for each year that elapses
-  const yrs=Math.floor(state.daysElapsed/365);
+  // yearly upkeep: bill wages + maintenance for each year (ACTIONS_PER_YEAR actions) elapsed
+  const yrs=Math.floor(state.actions/ACTIONS_PER_YEAR);
   if(state.lastBillYear==null) state.lastBillYear=yrs;
   while(state.lastBillYear<yrs){ chargeUpkeep(); state.lastBillYear++; }
   const a=Game.age(), l=Game.lifespan();
@@ -1082,7 +1087,7 @@ function die(cause){
 
 /* ============================================================ COMBAT === */
 function startEncounter(){
-  if(advanceTime(rnd(20,60))) return;          // exploring takes weeks
+  if(advanceTime()) return;                    // exploring is one action
   const w=state.world;
   let peace=clamp(0.2+w.peaceMod,0.05,0.4);
   if(chance(peace)) return peacefulEvent(w);
@@ -2050,7 +2055,7 @@ const UI = {
       const vm=$("#vMarket"); if(vm) vm.onclick=()=>UI.render("market");
       const vk=$("#vTalk"); if(vk) vk.onclick=()=>startMeeting("Out among the crowds you fall into talk with a passing stranger.","hub");
       $("#vRest").onclick=()=>{
-        if(advanceTime(rnd(5,12))) return;            // resting passes a week or two
+        if(advanceTime()) return;                     // resting is one action
         state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
         Game.logMsg("You make camp and rest. HP and energy restored.","sys"); Game.save(); UI.render("hub"); UI.flashLog(); };
     }
@@ -2280,7 +2285,7 @@ function travelTo(slot){
   if(!Game.canLeave()){ toast("You need a system-capable ship"); return; }
   if(slot===state.atSlot){ toast("You're already here"); return; }
   const p=state.system.planets[slot];
-  if(advanceTime(rnd(10,30))) return;            // the crossing takes weeks
+  if(advanceTime()) return;                      // flying to a world is one action
   if(p.discovered){                              // already charted — just fly there
     const old=state.atSlot; Game.ship().slot=slot; moveFollowers(old,slot);
     state.world=p.world; state.atSlot=slot;
@@ -2421,7 +2426,7 @@ function recordMeeting(person, race, where){
   ["height","mass","maturity","lifespan"].forEach(k=>{ if(p[k]) delete p[k].g; });
   ATTR_KEYS.forEach(k=>{ if(p.attrs[k]) delete p.attrs[k].g; });
   Object.keys(p.bio).forEach(k=>{ if(p.bio[k]) delete p.bio[k].g; });
-  p.where=where; p.slot=state.atSlot; p.day=state.daysElapsed; p.raceId=race.id; p.raceName=race.name;
+  p.where=where; p.slot=state.atSlot; p.day=state.actions; p.raceId=race.id; p.raceName=race.name;
   state.codex.people.push(p);
   race.met=(race.met||0)+1;
 }
@@ -2574,7 +2579,7 @@ function buyShip(i){
   toast("Bought "+o.name); Game.save(); UI.render("shipyard");
 }
 function departFirstFlight(){
-  if(advanceTime(rnd(8,20))) return;
+  if(advanceTime()) return;
   const size=rollSystemSize();
   const planets=[];
   for(let i=0;i<size;i++) planets.push({ index:i, discovered:i===0, isHome:i===0,
