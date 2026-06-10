@@ -61,6 +61,9 @@ All ship movement lives in **Crew → Ships / Fleets** (not the Shipyard).
 - To move a single ship, use the **Ships** tab — if it's in a fleet, that takes you to the fleet.
 - The **Star Map** plots your local cluster as a text grid; the Codex's **Planets & systems** tab shows your system, its charted worlds, and known systems with distances.
 
+## Deep space: hyperdrive drift & ship encounters
+When no star is within a single jump, you can **hyperdrive in a straight line into open space** — covering one jump's distance toward a heading and **drifting between the stars**. From the void (the World tab becomes a Deep Space view) you can jump to any star now in range or keep hopping, chaining jumps to cross gaps no single ship could span. Each hop has a chance to **cross paths with other ships** — from a lone **cargo freighter** or **transport convoy** (common) to **pirates**, a **war fleet**, or — vanishingly rarely — a **grand armada**. For now you can hail, salvage derelicts, or evade them; ship-to-ship combat (and PvP) is the next system this sets up.
+
 ## The galaxy Map (bottom tab)
 A dedicated **Map** tab shows the whole galaxy on its flat plane, with the **core marked at (0,0)** and your distance from it called out.
 - **Zoom in/out**, pan with the arrows, snap to **Center on me**, or zoom all the way to **Whole galaxy** (see the rim and where you sit in it).
