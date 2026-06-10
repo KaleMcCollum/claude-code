@@ -437,6 +437,7 @@ const CAREERS = [
   { id:"hunter",   name:"Hunter",   weight:6 },
   { id:"scholar",  name:"Scholar",  weight:4 },
   { id:"smuggler", name:"Smuggler", weight:4 },
+  { id:"wanted",   name:"Wanted",   weight:3 },   // a fugitive with a bounty on their head
 ];
 const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
 /* Generic things people say when you greet them. */
@@ -702,12 +703,16 @@ const Gen = {
     bio.fertility=t(R.bio.fertility,false,true);
     const qg=[...ATTR_KEYS.map(k=>attrs[k].g), lifespan.g, bio.perception.g, bio.metabolism.g, bio.resilience.g, bio.recovery.g];
     const avgPct=clamp(Math.round(normCdf(qg.reduce((s,x)=>s+x,0)/qg.length)*100),1,99);
-    return { kind:"species", name:null, raceName:race.name, tier:race.tier, arche:race.arche,
+    const career=weightedPick(CAREERS).id;
+    const out={ kind:"species", name:null, raceName:race.name, tier:race.tier, arche:race.arche,
              archeName:race.archeName, flavor:race.flavor, sig:race.sig, population:race.population,
-             height, mass, maturity, lifespan, attrs, bio, career:weightedPick(CAREERS).id,
+             height, mass, maturity, lifespan, attrs, bio, career,
              temperament:weightedPick(TEMPERAMENTS).id, build:buildLabel(height.value,mass.value),
              detail:race.detail, reproduction:race.reproduction, powers:race.powers,
              genome:{ avgPct, grade:gradeLabel(avgPct) } };
+    if(career==="wanted"){ const tm=1+RARITY.index(race.tier)*0.5, base=rnd(600,3000);
+      out.bounty={ alive:Math.round(base*tm), dead:Math.round(base*tm*0.6) }; }
+    return out;
   },
 };
 
@@ -861,7 +866,7 @@ const Game = {
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
       daysElapsed:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
-      grounded:true, system:null, atSlot:0, activeShip:veh.id,
+      grounded:true, system:null, atSlot:0, activeShip:veh.id, bounties:[],
       stimReady:false, log:[],
     };
     veh.slot=0;                  // your inherited craft is docked on your homeworld
@@ -1059,7 +1064,7 @@ function playerAttack(name){
       dmg=Math.max(1,Math.round(dmg));
       combat.hp-=dmg; Game.logMsg(`${name} hits ${combat.name} for ${dmg}${crit?" CRIT!":""}${venom}.`,"hit"); }
   }
-  if(combat.hp<=0) return winEncounter();
+  if(combat.hp<=0) return combat.person?winDuel():winEncounter();
   if(combat.surprised){ combat.surprised=false; Game.save(); UI.render("combat"); return; } // free hit, no retaliation
   enemyTurn();
 }
@@ -1342,6 +1347,7 @@ const UI = {
       <button class="full" id="tPatron">&#128483; Talk to a patron</button>
       <button class="full" id="tBartender">&#127867; Talk to the bartender</button>
       <button class="full" id="tBounty">&#127919; Find a bounty hunter</button>
+      ${(state.bounties||[]).length?`<button class="full primary" id="tRedeem">&#9878; Redeem bounties (${state.bounties.length}) &middot; +${commas(state.bounties.reduce((s,b)=>s+b.value,0))}c</button>`:""}
       <button class="full ghost" id="tDrink">Buy a round &middot; 10c (rest your bones)</button>
     </div>
     <div class="card"><button id="tBack" class="ghost full center">&larr; Back outside</button></div>`;
@@ -1455,7 +1461,7 @@ const UI = {
         <h2>${person.name||"A stranger"}</h2>
         ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
           :`<p class="small gold">Their kind is new to your Codex.</p>`}
-        <p class="small dim">Career: ${careerName(person.career)}.</p>
+        <p class="small dim">Career: ${careerName(person.career)}.${person.career==="wanted"?` <span class="red">WANTED — ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</span>`:""}</p>
       </div>
       ${originCard(person)}
       ${speciesSheet(person)}
@@ -1463,6 +1469,7 @@ const UI = {
         ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
           :`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}`}
         <button class="primary full center" id="meetFinish" style="margin-top:8px">Record &amp; part ways</button>
+        ${person.career==="wanted"?`<button class="full center" id="meetAttack" style="margin-top:6px">&#9876; Attack &amp; claim the bounty</button>`:""}
       </div>`;
   },
 
@@ -1508,16 +1515,21 @@ const UI = {
       <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; ${careerName(p.career)} &middot; met at ${p.where}.</p>
       ${p.raceId?`<button class="small ghost" data-race="${p.raceId}" style="margin-top:8px">View ${p.raceName} race &rarr;</button>`:""}
     </div>
+    ${p.career==="wanted"&&!p.captured?`<div class="rarity-banner" style="border-color:#ff6b6b">
+      <div class="rn" style="color:#ff6b6b">WANTED</div>
+      <div class="odds">bounty ${commas(p.bounty.alive)}c alive &middot; ${commas(p.bounty.dead)}c dead</div></div>`:""}
     <div class="card">
-      <h3>Speak with ${p.name.split(" ")[0]}</h3>
-      ${p.hired?`<p class="small green">In your crew, piloting the <b>${crewShip?crewShip.name:"—"}</b>. They follow you between worlds.</p>`
+      <h3>${p.career==="wanted"?"A wanted fugitive":"Speak with "+p.name.split(" ")[0]}</h3>
+      ${p.captured?`<p class="small">Bounty claimed — you ${p.captureAlive?"restrained":"killed"} them.</p>`
+       : p.hired?`<p class="small green">In your crew, piloting the <b>${crewShip?crewShip.name:"—"}</b>. They follow you between worlds.</p>`
        : here?`<div class="row">
             <button id="sayHi">Say hi</button>
-            ${p.career==="pilot"?`<button id="hire" class="primary">Hire as pilot &middot; 400c</button>`
-              :`<span class="small dim">Career: ${careerName(p.career)} — not a pilot, can't crew a ship.</span>`}
+            ${p.career==="pilot"?`<button id="hire" class="primary">Hire as pilot &middot; 400c</button>`:""}
+            ${p.career==="wanted"?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
+            ${p.career!=="pilot"&&p.career!=="wanted"?`<span class="small dim">${careerName(p.career)} — no work for them yet.</span>`:""}
           </div>
           ${convo&&convo.idx===viewingPerson?`<p class="small" style="margin-top:8px"><b>${p.name.split(" ")[0]}:</b> "${convo.text}"</p>`:""}`
-       : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to speak with them.</p>`}
+       : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${p.career==="wanted"?"hunt":"speak with"} them.</p>`}
     </div>
     ${originCard(p)}
     ${speciesSheet(p)}
@@ -1651,6 +1663,18 @@ const UI = {
   screen_combat(){
     if(!combat) return this.screen_hub();
     const c=combat, atk=state.skills.filter(s=>DATA.skills[s].type==="attack");
+    // a beaten Wanted target: choose to kill or restrain
+    if(c.person && c.claim) return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2 class="gold">${c.name} is beaten</h2>
+      <p class="small dim">Their bounty is yours to claim — redeem it at any bar.</p>
+      <div class="row">
+        <button class="primary" data-claim="alive">Restrain &middot; ${commas(c.bounty.alive)}c</button>
+        <button data-claim="dead">Kill &middot; ${commas(c.bounty.dead)}c</button>
+      </div>
+    </div>
+    ${this.logCard()}`;
     return `
     ${this.statHeader()}
     <div class="card">
@@ -1667,7 +1691,7 @@ const UI = {
         ${atk.map(s=>`<button data-atk="${s}">${s}<br><span class="small dim">${DATA.skills[s].energy||0} en</span></button>`).join("")}
         ${state.skills.includes("Mend")?`<button data-atk="Mend">Mend<br><span class="small dim">6 en</span></button>`:""}
         <button data-atk="Focus" class="ghost">Focus<br><span class="small dim">+energy</span></button>
-        <button id="actTame">Tame</button>
+        ${c.person?"":`<button id="actTame">Tame</button>`}
         <button id="actFlee" class="ghost">Flee</button>
         <button id="actBag">Use item</button>
       </div>
@@ -1872,7 +1896,8 @@ const UI = {
     if(screen==="tavern"){
       $("#tPatron").onclick=()=>startMeeting("A patron at a corner table waves you over.","tavern");
       $("#tBartender").onclick=()=>{ Game.logMsg("The bartender leans in — "+pick(RUMORS),"sys"); toast("You hear a rumor"); Game.save(); UI.render("tavern"); UI.flashLog(); };
-      $("#tBounty").onclick=()=>{ toast("No bounties posted right now"); Game.logMsg("No bounties on the board today. (Bounty work coming soon.)","sys"); };
+      $("#tBounty").onclick=()=>{ toast("No bounties posted right now"); Game.logMsg("No bounties on the board today. (Bounty contracts coming soon.)","sys"); };
+      const rd=$("#tRedeem"); if(rd) rd.onclick=()=>redeemBounties();
       $("#tDrink").onclick=()=>{ if(state.credits<10){ toast("Not enough credits"); return; }
         state.credits-=10; state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.25));
         state.energy=Game.effMaxEnergy(); Game.logMsg("You buy a round and rest a while. Energy restored, wounds eased.","good"); Game.save(); UI.render("tavern"); UI.flashLog(); };
@@ -1912,12 +1937,16 @@ const UI = {
       app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>{ viewingRace=b.dataset.race; UI.render("cx_race"); });
       const sh=$("#sayHi"); if(sh) sh.onclick=()=>sayHi(viewingPerson);
       const hr=$("#hire"); if(hr) hr.onclick=()=>hirePilot(viewingPerson);
+      const at=$("#attack"); if(at) at.onclick=()=>startDuel(viewingPerson);
     }
     if(screen==="arrive") this.bindArrive();
     if(screen==="meet") this.bindMeet();
     if(screen==="combat"){
       app.querySelectorAll("[data-atk]").forEach(b=> b.onclick=()=>playerAttack(b.dataset.atk));
-      $("#actTame").onclick=()=>tryTame(); $("#actFlee").onclick=()=>fleeEncounter(); $("#actBag").onclick=()=>UI.render("bag");
+      app.querySelectorAll("[data-claim]").forEach(b=> b.onclick=()=>claimBounty(b.dataset.claim==="alive"));
+      const tm=$("#actTame"); if(tm) tm.onclick=()=>tryTame();
+      const fl=$("#actFlee"); if(fl) fl.onclick=()=>fleeEncounter();
+      const bg=$("#actBag"); if(bg) bg.onclick=()=>UI.render("bag");
     }
     if(screen==="bag"){
       app.querySelectorAll("[data-use]").forEach(b=> b.onclick=()=>useItem(b.dataset.use));
@@ -2013,6 +2042,7 @@ const UI = {
       $("#meetStep1").onclick=()=>{ m.person.name=$("#meetPerson").value.trim()||genName("person"); m.step=2; UI.render("meet"); };
     } else {
       $("#meetFinish").onclick=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } finishMeeting(); };
+      const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } meetAttack(); };
     }
   },
 };
@@ -2239,6 +2269,48 @@ function hirePilot(i){
 /* when you fly, pilot-crewed ships at your old dock follow you to the new one */
 function moveFollowers(oldSlot, newSlot){
   (state.vehicles||[]).forEach(v=>{ if(v.slot===oldSlot && v.pilot && v.id!==state.activeShip) v.slot=newSlot; });
+}
+
+/* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
+function startDuel(i){
+  const p=(state.codex.people||[])[i];
+  if(!p || p.career!=="wanted" || p.captured) return;
+  const maxHp=Math.round(p.attrs.endurance.value*5 + p.height.value*0.06);
+  combat={ person:true, personIdx:i, name:p.name, blurb:`A wanted ${p.raceName} — ${commas(p.bounty.alive)}c alive.`,
+    maxHp, hp:maxHp, atk:Math.round(p.attrs.strength.value*0.8 + p.mass.value*0.02),
+    xp:Math.round(maxHp*0.4), over:false, claim:false, stim:state.stimReady, surprised:false, bounty:p.bounty };
+  state.stimReady=false;
+  Game.logMsg(`You move to apprehend ${p.name}.`,"hit");
+  UI.render("combat");
+}
+function winDuel(){
+  combat.over=true; combat.claim=true;
+  Game.logMsg(`You overpower ${combat.name}.`,"good");
+  Game.save(); UI.render("combat");
+}
+function claimBounty(alive){
+  const p=(state.codex.people||[])[combat.personIdx], val=alive?combat.bounty.alive:combat.bounty.dead;
+  state.bounties=state.bounties||[];
+  state.bounties.push({ name:p.name, raceName:p.raceName, value:val, alive });
+  p.captured=true; p.captureAlive=alive;
+  Game.logMsg(`${alive?"You restrain":"You kill"} ${p.name}. Redeem the ${commas(val)}c bounty at a bar.`,"good");
+  combat=null; Game.save(); UI.render("hub"); UI.flashLog();
+}
+function meetAttack(){
+  const m=meeting;
+  if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
+  m.person.raceName=m.draw.race.name;
+  recordMeeting(m.person, m.draw.race, state.world.name);
+  checkObjectives();
+  const idx=state.codex.people.length-1; meeting=null;
+  startDuel(idx);
+}
+function redeemBounties(){
+  const list=state.bounties||[]; if(!list.length){ toast("No bounties to redeem"); return; }
+  const total=list.reduce((s,b)=>s+b.value,0), n=list.length;
+  state.credits+=total; state.bounties=[];
+  Game.logMsg(`You redeem ${n} bounty claim${n>1?"s":""} for ${commas(total)}c.`,"good"); toast("+"+commas(total)+"c");
+  Game.save(); UI.render("tavern");
 }
 function buyShip(id){
   const s=SHIPYARD.find(x=>x.id===id); if(!s) return;
