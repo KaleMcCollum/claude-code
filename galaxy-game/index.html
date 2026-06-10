@@ -1049,7 +1049,7 @@ const UI = {
   current:"title",
   render(screen){
     this.current=screen;
-    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive";
+    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive"||screen==="meet";
     $("#nav").classList.toggle("hidden", noNav);
     [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===screen));
     app.innerHTML=(this["screen_"+screen]||(()=> "<p>?</p>")).call(this);
@@ -1234,42 +1234,96 @@ const UI = {
           :`Far from the ${cap(BIOMES.find(b=>b.id===state.species.detail.nativeBiome).name)} your kind calls home.`}</p>
     </div>
     <div class="card">
-      <h3>Actions</h3>
+      <h3>Around ${w.name}</h3>
       <div class="grid">
-        <button id="actExplore" class="primary">&#9968; Explore</button>
-        <button id="actMarket">&#9879; Market</button>
-        <button id="actRest">&#9789; Rest</button>
-        <button id="actDepart">&#9992; Spaceport</button>
+        <button id="vTavern">&#127866; Tavern</button>
+        <button id="vShipyard">&#128736; Shipyard</button>
+        <button id="vMarket">&#9879; Market</button>
+        <button id="vTalk">&#128483; Talk to a stranger</button>
+        <button id="vWilds" class="primary">&#127807; Wander the wilds</button>
+        <button id="vRest">&#9789; Rest</button>
       </div>
     </div>
     ${this.logCard()}`;
   },
 
-  /* ---------- SPACEPORT (buy a ship, take off, chart your system) ---------- */
-  screen_depart(){
-    const w=state.world, canLeave=Game.canLeave();
+  /* ---------- TAVERN ---------- */
+  screen_tavern(){
+    const w=state.world;
     return `
     ${this.statHeader()}
-    <div class="card">
-      <h2>&#9992; ${w.name} Spaceport</h2>
-      ${!canLeave?`<p class="small">You are <b class="red">grounded</b>. Your ${state.vehicles[0]?state.vehicles[0].clsName:"craft"}
-        is built for dirt and air — it can't reach the other worlds around your star. You need a
-        <b>system-capable ship</b>.</p>`
-       :!state.system?`<p class="small green">Your ship is fueled and spaceworthy. Take off and chart your home system?</p>`
-       :`<p class="small green">System charted — ${state.system.size} worlds orbit your star. Open the Codex to pick a destination.</p>`}
+    <div class="card"><h2>&#127866; ${w.name} Tavern</h2>
+      <p class="small dim">Smoke, music, and a hundred stories you haven't heard.</p></div>
+    <div class="card"><h3>Who's here</h3>
+      <button class="full" id="tPatron">&#128483; Talk to a patron</button>
+      <button class="full" id="tBartender">&#127867; Talk to the bartender</button>
+      <button class="full" id="tBounty">&#127919; Find a bounty hunter</button>
+      <button class="full ghost" id="tDrink">Buy a round &middot; 10c (rest your bones)</button>
     </div>
-    ${!canLeave?`<div class="card"><h3>Shipyard</h3>
-      ${SHIPYARD.map(s=>`<div class="card" style="margin:8px 0;padding:10px">
-        <div class="row between"><b>${s.name}</b>
-          <button data-ship="${s.id}" ${state.credits<s.price?"disabled":""}>${s.price}c</button></div>
-        <p class="small dim" style="margin:4px 0">${s.blurb}</p>
-        <span class="pill g">STR ${s.power.star}</span><span class="pill b">FLT ${s.power.flight}</span>
-      </div>`).join("")}
-      <p class="small dim">Credits: <b class="gold">${state.credits}</b> — explore and trade to earn the fare.</p>
-    </div>`:""}
-    ${canLeave&&!state.system?`<div class="card"><button id="takeoff" class="primary full center">&#9650; Take off &amp; chart your system</button></div>`:""}
-    ${state.system?`<div class="card"><button id="toCodex" class="primary full center">&#9776; Open Codex</button></div>`:""}
-    `;
+    <div class="card"><button id="tBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+
+  /* ---------- SHIPYARD (buy/sell ships, leave the planet, the Yarder) ---------- */
+  screen_shipyard(){
+    const w=state.world, canLeave=Game.canLeave(), sys=state.system;
+    return `
+    ${this.statHeader()}
+    <div class="card"><h2>&#128736; ${w.name} Shipyard</h2>
+      <p class="small dim">Ships bought and sold, contracts posted, and the way off-world.</p></div>
+    <div class="card"><h3>Buy a ship</h3>
+      ${SHIPYARD.map(s=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
+        <span><b>${s.name}</b><br><span class="small dim">${s.blurb}</span></span>
+        <button data-ship="${s.id}" ${state.credits<s.price?"disabled":""}>${s.price}c</button></div>`).join("")}
+      <button class="ghost small" id="rentStub" style="margin-top:8px">Rent a ship — coming soon</button>
+    </div>
+    <div class="card"><h3>Your ships</h3>
+      ${state.vehicles.map((v,i)=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
+        <span>${v.name} <span class="small dim">(${v.clsName}${v.systemCapable?", spaceworthy":""})</span></span>
+        ${state.vehicles.length>1?`<button class="small ghost" data-sellship="${i}">Sell &middot; ${shipSell(v)}c</button>`:`<span class="small dim">only craft</span>`}</div>`).join("")}
+    </div>
+    <div class="card"><h3>Leave the planet</h3>
+      ${!canLeave?`<p class="small red">You're grounded — buy a system-capable ship above to reach the other worlds.</p>`
+      :!sys?`<button id="takeoff" class="primary full center">&#9650; Take off &amp; chart your system</button>`
+      :`<p class="small dim">Set course to a world in your system:</p>
+        ${sys.planets.map((p,i)=> p.discovered
+          ? `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name}</span><span class="kv dim">${p.isHome?"home":"charted"}</span></div>`
+          : `<div class="krow"><span class="lbl dim">Unexplored world ${i+1}</span><span class="kv"><button class="small" data-travel="${i}">&#9992; Travel</button></span></div>`).join("")}`}
+    </div>
+    <div class="card"><h3>The Yarder</h3>
+      <p class="small dim">The dockmaster who runs this yard — hauling, salvage, lost ships.</p>
+      <button id="yarder" class="full center">Talk to the Yarder</button>
+    </div>
+    <div class="card"><button id="syBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+
+  /* ---------- MEET A PERSON (on-planet) ---------- */
+  screen_meet(){
+    const m=meeting; if(!m) return this.screen_hub();
+    if(m.step===1) return `
+      <div class="card">
+        <h2>A stranger</h2>
+        <p class="small dim">${m.intro}</p>
+        <p class="small">Name this person:</p>
+        ${nameField("meetPerson","Name this person","person",m.person.name)}
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="meetCancel">&larr; Walk away</button>
+          <button class="primary" id="meetStep1">Introduce yourself &rarr;</button>
+        </div>
+      </div>`;
+    const person=m.person, known=!m.draw.isNew, race=m.draw.race;
+    return `
+      <div class="card">
+        <h2>${person.name||"A stranger"}</h2>
+        ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
+          :`<p class="small gold">Their kind is new to your Codex.</p>`}
+      </div>
+      ${genomeBanner(person.genome)}
+      ${speciesSheet(person)}
+      <div class="card">
+        ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
+          :`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}`}
+        <button class="primary full center" id="meetFinish" style="margin-top:8px">Record &amp; part ways</button>
+      </div>`;
   },
 
   /* ---------- CODEX (everything you've discovered) ---------- */
@@ -1567,23 +1621,39 @@ const UI = {
     if(screen==="epilogue"){ $("#btnNewLife").onclick=()=>{ creating={step:1, galaxy:state.galaxyName}; UI.render("create"); }; }
 
     if(screen==="hub"){
-      $("#actExplore").onclick=()=>startEncounter();
-      $("#actMarket").onclick=()=>UI.render("market");
-      $("#actDepart").onclick=()=>UI.render("depart");
-      $("#actRest").onclick=()=>{
+      $("#vWilds").onclick=()=>startEncounter();
+      $("#vMarket").onclick=()=>UI.render("market");
+      $("#vShipyard").onclick=()=>UI.render("shipyard");
+      $("#vTavern").onclick=()=>UI.render("tavern");
+      $("#vTalk").onclick=()=>startMeeting("Out among the crowds you fall into talk with a passing stranger.","hub");
+      $("#vRest").onclick=()=>{
         if(advanceTime(rnd(5,12))) return;            // resting passes a week or two
         state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
         Game.logMsg("You make camp and rest. HP and energy restored.","sys"); Game.save(); UI.render("hub"); UI.flashLog(); };
     }
-    if(screen==="depart"){
+    if(screen==="tavern"){
+      $("#tPatron").onclick=()=>startMeeting("A patron at a corner table waves you over.","tavern");
+      $("#tBartender").onclick=()=>{ Game.logMsg("The bartender leans in — "+pick(RUMORS),"sys"); toast("You hear a rumor"); Game.save(); UI.render("tavern"); UI.flashLog(); };
+      $("#tBounty").onclick=()=>{ toast("No bounties posted right now"); Game.logMsg("No bounties on the board today. (Bounty work coming soon.)","sys"); };
+      $("#tDrink").onclick=()=>{ if(state.credits<10){ toast("Not enough credits"); return; }
+        state.credits-=10; state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.25));
+        state.energy=Game.effMaxEnergy(); Game.logMsg("You buy a round and rest a while. Energy restored, wounds eased.","good"); Game.save(); UI.render("tavern"); UI.flashLog(); };
+      $("#tBack").onclick=()=>UI.render("hub");
+    }
+    if(screen==="shipyard"){
       app.querySelectorAll("[data-ship]").forEach(b=> b.onclick=()=>buyShip(b.dataset.ship));
+      app.querySelectorAll("[data-sellship]").forEach(b=> b.onclick=()=>sellShip(+b.dataset.sellship));
+      app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
       const tk=$("#takeoff"); if(tk) tk.onclick=()=>departFirstFlight();
-      const tc=$("#toCodex"); if(tc) tc.onclick=()=>UI.render("codex");
+      const yd=$("#yarder"); if(yd) yd.onclick=()=>{ toast("No contracts posted right now"); Game.logMsg("The Yarder shrugs — no hauling work today. (Shipping quests coming soon.)","sys"); };
+      const rs=$("#rentStub"); if(rs) rs.onclick=()=>toast("Ship rentals coming soon");
+      $("#syBack").onclick=()=>UI.render("hub");
     }
     if(screen==="codex"){
       app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
     }
     if(screen==="arrive") this.bindArrive();
+    if(screen==="meet") this.bindMeet();
     if(screen==="combat"){
       app.querySelectorAll("[data-atk]").forEach(b=> b.onclick=()=>playerAttack(b.dataset.atk));
       $("#actTame").onclick=()=>tryTame(); $("#actFlee").onclick=()=>fleeEncounter(); $("#actBag").onclick=()=>UI.render("bag");
@@ -1673,6 +1743,17 @@ const UI = {
         a.person.raceName=a.draw.race.name; finishArrival(); };
     }
   },
+
+  bindMeet(){
+    const m=meeting; if(!m) return;
+    app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
+    if(m.step===1){
+      $("#meetCancel").onclick=()=>{ meeting=null; UI.render(m.back); };
+      $("#meetStep1").onclick=()=>{ m.person.name=$("#meetPerson").value.trim()||genName("person"); m.step=2; UI.render("meet"); };
+    } else {
+      $("#meetFinish").onclick=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } finishMeeting(); };
+    }
+  },
 };
 
 /* ============================================================ ACTIONS == */
@@ -1753,6 +1834,37 @@ function finishArrival(){
   checkObjectives();
   arriving=null; Game.save(); UI.render("codex"); UI.flashLog();
 }
+
+/* ---- meet a person on the planet you're on (tavern patrons, strangers, ...) ---- */
+let meeting=null;
+const RUMORS=[
+  "they say a people who stand ten feet tall walk a world not far from here.",
+  "a trader swears she met someone who could fly — wings and all.",
+  "there's a world out past the third star where the folk live three centuries.",
+  "someone struck it rich finding a stolen freighter adrift in the deep.",
+  "the dockmaster's looking for hands to haul cargo off-world, if you've a ship.",
+  "they whisper of a desolate world where no one lives at all.",
+];
+function startMeeting(intro, back){
+  const draw=drawRace();
+  meeting={ draw, person:Gen.person(draw.race), intro, back:back||"hub", step:1 };
+  UI.render("meet");
+}
+function finishMeeting(){
+  const m=meeting;
+  if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
+  m.person.raceName=m.draw.race.name;
+  Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
+  checkObjectives();
+  const back=m.back; meeting=null; Game.save(); UI.render(back); UI.flashLog();
+}
+function shipSell(v){ return v.systemCapable?1500:200; }
+function sellShip(i){
+  if(state.vehicles.length<=1){ toast("That's your only craft"); return; }
+  const v=state.vehicles[i], p=shipSell(v);
+  state.vehicles.splice(i,1); state.credits+=p;
+  Game.logMsg(`You sell the ${v.name} for ${p}c.`,"sys"); Game.save(); UI.render("shipyard");
+}
 function buyShip(id){
   const s=SHIPYARD.find(x=>x.id===id); if(!s) return;
   if(state.credits<s.price){ toast("Not enough credits"); return; }
@@ -1760,7 +1872,7 @@ function buyShip(id){
   state.vehicles.push({ kind:"vehicle", name:s.clsName, tier:"common", cls:s.cls, clsName:s.clsName,
     axes:s.axes, power:{...s.power}, systemCapable:true });
   Game.logMsg(`You buy a ${s.name} for ${s.price}c. The sky is no longer a ceiling.`,"good");
-  Game.save(); UI.render("depart");
+  Game.save(); UI.render("shipyard");
 }
 function departFirstFlight(){
   if(advanceTime(rnd(8,20))) return;
