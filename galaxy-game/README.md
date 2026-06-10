@@ -97,7 +97,10 @@ What you run into when you explore depends on **where you are**:
 - **Dead, near-lifeless worlds** (molten, airless, glacial) → often just empty silence.
 The explore button reads the world: *Prowl the streets* in a city, *Explore the outskirts* on a frontier, *Wander the wilds* out in the open.
 
-The **Outfitter (Market)** is now an equipment shop. Buy and equip across six slots — **weapon, head, chest, legs, feet, back** — from vibroknives to plasma edges, scrap helms to powered cuirasses, trek boots, jetpacks and grav-harnesses. Armor adds max HP and **flat damage reduction**; boots and jetpacks add **dodge** (and the jetpack helps you flee). You start with a vibroknife and a hide vest. Stock is gated by world tech, so the best gear lives on advanced worlds.
+The **Outfitter (Market)** is now an equipment shop. Buy and equip across six slots — **weapon, head, chest, legs, feet, back** — from vibroknives to plasma edges, scrap helms to powered cuirasses, trek boots, jetpacks and grav-harnesses. Armor adds max HP and **flat damage reduction**; boots and jetpacks add **dodge** (and the jetpack helps you flee). Stock is gated by world tech, so the best gear lives on advanced worlds. You can also **sell your haul** here.
+
+## Starting out: scavenge to survive
+You begin with **nothing** — no gear, no supplies, no credits — and a child's fraction of your potential. The early game is **scavenging and staying alive**: exploring most often turns up **rusted parts, scrap, and the occasional circuit board**, which you sell at a market to afford your first knife, pistol, or vest. You're too weak to win many fights yet, so **running** from beasts and back-alley robbers is usually the smart play until you've armed up.
 
 ## Next up
 - Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).

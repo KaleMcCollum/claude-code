@@ -1023,12 +1023,14 @@ const DATA = {
     "jetpack":     { name:"Jetpack",        kind:"accessory", slot:"back", value:420, minTech:4, blurb:"+8 energy, leap clear of blows (+dodge, +flee).", mods:{energy:8, dodge:0.08, flee:0.12} },
     "grav-harness":{ name:"Grav Harness",   kind:"accessory", slot:"back", value:700, minTech:6, blurb:"Hard to pin down (+dodge, +flee).", mods:{dodge:0.12, flee:0.1} },
     "current-focus":{ name:"Current Focus", kind:"accessory", slot:"back", value:160, minTech:5, blurb:"+4 Force, +10 max energy.", mods:{force:4, energy:10} },
-    // —— trade goods (sold, not equipped) ——
-    "scrap":       { name:"Scrap",          kind:"trade", value:5,  minTech:0, blurb:"Salvaged parts." },
+    // —— salvage (scavenged, then sold at market) ——
+    "rusted-parts":{ name:"Rusted Parts",  kind:"trade", value:4,  minTech:0, blurb:"A handful of corroded scrap." },
+    "scrap":       { name:"Scrap",          kind:"trade", value:6,  minTech:0, blurb:"Salvaged parts, still worth something." },
+    "circuit-scrap":{ name:"Circuit Scrap", kind:"trade", value:16, minTech:0, blurb:"Salvaged circuitry — a good find." },
     "pelt":        { name:"Beast Pelt",     kind:"trade", value:12, minTech:0, blurb:"A cured hide." },
   },
 
-  startKit:[ ["ration",3], ["medpack",1], ["vibroknife",1], ["hide-vest",1] ],
+  startKit:[],   // you start with nothing — scavenge, sell, and arm yourself
 };
 
 /* Hostile people you run into in settled places — robbers, thieves, raiders. Drop credits
@@ -1159,7 +1161,7 @@ const Game = {
       name:creating.name, species:sp, world, vehicles:[veh],
       level:1, xp:0, xpNext:50, stats,
       maxHp, hp:maxHp, maxEnergy, energy:maxEnergy,
-      credits:120, skills:[...skills],
+      credits:0, skills:[...skills],
       inv:{}, equipped:{weapon:null,head:null,chest:null,legs:null,feet:null,back:null}, pets:[],
       // you begin as a YOUNG CHILD and grow toward your potential as time flows
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
@@ -1174,9 +1176,7 @@ const Game = {
     state.world.settle="colony"; // a working spaceport — always has a yard so you can leave
     state.lastStage=Game.stage();
     state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
-    DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
-    state.equipped.weapon="vibroknife"; state.equipped.chest="hide-vest";  // a blade and a vest to start
-    state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
+    DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));   // empty — you begin with nothing
     // you know your own race and your homeworld from the start — into the Codex
     const selfRace=raceFrom(sp); selfRace.id="self"; selfRace.reported=true;
     state.codex.races["self"]=selfRace;
@@ -1306,7 +1306,8 @@ function die(cause){
 function startEncounter(){
   if(advanceTime()) return;                    // exploring is one action
   const w=state.world, civ=worldCivility(w), wild=biomeHab(w.biome);
-  let peace=clamp(0.18+w.peaceMod,0.05,0.4);
+  // exploring often just turns up salvage — the early game is scavenging and staying alive
+  let peace=clamp(0.32+w.peaceMod,0.1,0.55);
   if(chance(peace)) return peacefulEvent(w);
   if(w.occupied===false){                       // no one lives here — beasts, or empty silence
     if(wild<0.12 && chance(0.55)) return emptyEvent(w);
@@ -1361,12 +1362,18 @@ function humanoidEncounter(w){
   Game.save(); UI.render("combat");
 }
 function peacefulEvent(w){
-  // keen/curious find more; so do you on your ancestral biome
+  // scavenging is the early game: mostly salvage you sell at a market for your first weapons.
+  // keen/curious find more; so do you on your ancestral biome.
   const find=(Game.bio("perception")-10)*0.04 + Game.tempEff("find",0) + (Game.atHome()?0.15:0);
   const r=Math.random();
-  if(r<0.5){ const c=Math.round(rnd(8,22)*(1+find)); state.credits+=c; Game.logMsg(`You find a cache: +${c} credits.`,"good"); }
-  else if(r<0.8){ const id=pick(["scrap","pelt","ration","energy-cell"]); const n=chance(find)?2:1; Game.addItem(id,n);
-    Game.logMsg(`You salvage ${n>1?n+"x ":"a "}${DATA.items[id].name}.`,"good"); }
+  if(r<0.62){ // pick over wrecks and ruins for parts
+    const id = chance(0.12+find) ? "circuit-scrap" : pick(["rusted-parts","rusted-parts","scrap"]);
+    const n = 1 + (chance(0.4+find)?1:0) + (chance(find)?1:0);
+    Game.addItem(id,n);
+    Game.logMsg(`You scavenge ${n>1?n+"x ":"some "}${DATA.items[id].name}.`,"good"); }
+  else if(r<0.8){ const c=Math.round(rnd(4,14)*(1+find)); state.credits+=c; Game.logMsg(`You turn up a few loose credits: +${c}.`,"good"); }
+  else if(r<0.92){ const id=pick(["pelt","ration"]); Game.addItem(id,1);
+    Game.logMsg(`You salvage a ${DATA.items[id].name}.`,"good"); }
   else { const xp=rnd(4,10); Game.gainXp(xp); Game.logMsg(`You study the ${w.biomeName}. +${xp} XP.`,"good"); }
   Game.save(); UI.render("hub"); UI.flashLog();
 }
@@ -2429,6 +2436,14 @@ const UI = {
           <span><b>${it.name}</b>${it.slot?` <span class="tag">${it.slot}</span>`:""}${owned?` <span class="dim small">&middot; owned ${owned}</span>`:""}<br><span class="small dim">${it.blurb}</span></span>
           <button data-buy="${id}" ${state.credits<p?"disabled":""}>${p}c</button></div>`; }).join("")}
     </div>
+    ${(()=>{ const sell=Object.keys(state.inv).filter(id=>!Object.values(state.equipped).includes(id));
+      if(!sell.length) return "";
+      return `<div class="card"><h3>Sell your haul</h3>
+        ${sell.map(id=>{ const it=DATA.items[id], n=state.inv[id], p=Game.sellPrice(id);
+          return `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
+            <span><b>${it.name}</b> <span class="dim small">x${n}</span></span>
+            <button class="ghost" data-sell="${id}">Sell &middot; ${p}c</button></div>`; }).join("")}
+      </div>`; })()}
     <div class="card"><button id="leaveMarket" class="ghost full center">Leave market</button></div>`;
   },
 
@@ -2632,6 +2647,7 @@ const UI = {
     }
     if(screen==="market"){
       app.querySelectorAll("[data-buy]").forEach(b=> b.onclick=()=>buyItem(b.dataset.buy));
+      app.querySelectorAll("[data-sell]").forEach(b=> b.onclick=()=>sellItem(b.dataset.sell));
       $("#leaveMarket").onclick=()=>UI.render("hub");
     }
     if(screen==="save"){
@@ -2735,7 +2751,8 @@ function equipItem(id){ const it=DATA.items[id]; const slot=it&&it.slot;
 function sellItem(id){ if(!state.inv[id]) return;
   if(Object.values(state.equipped).includes(id)){ toast("Unequip it first"); return; }
   const p=Game.sellPrice(id); state.credits+=p; Game.removeItem(id,1);
-  Game.logMsg(`Sold ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save(); UI.render("bag"); }
+  Game.logMsg(`Sold ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save();
+  UI.render(UI.current==="market"?"market":"bag"); }
 function buyItem(id){ const p=Game.buyPrice(id); if(state.credits<p){ toast("Not enough credits"); return; }
   state.credits-=p; Game.addItem(id,1); Game.logMsg(`Bought ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save(); UI.render("market"); }
 
