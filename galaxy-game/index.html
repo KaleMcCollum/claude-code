@@ -397,6 +397,71 @@ function buildLabel(heightCm, massKg){
   return "massive";
 }
 
+/* ---- Heritage detail: diet, body, biochemistry per body-plan ---- */
+const DIETS = {
+  carnivore: { name:"Carnivore",  desc:"a flesh-eater — meat and blood sustain you" },
+  herbivore: { name:"Herbivore",  desc:"a grazer — plant matter sustains you" },
+  omnivore:  { name:"Omnivore",   desc:"eats nearly anything that won't eat you first" },
+  photovore: { name:"Photovore",  desc:"feeds on light — daylight restores your energy" },
+  lithovore: { name:"Lithovore",  desc:"consumes minerals and stone" },
+  energivore:{ name:"Energivore",  desc:"drinks raw energy and the Current itself" },
+};
+/* per-archetype diet / locomotion / biochemistry candidate pools */
+const ARCHE_TRAITS = {
+  humanlike:  { diet:["omnivore","omnivore","carnivore","herbivore"], move:["upright biped"],            biochem:["carbon-based"] },
+  reptilian:  { diet:["carnivore","omnivore"],                        move:["low quadruped","scaled biped"], biochem:["carbon-based"] },
+  avian:      { diet:["carnivore","omnivore","herbivore"],            move:["winged biped"],               biochem:["carbon-based"] },
+  insectoid:  { diet:["omnivore","herbivore","carnivore"],            move:["six-legged stride","buzzing flight"], biochem:["chitinous carbon"] },
+  aquatic:    { diet:["carnivore","omnivore"],                        move:["finned swimmer","tentacled glide"], biochem:["carbon-based"] },
+  saurian:    { diet:["carnivore","herbivore"],                       move:["heavy quadruped","towering biped"], biochem:["carbon-based"] },
+  plantkin:   { diet:["photovore","photovore","herbivore"],           move:["ambulatory root","slow biped"],     biochem:["chlorophyll carbon"] },
+  crystalline:{ diet:["lithovore","energivore"],                      move:["grinding ambulation","levitation"], biochem:["silicon lattice"] },
+  machinekin: { diet:["energivore","lithovore"],                      move:["servo biped","treaded chassis"],    biochem:["synthetic alloy"] },
+  energy:     { diet:["energivore","photovore"],                      move:["weightless hover","incorporeal drift"], biochem:["bound plasma"] },
+};
+/* Sleep/activity rhythm — categorical, lightly mechanical. */
+const CIRCADIAN = [
+  { id:"diurnal",     name:"Diurnal",          weight:30, desc:"awake under the sun" },
+  { id:"nocturnal",   name:"Nocturnal",        weight:18, desc:"hunts in the dark — sharper strikes", crit:0.04 },
+  { id:"crepuscular", name:"Crepuscular",      weight:14, desc:"stirs at dawn and dusk" },
+  { id:"cathemeral",  name:"Cathemeral",       weight:12, desc:"keeps no fixed rhythm" },
+  { id:"polyphasic",  name:"Polyphasic",       weight:12, desc:"sleeps in many short bouts" },
+  { id:"tireless",    name:"All-but-tireless", weight:8,  desc:"needs little rest — steadier reserves", energyRegen:1 },
+];
+const SENSE_POOL = ["echolocation","infrared vision","ultraviolet sight","keen smell","keen hearing",
+  "electroreception","magnetoreception","tremorsense","pressure sense"];
+
+function reproText(f){
+  if(f<=6)  return "bears a single child after a long gestation";
+  if(f<=9)  return "bears one or two young at a time";
+  if(f<=12) return "raises small broods of two to four";
+  if(f<=16) return `rears litters of ${Math.round(f-7)}–${Math.round(f-2)}`;
+  return `lays clutches of roughly ${Math.round(f*4)} eggs`;
+}
+function commStyle(arcId, powers){
+  if(powers.includes("telepath")) return "silent telepathy";
+  if(powers.includes("hivemind")) return "shared hive-resonance";
+  if(arcId==="insectoid") return "pheromones and clicks";
+  if(arcId==="energy")    return "harmonic resonance";
+  if(arcId==="crystalline")return "ringing tones";
+  if(arcId==="aquatic")   return "song and current-pulse";
+  return "spoken language";
+}
+function genDetail(arcId, powers, ti){
+  const at=ARCHE_TRAITS[arcId];
+  const senseCount=clamp(Math.round((ti-1)*0.55)+rnd(0,1),0,3);
+  const senses=[...SENSE_POOL].sort(()=>Math.random()-0.5).slice(0,senseCount);
+  return {
+    diet: pick(at.diet),
+    circadian: weightedPick(CIRCADIAN).id,
+    locomotion: pick(at.move),
+    biochem: pick(at.biochem),
+    communication: commStyle(arcId, powers),
+    senses,
+    nativeBiome: weightedPick(BIOMES).id,
+  };
+}
+
 /* Vehicle classes. axes = which power metrics apply; base = baseline SHp. */
 const VEHICLE_CLASSES = [
   { id:"landspeeder", name:"Landspeeder", weight:20, axes:["ground"],            base:{ground:120} },
@@ -434,10 +499,13 @@ const Gen = {
     }
 
     // fixed biology — also human-anchored at 10, also rolled independently
+    const bioRoll=()=>genTrait(HUMAN.attr, dev, { spread:rndF(0.12,0.22), devScale:0.7, intval:true, floor:1 });
     const bio={
-      metabolism: genTrait(HUMAN.attr, dev, { spread:rndF(0.12,0.2), devScale:0.7, intval:true, floor:1 }),
-      perception: genTrait(HUMAN.attr, dev, { spread:rndF(0.12,0.2), devScale:0.7, intval:true, floor:1 }),
-      fertility:  genTrait(HUMAN.attr, dev, { spread:rndF(0.15,0.3),  devScale:0.8, intval:true, floor:1 }),
+      metabolism: bioRoll(),   // energy & healing speed
+      perception: bioRoll(),   // senses: surprise, crits, finds
+      resilience: bioRoll(),   // toughness vs. harm
+      recovery:   bioRoll(),   // natural healing over time
+      fertility:  genTrait(HUMAN.attr, dev, { spread:rndF(0.15,0.3), devScale:0.8, intval:true, floor:1 }),
     };
     const temperament=weightedPick(TEMPERAMENTS).id;
     const build=buildLabel(height.value, mass.value);
@@ -451,14 +519,20 @@ const Gen = {
     const powers=[];
     for(const p of pool.sort(()=>Math.random()-0.5)){ if(powers.length>=count) break; powers.push(p); }
 
-    // overall genome grade = how good a specimen you are (quality axes only:
-    // attributes + lifespan + perception + metabolism; size/fertility are neutral)
-    const pcts=[...ATTR_KEYS.map(a=>attrs[a].pct), lifespan.pct, bio.perception.pct, bio.metabolism.pct];
+    // heritage detail (diet, rhythm, body, senses, ancestral biome) + reproduction
+    const detail=genDetail(arche.id, powers, ti);
+    const reproduction=reproText(bio.fertility.value);
+
+    // overall genome grade = how good a specimen you are (quality axes only;
+    // size / fertility / heritage flavor are neutral, not "better or worse")
+    const pcts=[...ATTR_KEYS.map(a=>attrs[a].pct), lifespan.pct,
+                bio.perception.pct, bio.metabolism.pct, bio.resilience.pct, bio.recovery.pct];
     const avgPct=Math.round(pcts.reduce((s,x)=>s+x,0)/pcts.length);
 
     return { kind:"species", name:null, tier:tier.id, arche:arche.id, archeName:arche.name,
              flavor:arche.flavor, sig:arche.sig, population,
-             height, mass, maturity, lifespan, attrs, bio, temperament, build, powers,
+             height, mass, maturity, lifespan, attrs, bio, temperament, build,
+             detail, reproduction, powers,
              genome:{ avgPct, grade:gradeLabel(avgPct) } };
   },
 
@@ -608,10 +682,16 @@ const Game = {
   effMaxEnergy(){ let v=state.maxEnergy; const r=state.equipped.relic;
     if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v+=DATA.items[r].mods.energy; return v; },
 
-  /* ---- biology & temperament accessors ---- */
+  /* ---- biology, temperament & heritage accessors ---- */
   bio(key){ return state.species.bio[key].value; },
   temp(){ return TEMPERAMENTS.find(t=>t.id===state.species.temperament); },
   tempEff(key,def){ const e=Game.temp().eff; return e[key]!==undefined?e[key]:def; },
+  detail(key){ return state.species.detail[key]; },
+  circ(){ return CIRCADIAN.find(c=>c.id===state.species.detail.circadian); },
+  circEff(key,def){ const c=Game.circ(); return c[key]!==undefined?c[key]:def; },
+  // you do better on worlds whose biome matches your kind's ancestral home
+  atHome(){ return state.world && state.species.detail.nativeBiome===state.world.biome; },
+  lightFeeder(){ const d=state.species.detail.diet; return d==="photovore"||d==="energivore"; },
 
   /* ---- time & aging: every action spends days; lifespan caps the campaign ---- */
   age(){ return state.ageStart + state.daysElapsed/365; },
@@ -653,6 +733,11 @@ const Game = {
    natural lifespan, the game (not you) decides when your story ends. */
 function advanceTime(days){
   state.daysElapsed += days;
+  // natural healing as the days pass — faster for high Recovery, doubled at home
+  if(state.hp < Game.effMaxHp()){
+    const heal=Math.round(days*0.02*Game.bio("recovery")*(Game.atHome()?2:1));
+    if(heal>0) state.hp=Math.min(Game.effMaxHp(), state.hp+heal);
+  }
   const a=Game.age(), l=Game.lifespan();
   if(a>=l){
     const over=a-l, p=clamp(0.04+over*0.05, 0.04, 0.6);
@@ -679,9 +764,10 @@ function startEncounter(){
     atk:Math.round(tpl.atk*scale), xp:Math.round(tpl.xp*scale),
     tame:tpl.tame, over:false, stim:state.stimReady, surprised:false };
   state.stimReady=false;
-  // Perception decides who gets the drop. Keen senses surprise the beast;
-  // dull senses (low perception) risk an ambush that strikes before you act.
-  const edge=(Game.bio("perception")-10)*0.03 + (state.skills.includes("Current Sense")?0.1:0);
+  // Perception (plus special senses) decides who gets the drop. Keen senses surprise
+  // the beast; dull senses (low perception) risk an ambush that strikes before you act.
+  const edge=(Game.bio("perception")-10)*0.03 + Game.detail("senses").length*0.03
+    + (state.skills.includes("Current Sense")?0.1:0);
   if(chance(clamp(0.25+edge,0.05,0.75))){ combat.surprised=true;
     Game.logMsg(`A wild ${tpl.name} appears! You spot it first and seize the initiative.`,"hit"); }
   else if(chance(clamp(0.18-edge,0.02,0.4))){
@@ -695,7 +781,8 @@ function startEncounter(){
   Game.save(); UI.render("combat");
 }
 function peacefulEvent(w){
-  const find=(Game.bio("perception")-10)*0.04 + Game.tempEff("find",0); // keen/curious find more
+  // keen/curious find more; so do you on your ancestral biome
+  const find=(Game.bio("perception")-10)*0.04 + Game.tempEff("find",0) + (Game.atHome()?0.15:0);
   const r=Math.random();
   if(r<0.5){ const c=Math.round(rnd(8,22)*(1+find)); state.credits+=c; Game.logMsg(`You find a cache: +${c} credits.`,"good"); }
   else if(r<0.8){ const id=pick(["scrap","pelt","ration","energy-cell"]); const n=chance(find)?2:1; Game.addItem(id,n);
@@ -724,7 +811,7 @@ function playerAttack(name){
       if(combat.stim) dmg*=1.5;
       // Perception + Night Sight + a Volatile streak sharpen critical hits
       const critChance=0.1+Game.effStat("agility")*0.005+(Game.bio("perception")-10)*0.008
-        +(Game.hasPower("nightsight")?0.1:0)+Game.tempEff("crit",0);
+        +(Game.hasPower("nightsight")?0.1:0)+Game.tempEff("crit",0)+Game.circEff("crit",0);
       const crit=chance(critChance); if(crit) dmg*=1.6;
       let venom=""; if(Game.hasPower("venom")&&chance(0.25)){ dmg+=4; venom=" (+venom)"; }
       dmg=Math.max(1,Math.round(dmg));
@@ -737,14 +824,17 @@ function playerAttack(name){
 function enemyTurn(){
   let dmg=combat.atk+rnd(0,3);
   if(Game.hasPower("armored")) dmg-=2;
-  dmg=Math.max(1,Math.round(dmg*Game.tempEff("dmgTakenMult",1)));
+  // Resilience genetically toughens you against harm; temperament also shifts it
+  const resist=clamp(1-(Game.bio("resilience")-10)*0.012, 0.7, 1.2)*Game.tempEff("dmgTakenMult",1);
+  dmg=Math.max(1,Math.round(dmg*resist));
   // dodge: agility helps; very heavy bodies dodge a little worse; flight helps a lot
   let dodge=Game.effStat("agility")*0.012-Math.max(0,(state.species.mass.value-HUMAN.mass))*0.0004;
   if(Game.hasPower("flight")) dodge+=0.12;
   if(chance(clamp(dodge,0,0.6))){ Game.logMsg(`You evade the ${combat.name}.`,"good"); }
   else { state.hp-=dmg; Game.logMsg(`${combat.name} strikes you for ${dmg}.`,"bad"); }
-  // per-round biology: metabolism + Resolute temperament restore energy
-  const en=Math.round((Game.bio("metabolism")-10)*0.2)+Game.tempEff("energyRegen",0);
+  // per-round biology: metabolism, Resolute/Tireless reserves, light-feeding diets
+  const en=Math.round((Game.bio("metabolism")-10)*0.2)+Game.tempEff("energyRegen",0)
+    +Game.circEff("energyRegen",0)+(Game.lightFeeder()?1:0);
   if(en>0) state.energy=Math.min(Game.effMaxEnergy(),state.energy+en);
   if(Game.hasPower("regen")){ state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.04)); }
   if(Game.hasPower("photosynth")) state.energy=Math.min(Game.effMaxEnergy(),state.energy+2);
@@ -975,6 +1065,9 @@ const UI = {
       <span class="pill b">${TECH_LABELS[w.tech]}</span>
       <span class="pill g">${WEALTH_LABELS[w.wealth]}</span>
       <span class="pill ${w.danger>=7?'':'v'}">${DANGER_LABELS[w.danger]}</span>
+      <p class="small ${Game.atHome()?'green':'dim'}" style="margin-top:6px">
+        ${Game.atHome()?`&#9737; Your kind's ancestral biome — you are at home here (better finds &amp; faster healing).`
+          :`Far from the ${cap(BIOMES.find(b=>b.id===state.species.detail.nativeBiome).name)} your kind calls home.`}</p>
     </div>
     <div class="card">
       <h3>Actions</h3>
@@ -1332,23 +1425,43 @@ function traitBlock(label, t, fmt, humanRef){
     <div class="small" style="color:${pctColor(t.pct)}">${t.pct}th percentile of your species &mdash; ${pctLabel(t.pct)}</div>
   </div>`;
 }
-/* Biology + inborn nature cards, shared by the species reveal and the Self screen. */
+/* Biology, nature & heritage cards, shared by the species reveal and Self screen. */
 function bioCards(sp){
   const tmp=TEMPERAMENTS.find(t=>t.id===sp.temperament);
+  const cir=CIRCADIAN.find(c=>c.id===sp.detail.circadian);
+  const diet=DIETS[sp.detail.diet];
+  const nb=BIOMES.find(b=>b.id===sp.detail.nativeBiome);
+  const senses=sp.detail.senses;
   return `
   <div class="card reveal">
     <h3>Biology <span class="dim small">(10 = human avg, fixed)</span></h3>
     ${traitBlock("Metabolism", sp.bio.metabolism, v=>v, HUMAN.attr)}
     ${traitBlock("Perception", sp.bio.perception, v=>v, HUMAN.attr)}
+    ${traitBlock("Resilience", sp.bio.resilience, v=>v, HUMAN.attr)}
+    ${traitBlock("Recovery",   sp.bio.recovery,   v=>v, HUMAN.attr)}
     ${traitBlock("Fertility",  sp.bio.fertility,  v=>v, HUMAN.attr)}
-    <p class="small dim" style="margin-top:6px">Metabolism speeds energy &amp; healing; Perception sharpens
-    crits, ambush and finds; Fertility shapes how populous your kind is.</p>
+    <p class="small dim" style="margin-top:6px">Metabolism speeds energy; Perception sharpens crits &amp; ambush;
+    Resilience blunts harm; Recovery heals you over time; Fertility shapes how populous your kind is.</p>
   </div>
   <div class="card reveal">
     <h3>Inborn nature</h3>
     <div class="statline"><span>Build</span><span class="gold">${cap(sp.build)}</span></div>
     <div class="statline"><span>Temperament</span><span class="gold">${tmp.name}</span></div>
     <p class="small dim">${cap(tmp.desc)}.</p>
+  </div>
+  <div class="card reveal">
+    <h3>Heritage</h3>
+    <div class="statline"><span>Diet</span><span class="gold">${diet.name}</span></div>
+    <p class="small dim">${cap(diet.desc)}.</p>
+    <div class="statline"><span>Rhythm</span><span class="gold">${cir.name}</span></div>
+    <p class="small dim">${cap(cir.desc)}.</p>
+    <div class="statline"><span>Locomotion</span><span>${cap(sp.detail.locomotion)}</span></div>
+    <div class="statline"><span>Biochemistry</span><span>${cap(sp.detail.biochem)}</span></div>
+    <div class="statline"><span>Communication</span><span>${cap(sp.detail.communication)}</span></div>
+    <div class="statline"><span>Reproduction</span><span class="small">${sp.reproduction}</span></div>
+    <div class="statline"><span>Ancestral biome</span><span>${cap(nb.name)}</span></div>
+    ${senses.length?`<div class="divider"></div><p class="small"><span class="dim">Heightened senses:</span> ${senses.map(s=>`<span class="pill b">${s}</span>`).join("")}</p>`
+      :`<p class="small dim">No senses beyond the ordinary.</p>`}
   </div>`;
 }
 
