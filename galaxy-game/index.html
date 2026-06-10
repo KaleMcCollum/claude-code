@@ -220,6 +220,18 @@ const GALAXY = {
   totalSapients: 1e12,   // ~1 trillion thinking beings across all worlds
 };
 
+/* You begin as a YOUNG CHILD — able to do a bit of everything, but far from your
+   genetic potential — and grow toward it as the years pass (full power at maturity). */
+const LIFE = {
+  startFraction:  0.20,  // you start at 20% of your species' age-of-maturity
+  childPotential: 0.35,  // a young child performs at ~35% of adult potential (not worthless)
+};
+/* Life stages by fraction of maturity age (elder is handled via twilight). */
+const LIFE_STAGES = [
+  { f:0.12, name:"infant" }, { f:0.30, name:"young child" }, { f:0.55, name:"child" },
+  { f:0.85, name:"adolescent" }, { f:1.10, name:"young adult" }, { f:Infinity, name:"adult" },
+];
+
 const ATTR_KEYS  = ["strength","agility","endurance","intellect","attunement","presence"];
 const ATTR_LABEL = { strength:"Strength", agility:"Agility", endurance:"Endurance",
   intellect:"Intellect", attunement:"Attunement", presence:"Presence" };
@@ -682,28 +694,49 @@ const Game = {
       maxHp, hp:maxHp, maxEnergy, energy:maxEnergy,
       credits:120, skills:[...skills],
       inv:{}, equipped:{weapon:null,armor:null,relic:null}, pets:[],
-      // you begin your adventure freshly grown into adulthood; time then flows
-      ageStart:Math.round(sp.maturity.value), daysElapsed:0, dead:false, deathCause:null,
+      // you begin as a YOUNG CHILD and grow toward your potential as time flows
+      ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
+      daysElapsed:0, dead:false, deathCause:null, lastStage:null,
       stimReady:false, log:[],
     };
+    state.lastStage=Game.stage();
+    state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
-    Game.logMsg(`You draw your first breath on ${world.name}, a ${world.biomeName}.`,"sys");
-    Game.logMsg(`You are ${creating.name}, of the ${sp.name}. The galaxy has decided the rest.`,"hit");
+    Game.logMsg(`You are born on ${world.name}, a ${world.biomeName}.`,"sys");
+    Game.logMsg(`You are ${creating.name}, a young ${sp.name} child — far from your potential, but growing.`,"hit");
     Game.save();
   },
 
-  /* ---- derived combat stats (species + equipment) ---- */
+  /* ---- growth: a child realizes only part of their genetic potential ---- */
+  // 0.35 as a young child, rising linearly to 1.0 at maturity, then flat.
+  maturation(){
+    const f=Game.age()/state.species.maturity.value;       // fraction of maturity reached
+    if(f>=1) return 1;
+    const f0=LIFE.startFraction, base=LIFE.childPotential;
+    return clamp(base + (1-base)*((f-f0)/(1-f0)), base, 1);
+  },
+  stage(){
+    if(Game.age()>=Game.twilight()) return "elder";
+    const f=Game.age()/state.species.maturity.value;
+    for(const s of LIFE_STAGES){ if(f<s.f) return s.name; }
+    return "adult";
+  },
+
+  /* ---- derived combat stats (genetics × growth × equipment) ---- */
+  // Body & training scale with growth; gear adds full value (a child with a blaster
+  // is still dangerous), so even a young child is capable — just not near their peak.
   effStat(key){
-    let v=state.stats[key]||0;
+    let v=Math.round((state.stats[key]||0)*Game.maturation());
     for(const slot of ["weapon","armor","relic"]){ const id=state.equipped[slot];
       if(id && DATA.items[id].mods && DATA.items[id].mods[key]) v+=DATA.items[id].mods[key]; }
     return v;
   },
-  effMaxHp(){ let v=state.maxHp; const a=state.equipped.armor;
+  effMaxHp(){ let v=state.maxHp*Game.maturation()*Game.frailty(); const a=state.equipped.armor;
     if(a && DATA.items[a].mods && DATA.items[a].mods.hp) v+=DATA.items[a].mods.hp;
-    return Math.max(1, Math.round(v*Game.frailty())); },
-  effMaxEnergy(){ let v=state.maxEnergy; const r=state.equipped.relic;
-    if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v+=DATA.items[r].mods.energy; return v; },
+    return Math.max(1, Math.round(v)); },
+  effMaxEnergy(){ let v=state.maxEnergy*Game.maturation(); const r=state.equipped.relic;
+    if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v+=DATA.items[r].mods.energy;
+    return Math.max(1, Math.round(v)); },
 
   /* ---- biology, temperament & heritage accessors ---- */
   bio(key){ return state.species.bio[key].value; },
@@ -744,7 +777,7 @@ const Game = {
   gainXp(n){ n=Math.round(n*Game.tempEff("xpMult",1)); state.xp+=n; let lv=false;
     while(state.xp>=state.xpNext){ state.xp-=state.xpNext; state.level++; lv=true;
       state.xpNext=Math.round(state.xpNext*1.4+20);
-      state.maxHp+=12; state.maxEnergy+=5; state.hp=state.maxHp; state.energy=state.maxEnergy;
+      state.maxHp+=12; state.maxEnergy+=5; state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
       const keys=["might","agility","force","tech","charm"]; state.stats[keys[state.level%keys.length]]++; }
     if(lv) Game.logMsg(`You reached level ${state.level}!`,"good"); return lv; },
 
@@ -760,6 +793,16 @@ function advanceTime(days){
   if(state.hp < Game.effMaxHp()){
     const heal=Math.round(days*0.02*Game.bio("recovery")*(Game.atHome()?2:1));
     if(heal>0) state.hp=Math.min(Game.effMaxHp(), state.hp+heal);
+  }
+  // growing up: announce when you cross into a new life stage
+  const st=Game.stage();
+  if(st!==state.lastStage){
+    if(st==="adult" && state.lastStage==="young adult")
+      Game.logMsg(`You have reached maturity — your body has grown into its full potential.`,"good");
+    else if(st!=="elder")
+      Game.logMsg(`The years pass; you grow into ${article(st)} ${st}.`,"good");
+    else Game.logMsg(`Age settles into your bones — you are an elder now.`,"sys");
+    state.lastStage=st;
   }
   const a=Game.age(), l=Game.lifespan();
   if(a>=l){
@@ -1068,10 +1111,11 @@ const UI = {
       <p><span class="dim">Flying</span> <b class="gold">${v.name}</b>,
          ${article(v.clsName)} ${v.clsName} <span class="small" style="color:${RARITY.byId(v.tier).color}">(${RARITY.byId(v.tier).name})</span></p>
       <div class="divider"></div>
-      <p class="small dim">There are no second rolls. This life is yours.</p>
+      <p class="small dim">You will begin as a <b class="blue">young child</b> — barely a fraction of your
+      potential — and grow into your genetics as the years pass. There are no second rolls. This life is yours.</p>
       <div class="row between">
         <button class="ghost" id="backStep4">&larr; Back</button>
-        <button class="primary" id="beginGame">&#9654; Begin</button>
+        <button class="primary" id="beginGame">&#9654; Be born</button>
       </div>
     </div>`;
   },
@@ -1149,8 +1193,9 @@ const UI = {
     ${genomeBanner(sp.genome)}
     <div class="card">
       <h3>Body &amp; lifespan <span class="dim small">(genetic, fixed)</span></h3>
+      <div class="statline"><span>Life stage</span><span class="gold">${cap(Game.stage())} <span class="${Game.maturation()<1?'blue':'green'} small">(${Math.round(Game.maturation()*100)}% grown)</span></span></div>
       <div class="statline"><span>Current age</span><span class="gold">${Math.floor(Game.age())} yr${Game.age()>=Game.twilight()?' <span class="red small">(twilight)</span>':''}</span></div>
-      <div class="statline"><span>Build</span><span class="gold">${cap(sp.build)}</span></div>
+      <div class="statline"><span>Build (adult)</span><span class="gold">${cap(sp.build)}</span></div>
       ${traitBlock("Adult height", sp.height, cmToFt, cmToFt(HUMAN.height))}
       ${traitBlock("Adult mass",   sp.mass,   kgToLb, kgToLb(HUMAN.mass))}
       ${traitBlock("Age of maturity", sp.maturity, yrsFmt, yrsFmt(HUMAN.maturity))}
@@ -1298,12 +1343,12 @@ const UI = {
   statHeader(){
     const hpMax=Game.effMaxHp(), enMax=Game.effMaxEnergy();
     const age=Math.floor(Game.age()), life=Math.round(Game.lifespan());
-    const twilight=Game.age()>=Game.twilight();
+    const grown=Math.round(Game.maturation()*100);
     return `
     <div class="card">
       <div class="row between"><b>${state.name}</b>
         <span class="small dim">Lv ${state.level} &middot; <span class="gold">${state.credits}c</span></span></div>
-      <div class="row between"><span class="small dim">Age ${age} <span class="dim">of ~${life} yr</span>${twilight?' <span class="red">· twilight</span>':''}</span>
+      <div class="row between"><span class="small dim">Age ${age} <span class="dim">of ~${life} yr</span> &middot; <span class="${grown<100?'blue':'green'}">${cap(Game.stage())}${grown<100?` ${grown}% grown`:''}</span></span>
         <span class="small dim">${cap(state.species.build)} ${state.species.archeName}</span></div>
       <div class="statline"><span class="small">HP</span><span class="small">${Math.max(0,state.hp)} / ${hpMax}</span></div>
       <div class="bar"><i class="hpfill" style="width:${Math.max(0,state.hp/hpMax*100)}%"></i></div>
