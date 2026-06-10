@@ -440,23 +440,66 @@ const TEMPERAMENTS = [
   { id:"stalwart",   name:"Stalwart",   weight:14, desc:"hardy spirit — extra grit in a long life", eff:{frailtyResist:0.5} },
 ];
 
-/* A person's CAREER (individual, not racial). Pilots can be hired to fly your ships. */
+/* A person's CAREER (individual, not racial). weight = how often you run into them — you
+   mostly meet ordinary civilians; outlaws are rare and warlords vanishingly so. wealth is
+   their credit range (rolled skewed-low, so most are poor and a few are rich). hostile sets
+   a threat level (1-4: attackable, carries a bounty); arms sets the ships/crew they command. */
 const CAREERS = [
-  { id:"laborer",  name:"Laborer",  weight:18 },
-  { id:"farmer",   name:"Farmer",   weight:14 },
-  { id:"merchant", name:"Merchant", weight:12 },
-  { id:"miner",    name:"Miner",    weight:10 },
-  { id:"pilot",    name:"Pilot",    weight:10 },
-  { id:"mechanic", name:"Mechanic", weight:9 },
-  { id:"mercenary",name:"Mercenary",weight:8 },
-  { id:"gunner",   name:"Gunner",   weight:6 },
-  { id:"medic",    name:"Medic",    weight:6 },
-  { id:"hunter",   name:"Hunter",   weight:6 },
-  { id:"scholar",  name:"Scholar",  weight:4 },
-  { id:"smuggler", name:"Smuggler", weight:4 },
-  { id:"wanted",   name:"Wanted",   weight:3 },   // a fugitive with a bounty on their head
-  { id:"shipwright",name:"Shipwright",weight:0 }, // weight 0: only the local yarder gets it
+  // —— civilians (what you almost always meet) ——
+  { id:"laborer",  name:"Laborer",         weight:18, wealth:[80,1200] },
+  { id:"farmer",   name:"Farmer",          weight:14, wealth:[150,2500] },
+  { id:"factory",  name:"Factory Worker",  weight:12, wealth:[120,1800] },
+  { id:"dockhand", name:"Dockhand",        weight:10, wealth:[100,1600] },
+  { id:"miner",    name:"Miner",           weight:9,  wealth:[200,4000] },
+  { id:"merchant", name:"Merchant",        weight:9,  wealth:[500,28000] },
+  { id:"rancher",  name:"Rancher",         weight:7,  wealth:[300,6000] },
+  { id:"courier",  name:"Courier",         weight:7,  wealth:[150,3500] },
+  { id:"pilot",    name:"Pilot",           weight:8,  wealth:[400,9000] },
+  { id:"mechanic", name:"Mechanic",        weight:7,  wealth:[300,7000] },
+  { id:"medic",    name:"Medic",           weight:5,  wealth:[600,14000] },
+  { id:"hunter",   name:"Hunter",          weight:5,  wealth:[200,6000] },
+  { id:"scholar",  name:"Scholar",         weight:4,  wealth:[300,10000] },
+  // —— fringe (uncommon) ——
+  { id:"mercenary",name:"Mercenary",       weight:6,  wealth:[400,12000] },
+  { id:"gunner",   name:"Gunner",          weight:4,  wealth:[400,9000] },
+  { id:"smuggler", name:"Smuggler",        weight:3,  wealth:[800,70000] },
+  // —— outlaws & rebels (rare, hostile) ——
+  { id:"wanted",   name:"Outlaw",          weight:3,   wealth:[200,9000],     hostile:1 },
+  { id:"enforcer", name:"Gang Enforcer",   weight:1.6, wealth:[2000,45000],   hostile:2, arms:1 },
+  { id:"pirate",   name:"Pirate",          weight:1.4, wealth:[3000,90000],   hostile:2, arms:1 },
+  { id:"rebel",    name:"Rebel Fighter",   weight:1.5, wealth:[1000,35000],   hostile:2, arms:1 },
+  // —— commanders & bosses (very rare — a gunship and a crew of their own) ——
+  { id:"crimeBoss",name:"Crime Lord",      weight:0.4, wealth:[60000,600000], hostile:3, arms:2 },
+  { id:"rebelCmd", name:"Rebel Commander", weight:0.4, wealth:[50000,500000], hostile:3, arms:2 },
+  // —— warlords (extremely rare — a whole fleet, a world under their heel) ——
+  { id:"warlord",  name:"Warlord",         weight:0.08,wealth:[600000,6000000],hostile:4, arms:3 },
+  // assigned only to the local dockmaster (never randomly rolled); wealth set by world tech
+  { id:"shipwright",name:"Shipwright",     weight:0,   wealth:[80000,80000] },
 ];
+const careerById=id=>CAREERS.find(c=>c.id===id);
+const isHostile=p=>!!(p&&p.hostile);
+/* wealth rolled toward the low end of a career's range — most members are poor, a few rich */
+function rollWealth(c){ const [lo,hi]=c.wealth; return Math.round(lo+(hi-lo)*Math.pow(Math.random(),2.2)); }
+/* a hostile figure's bounty, by threat level (and a touch higher for rarer races) */
+function rollBounty(c, raceTier){ const tm=1+RARITY.index(raceTier)*0.4;
+  const base={1:rnd(600,3000),2:rnd(4000,20000),3:rnd(30000,150000),4:rnd(200000,1500000)}[c.hostile]||0;
+  const b=Math.round(base*tm); return { alive:b, dead:Math.round(b*0.6) }; }
+/* the ships & crew a hostile commands (display now; the seed for future ship combat) */
+function rollForce(c){ if(!c.arms) return null;
+  if(c.arms===1){ const has=chance(0.6);
+    return { ships:has?1:0, shipName:pick(["armed shuttle","raider","gun-skiff"]), crew:rnd(0,4), fleet:false, controls:false }; }
+  if(c.arms===2) return { ships:rnd(1,2), shipName:"gunship", crew:rnd(8,24), fleet:false, controls:false };
+  return { ships:rnd(4,9), shipName:"warship", crew:rnd(40,200), fleet:true, controls:chance(0.7) };
+}
+function forceDesc(f){ if(!f) return ""; const b=[];
+  if(f.ships>0) b.push(`${f.fleet?"a fleet of ":""}${f.ships} ${f.shipName}${f.ships!==1?"s":""}`);
+  if(f.crew>0) b.push(`a crew of ${f.crew}`);
+  if(f.controls) b.push("holds this world under their heel");
+  return b.join(", "); }
+const THREAT_LABEL={1:"WANTED",2:"DANGEROUS",3:"HIGH-VALUE TARGET",4:"WARLORD"};
+/* a shipwright's worth scales with the ships their world can build — speeders ~tens of
+   thousands, capital-ship yards worth millions */
+function shipwrightWorth(tech){ return Math.round(72000*(1+(tech||0)*0.9+(tech||0)*(tech||0)*0.35)*rndF(0.8,1.3)); }
 /* Which careers you can hire as crew, their fee, and what they do aboard a ship.
    (Pilots fly; the rest are seated now and gain mechanical roles as the game grows.) */
 const HIRE_ROLES={
@@ -810,15 +853,15 @@ const Gen = {
     bio.fertility=t(R.bio.fertility,false,true);
     const qg=[...ATTR_KEYS.map(k=>attrs[k].g), lifespan.g, bio.perception.g, bio.metabolism.g, bio.resilience.g, bio.recovery.g];
     const avgPct=clamp(Math.round(normCdf(qg.reduce((s,x)=>s+x,0)/qg.length)*100),1,99);
-    const career=weightedPick(CAREERS).id;
+    const cc=weightedPick(CAREERS), career=cc.id;
     const out={ kind:"species", name:null, raceName:race.name, tier:race.tier, arche:race.arche,
              archeName:race.archeName, flavor:race.flavor, sig:race.sig, population:race.population,
-             height, mass, maturity, lifespan, attrs, bio, career,
+             height, mass, maturity, lifespan, attrs, bio, career, credits:rollWealth(cc),
              temperament:weightedPick(TEMPERAMENTS).id, build:buildLabel(height.value,mass.value),
              detail:race.detail, reproduction:race.reproduction, powers:race.powers,
              genome:{ avgPct, grade:gradeLabel(avgPct) } };
-    if(career==="wanted"){ const tm=1+RARITY.index(race.tier)*0.5, base=rnd(600,3000);
-      out.bounty={ alive:Math.round(base*tm), dead:Math.round(base*tm*0.6) }; }
+    if(cc.hostile){ out.hostile=cc.hostile; out.bounty=rollBounty(cc, race.tier);
+      const f=rollForce(cc); if(f) out.force=f; }
     return out;
   },
 };
@@ -1713,7 +1756,8 @@ const UI = {
         <h2>${person.name||"A stranger"}</h2>
         ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
           :`<p class="small gold">Their kind is new to your Codex.</p>`}
-        <p class="small dim">Career: ${careerName(person.career)}.${person.career==="wanted"?` <span class="red">WANTED — ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</span>`:""}</p>
+        <p class="small dim">Career: ${careerName(person.career)} &middot; worth <span class="gold">${commas(person.credits||0)}c</span>.${isHostile(person)?` <span class="red">${THREAT_LABEL[person.hostile]} — ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</span>`:""}</p>
+        ${isHostile(person)&&forceDesc(person.force)?`<p class="small red">Commands ${forceDesc(person.force)}.</p>`:""}
       </div>
       ${originCard(person)}
       ${speciesSheet(person)}
@@ -1721,7 +1765,7 @@ const UI = {
         ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
           :`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}`}
         <button class="primary full center" id="meetFinish" style="margin-top:8px">Record &amp; part ways</button>
-        ${person.career==="wanted"?`<button class="full center" id="meetAttack" style="margin-top:6px">&#9876; Attack &amp; claim the bounty</button>`:""}
+        ${isHostile(person)?`<button class="full center" id="meetAttack" style="margin-top:6px">&#9876; Attack &amp; claim the bounty</button>`:""}
       </div>`;
   },
 
@@ -1751,7 +1795,7 @@ const UI = {
     ${this.statHeader()}
     <div class="card sheet"><h2>&#128483; People met <span class="dim small">&middot; ${people.length}</span></h2>
       ${people.length?people.slice().reverse().map((p,ri)=>{ const i=people.length-1-ri;
-        const cr = p.career==="wanted"&&!p.captured ? '<span class="red">Wanted</span>' : careerName(p.career);
+        const cr = isHostile(p)&&!p.captured ? `<span class="red">${careerName(p.career)}</span>` : careerName(p.career);
         return `<div class="krow"><span class="lbl"><button class="small ghost" data-person="${i}">${p.name}</button> <span class="dim small">&middot; ${cr}</span></span>
           <span class="kv">${p.raceName} <span class="dim">&middot; ${p.where}</span></span></div>`; }).join("")
         :`<p class="small dim">No one yet — talk to strangers and visit taverns.</p>`}
@@ -1766,26 +1810,28 @@ const UI = {
     return `
     <div class="card"><h2>${p.name}</h2>
       <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; ${careerName(p.career)} &middot; met at ${p.where}.</p>
+      <p class="small">Holdings: <b class="gold">${commas(p.credits||0)}c</b>${p.force&&forceDesc(p.force)?` <span class="dim">&middot; commands ${forceDesc(p.force)}</span>`:""}</p>
       ${p.raceId?`<button class="small ghost" data-race="${p.raceId}" style="margin-top:8px">View ${p.raceName} race &rarr;</button>`:""}
     </div>
-    ${p.career==="wanted"&&!p.captured?`<div class="rarity-banner" style="border-color:#ff6b6b">
-      <div class="rn" style="color:#ff6b6b">WANTED</div>
+    ${isHostile(p)&&!p.captured?`<div class="rarity-banner" style="border-color:#ff6b6b">
+      <div class="rn" style="color:#ff6b6b">${THREAT_LABEL[p.hostile]||"WANTED"}</div>
       <div class="odds">bounty ${commas(p.bounty.alive)}c alive &middot; ${commas(p.bounty.dead)}c dead</div></div>`:""}
     <div class="card">
-      <h3>${p.career==="wanted"?"A wanted fugitive":"Speak with "+p.name.split(" ")[0]}</h3>
+      <h3>${isHostile(p)?`A wanted ${careerName(p.career).toLowerCase()}`:"Speak with "+p.name.split(" ")[0]}</h3>
       ${p.captured?`<p class="small">Bounty claimed — you ${p.captureAlive?"restrained":"killed"} them.</p>`
        : p.hired?`<p class="small green">In your crew${crewShip?`, piloting the <b>${crewShip.name}</b>`:` — idle, awaiting a ship (assign from your Fleet)`}.</p>`
        : here?`<div class="row">
             <button id="sayHi">Say hi</button>
             ${HIRE_ROLES[p.career]?`<button id="hire" class="primary">Hire as ${careerName(p.career)} &middot; ${HIRE_ROLES[p.career].fee}c</button>`:""}
-            ${p.career==="wanted"?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
+            ${isHostile(p)?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
             ${p.career==="shipwright"?`<button id="buyOldShip" class="primary">Buy their old ship &middot; ${commas(YARDER_SHIP.price)}c</button>`:""}
-            ${!HIRE_ROLES[p.career]&&p.career!=="wanted"&&p.career!=="shipwright"?`<span class="small dim">${careerName(p.career)} — can't hire as crew.</span>`:""}
+            ${!HIRE_ROLES[p.career]&&!isHostile(p)&&p.career!=="shipwright"?`<span class="small dim">${careerName(p.career)} — can't hire as crew.</span>`:""}
           </div>
+          ${isHostile(p)&&p.hostile>=3?`<p class="small red" style="margin-top:6px">A figure this powerful is guarded — taking them on alone is desperate work. (Fleet vs. fleet combat is coming.)</p>`:""}
           ${HIRE_ROLES[p.career]?`<p class="small dim" style="margin-top:6px">${cap(careerName(p.career))}: ${HIRE_ROLES[p.career].role}.</p>`:""}
           ${p.career==="shipwright"?`<p class="small dim" style="margin-top:6px">${YARDER_SHIP.name}: in-system only, cargo ${YARDER_SHIP.cargo}, room for you alone — but it'll get you off-world.</p>`:""}
           ${convo&&convo.idx===viewingPerson?`<p class="small" style="margin-top:8px"><b>${p.name.split(" ")[0]}:</b> "${convo.text}"</p>`:""}`
-       : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${p.career==="wanted"?"hunt":"speak with"} them.</p>`}
+       : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${isHostile(p)?"hunt":"speak with"} them.</p>`}
     </div>
     ${originCard(p)}
     ${speciesSheet(p)}
@@ -2479,7 +2525,9 @@ const UI = {
     if(a.step===1){
       $("#arrCancel").onclick=()=>{ arriving=null; UI.render("codex"); };
       $("#arrStep1").onclick=()=>{ a.world.name=$("#arrWorld").value.trim()||genName("world");
-        if(a.occupied){ a.person=Gen.person(a.draw.race); a.person.career="shipwright"; delete a.person.bounty; a.step=2; UI.render("arrive"); }
+        if(a.occupied){ a.person=Gen.person(a.draw.race); a.person.career="shipwright";
+          delete a.person.bounty; delete a.person.hostile; delete a.person.force;
+          a.person.credits=shipwrightWorth(a.world.tech); a.step=2; UI.render("arrive"); }
         else finishArrival(); };
     }
     if(a.step===2){
@@ -2876,10 +2924,13 @@ function renameFleet(fid){ const f=fleetById(fid); if(!f) return;
 /* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
 function startDuel(i){
   const p=(state.codex.people||[])[i];
-  if(!p || p.career!=="wanted" || p.captured) return;
-  const maxHp=Math.round(p.attrs.endurance.value*5 + p.height.value*0.06);
-  combat={ person:true, personIdx:i, name:p.name, blurb:`A wanted ${p.raceName} — ${commas(p.bounty.alive)}c alive.`,
-    maxHp, hp:maxHp, atk:Math.round(p.attrs.strength.value*0.8 + p.mass.value*0.02),
+  if(!p || !isHostile(p) || p.captured) return;
+  // tougher targets fight with guards at their back — threat scales their HP and bite
+  const tmul={1:1, 2:1.7, 3:2.8, 4:4.5}[p.hostile]||1;
+  const maxHp=Math.round((p.attrs.endurance.value*5 + p.height.value*0.06)*tmul);
+  combat={ person:true, personIdx:i, name:p.name,
+    blurb:`A ${careerName(p.career).toLowerCase()} — ${commas(p.bounty.alive)}c alive.${forceDesc(p.force)?` Backed by ${forceDesc(p.force)}.`:""}`,
+    maxHp, hp:maxHp, atk:Math.round((p.attrs.strength.value*0.8 + p.mass.value*0.02)*tmul),
     xp:Math.round(maxHp*0.4), over:false, claim:false, stim:state.stimReady, surprised:false, bounty:p.bounty };
   state.stimReady=false;
   Game.logMsg(`You move to apprehend ${p.name}.`,"hit");
@@ -2904,7 +2955,9 @@ function talkToYarder(){
   const key=(state.sysId??0)+":"+state.atSlot, existing=state.yarders[key];
   if(existing!=null && state.codex.people[existing]){ viewingPerson=existing; UI.render("cx_person"); return; }
   const draw=drawRace(), person=Gen.person(draw.race);
-  person.career="shipwright"; person.name=genName("person"); delete person.bounty;
+  person.career="shipwright"; person.name=genName("person");
+  delete person.bounty; delete person.hostile; delete person.force;
+  person.credits=shipwrightWorth(state.world.tech);
   if(draw.isNew){ draw.race.name=genName("race"); state.codex.races[draw.id]=draw.race; }
   person.raceName=draw.race.name;
   recordMeeting(person, draw.race, state.world.name);

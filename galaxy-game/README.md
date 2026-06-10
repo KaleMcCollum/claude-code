@@ -66,6 +66,16 @@ A dedicated **Map** tab shows the whole galaxy on its flat plane, with the **cor
 - **Zoom in/out**, pan with the arrows, snap to **Center on me**, or zoom all the way to **Whole galaxy** (see the rim and where you sit in it).
 - **Fog of war:** you only see systems you've **charted**, plus **sensor contacts** within **50 ly** of your charted systems. Everything beyond your known frontier stays hidden until you explore toward it.
 
+## People, careers & credits
+Every NPC now has a **career** and a **credit balance** that fits it, and careers carry their own rarity — you mostly meet ordinary folk, and the powerful are rare:
+- **Civilians (common):** laborers, farmers, factory workers, dockhands, miners, merchants, ranchers, couriers, pilots, mechanics, medics, hunters, scholars. Wealth ranges from a few hundred to (for a thriving merchant) tens of thousands — rolled skewed low, so most are poor and a few are well-off.
+- **Fringe (uncommon):** mercenaries, gunners, smugglers.
+- **Outlaws & rebels (rare, ~1 in 90):** Outlaws, Gang Enforcers, Pirates, Rebel Fighters — attackable for a bounty, some running an armed ship and a few hands.
+- **Commanders (very rare, ~1 in 330):** Crime Lords and Rebel Commanders — a gunship or two and a crew of their own, worth hundreds of thousands.
+- **Warlords (extremely rare, ~1 in 2000):** command a whole **fleet**, often **hold a world**, and are worth **millions** — with a bounty to match.
+
+A **Shipwright's** worth scales with what their world can build: a speeder-only yard is worth tens of thousands; a capital-ship yard, millions. Defeating any hostile figure yields their bounty (scaled by threat); the toughest are guarded, so taking them on alone is desperate work — their ships and crews are the seed for the fleet-vs-fleet combat to come.
+
 ## Next up
 - Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).
 - Procedurally generated creatures & weapons.
