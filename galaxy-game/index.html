@@ -438,6 +438,7 @@ const CAREERS = [
   { id:"scholar",  name:"Scholar",  weight:4 },
   { id:"smuggler", name:"Smuggler", weight:4 },
   { id:"wanted",   name:"Wanted",   weight:3 },   // a fugitive with a bounty on their head
+  { id:"shipwright",name:"Shipwright",weight:0 }, // weight 0: only the local yarder gets it
 ];
 const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
 /* Generic things people say when you greet them. */
@@ -1922,7 +1923,7 @@ const UI = {
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
       app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
       const tk=$("#takeoff"); if(tk) tk.onclick=()=>departFirstFlight();
-      const yd=$("#yarder"); if(yd) yd.onclick=()=>{ toast("No contracts posted right now"); Game.logMsg("The Yarder shrugs — no hauling work today. (Shipping quests coming soon.)","sys"); };
+      const yd=$("#yarder"); if(yd) yd.onclick=()=>talkToYarder();
       const rs=$("#rentStub"); if(rs) rs.onclick=()=>toast("Ship rentals coming soon");
       $("#syBack").onclick=()=>UI.render("hub");
     }
@@ -2296,6 +2297,22 @@ function claimBounty(alive){
   p.captured=true; p.captureAlive=alive;
   Game.logMsg(`${alive?"You restrain":"You kill"} ${p.name}. Redeem the ${commas(val)}c bounty at a bar.`,"good");
   combat=null; Game.save(); UI.render("hub"); UI.flashLog();
+}
+/* the dockmaster who runs this planet's shipyard — a Shipwright, met once per planet */
+function talkToYarder(){
+  state.yarders = state.yarders||{};
+  const slot=state.atSlot, existing=state.yarders[slot];
+  if(existing!=null && state.codex.people[existing]){ viewingPerson=existing; UI.render("cx_person"); return; }
+  const draw=drawRace(), person=Gen.person(draw.race);
+  person.career="shipwright"; person.name=genName("person"); delete person.bounty;
+  if(draw.isNew){ draw.race.name=genName("race"); state.codex.races[draw.id]=draw.race; }
+  person.raceName=draw.race.name;
+  recordMeeting(person, draw.race, state.world.name);
+  state.yarders[slot]=state.codex.people.length-1;
+  checkObjectives();
+  Game.logMsg(`The dockmaster, ${person.name}, runs this yard.`,"sys");
+  viewingPerson=state.codex.people.length-1;
+  Game.save(); UI.render("cx_person");
 }
 function meetAttack(){
   const m=meeting;
