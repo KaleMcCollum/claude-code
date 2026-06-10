@@ -234,24 +234,37 @@ const POP_RANGE = [
 function rollPopulation(ti){ const [lo,hi]=POP_RANGE[ti];
   return Math.round(Math.exp(rndF(Math.log(lo),Math.log(hi)))); }
 
-/* ~normal-ish draw in [-1,1], clustered at 0 (most beings are average). */
+/* ~normal-ish bounded draw in [-1,1], used for SPECIES-level mean drift. */
 const approxNorm = ()=>((Math.random()+Math.random()+Math.random())/3)*2-1;
+/* True standard-normal (Box–Muller) + its CDF — used for INDIVIDUAL genetics so
+   percentiles span 1–99 with realistic tails (≈1% reach the 99th, etc.). */
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function normCdf(x){ const t=1/(1+0.2316419*Math.abs(x)), d=0.3989423*Math.exp(-x*x/2);
+  let p=d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+  return x>0?1-p:p; }
 
 /* Generate one fixed genetic trait:
    - the SPECIES gets an average that drifts from `humanMean` by the rarity `dev`
    - the species gets a min..max spread around that average
    - YOU get a specific value sampled within, plus the percentile you landed at. */
 function genTrait(humanMean, dev, opts={}){
+  // SPECIES average: drifts from the human baseline by the rarity `dev`
   let meanMult = 1 + approxNorm()*dev*(opts.devScale??1) + (opts.skew||0);
   meanMult = Math.max(opts.floorMult??0.2, meanMult);
   const mean = humanMean*meanMult;
   const spread = opts.spread ?? rndF(0.1,0.18);
   const min = mean*(1-spread), max = mean*(1+spread);
-  const z = approxNorm();
-  const value = clamp(mean*(1+z*spread), min, max);
-  const pct = clamp(Math.round((z+1)/2*98+1), 1, 99);
+  // INDIVIDUAL position within the species, as a standard-normal `g`. `lifeRoll`
+  // is the character's overall genetic luck; `corr` mixes it in (so a gifted soul
+  // tends broadly gifted) while keeping a fresh per-trait roll (strong-but-slow ok).
+  const corr = opts.corr ?? 0;
+  const g = corr*(opts.lifeRoll??0) + Math.sqrt(1-corr*corr)*gauss();
+  // value clusters near the mean; ±2.5σ reaches the species' stated min/max
+  const value = clamp(mean*(1 + g*spread/2.5), min, max);
+  const pct = clamp(Math.round(normCdf(g)*100), 1, 99);
   const r = opts.intval ? (x=>Math.max(opts.floor??1, Math.round(x))) : (x=>x);
-  return { mean:r(mean), min:r(min), max:r(max), value:r(value), pct };
+  return { mean:r(mean), min:r(min), max:r(max), value:r(value), pct, g };
 }
 
 /* Words for where a roll landed within its own species. */
@@ -485,21 +498,28 @@ const Gen = {
     const dev=SPECIES_DEV[ti];                 // how far this people drifts from human
     const population=rollPopulation(ti);       // how many of them exist in the galaxy
 
-    // fixed physical genetics (raw numbers; formatted at display time)
+    // The character's overall GENETIC LUCK — one hidden standard-normal that nudges
+    // every quality trait together, so "great genetics" is a whole-self event (rare).
+    const lifeRoll=gauss();
+    const CORR=0.5;                 // trait-to-trait correlation is CORR^2 (~0.25): mild
+    const q={ lifeRoll, corr:CORR }; // spread into quality-trait rolls below
+
+    // fixed physical genetics (height/mass/maturity are NEUTRAL — not luck-correlated)
     const height   = genTrait(HUMAN.height,   dev,      { spread:rndF(0.10,0.20) });
     const massBase = HUMAN.mass*Math.pow(height.value/HUMAN.height, 2.0); // mass tracks size
     const mass     = genTrait(massBase,       dev*0.6,  { spread:rndF(0.12,0.22) });
     const maturity = genTrait(HUMAN.maturity, dev*0.8,  { spread:rndF(0.12,0.20) });
-    const lifespan = genTrait(HUMAN.lifespan, dev,      { spread:rndF(0.10,0.18), skew:dev*0.15 });
+    // lifespan IS a quality axis (long life = better), so it shares genetic luck
+    const lifespan = genTrait(HUMAN.lifespan, dev,      { spread:rndF(0.10,0.18), skew:dev*0.15, ...q });
 
-    // fixed attribute genetics — each rolled INDEPENDENTLY (strong but slow is possible)
+    // fixed attribute genetics — share luck but keep per-trait scatter (strong-but-slow ok)
     const attrs={};
     for(const a of ATTR_KEYS){
-      attrs[a]=genTrait(HUMAN.attr+(arche.bias[a]||0), dev, { spread:rndF(0.10,0.16), devScale:0.7, intval:true, floor:1 });
+      attrs[a]=genTrait(HUMAN.attr+(arche.bias[a]||0), dev, { spread:rndF(0.10,0.16), devScale:0.7, intval:true, floor:1, ...q });
     }
 
-    // fixed biology — also human-anchored at 10, also rolled independently
-    const bioRoll=()=>genTrait(HUMAN.attr, dev, { spread:rndF(0.12,0.22), devScale:0.7, intval:true, floor:1 });
+    // fixed biology — quality traits share luck; fertility is neutral (independent)
+    const bioRoll=()=>genTrait(HUMAN.attr, dev, { spread:rndF(0.12,0.22), devScale:0.7, intval:true, floor:1, ...q });
     const bio={
       metabolism: bioRoll(),   // energy & healing speed
       perception: bioRoll(),   // senses: surprise, crits, finds
@@ -523,11 +543,14 @@ const Gen = {
     const detail=genDetail(arche.id, powers, ti);
     const reproduction=reproText(bio.fertility.value);
 
-    // overall genome grade = how good a specimen you are (quality axes only;
-    // size / fertility / heritage flavor are neutral, not "better or worse")
-    const pcts=[...ATTR_KEYS.map(a=>attrs[a].pct), lifespan.pct,
-                bio.perception.pct, bio.metabolism.pct, bio.resilience.pct, bio.recovery.pct];
-    const avgPct=Math.round(pcts.reduce((s,x)=>s+x,0)/pcts.length);
+    // overall genome grade = how good a specimen you are (quality axes only; size /
+    // fertility / heritage flavor are neutral). Computed from the shared-normal of the
+    // quality traits, so averaging shrinks variance: broadly-excellent is rarer than
+    // excelling at one thing — exactly the "wow, great genetics" payoff.
+    const qg=[...ATTR_KEYS.map(a=>attrs[a].g), lifespan.g,
+              bio.perception.g, bio.metabolism.g, bio.resilience.g, bio.recovery.g];
+    const avgG=qg.reduce((s,x)=>s+x,0)/qg.length;
+    const avgPct=clamp(Math.round(normCdf(avgG)*100),1,99);
 
     return { kind:"species", name:null, tier:tier.id, arche:arche.id, archeName:arche.name,
              flavor:arche.flavor, sig:arche.sig, population,
