@@ -554,12 +554,19 @@ const Gen = {
     const temperament=weightedPick(TEMPERAMENTS).id;
     const build=buildLabel(height.value, mass.value);
 
-    // innate powers: count grows with rarity; flight stays special
+    // Innate powers are a RARE GIFT. The galaxy is mostly ordinary people: common and
+    // uncommon peoples essentially never have one, and even rare/epic peoples usually
+    // don't. Flight, night sight, breathing water and the like are true rarities.
+    const POWER_EXP=[0, 0.01, 0.05, 0.15, 0.45, 0.95, 1.5, 2.3][ti] || 0; // expected # by tier
     const pool=[...arche.powers];
     ["telepath","nightsight","regen","hardy"].forEach(p=>{ if(!pool.includes(p)) pool.push(p); });
-    const fliesNaturally=arche.powers.includes("flight");
-    if(!fliesNaturally && ti<3){ const i=pool.indexOf("flight"); if(i>=0) pool.splice(i,1); }
-    const count=clamp(Math.round((ti-1)*0.8)+rnd(0,1),0,6);
+    // Flight is the rarest gift of all — only the very rare, or naturally-winged peoples
+    // (and even then only the rare among them), ever truly fly.
+    const winged=["avian","insectoid","energy"].includes(arche.id);
+    const flightOk=(winged && ti>=3) || ti>=5;
+    if(!flightOk){ const i=pool.indexOf("flight"); if(i>=0) pool.splice(i,1); }
+    let count=0, exp=POWER_EXP; const capN=Math.min(6, pool.length);
+    while(exp>0 && count<capN){ if(exp>=1){ count++; exp-=1; } else { if(chance(exp)) count++; break; } }
     const powers=[];
     for(const p of pool.sort(()=>Math.random()-0.5)){ if(powers.length>=count) break; powers.push(p); }
 
