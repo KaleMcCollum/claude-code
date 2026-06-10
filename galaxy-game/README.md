@@ -20,7 +20,14 @@ Who you are is decided by **two independent rolls**, both shown to you with real
 1. **Species rarity** — how unusual the *people* you're born to are. Rarer peoples have **smaller populations** (so being born one is itself rare, population-weighted) and **drift further from the human baseline** (giants, tiny folk, long-lived ones). Common ≈ human-ish billions; Primordial ≈ a few dozen in the whole galaxy.
 2. **Your genome** — where *you* land within your own species' range, per trait, as a **percentile** ("88th percentile height — exceptional for its kind"). Sampled near the middle, so prodigies and runts are rare. **Fixed for life.**
 
-Every species shows rich, fixed genetics: **adult height** (with the species' own min–max range + your value + percentile + human anchor), **adult mass**, **age of maturity**, **natural lifespan**, and six **attributes** (Strength/Agility/Endurance/Intellect/Attunement/Presence, each rolled *independently* — strong-but-slow is possible), plus innate **powers**. Genetics are fixed; your *trained combat stats* are seeded from them and grow with levels.
+Every species shows rich, fixed genetics: **adult height** (with the species' own min–max range + your value + percentile + human anchor), **adult mass**, **age of maturity**, **natural lifespan**, six **attributes** (Strength/Agility/Endurance/Intellect/Attunement/Presence, each rolled *independently* — strong-but-slow is possible), three **biology** traits (**Metabolism, Perception, Fertility**), an inborn **Temperament** (Stoic, Aggressive, Cunning, Volatile…), a derived **Build**, and innate **powers**. Genetics are fixed; your *trained combat stats* are seeded from them and grow with levels.
+
+### These genetics actually drive the game
+- **Size** (height + mass) → maximum HP, heavier melee blows, slightly worse dodge.
+- **Perception** → who gets the drop in an encounter (surprise vs. ambush), crit chance, and how much you find while exploring.
+- **Metabolism** → energy/healing recovery and how much you get from medpacks/rations.
+- **Temperament** → small combat/social modifiers (damage, crit, accuracy, tame/flee odds, XP).
+- **Lifespan + an age/time clock** → every action spends days; you start at maturity and age as you play. Past ~85% of your lifespan you enter **twilight** (fading vitality); past your lifespan the *game* decides when your story ends, with an **epilogue** of the life you lived. A long-lived species = a long campaign. (The **Stalwart** temperament resists frailty.)
 
 Galaxy constants (tunable, in `GALAXY`): ~**10,000** distinct sapient peoples, ~**1 trillion** total thinking beings.
 

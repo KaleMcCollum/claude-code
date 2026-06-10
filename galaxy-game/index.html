@@ -373,6 +373,30 @@ const TECH_LABELS  = ["Stone-age","Pre-industrial","Industrial","Atomic","Inform
 const WEALTH_LABELS= ["Destitute","Impoverished","Poor","Modest","Comfortable","Prosperous","Wealthy","Opulent","Lavish","Gilded"];
 const DANGER_LABELS= ["","Tranquil","Calm","Mild","Unsettled","Rough","Dangerous","Hostile","Deadly","Lethal","Hellish"];
 
+/* Inborn temperament — categorical (not better/worse, just different). Each gives a
+   small mechanical flavor. Rolled at birth, fixed for life. */
+const TEMPERAMENTS = [
+  { id:"stoic",      name:"Stoic",      weight:14, desc:"calm under fire — takes less harm", eff:{dmgTakenMult:0.9} },
+  { id:"aggressive", name:"Aggressive", weight:14, desc:"hits harder, guards looser", eff:{dmgDealtMult:1.12, dmgTakenMult:1.06} },
+  { id:"cunning",    name:"Cunning",    weight:12, desc:"reads beasts and exits — better tame & flee", eff:{tame:0.08, flee:0.08} },
+  { id:"gentle",     name:"Gentle",     weight:10, desc:"creatures trust you; strikes land softer", eff:{tame:0.16, dmgDealtMult:0.94} },
+  { id:"volatile",   name:"Volatile",   weight:11, desc:"wild swings — high crit, loose aim", eff:{crit:0.1, acc:-0.06} },
+  { id:"resolute",   name:"Resolute",   weight:12, desc:"steady reserves — recovers more energy", eff:{energyRegen:2} },
+  { id:"curious",    name:"Curious",    weight:13, desc:"learns fast, finds more", eff:{xpMult:1.1, find:0.12} },
+  { id:"stalwart",   name:"Stalwart",   weight:14, desc:"hardy spirit — extra grit in a long life", eff:{frailtyResist:0.5} },
+];
+
+/* Build is DERIVED from height + mass (a BMI-like read), pure flavor. */
+function buildLabel(heightCm, massKg){
+  const m=heightCm/100, bmi=massKg/(m*m);
+  if(bmi<18) return "gaunt";
+  if(bmi<23) return "lithe";
+  if(bmi<28) return "lean";
+  if(bmi<34) return "sturdy";
+  if(bmi<42) return "stocky";
+  return "massive";
+}
+
 /* Vehicle classes. axes = which power metrics apply; base = baseline SHp. */
 const VEHICLE_CLASSES = [
   { id:"landspeeder", name:"Landspeeder", weight:20, axes:["ground"],            base:{ground:120} },
@@ -409,6 +433,15 @@ const Gen = {
       attrs[a]=genTrait(HUMAN.attr+(arche.bias[a]||0), dev, { spread:rndF(0.10,0.16), devScale:0.7, intval:true, floor:1 });
     }
 
+    // fixed biology — also human-anchored at 10, also rolled independently
+    const bio={
+      metabolism: genTrait(HUMAN.attr, dev, { spread:rndF(0.12,0.2), devScale:0.7, intval:true, floor:1 }),
+      perception: genTrait(HUMAN.attr, dev, { spread:rndF(0.12,0.2), devScale:0.7, intval:true, floor:1 }),
+      fertility:  genTrait(HUMAN.attr, dev, { spread:rndF(0.15,0.3),  devScale:0.8, intval:true, floor:1 }),
+    };
+    const temperament=weightedPick(TEMPERAMENTS).id;
+    const build=buildLabel(height.value, mass.value);
+
     // innate powers: count grows with rarity; flight stays special
     const pool=[...arche.powers];
     ["telepath","nightsight","regen","hardy"].forEach(p=>{ if(!pool.includes(p)) pool.push(p); });
@@ -418,13 +451,14 @@ const Gen = {
     const powers=[];
     for(const p of pool.sort(()=>Math.random()-0.5)){ if(powers.length>=count) break; powers.push(p); }
 
-    // overall genome grade = how you compare to your OWN kind across the board
-    const pcts=[...ATTR_KEYS.map(a=>attrs[a].pct), height.pct, lifespan.pct];
+    // overall genome grade = how good a specimen you are (quality axes only:
+    // attributes + lifespan + perception + metabolism; size/fertility are neutral)
+    const pcts=[...ATTR_KEYS.map(a=>attrs[a].pct), lifespan.pct, bio.perception.pct, bio.metabolism.pct];
     const avgPct=Math.round(pcts.reduce((s,x)=>s+x,0)/pcts.length);
 
     return { kind:"species", name:null, tier:tier.id, arche:arche.id, archeName:arche.name,
              flavor:arche.flavor, sig:arche.sig, population,
-             height, mass, maturity, lifespan, attrs, powers,
+             height, mass, maturity, lifespan, attrs, bio, temperament, build, powers,
              genome:{ avgPct, grade:gradeLabel(avgPct) } };
   },
 
@@ -503,7 +537,7 @@ const DATA = {
 };
 
 /* ============================================================ STATE ==== */
-const SAVE_KEY = "eots_save_v2";
+const SAVE_KEY = "eots_save_v3"; // bumped: characters now carry genetics, biology & age
 let state=null, combat=null, creating={};
 
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show");
@@ -539,7 +573,8 @@ const Game = {
       tech:   Math.max(1,Math.round(a.intellect.value/2)),
       charm:  Math.max(1,Math.round(a.presence.value/2)),
     };
-    let maxHp=Math.round(a.endurance.value*5 + sp.height.value*0.06);
+    // size feeds vitality: endurance + a bit of height + a bit of mass
+    let maxHp=Math.round(a.endurance.value*5 + sp.height.value*0.05 + sp.mass.value*0.06);
     if(sp.powers.includes("hardy")) maxHp=Math.round(maxHp*1.25);
     const maxEnergy=30+Math.round(a.attunement.value*1.5);
 
@@ -550,6 +585,8 @@ const Game = {
       maxHp, hp:maxHp, maxEnergy, energy:maxEnergy,
       credits:120, skills:[...skills],
       inv:{}, equipped:{weapon:null,armor:null,relic:null}, pets:[],
+      // you begin your adventure freshly grown into adulthood; time then flows
+      ageStart:Math.round(sp.maturity.value), daysElapsed:0, dead:false, deathCause:null,
       stimReady:false, log:[],
     };
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
@@ -566,9 +603,26 @@ const Game = {
     return v;
   },
   effMaxHp(){ let v=state.maxHp; const a=state.equipped.armor;
-    if(a && DATA.items[a].mods && DATA.items[a].mods.hp) v+=DATA.items[a].mods.hp; return v; },
+    if(a && DATA.items[a].mods && DATA.items[a].mods.hp) v+=DATA.items[a].mods.hp;
+    return Math.max(1, Math.round(v*Game.frailty())); },
   effMaxEnergy(){ let v=state.maxEnergy; const r=state.equipped.relic;
     if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v+=DATA.items[r].mods.energy; return v; },
+
+  /* ---- biology & temperament accessors ---- */
+  bio(key){ return state.species.bio[key].value; },
+  temp(){ return TEMPERAMENTS.find(t=>t.id===state.species.temperament); },
+  tempEff(key,def){ const e=Game.temp().eff; return e[key]!==undefined?e[key]:def; },
+
+  /* ---- time & aging: every action spends days; lifespan caps the campaign ---- */
+  age(){ return state.ageStart + state.daysElapsed/365; },
+  lifespan(){ return state.species.lifespan.value; },
+  twilight(){ return Game.lifespan()*0.85; },
+  // vitality fades past the twilight of life; Stalwart temperament resists it
+  frailty(){ const a=Game.age(), l=Game.lifespan(), tw=Game.twilight();
+    if(a<=tw) return 1;
+    const resist=Game.tempEff("frailtyResist",0);
+    const drop=clamp((a-tw)/(l-tw),0,1.4)*0.25*(1-resist);
+    return clamp(1-drop, 0.6, 1); },
 
   addItem(id,n=1){ state.inv[id]=(state.inv[id]||0)+n; },
   removeItem(id,n=1){ if(!state.inv[id]) return; state.inv[id]-=n; if(state.inv[id]<=0) delete state.inv[id]; },
@@ -584,7 +638,7 @@ const Game = {
     return Object.keys(DATA.items).filter(id=>{ const it=DATA.items[id];
       if(it.kind==="trade") return false; return it.minTech<=w.tech; }); },
 
-  gainXp(n){ state.xp+=n; let lv=false;
+  gainXp(n){ n=Math.round(n*Game.tempEff("xpMult",1)); state.xp+=n; let lv=false;
     while(state.xp>=state.xpNext){ state.xp-=state.xpNext; state.level++; lv=true;
       state.xpNext=Math.round(state.xpNext*1.4+20);
       state.maxHp+=12; state.maxEnergy+=5; state.hp=state.maxHp; state.energy=state.maxEnergy;
@@ -594,26 +648,58 @@ const Game = {
   logMsg(t,c=""){ state.log.push({t,c}); if(state.log.length>60) state.log=state.log.slice(-60); },
 };
 
+/* ============================================================ TIME ===== */
+/* Every meaningful action spends days. Age creeps up; once you pass your kind's
+   natural lifespan, the game (not you) decides when your story ends. */
+function advanceTime(days){
+  state.daysElapsed += days;
+  const a=Game.age(), l=Game.lifespan();
+  if(a>=l){
+    const over=a-l, p=clamp(0.04+over*0.05, 0.04, 0.6);
+    if(chance(p)){ die("the long sleep of old age"); return true; }
+  }
+  return false;
+}
+function die(cause){
+  state.dead=true; state.deathCause=cause;
+  Game.logMsg(`At ${Math.floor(Game.age())} years, your journey ends — ${cause}.`,"bad");
+  Game.save(); UI.render("epilogue");
+}
+
 /* ============================================================ COMBAT === */
 function startEncounter(){
+  if(advanceTime(rnd(20,60))) return;          // exploring takes weeks
   const w=state.world;
-  const peace=clamp(0.2+w.peaceMod,0.05,0.4);
+  let peace=clamp(0.2+w.peaceMod,0.05,0.4);
   if(chance(peace)) return peacefulEvent(w);
   const cid=pick(w.creatures), tpl=DATA.creatures[cid];
   const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06;
   combat={ cid, name:tpl.name, blurb:tpl.blurb,
     maxHp:Math.round(tpl.hp*scale), hp:Math.round(tpl.hp*scale),
     atk:Math.round(tpl.atk*scale), xp:Math.round(tpl.xp*scale),
-    tame:tpl.tame, over:false, stim:state.stimReady };
+    tame:tpl.tame, over:false, stim:state.stimReady, surprised:false };
   state.stimReady=false;
-  Game.logMsg(`A wild ${tpl.name} appears! ${tpl.blurb}`,"hit");
-  UI.render("combat");
+  // Perception decides who gets the drop. Keen senses surprise the beast;
+  // dull senses (low perception) risk an ambush that strikes before you act.
+  const edge=(Game.bio("perception")-10)*0.03 + (state.skills.includes("Current Sense")?0.1:0);
+  if(chance(clamp(0.25+edge,0.05,0.75))){ combat.surprised=true;
+    Game.logMsg(`A wild ${tpl.name} appears! You spot it first and seize the initiative.`,"hit"); }
+  else if(chance(clamp(0.18-edge,0.02,0.4))){
+    Game.logMsg(`A wild ${tpl.name} ambushes you!`,"bad");
+    const d=Math.round((combat.atk+rnd(0,3))*Game.tempEff("dmgTakenMult",1));
+    state.hp-=d; Game.logMsg(`${tpl.name} lands a surprise hit for ${d}.`,"bad");
+    if(state.hp<=0){ UI.render("combat"); return loseEncounter(); }
+  } else {
+    Game.logMsg(`A wild ${tpl.name} appears! ${tpl.blurb}`,"hit");
+  }
+  Game.save(); UI.render("combat");
 }
 function peacefulEvent(w){
+  const find=(Game.bio("perception")-10)*0.04 + Game.tempEff("find",0); // keen/curious find more
   const r=Math.random();
-  if(r<0.5){ const c=rnd(8,22); state.credits+=c; Game.logMsg(`You find a cache: +${c} credits.`,"good"); }
-  else if(r<0.8){ const id=pick(["scrap","pelt","ration","energy-cell"]); Game.addItem(id,1);
-    Game.logMsg(`You salvage a ${DATA.items[id].name}.`,"good"); }
+  if(r<0.5){ const c=Math.round(rnd(8,22)*(1+find)); state.credits+=c; Game.logMsg(`You find a cache: +${c} credits.`,"good"); }
+  else if(r<0.8){ const id=pick(["scrap","pelt","ration","energy-cell"]); const n=chance(find)?2:1; Game.addItem(id,n);
+    Game.logMsg(`You salvage ${n>1?n+"x ":"a "}${DATA.items[id].name}.`,"good"); }
   else { const xp=rnd(4,10); Game.gainXp(xp); Game.logMsg(`You study the ${w.biomeName}. +${xp} XP.`,"good"); }
   Game.save(); UI.render("hub"); UI.flashLog();
 }
@@ -629,27 +715,38 @@ function playerAttack(name){
   else if(sk.type==="buff"){ state.energy=Math.min(Game.effMaxEnergy(),state.energy+12);
     state.hp=Math.min(Game.effMaxHp(),state.hp+5); Game.logMsg(`You focus. +12 energy, +5 HP.`,"sys"); }
   else {
-    const acc=sk.acc||0.85;
-    if(!chance(acc+Game.effStat("agility")*0.01)){ Game.logMsg(`Your ${name} misses!`,"bad"); }
-    else { let dmg=Math.round(Game.effStat(sk.scale)*sk.mult+rnd(0,4));
-      if(combat.stim) dmg=Math.round(dmg*1.5);
-      const critChance=0.1+Game.effStat("agility")*0.005+(Game.hasPower("nightsight")?0.1:0);
-      const crit=chance(critChance); if(crit) dmg=Math.round(dmg*1.6);
+    const acc=(sk.acc||0.85)+Game.effStat("agility")*0.01+Game.tempEff("acc",0);
+    if(!chance(acc)){ Game.logMsg(`Your ${name} misses!`,"bad"); }
+    else { let dmg=Game.effStat(sk.scale)*sk.mult+rnd(0,4);
+      // heavier bodies hit harder in melee (Might-scaled blows)
+      if(sk.scale==="might") dmg += (state.species.mass.value-HUMAN.mass)*0.03;
+      dmg *= Game.tempEff("dmgDealtMult",1);
+      if(combat.stim) dmg*=1.5;
+      // Perception + Night Sight + a Volatile streak sharpen critical hits
+      const critChance=0.1+Game.effStat("agility")*0.005+(Game.bio("perception")-10)*0.008
+        +(Game.hasPower("nightsight")?0.1:0)+Game.tempEff("crit",0);
+      const crit=chance(critChance); if(crit) dmg*=1.6;
       let venom=""; if(Game.hasPower("venom")&&chance(0.25)){ dmg+=4; venom=" (+venom)"; }
+      dmg=Math.max(1,Math.round(dmg));
       combat.hp-=dmg; Game.logMsg(`${name} hits ${combat.name} for ${dmg}${crit?" CRIT!":""}${venom}.`,"hit"); }
   }
   if(combat.hp<=0) return winEncounter();
+  if(combat.surprised){ combat.surprised=false; Game.save(); UI.render("combat"); return; } // free hit, no retaliation
   enemyTurn();
 }
 function enemyTurn(){
   let dmg=combat.atk+rnd(0,3);
-  if(Game.hasPower("armored")) dmg=Math.max(1,dmg-2);
-  let dodge=Game.effStat("agility")*0.012; if(Game.hasPower("flight")) dodge+=0.12;
-  if(chance(dodge)){ Game.logMsg(`You evade the ${combat.name}.`,"good"); }
+  if(Game.hasPower("armored")) dmg-=2;
+  dmg=Math.max(1,Math.round(dmg*Game.tempEff("dmgTakenMult",1)));
+  // dodge: agility helps; very heavy bodies dodge a little worse; flight helps a lot
+  let dodge=Game.effStat("agility")*0.012-Math.max(0,(state.species.mass.value-HUMAN.mass))*0.0004;
+  if(Game.hasPower("flight")) dodge+=0.12;
+  if(chance(clamp(dodge,0,0.6))){ Game.logMsg(`You evade the ${combat.name}.`,"good"); }
   else { state.hp-=dmg; Game.logMsg(`${combat.name} strikes you for ${dmg}.`,"bad"); }
-  // species powers that tick each round
-  if(Game.hasPower("regen")){ const h=Math.round(Game.effMaxHp()*0.04);
-    state.hp=Math.min(Game.effMaxHp(),state.hp+h); }
+  // per-round biology: metabolism + Resolute temperament restore energy
+  const en=Math.round((Game.bio("metabolism")-10)*0.2)+Game.tempEff("energyRegen",0);
+  if(en>0) state.energy=Math.min(Game.effMaxEnergy(),state.energy+en);
+  if(Game.hasPower("regen")){ state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.04)); }
   if(Game.hasPower("photosynth")) state.energy=Math.min(Game.effMaxEnergy(),state.energy+2);
   if(state.hp<=0) return loseEncounter();
   Game.save(); UI.render("combat");
@@ -658,14 +755,15 @@ function tryTame(){
   if(!combat||combat.over) return;
   let p=combat.tame*(1.2-combat.hp/combat.maxHp)+Game.effStat("charm")*0.01;
   if(Game.hasPower("telepath")) p+=0.12;
-  p=clamp(p,0.03,0.92);
+  p+=Game.tempEff("tame",0);
+  p=clamp(p,0.03,0.95);
   if(chance(p)){ state.pets.push({cid:combat.cid,name:combat.name,hp:combat.maxHp,atk:combat.atk,level:1,nick:null});
     Game.logMsg(`You bond with the ${combat.name}! It joins your menagerie.`,"good");
     combat.over=true; Game.gainXp(Math.round(combat.xp*0.5)); Game.save(); UI.render("hub"); UI.flashLog(); }
   else { Game.logMsg(`The ${combat.name} resists!`,"bad"); enemyTurn(); }
 }
 function fleeEncounter(){
-  let p=0.5+Game.effStat("agility")*0.015;
+  let p=0.5+Game.effStat("agility")*0.015+Game.tempEff("flee",0);
   if(state.skills.includes("Current Sense")) p+=0.1;
   if(Game.hasPower("flight")) p+=0.12; if(Game.hasPower("telepath")) p+=0.06;
   if(chance(p)){ Game.logMsg(`You slip away from the ${combat.name}.`,"sys");
@@ -691,10 +789,36 @@ const UI = {
   current:"title",
   render(screen){
     this.current=screen;
-    $("#nav").classList.toggle("hidden", !state||screen==="title"||screen==="create");
+    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue";
+    $("#nav").classList.toggle("hidden", noNav);
     [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===screen));
     app.innerHTML=(this["screen_"+screen]||(()=> "<p>?</p>")).call(this);
     this.bind(screen); window.scrollTo(0,0);
+  },
+
+  /* ---------- EPILOGUE (a life concluded — the game decides, not you) ---------- */
+  screen_epilogue(){
+    const sp=state.species, t=RARITY.byId(sp.tier);
+    return `
+    <div class="rarity-banner" style="border-color:${t.color}">
+      <div class="rn" style="color:${t.color}">A LIFE CONCLUDED</div>
+      <div class="odds">${state.deathCause||"the journey's end"}</div>
+    </div>
+    <div class="card reveal">
+      <h2>${state.name}</h2>
+      <p class="small dim">${sp.name} &middot; ${cap(sp.build)} ${sp.archeName}</p>
+      <div class="divider"></div>
+      <div class="statline"><span>Lived</span><span class="gold">${Math.floor(Game.age())} years</span></div>
+      <div class="statline"><span>of a natural span of</span><span>${Math.round(Game.lifespan())} years</span></div>
+      <div class="statline"><span>Reached level</span><span>${state.level}</span></div>
+      <div class="statline"><span>Credits amassed</span><span>${state.credits}</span></div>
+      <div class="statline"><span>Beasts tamed</span><span>${state.pets.length}</span></div>
+      <div class="statline"><span>Born</span><span style="color:${t.color}">${RARITY.odds(t)} a people</span></div>
+      <div class="statline"><span>Genome</span><span style="color:${pctColor(sp.genome.avgPct)}">${sp.genome.grade}</span></div>
+      <div class="divider"></div>
+      <p class="small dim">No life is rolled twice. The galaxy turns, and a new name awaits.</p>
+      <button class="primary full center" id="btnNewLife">&#10022; Begin a new life</button>
+    </div>`;
   },
 
   /* shared rarity banner used across reveals + detail screens */
@@ -753,15 +877,18 @@ const UI = {
       ${genomeBanner(sp.genome)}
       <div class="card reveal">
         <h3>Body &amp; lifespan <span class="dim small">(fixed for life)</span></h3>
+        <div class="statline"><span>Build</span><span class="gold">${cap(sp.build)}</span></div>
         ${traitBlock("Adult height", sp.height, cmToFt, cmToFt(HUMAN.height))}
         ${traitBlock("Adult mass",   sp.mass,   kgToLb, kgToLb(HUMAN.mass))}
         ${traitBlock("Age of maturity", sp.maturity, yrsFmt, yrsFmt(HUMAN.maturity))}
         ${traitBlock("Natural lifespan", sp.lifespan, yrsFmt, yrsFmt(HUMAN.lifespan))}
+        <p class="small dim" style="margin-top:6px">A long lifespan is a long campaign — more years to rise before age claims you.</p>
       </div>
       <div class="card reveal">
         <h3>Attributes <span class="dim small">(10 = human average)</span></h3>
         ${ATTR_KEYS.map(k=>traitBlock(ATTR_LABEL[k], sp.attrs[k], v=>v, HUMAN.attr)).join("")}
       </div>
+      ${bioCards(sp)}
       <div class="card reveal">
         <h3>Innate powers</h3>
         ${sp.powers.length?sp.powers.map(p=>`<p class="small"><b class="blue">${POWERS[p].name}</b> — ${POWERS[p].desc}</p>`).join("")
@@ -906,6 +1033,8 @@ const UI = {
     ${genomeBanner(sp.genome)}
     <div class="card">
       <h3>Body &amp; lifespan <span class="dim small">(genetic, fixed)</span></h3>
+      <div class="statline"><span>Current age</span><span class="gold">${Math.floor(Game.age())} yr${Game.age()>=Game.twilight()?' <span class="red small">(twilight)</span>':''}</span></div>
+      <div class="statline"><span>Build</span><span class="gold">${cap(sp.build)}</span></div>
       ${traitBlock("Adult height", sp.height, cmToFt, cmToFt(HUMAN.height))}
       ${traitBlock("Adult mass",   sp.mass,   kgToLb, kgToLb(HUMAN.mass))}
       ${traitBlock("Age of maturity", sp.maturity, yrsFmt, yrsFmt(HUMAN.maturity))}
@@ -915,6 +1044,7 @@ const UI = {
       <h3>Attributes <span class="dim small">(10 = human avg)</span></h3>
       ${ATTR_KEYS.map(k=>traitBlock(ATTR_LABEL[k], sp.attrs[k], v=>v, HUMAN.attr)).join("")}
     </div>
+    ${bioCards(sp)}
     <div class="card">
       <h3>Trained combat stats <span class="dim small">(grow with levels)</span></h3>
       ${["might","agility","force","tech","charm"].map(k=>{
@@ -1051,10 +1181,14 @@ const UI = {
       <div class="odds">${RARITY.odds(t)} &middot; ${sub||""}</div></div>`; },
   statHeader(){
     const hpMax=Game.effMaxHp(), enMax=Game.effMaxEnergy();
+    const age=Math.floor(Game.age()), life=Math.round(Game.lifespan());
+    const twilight=Game.age()>=Game.twilight();
     return `
     <div class="card">
       <div class="row between"><b>${state.name}</b>
         <span class="small dim">Lv ${state.level} &middot; <span class="gold">${state.credits}c</span></span></div>
+      <div class="row between"><span class="small dim">Age ${age} <span class="dim">of ~${life} yr</span>${twilight?' <span class="red">· twilight</span>':''}</span>
+        <span class="small dim">${cap(state.species.build)} ${state.species.archeName}</span></div>
       <div class="statline"><span class="small">HP</span><span class="small">${Math.max(0,state.hp)} / ${hpMax}</span></div>
       <div class="bar"><i class="hpfill" style="width:${Math.max(0,state.hp/hpMax*100)}%"></i></div>
       <div class="statline"><span class="small">Energy</span><span class="small">${state.energy} / ${enMax}</span></div>
@@ -1074,16 +1208,19 @@ const UI = {
 
     if(screen==="title"){
       const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:1}; UI.render("create"); };
-      const c=$("#btnContinue"); if(c) c.onclick=()=>{ Game.load(); UI.render("hub"); };
+      const c=$("#btnContinue"); if(c) c.onclick=()=>{ Game.load(); UI.render(state.dead?"epilogue":"hub"); };
       const w=$("#btnWipe"); if(w) w.onclick=()=>{ if(confirm("Delete your saved game?")){Game.wipe(); UI.render("title");} };
     }
     if(screen==="create") this.bindCreate();
+    if(screen==="epilogue"){ $("#btnNewLife").onclick=()=>{ Game.wipe(); creating={step:1}; UI.render("create"); }; }
 
     if(screen==="hub"){
       $("#actExplore").onclick=()=>startEncounter();
       $("#actMarket").onclick=()=>UI.render("market");
       $("#actChar").onclick=()=>UI.render("char");
-      $("#actRest").onclick=()=>{ state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
+      $("#actRest").onclick=()=>{
+        if(advanceTime(rnd(5,12))) return;            // resting passes a week or two
+        state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
         Game.logMsg("You make camp and rest. HP and energy restored.","sys"); Game.save(); UI.render("hub"); UI.flashLog(); };
     }
     if(screen==="combat"){
@@ -1152,7 +1289,9 @@ const UI = {
 /* ============================================================ ACTIONS == */
 function useItem(id){ const it=DATA.items[id]; if(!it||!state.inv[id]) return;
   if(it.kind!=="consumable"){ toast("Can't use that"); return; } let msg=[];
-  if(it.heal){ const b=state.hp; state.hp=Math.min(Game.effMaxHp(),state.hp+it.heal); msg.push(`+${state.hp-b} HP`); }
+  // a faster metabolism gets more out of healing
+  const metaMult=1+(Game.bio("metabolism")-10)*0.02;
+  if(it.heal){ const b=state.hp; state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(it.heal*metaMult)); msg.push(`+${state.hp-b} HP`); }
   if(it.energy){ const b=state.energy; state.energy=Math.min(Game.effMaxEnergy(),state.energy+it.energy); msg.push(`+${state.energy-b} energy`); }
   if(it.buff==="stim"){ state.stimReady=true; msg.push("stim primed"); }
   Game.removeItem(id,1); Game.logMsg(`Used ${it.name}: ${msg.join(", ")}.`,"good"); Game.save();
@@ -1193,6 +1332,26 @@ function traitBlock(label, t, fmt, humanRef){
     <div class="small" style="color:${pctColor(t.pct)}">${t.pct}th percentile of your species &mdash; ${pctLabel(t.pct)}</div>
   </div>`;
 }
+/* Biology + inborn nature cards, shared by the species reveal and the Self screen. */
+function bioCards(sp){
+  const tmp=TEMPERAMENTS.find(t=>t.id===sp.temperament);
+  return `
+  <div class="card reveal">
+    <h3>Biology <span class="dim small">(10 = human avg, fixed)</span></h3>
+    ${traitBlock("Metabolism", sp.bio.metabolism, v=>v, HUMAN.attr)}
+    ${traitBlock("Perception", sp.bio.perception, v=>v, HUMAN.attr)}
+    ${traitBlock("Fertility",  sp.bio.fertility,  v=>v, HUMAN.attr)}
+    <p class="small dim" style="margin-top:6px">Metabolism speeds energy &amp; healing; Perception sharpens
+    crits, ambush and finds; Fertility shapes how populous your kind is.</p>
+  </div>
+  <div class="card reveal">
+    <h3>Inborn nature</h3>
+    <div class="statline"><span>Build</span><span class="gold">${cap(sp.build)}</span></div>
+    <div class="statline"><span>Temperament</span><span class="gold">${tmp.name}</span></div>
+    <p class="small dim">${cap(tmp.desc)}.</p>
+  </div>`;
+}
+
 /* Overall genome quality banner (your genetic luck WITHIN your species). */
 function genomeBanner(g){
   const c=pctColor(g.avgPct);
