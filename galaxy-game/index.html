@@ -714,7 +714,7 @@ const Game = {
     state.lastStage=Game.stage();
     state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
-    Game.logMsg(`You are born on ${world.name}, a ${world.biomeName}.`,"sys");
+    Game.logMsg(`You are born on ${world.name}, ${article(world.biomeName)} ${world.biomeName}.`,"sys");
     Game.logMsg(`You are ${creating.name}, a young ${sp.name} child — far from your potential, but growing.`,"hit");
     Game.save();
   },
