@@ -987,23 +987,70 @@ const DATA = {
     "Focus":        { type:"buff", energy:0, blurb:"Center yourself: recover energy and a little HP." },
   },
 
-  // minTech gates whether a world's market stocks the item.
+  // Equipment & supplies. `slot` = where it equips (weapon/head/chest/legs/feet/back);
+  // mods add to your combat stats (might/agility/force), max HP/energy, flat damage
+  // reduction (def), dodge, and flee odds. minTech gates whether a market stocks it.
   items:{
-    "ration":      { name:"Field Ration", kind:"consumable", value:8,  minTech:0, blurb:"+12 HP, +10 energy.", heal:12, energy:10 },
-    "medpack":     { name:"Medpack", kind:"consumable", value:25, minTech:1, blurb:"Restores 40 HP.", heal:40 },
-    "energy-cell": { name:"Energy Cell", kind:"consumable", value:18, minTech:2, blurb:"Restores 30 energy.", energy:30 },
-    "stim":        { name:"Combat Stim", kind:"consumable", value:40, minTech:3, blurb:"+50% damage next fight.", buff:"stim" },
-    "hide-vest":   { name:"Hide Vest", kind:"armor", value:90, minTech:0, blurb:"+15 max HP.", mods:{hp:15} },
-    "vibroblade":  { name:"Vibroblade", kind:"weapon", value:120, minTech:2, blurb:"+5 Might in combat.", mods:{might:5} },
-    "scout-rifle": { name:"Scout Rifle", kind:"weapon", value:140, minTech:3, blurb:"+5 Agility in combat.", mods:{agility:5} },
-    "plasma-edge": { name:"Plasma Edge", kind:"weapon", value:260, minTech:6, blurb:"+9 Might in combat.", mods:{might:9} },
-    "current-focus":{ name:"Current Focus", kind:"relic", value:160, minTech:5, blurb:"+4 Force, +10 max energy.", mods:{force:4,energy:10} },
-    "scrap":       { name:"Scrap", kind:"trade", value:5,  minTech:0, blurb:"Salvaged parts." },
-    "pelt":        { name:"Beast Pelt", kind:"trade", value:12, minTech:0, blurb:"A cured hide." },
+    // —— consumables (field supplies) ——
+    "ration":      { name:"Field Ration",  kind:"consumable", value:8,  minTech:0, blurb:"+12 HP, +10 energy.", heal:12, energy:10 },
+    "medpack":     { name:"Medpack",        kind:"consumable", value:25, minTech:1, blurb:"Restores 40 HP.", heal:40 },
+    "energy-cell": { name:"Energy Cell",    kind:"consumable", value:18, minTech:2, blurb:"Restores 30 energy.", energy:30 },
+    "stim":        { name:"Combat Stim",    kind:"consumable", value:40, minTech:3, blurb:"+50% damage next fight.", buff:"stim" },
+    // —— weapons (slot: weapon) ——
+    "vibroknife":  { name:"Vibroknife",     kind:"weapon", slot:"weapon", value:60,  minTech:0, blurb:"+3 Might in combat.", mods:{might:3} },
+    "vibroblade":  { name:"Vibroblade",     kind:"weapon", slot:"weapon", value:120, minTech:2, blurb:"+5 Might in combat.", mods:{might:5} },
+    "scatter-pistol":{ name:"Scatter Pistol",kind:"weapon",slot:"weapon", value:110, minTech:2, blurb:"+4 Agility in combat.", mods:{agility:4} },
+    "scout-rifle": { name:"Scout Rifle",    kind:"weapon", slot:"weapon", value:140, minTech:3, blurb:"+5 Agility in combat.", mods:{agility:5} },
+    "pulse-carbine":{ name:"Pulse Carbine", kind:"weapon", slot:"weapon", value:240, minTech:5, blurb:"+8 Agility in combat.", mods:{agility:8} },
+    "plasma-edge": { name:"Plasma Edge",    kind:"weapon", slot:"weapon", value:300, minTech:6, blurb:"+9 Might in combat.", mods:{might:9} },
+    "arc-lance":   { name:"Arc Lance",      kind:"weapon", slot:"weapon", value:300, minTech:6, blurb:"+8 Force in combat.", mods:{force:8} },
+    // —— head ——
+    "scrap-helm":  { name:"Scrap Helm",     kind:"armor", slot:"head",  value:50,  minTech:0, blurb:"+8 HP, +1 armor.", mods:{hp:8, def:1} },
+    "combat-helm": { name:"Combat Helm",    kind:"armor", slot:"head",  value:130, minTech:3, blurb:"+14 HP, +2 armor.", mods:{hp:14, def:2} },
+    "powered-helm":{ name:"Powered Helm",   kind:"armor", slot:"head",  value:320, minTech:6, blurb:"+22 HP, +4 armor.", mods:{hp:22, def:4} },
+    // —— chest ——
+    "hide-vest":   { name:"Hide Vest",      kind:"armor", slot:"chest", value:90,  minTech:0, blurb:"+15 HP, +1 armor.", mods:{hp:15, def:1} },
+    "flak-vest":   { name:"Flak Vest",      kind:"armor", slot:"chest", value:220, minTech:2, blurb:"+28 HP, +3 armor.", mods:{hp:28, def:3} },
+    "combat-plate":{ name:"Combat Plate",   kind:"armor", slot:"chest", value:480, minTech:4, blurb:"+45 HP, +5 armor.", mods:{hp:45, def:5} },
+    "powered-cuirass":{ name:"Powered Cuirass",kind:"armor",slot:"chest",value:1100,minTech:7, blurb:"+70 HP, +8 armor.", mods:{hp:70, def:8} },
+    // —— legs ——
+    "scrap-greaves":{ name:"Scrap Greaves", kind:"armor", slot:"legs",  value:70,  minTech:1, blurb:"+8 HP, +1 armor.", mods:{hp:8, def:1} },
+    "combat-greaves":{ name:"Combat Greaves",kind:"armor",slot:"legs",  value:260, minTech:4, blurb:"+18 HP, +3 armor.", mods:{hp:18, def:3} },
+    // —— feet ——
+    "trek-boots":  { name:"Trek Boots",     kind:"armor", slot:"feet",  value:60,  minTech:0, blurb:"+5 HP, +1 armor, light step (+dodge).", mods:{hp:5, def:1, dodge:0.03} },
+    "grav-boots":  { name:"Grav Boots",     kind:"armor", slot:"feet",  value:300, minTech:5, blurb:"+10 HP, +2 armor, sure-footed (+dodge).", mods:{hp:10, def:2, dodge:0.06} },
+    // —— back (accessories) ——
+    "jetpack":     { name:"Jetpack",        kind:"accessory", slot:"back", value:420, minTech:4, blurb:"+8 energy, leap clear of blows (+dodge, +flee).", mods:{energy:8, dodge:0.08, flee:0.12} },
+    "grav-harness":{ name:"Grav Harness",   kind:"accessory", slot:"back", value:700, minTech:6, blurb:"Hard to pin down (+dodge, +flee).", mods:{dodge:0.12, flee:0.1} },
+    "current-focus":{ name:"Current Focus", kind:"accessory", slot:"back", value:160, minTech:5, blurb:"+4 Force, +10 max energy.", mods:{force:4, energy:10} },
+    // —— trade goods (sold, not equipped) ——
+    "scrap":       { name:"Scrap",          kind:"trade", value:5,  minTech:0, blurb:"Salvaged parts." },
+    "pelt":        { name:"Beast Pelt",     kind:"trade", value:12, minTech:0, blurb:"A cured hide." },
   },
 
-  startKit:[ ["ration",3], ["medpack",1], ["energy-cell",1] ],
+  startKit:[ ["ration",3], ["medpack",1], ["vibroknife",1], ["hide-vest",1] ],
 };
+
+/* Hostile people you run into in settled places — robbers, thieves, raiders. Drop credits
+   (loot) and XP, never tamed. minDanger gates the rougher ones to dangerous worlds. */
+const FOES=[
+  { id:"pickpocket", name:"Pickpocket",    hp:14, atk:4,  xp:9,  weight:10, loot:[10,60],   blurb:"A nimble cutpurse working the crowd." },
+  { id:"thief",      name:"Thief",         hp:20, atk:6,  xp:14, weight:9,  loot:[20,120],  blurb:"A back-alley thief sizing you up." },
+  { id:"mugger",     name:"Mugger",        hp:26, atk:8,  xp:18, weight:8,  loot:[30,180],  blurb:"A mugger with a blade and bad intentions." },
+  { id:"thug",       name:"Street Thug",   hp:34, atk:10, xp:24, weight:7,  loot:[40,240],  blurb:"A hulking thug blocking your way." },
+  { id:"robber",     name:"Armed Robber",  hp:30, atk:12, xp:26, weight:6,  loot:[60,320],  blurb:"An armed robber demanding your credits." },
+  { id:"enforcer",   name:"Gang Enforcer", hp:48, atk:14, xp:38, weight:4,  loot:[120,600], blurb:"A syndicate enforcer, scarred and calm.", minDanger:5 },
+  { id:"raider",     name:"Raider",        hp:42, atk:16, xp:40, weight:5,  loot:[80,500],  blurb:"A lawless raider looking for a kill.", minDanger:5 },
+];
+/* How built-up a world is (0 wild .. 1 dense city) — decides whether wandering turns up
+   beasts (wild worlds) or bad people (cities), or nothing at all (dead worlds). */
+const SETTLE_CIV={ capital:1.0, trade:0.85, industrial:0.7, scrap:0.55, colony:0.5, mining:0.45, agri:0.4, frontier:0.25 };
+function worldCivility(w){ if(!w||w.occupied===false) return 0;
+  let c=SETTLE_CIV[w.settle]; if(c==null) c=0.5;
+  if(w.biome==="urban") c=Math.max(c,0.9);
+  return c; }
+function exploreLabel(w){ const c=worldCivility(w);
+  return c>=0.7 ? "Prowl the streets" : c>0 ? "Explore the outskirts" : "Wander the wilds"; }
 
 /* ============================================================ STATE ==== */
 const SAVE_KEY = "eots_save_v4"; // bumped: save is now a galaxy (Codex/achievements persist across lives)
@@ -1051,6 +1098,10 @@ const Game = {
       if(c.shipId && c.seat==null) c.seat=0; });
     if(state.cargo && Object.keys(state.cargo).length){ const a=Game.ship(); if(a) a.cargo=state.cargo; }
     delete state.cargo;
+    // migrate old equipment slots (weapon/armor/relic) -> the expanded armor slots
+    const eq=state.equipped||{};
+    if(!("chest" in eq)) state.equipped={ weapon:eq.weapon||null, head:eq.head||null,
+      chest:eq.chest||eq.armor||null, legs:eq.legs||null, feet:eq.feet||null, back:eq.back||eq.relic||null };
   },
   wipe(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} state=null; },
 
@@ -1109,7 +1160,7 @@ const Game = {
       level:1, xp:0, xpNext:50, stats,
       maxHp, hp:maxHp, maxEnergy, energy:maxEnergy,
       credits:120, skills:[...skills],
-      inv:{}, equipped:{weapon:null,armor:null,relic:null}, pets:[],
+      inv:{}, equipped:{weapon:null,head:null,chest:null,legs:null,feet:null,back:null}, pets:[],
       // you begin as a YOUNG CHILD and grow toward your potential as time flows
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
       actions:0, dead:false, deathCause:null, lastStage:null,
@@ -1124,6 +1175,8 @@ const Game = {
     state.lastStage=Game.stage();
     state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
+    state.equipped.weapon="vibroknife"; state.equipped.chest="hide-vest";  // a blade and a vest to start
+    state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
     // you know your own race and your homeworld from the start — into the Codex
     const selfRace=raceFrom(sp); selfRace.id="self"; selfRace.reported=true;
     state.codex.races["self"]=selfRace;
@@ -1153,18 +1206,15 @@ const Game = {
   /* ---- derived combat stats (genetics × growth × equipment) ---- */
   // Body & training scale with growth; gear adds full value (a child with a blaster
   // is still dangerous), so even a young child is capable — just not near their peak.
-  effStat(key){
-    let v=Math.round((state.stats[key]||0)*Game.maturation());
-    for(const slot of ["weapon","armor","relic"]){ const id=state.equipped[slot];
-      if(id && DATA.items[id].mods && DATA.items[id].mods[key]) v+=DATA.items[id].mods[key]; }
-    return v;
-  },
-  effMaxHp(){ let v=state.maxHp*Game.maturation()*Game.frailty(); const a=state.equipped.armor;
-    if(a && DATA.items[a].mods && DATA.items[a].mods.hp) v+=DATA.items[a].mods.hp;
-    return Math.max(1, Math.round(v)); },
-  effMaxEnergy(){ let v=state.maxEnergy*Game.maturation(); const r=state.equipped.relic;
-    if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v+=DATA.items[r].mods.energy;
-    return Math.max(1, Math.round(v)); },
+  // sum a mod (might/agility/force/hp/energy/def/dodge/flee) across every equipped slot
+  gearMod(key){ let v=0; const eq=state.equipped||{};
+    for(const slot in eq){ const id=eq[slot], it=id&&DATA.items[id];
+      if(it && it.mods && it.mods[key]) v+=it.mods[key]; }
+    return v; },
+  effStat(key){ return Math.round((state.stats[key]||0)*Game.maturation()) + Game.gearMod(key); },
+  effMaxHp(){ return Math.max(1, Math.round(state.maxHp*Game.maturation()*Game.frailty() + Game.gearMod("hp"))); },
+  effMaxEnergy(){ return Math.max(1, Math.round(state.maxEnergy*Game.maturation() + Game.gearMod("energy"))); },
+  effDef(){ return Math.max(0, Game.gearMod("def")); },   // flat damage reduction from armor
 
   /* ---- biology, temperament & heritage accessors ---- */
   bio(key){ return state.species.bio[key].value; },
@@ -1251,11 +1301,41 @@ function die(cause){
 }
 
 /* ============================================================ COMBAT === */
+/* Exploring turns up different things depending on the world: dense cities breed robbers and
+   thieves; wild worlds hold beasts; dead, near-lifeless worlds are often just empty. */
 function startEncounter(){
   if(advanceTime()) return;                    // exploring is one action
-  const w=state.world;
-  let peace=clamp(0.2+w.peaceMod,0.05,0.4);
+  const w=state.world, civ=worldCivility(w), wild=biomeHab(w.biome);
+  let peace=clamp(0.18+w.peaceMod,0.05,0.4);
   if(chance(peace)) return peacefulEvent(w);
+  if(w.occupied===false){                       // no one lives here — beasts, or empty silence
+    if(wild<0.12 && chance(0.55)) return emptyEvent(w);
+    return beastEncounter(w);
+  }
+  // inhabited: the more built-up, the more it's people; the wilder the biome, the more beasts
+  if(chance(civ)) return humanoidEncounter(w);
+  if(wild<0.12 && chance(0.5)) return emptyEvent(w);
+  return beastEncounter(w);
+}
+/* perception + senses decide who gets the drop; returns true if a surprise hit downed you */
+function applyInitiative(name, intro){
+  const edge=(Game.bio("perception")-10)*0.03 + Game.detail("senses").length*0.03
+    + (state.skills.includes("Current Sense")?0.1:0);
+  if(chance(clamp(0.25+edge,0.05,0.75))){ combat.surprised=true;
+    Game.logMsg(`${intro} You see it coming and seize the initiative.`,"hit"); }
+  else if(chance(clamp(0.18-edge,0.02,0.4))){
+    Game.logMsg(`${name} catches you off guard!`,"bad");
+    const d=Math.max(1,Math.round((combat.atk+rnd(0,3))*Game.tempEff("dmgTakenMult",1))-Game.effDef());
+    state.hp-=d; Game.logMsg(`${name} lands a surprise hit for ${d}.`,"bad");
+    if(state.hp<=0){ UI.render("combat"); loseEncounter(); return true; }
+  } else Game.logMsg(intro,"hit");
+  return false;
+}
+function emptyEvent(w){
+  Game.logMsg(`You range across the ${w.biomeName} and find nothing but wind and silence.`,"sys");
+  Game.save(); UI.render("hub"); UI.flashLog();
+}
+function beastEncounter(w){
   const cid=pick(w.creatures), tpl=DATA.creatures[cid];
   if(!state.codex.creatures) state.codex.creatures={};
   const seen=state.codex.creatures[cid]||(state.codex.creatures[cid]={name:tpl.name, blurb:tpl.blurb, count:0, where:w.name, reported:false});
@@ -1266,20 +1346,18 @@ function startEncounter(){
     atk:Math.round(tpl.atk*scale), xp:Math.round(tpl.xp*scale),
     tame:tpl.tame, over:false, stim:state.stimReady, surprised:false };
   state.stimReady=false;
-  // Perception (plus special senses) decides who gets the drop. Keen senses surprise
-  // the beast; dull senses (low perception) risk an ambush that strikes before you act.
-  const edge=(Game.bio("perception")-10)*0.03 + Game.detail("senses").length*0.03
-    + (state.skills.includes("Current Sense")?0.1:0);
-  if(chance(clamp(0.25+edge,0.05,0.75))){ combat.surprised=true;
-    Game.logMsg(`A wild ${tpl.name} appears! You spot it first and seize the initiative.`,"hit"); }
-  else if(chance(clamp(0.18-edge,0.02,0.4))){
-    Game.logMsg(`A wild ${tpl.name} ambushes you!`,"bad");
-    const d=Math.round((combat.atk+rnd(0,3))*Game.tempEff("dmgTakenMult",1));
-    state.hp-=d; Game.logMsg(`${tpl.name} lands a surprise hit for ${d}.`,"bad");
-    if(state.hp<=0){ UI.render("combat"); return loseEncounter(); }
-  } else {
-    Game.logMsg(`A wild ${tpl.name} appears! ${tpl.blurb}`,"hit");
-  }
+  if(applyInitiative(tpl.name, `A wild ${tpl.name} appears! ${tpl.blurb}`)) return;
+  Game.save(); UI.render("combat");
+}
+function humanoidEncounter(w){
+  const pool=FOES.filter(f=>w.danger>=(f.minDanger||1));
+  const f=weightedPick(pool.length?pool:FOES);
+  const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06, hp=Math.round(f.hp*scale);
+  combat={ foe:true, fid:f.id, name:f.name, blurb:f.blurb, maxHp:hp, hp,
+    atk:Math.round(f.atk*scale), xp:Math.round(f.xp*scale), loot:f.loot,
+    over:false, stim:state.stimReady, surprised:false };
+  state.stimReady=false;
+  if(applyInitiative(f.name, `${f.blurb}`)) return;
   Game.save(); UI.render("combat");
 }
 function peacefulEvent(w){
@@ -1319,7 +1397,7 @@ function playerAttack(name){
       dmg=Math.max(1,Math.round(dmg));
       combat.hp-=dmg; Game.logMsg(`${name} hits ${combat.name} for ${dmg}${crit?" CRIT!":""}${venom}.`,"hit"); }
   }
-  if(combat.hp<=0) return combat.person?winDuel():winEncounter();
+  if(combat.hp<=0) return combat.person?winDuel():(combat.foe?winFoe():winEncounter());
   if(combat.surprised){ combat.surprised=false; Game.save(); UI.render("combat"); return; } // free hit, no retaliation
   enemyTurn();
 }
@@ -1328,9 +1406,9 @@ function enemyTurn(){
   if(Game.hasPower("armored")) dmg-=2;
   // Resilience genetically toughens you against harm; temperament also shifts it
   const resist=clamp(1-(Game.bio("resilience")-10)*0.012, 0.7, 1.2)*Game.tempEff("dmgTakenMult",1);
-  dmg=Math.max(1,Math.round(dmg*resist));
-  // dodge: agility helps; very heavy bodies dodge a little worse; flight helps a lot
-  let dodge=Game.effStat("agility")*0.012-Math.max(0,(state.species.mass.value-HUMAN.mass))*0.0004;
+  dmg=Math.max(1,Math.round(dmg*resist)-Game.effDef());   // worn armor soaks a flat chunk
+  // dodge: agility helps; very heavy bodies dodge a little worse; flight & nimble gear help
+  let dodge=Game.effStat("agility")*0.012-Math.max(0,(state.species.mass.value-HUMAN.mass))*0.0004+Game.gearMod("dodge");
   if(Game.hasPower("flight")) dodge+=0.12;
   if(chance(clamp(dodge,0,0.6))){ Game.logMsg(`You evade the ${combat.name}.`,"good"); }
   else { state.hp-=dmg; Game.logMsg(`${combat.name} strikes you for ${dmg}.`,"bad"); }
@@ -1344,7 +1422,7 @@ function enemyTurn(){
   Game.save(); UI.render("combat");
 }
 function tryTame(){
-  if(!combat||combat.over) return;
+  if(!combat||combat.over||combat.person||combat.foe) return;   // people can't be tamed
   let p=combat.tame*(1.2-combat.hp/combat.maxHp)+Game.effStat("charm")*0.01;
   if(Game.hasPower("telepath")) p+=0.12;
   p+=Game.tempEff("tame",0);
@@ -1355,7 +1433,7 @@ function tryTame(){
   else { Game.logMsg(`The ${combat.name} resists!`,"bad"); enemyTurn(); }
 }
 function fleeEncounter(){
-  let p=0.5+Game.effStat("agility")*0.015+Game.tempEff("flee",0);
+  let p=0.5+Game.effStat("agility")*0.015+Game.tempEff("flee",0)+Game.gearMod("flee");
   if(state.skills.includes("Current Sense")) p+=0.1;
   if(Game.hasPower("flight")) p+=0.12; if(Game.hasPower("telepath")) p+=0.06;
   if(chance(p)){ Game.logMsg(`You slip away from the ${combat.name}.`,"sys");
@@ -1367,6 +1445,14 @@ function winEncounter(){
   Game.logMsg(`You defeat the ${combat.name}! +${combat.xp} XP, +${cr} credits.`,"good");
   if(chance(0.4)){ const id=pick(["scrap","pelt","ration"]); Game.addItem(id,1);
     Game.logMsg(`Loot: ${DATA.items[id].name}.`,"good"); }
+  Game.save(); UI.render("hub"); UI.flashLog();
+}
+function winFoe(){
+  combat.over=true; const [lo,hi]=combat.loot||[10,60];
+  const cr=Math.round(rnd(lo,hi)*(1+(state.world.danger-1)*0.05)); state.credits+=cr; Game.gainXp(combat.xp);
+  Game.logMsg(`You put down the ${combat.name}! +${combat.xp} XP, +${cr} credits looted.`,"good");
+  if(chance(0.25)){ const id=pick(["stim","medpack","ration","scrap"]); Game.addItem(id,1);
+    Game.logMsg(`Pulled from them: ${DATA.items[id].name}.`,"good"); }
   Game.save(); UI.render("hub"); UI.flashLog();
 }
 function loseEncounter(){
@@ -1577,8 +1663,10 @@ const UI = {
     <div class="card">
       <h3>Around ${w.name}</h3>
       ${(()=>{ const sd=settleDef(w.settle), amen=settleAmen(w);
-        if(w.occupied===false) return `<p class="small dim">This world is uninhabited — no settlement, no shipyard, no trade. Just the wilds. (Move ships and travel from the <b>Crew</b> tab.)</p>`;
-        return `${sd?`<p class="small dim"><b class="gold">${sd.name}</b> — ${sd.desc}.</p>`:""}
+        const note = w.occupied===false
+          ? `<p class="small dim">This world is uninhabited — no settlement, no shipyard, no trade. Just the wilds. (Move ships and travel from the <b>Crew</b> tab.)</p>`
+          : (sd?`<p class="small dim"><b class="gold">${sd.name}</b> — ${sd.desc}.</p>`:"");
+        return `${note}
       <div class="grid">
         ${amen.includes("tavern")?`<button id="vTavern">&#127866; Tavern</button>`:""}
         ${amen.includes("depot")?`<button id="vDepot">&#128230; Depot</button>`:""}
@@ -1586,7 +1674,7 @@ const UI = {
         ${amen.includes("broker")?`<button id="vBroker">&#128225; Info Broker</button>`:""}
         ${amen.includes("talk")?`<button id="vTalk">&#128483; Talk to a stranger</button>`:""}
         ${amen.includes("shipyard")?`<button id="vShipyard">&#128736; Shipyard</button>`:""}
-        <button id="vWilds" class="primary">&#127807; Wander the wilds</button>
+        <button id="vWilds" class="primary">${worldCivility(w)>=0.7?"&#127961; ":"&#127807; "}${exploreLabel(w)}</button>
         <button id="vRest">&#9789; Rest</button>
       </div>`; })()}
     </div>
@@ -2099,7 +2187,7 @@ const UI = {
         ${atk.map(s=>`<button data-atk="${s}">${s}<br><span class="small dim">${DATA.skills[s].energy||0} en</span></button>`).join("")}
         ${state.skills.includes("Mend")?`<button data-atk="Mend">Mend<br><span class="small dim">6 en</span></button>`:""}
         <button data-atk="Focus" class="ghost">Focus<br><span class="small dim">+energy</span></button>
-        ${c.person?"":`<button id="actTame">Tame</button>`}
+        ${(c.person||c.foe)?"":`<button id="actTame">Tame</button>`}
         <button id="actFlee" class="ghost">Flee</button>
         <button id="actBag">Use item</button>
       </div>
@@ -2131,9 +2219,9 @@ const UI = {
       ${state.skills.map(s=>krow(s, `<span class="dim">${DATA.skills[s].blurb}</span>`)).join("")}
     </div>
     <div class="card sheet">
-      <h3>Equipment</h3>
-      ${["weapon","armor","relic"].map(slot=>{ const id=state.equipped[slot];
-        return krow(cap(slot), id?DATA.items[id].name:'<span class="dim">— empty —</span>'); }).join("")}
+      <h3>Equipment <span class="dim small">&middot; ${Game.effDef()} armor</span></h3>
+      ${[["weapon","Weapon"],["head","Head"],["chest","Chest"],["legs","Legs"],["feet","Feet"],["back","Back"]].map(([slot,label])=>{ const id=state.equipped[slot];
+        return krow(label, id?DATA.items[id].name:'<span class="dim">— empty —</span>'); }).join("")}
     </div>`;
   },
 
@@ -2148,7 +2236,7 @@ const UI = {
       ${ids.length===0?`<p class="dim">Your pack is empty.</p>`:""}
       ${ids.map(id=>{ const it=DATA.items[id], n=state.inv[id], eq=Object.values(state.equipped).includes(id);
         let btn=""; if(it.kind==="consumable") btn=`<button data-use="${id}">Use</button>`;
-        else if(["weapon","armor","relic"].includes(it.kind)) btn=`<button data-equip="${id}">${eq?"Unequip":"Equip"}</button>`;
+        else if(it.slot) btn=`<button data-equip="${id}">${eq?"Unequip":"Equip"}</button>`;
         return `<div class="card" style="margin:8px 0;padding:10px">
           <div class="row between"><b>${it.name} ${n>1?`<span class="dim">x${n}</span>`:""}</b><span class="tag">${it.kind}</span></div>
           <p class="small dim" style="margin:4px 0">${it.blurb}</p>
@@ -2321,19 +2409,24 @@ const UI = {
 
   /* ---------- MARKET ---------- */
   screen_market(){
-    const w=state.world, stock=Game.marketStock();
+    const w=state.world, order={weapon:0,armor:1,accessory:2,consumable:3};
+    const stock=Game.marketStock().slice().sort((a,b)=>{ const A=DATA.items[a],B=DATA.items[b];
+      return (order[A.kind]-order[B.kind])||(A.value-B.value); });
+    const SECTION={weapon:"Weapons",armor:"Armor",accessory:"Gear",consumable:"Supplies"};
+    let lastKind=null;
     return `
     ${this.statHeader()}
     <div class="card">
-      <h2>&#9879; ${w.name} Market</h2>
-      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]}. Stock reflects this world's
-        tech and wealth. Credits: <b class="gold">${state.credits}</b></p>
+      <h2>&#9879; ${w.name} Outfitter</h2>
+      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]}. Weapons, armor and field gear —
+        stock reflects this world's tech. Credits: <b class="gold">${state.credits}</b></p>
     </div>
     <div class="card">
       ${stock.length===0?`<p class="dim small">This world is too primitive to sell much of anything.</p>`:""}
-      ${stock.map(id=>{ const it=DATA.items[id], p=Game.buyPrice(id);
-        return `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
-          <span><b>${it.name}</b><br><span class="small dim">${it.blurb}</span></span>
+      ${stock.map(id=>{ const it=DATA.items[id], p=Game.buyPrice(id), owned=state.inv[id]||0;
+        const head = it.kind!==lastKind ? (lastKind=it.kind, `<h3 style="margin:8px 0 2px">${SECTION[it.kind]||"Goods"}</h3>`) : "";
+        return `${head}<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
+          <span><b>${it.name}</b>${it.slot?` <span class="tag">${it.slot}</span>`:""}${owned?` <span class="dim small">&middot; owned ${owned}</span>`:""}<br><span class="small dim">${it.blurb}</span></span>
           <button data-buy="${id}" ${state.credits<p?"disabled":""}>${p}c</button></div>`; }).join("")}
     </div>
     <div class="card"><button id="leaveMarket" class="ghost full center">Leave market</button></div>`;
@@ -2633,8 +2726,8 @@ function useItem(id){ const it=DATA.items[id]; if(!it||!state.inv[id]) return;
   if(it.buff==="stim"){ state.stimReady=true; msg.push("stim primed"); }
   Game.removeItem(id,1); Game.logMsg(`Used ${it.name}: ${msg.join(", ")}.`,"good"); Game.save();
   UI.render(combat&&!combat.over?"combat":"bag"); }
-function equipItem(id){ const it=DATA.items[id];
-  const slot=it.kind==="weapon"?"weapon":it.kind==="armor"?"armor":"relic";
+function equipItem(id){ const it=DATA.items[id]; const slot=it&&it.slot;
+  if(!slot){ toast("Can't equip that"); return; }
   if(state.equipped[slot]===id){ state.equipped[slot]=null; toast("Unequipped"); }
   else { state.equipped[slot]=id; toast(`Equipped ${it.name}`); }
   state.hp=Math.min(state.hp,Game.effMaxHp()); state.energy=Math.min(state.energy,Game.effMaxEnergy());

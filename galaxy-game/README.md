@@ -90,6 +90,15 @@ Inhabited worlds grow into a **settlement type** that decides what services they
 
 Only one Capital City can form per system, and a world's tech/wealth gate which settlements it can become — so a planetary system might hold a capital, a farmworld, and a mining colony, each worth visiting for different reasons. (Buying income-producing assets on these worlds — farms, factories — is the planned next step.)
 
+## On foot: encounters, foes & gear
+What you run into when you explore depends on **where you are**:
+- **Cities** (capitals, trade hubs, urban worlds) → **bad people**: pickpockets, thieves, muggers, thugs, armed robbers, and — on dangerous worlds — gang enforcers and raiders. They loot credits and XP, never tame.
+- **Wild worlds** → **beasts** suited to the biome.
+- **Dead, near-lifeless worlds** (molten, airless, glacial) → often just empty silence.
+The explore button reads the world: *Prowl the streets* in a city, *Explore the outskirts* on a frontier, *Wander the wilds* out in the open.
+
+The **Outfitter (Market)** is now an equipment shop. Buy and equip across six slots — **weapon, head, chest, legs, feet, back** — from vibroknives to plasma edges, scrap helms to powered cuirasses, trek boots, jetpacks and grav-harnesses. Armor adds max HP and **flat damage reduction**; boots and jetpacks add **dodge** (and the jetpack helps you flee). You start with a vibroknife and a hide vest. Stock is gated by world tech, so the best gear lives on advanced worlds.
+
 ## Next up
 - Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).
 - Procedurally generated creatures & weapons.
