@@ -613,9 +613,14 @@ const inRange=(t,r)=>t>=r[0]&&t<=r[1];
 function canBuyHere(w,c){ return inRange(w.tech,c.buyTech); }
 function canSellHere(w,c){ return inRange(w.tech,c.sellTech); }
 function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
-// cargo lives on the ACTIVE ship — each ship has its own hold
-function cargoUsed(){ const s=Game.ship(); return s?Object.values(s.cargo||{}).reduce((a,n)=>a+n,0):0; }
+// cargo lives on each ship; the Depot pools the holds of all ACTIVE ships docked with you
+function shipUsed(v){ return Object.values(v.cargo||{}).reduce((a,n)=>a+n,0); }
+function cargoUsed(){ const s=Game.ship(); return s?shipUsed(s):0; }
 function cargoMax(){ const s=Game.ship(); return s?(s.hold||0):0; }
+function poolShips(){ return (state.vehicles||[]).filter(v=>v.fleet!==false && v.slot===state.atSlot); }  // active fleet, docked here
+function poolUsed(){ return poolShips().reduce((s,v)=>s+shipUsed(v),0); }
+function poolMax(){ return poolShips().reduce((s,v)=>s+(v.hold||0),0); }
+function poolHave(id){ return poolShips().reduce((s,v)=>s+(v.cargo[id]||0),0); }
 
 /* ============================================================ GEN ====== */
 /* Procedural generators. Each rolls rarity + traits, returns an object with
@@ -1429,18 +1434,18 @@ const UI = {
 
   /* ---------- DEPOT (commodity trading) ---------- */
   screen_depot(){
-    const w=state.world, used=cargoUsed(), cap=cargoMax();
+    const w=state.world, used=poolUsed(), cap=poolMax(), n=poolShips().length;
     return `
     ${this.statHeader()}
     <div class="card"><h2>&#128230; ${w.name} Depot</h2>
-      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — prices are set by this world's
-      industry. Cargo hold: <b>${used}/${cap}</b>.</p></div>
+      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — prices set by this world's industry.
+      Fleet hold: <b>${used}/${cap}</b> across ${n} active ship${n!==1?"s":""} docked here.</p></div>
     <div class="card">
-      ${COMMODITIES.map(c=>{ const ship=Game.ship(); const price=commodityPrice(w,c), buy=canBuyHere(w,c), sell=canSellHere(w,c), have=(ship&&ship.cargo[c.id])||0;
+      ${COMMODITIES.map(c=>{ const price=commodityPrice(w,c), buy=canBuyHere(w,c), sell=canSellHere(w,c), have=poolHave(c.id);
         const tag=buy&&sell?"buys &amp; sells":buy?"for sale":sell?"buys":"<span class='dim'>not traded</span>";
         return `<div class="card" style="margin:8px 0;padding:10px">
           <div class="row between"><b>${c.name}</b><span class="gold">${price}c</span></div>
-          <p class="small dim" style="margin:4px 0">${tag}${have?` &middot; <span class="blue">hold ${have}</span>`:""}</p>
+          <p class="small dim" style="margin:4px 0">${tag}${have?` &middot; <span class="blue">fleet holds ${have}</span>`:""}</p>
           <div class="row">
             ${buy?`<button data-buyc="${c.id}" ${state.credits<price||used>=cap?"disabled":""}>Buy ${price}c</button>
               <button class="ghost" data-buyallc="${c.id}" ${state.credits<price||used>=cap?"disabled":""}>Buy all</button>`:""}
@@ -1870,10 +1875,13 @@ const UI = {
           ? `<div class="krow"><span class="lbl">Seat ${n+1}</span><span class="kv">${occ.name} <span class="dim small">${careerName(occ.career)}</span> <button class="small ghost" data-unseat="${state.crew.indexOf(occ)}">Remove</button></span></div>`
           : `<div class="krow"><span class="lbl">Seat ${n+1}</span><span class="kv">${here?`<button class="small" data-seat="${v.id}:${n}">Assign</button>`:'<span class="dim">empty</span>'}</span></div>`;
       }
+      const inFleet=v.fleet!==false;
       return `<div class="card">
         <div class="row between"><h2 class="gold">${active?'&#9654; ':''}${v.name}</h2>
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
         <p class="small dim">${v.clsName} &middot; ${RANGE_LABEL[v.range]} &middot; docked at <b class="blue">${shipLocationName(v.slot)}</b>${here?' <span class="green small">(here)</span>':''}</p>
+        ${krow("Fleet status", inFleet?'<span class="green">Active</span> <span class="dim small">(shares the Depot cargo pool)</span>':'<span class="dim">Inactive (set aside)</span>')}
+        <button class="small ${inFleet?'ghost':''}" data-togglefleet="${v.id}" style="margin-top:6px">${inFleet?"Set inactive":"Set active"}</button>
         ${!here?`<p class="small dim">Travel here to assign crew to this ship's seats.</p>`:""}
       </div>
       <div class="card sheet"><h3>Seats <span class="dim small">&middot; ${cmax}</span></h3>${seats}
@@ -1886,8 +1894,8 @@ const UI = {
     }
     return `<div class="card sheet"><h3>Your fleet <span class="dim small">&middot; ${ships.length}</span></h3>
       <p class="small dim">Select a ship to manage its crew seats.</p>
-      ${ships.map(v=>{ const active=v.id===state.activeShip, here=v.slot===state.atSlot, n=Game.shipCrew(v).length;
-        return `<div class="krow"><span class="lbl"><button class="small ghost" data-selshipview="${v.id}">${active?'&#9654; ':''}${v.name}</button></span>
+      ${ships.map(v=>{ const active=v.id===state.activeShip, here=v.slot===state.atSlot, n=Game.shipCrew(v).length, inFleet=v.fleet!==false;
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-selshipview="${v.id}">${active?'&#9654; ':''}${v.name}</button>${inFleet?'':' <span class="dim small">(inactive)</span>'}</span>
           <span class="kv">${RANGE_LABEL[v.range]} <span class="dim">&middot; ${shipLocationName(v.slot)}${here?' (here)':''} &middot; crew ${(active?1:0)+n}/${v.crewMax||1}</span></span></div>`; }).join("")}
     </div>`;
   },
@@ -2085,6 +2093,7 @@ const UI = {
       app.querySelectorAll("[data-dismiss]").forEach(b=> b.onclick=()=>dismissCrew(+b.dataset.dismiss));
       app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
+      app.querySelectorAll("[data-togglefleet]").forEach(b=> b.onclick=()=>toggleFleet(b.dataset.togglefleet));
     }
     if(screen==="menagerie"){
       app.querySelectorAll("[data-nick]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.nick;
@@ -2300,30 +2309,36 @@ function sellShip(id){
   Game.logMsg(`You sell the ${v.name} for ${p}c.`,"sys"); Game.save(); UI.render("shipyard");
 }
 
-/* ---- Depot: buy/sell commodities at this world's fixed prices ---- */
+/* ---- Depot: buy/sell commodities across your active fleet docked here ---- */
 function buyCommodity(id, all){
-  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ship=Game.ship();
-  if(!ship){ toast("No ship to load"); return; }
+  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ships=poolShips();
+  if(!ships.length){ toast("No active ship docked here"); return; }
   if(!canBuyHere(w,c)){ toast("Not sold here"); return; }
-  const space=cargoMax()-cargoUsed();
-  if(space<=0){ toast("Cargo hold full"); return; }
+  const space=poolMax()-poolUsed();
+  if(space<=0){ toast("Cargo holds full"); return; }
   const p=commodityPrice(w,c);
   if(state.credits<p){ toast("Not enough credits"); return; }
-  const qty = all ? Math.min(space, Math.floor(state.credits/p)) : 1;
-  state.credits-=qty*p; ship.cargo[id]=(ship.cargo[id]||0)+qty;
-  if(qty>1) Game.logMsg(`Bought ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
+  let qty = all ? Math.min(space, Math.floor(state.credits/p)) : 1;
+  state.credits-=qty*p; let rem=qty;
+  for(const v of ships){ if(rem<=0) break; const free=v.hold-shipUsed(v), add=Math.min(free, rem);
+    if(add>0){ v.cargo[id]=(v.cargo[id]||0)+add; rem-=add; } }
+  if(qty>1) Game.logMsg(`Bought ${qty} ${c.name} for ${commas(qty*p)}c (loaded across ${ships.length} ship${ships.length>1?"s":""}).`,"sys");
   Game.save(); UI.render("depot");
 }
 function sellCommodity(id, all){
-  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ship=Game.ship(), have=ship?(ship.cargo[id]||0):0;
-  if(!have) return;
+  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ships=poolShips();
+  const have=ships.reduce((s,v)=>s+(v.cargo[id]||0),0); if(!have) return;
   if(!canSellHere(w,c)){ toast("Not bought here"); return; }
   const p=Math.round(commodityPrice(w,c)*0.9);   // depot takes a small cut
-  const qty = all ? have : 1;
-  state.credits+=qty*p; ship.cargo[id]-=qty; if(ship.cargo[id]<=0) delete ship.cargo[id];
+  let qty = all ? have : 1; state.credits+=qty*p; let rem=qty;
+  for(const v of ships){ if(rem<=0) break; const take=Math.min(v.cargo[id]||0, rem);
+    if(take>0){ v.cargo[id]-=take; if(v.cargo[id]<=0) delete v.cargo[id]; rem-=take; } }
   if(qty>1) Game.logMsg(`Sold ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
   Game.save(); UI.render("depot");
 }
+/* toggle a ship in/out of your active fleet (active ships share the Depot cargo pool) */
+function toggleFleet(shipId){ const v=(state.vehicles||[]).find(x=>x.id===shipId);
+  if(v){ v.fleet=(v.fleet===false); Game.save(); UI.render("crew"); } }
 /* select which ship you're piloting — only if it's docked where you are */
 function selectShip(id){
   const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
