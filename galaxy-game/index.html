@@ -234,7 +234,14 @@ const HUMAN = { height:175, mass:78, maturity:18, lifespan:82, attr:10 }; // cm,
 const GALAXY = {
   speciesCap: 10000,     // estimated number of distinct sapient peoples in the galaxy
   totalSapients: 1e12,   // ~1 trillion thinking beings across all worlds
+  radius: 480,           // ly from the galactic core (0,0) to the rim — the disc is 2*radius across
 };
+/* How "central" a galactic position is: 1 at the core, 0 at the rim. The core is dense and
+   well-settled; the rim is sparse and mostly empty. Drives system count, planets-per-system,
+   and how likely a world is to be inhabited. */
+function centralFactor(x,y){ return clamp(1 - Math.hypot(x,y)/GALAXY.radius, 0, 1); }
+/* odds a charted world is inhabited, given its galactic position */
+function occupancyChance(x,y){ return clamp(0.12 + 0.83*centralFactor(x,y), 0.05, 0.96); }
 
 /* You begin as a YOUNG CHILD — able to do a bit of everything, but far from your
    genetic potential — and grow toward it as the years pass (full power at maturity). */
@@ -628,7 +635,10 @@ const SYSTEM_SIZE = [
   {size:6,weight:14},{size:7,weight:8},{size:8,weight:5},{size:9,weight:3},{size:10,weight:1.5},
   {size:11,weight:1},{size:12,weight:0.7},
 ];
-function rollSystemSize(){ return weightedPick(SYSTEM_SIZE).size; }
+/* Core systems run larger; rim systems are sparse. cf in [0,1] adds up to a few extra worlds. */
+function rollSystemSize(cf){ let s=weightedPick(SYSTEM_SIZE).size;
+  if(cf!=null) s += Math.round(cf*rndF(0,4)) - Math.round((1-cf)*rndF(0,1.5));
+  return clamp(s, 1, 12); }
 
 /* Tradeable commodities. Raw goods are cheap where mined (low tech), dear where industry
    consumes them (high tech). Manufactured goods are the reverse: cheap where built (high
@@ -650,11 +660,11 @@ const inRange=(t,r)=>t>=r[0]&&t<=r[1];
 function canBuyHere(w,c){ return inRange(w.tech,c.buyTech); }
 function canSellHere(w,c){ return inRange(w.tech,c.sellTech); }
 function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
-// cargo lives on each ship; the Depot pools the holds of all ACTIVE ships docked with you
+// cargo lives on each ship; the Depot pools the holds of every ship docked with you here
 function shipUsed(v){ return Object.values(v.cargo||{}).reduce((a,n)=>a+n,0); }
 function cargoUsed(){ const s=Game.ship(); return s?shipUsed(s):0; }
 function cargoMax(){ const s=Game.ship(); return s?(s.hold||0):0; }
-function poolShips(){ return (state.vehicles||[]).filter(v=>v.fleet!==false && v.slot===state.atSlot); }  // active fleet, docked here
+function poolShips(){ return (state.vehicles||[]).filter(atHere); }  // every ship docked right here with you
 function poolUsed(){ return poolShips().reduce((s,v)=>s+shipUsed(v),0); }
 function poolMax(){ return poolShips().reduce((s,v)=>s+(v.hold||0),0); }
 function poolHave(id){ return poolShips().reduce((s,v)=>s+(v.cargo[id]||0),0); }
@@ -894,15 +904,17 @@ const Game = {
   migrate(){
     if(state.atSlot==null) state.atSlot=0;
     if(state.sysId==null) state.sysId=0;
+    if(!state.spawn) state.spawn={x:0,y:0};
+    if(!state.fleets) state.fleets=[];
     // pre-multisystem saves stored a lone home system in state.system — wrap it in a galaxy
     if(state.system && !state.galaxy){
-      const home=state.system; home.id=0; home.x=0; home.y=0; home.discovered=true;
+      const home=state.system; home.id=0; home.x=state.spawn.x; home.y=state.spawn.y; home.discovered=true;
       home.name=home.name||genName("system");
-      state.galaxy={ name:state.galaxyName, systems:[home].concat(makeNeighborSystems(rnd(23,33),1)) };
+      state.galaxy={ name:state.galaxyName, systems:[home].concat(makeNeighborSystems(home.x, home.y, 1)) };
     }
     // keep the live pointer in sync with the saved galaxy
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
-    (state.vehicles||[]).forEach(v=>{ if(v.sysId==null) v.sysId=0; });
+    (state.vehicles||[]).forEach(v=>{ if(v.sysId==null) v.sysId=0; if(v.fleetId===undefined) v.fleetId=null; });
     if(state.actions==null) state.actions=Math.round((state.daysElapsed||0)/15);   // old day-based saves -> actions
     if(state.lastBillYear==null) state.lastBillYear=Math.floor((state.actions||0)/ACTIONS_PER_YEAR);
     (state.vehicles||[]).forEach(v=>{ if(!v.id) v.id=newVid(); if(!v.cargo) v.cargo={};
@@ -967,6 +979,11 @@ const Game = {
     if(!codex.people) codex.people=[]; if(!codex.creatures) codex.creatures={};
     const achievements = sameGalaxy ? state.achievements : {};
 
+    // your galactic birthplace (ly from the core). Area-uniform, so most are born toward the
+    // sparse rim; a core birth (lush, crowded, dangerous) is a lucky roll you keep for life.
+    const spAng=Math.random()*Math.PI*2, spR=GALAXY.radius*Math.sqrt(Math.random());
+    const spawn={ x:+(Math.cos(spAng)*spR).toFixed(2), y:+(Math.sin(spAng)*spR).toFixed(2) };
+
     state={
       v:4, created:Date.now(), updated:Date.now(),
       galaxyName:creating.galaxy, codex, achievements,
@@ -979,7 +996,8 @@ const Game = {
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
       actions:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
-      grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, activeShip:veh.id, bounties:[], crew:[], lastBillYear:0,
+      grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
+      activeShip:veh.id, bounties:[], crew:[], lastBillYear:0,
       stimReady:false, log:[],
     };
     veh.slot=0; veh.sysId=0;      // your inherited craft is docked on your homeworld
@@ -1439,15 +1457,15 @@ const UI = {
     </div>
     <div class="card">
       <h3>Around ${w.name}</h3>
-      ${w.occupied===false?`<p class="small dim">This world is uninhabited — no towns, no trade. Just the wilds.</p>`:""}
+      ${w.occupied===false?`<p class="small dim">This world is uninhabited — no settlement, no shipyard, no trade. Just the wilds. (Move ships and travel from the <b>Crew</b> tab.)</p>`:""}
       <div class="grid">
         ${w.occupied!==false?`
         <button id="vTavern">&#127866; Tavern</button>
         <button id="vDepot">&#128230; Depot</button>
         <button id="vMarket">&#9879; Market</button>
         <button id="vBroker">&#128225; Info Broker</button>
-        <button id="vTalk">&#128483; Talk to a stranger</button>`:""}
-        <button id="vShipyard">&#128736; Shipyard</button>
+        <button id="vTalk">&#128483; Talk to a stranger</button>
+        <button id="vShipyard">&#128736; Shipyard</button>`:""}
         <button id="vWilds" class="primary">&#127807; Wander the wilds</button>
         <button id="vRest">&#9789; Rest</button>
       </div>
@@ -1500,7 +1518,7 @@ const UI = {
     ${this.statHeader()}
     <div class="card"><h2>&#128230; ${w.name} Depot</h2>
       <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — prices set by this world's industry.
-      Fleet hold: <b>${used}/${cap}</b> across ${n} active ship${n!==1?"s":""} docked here.</p></div>
+      Shared hold: <b>${used}/${cap}</b> across ${n} ship${n!==1?"s":""} docked here with you.</p></div>
     <div class="card">
       ${COMMODITIES.map(c=>{ const price=commodityPrice(w,c), buy=canBuyHere(w,c), sell=canSellHere(w,c), have=poolHave(c.id);
         const tag=buy&&sell?"buys &amp; sells":buy?"for sale":sell?"buys":"<span class='dim'>not traded</span>";
@@ -1518,9 +1536,9 @@ const UI = {
     <div class="card"><button id="depBack" class="ghost full center">&larr; Back outside</button></div>`;
   },
 
-  /* ---------- SHIPYARD (buy/sell ships, leave the planet, the Yarder) ---------- */
+  /* ---------- SHIPYARD (buy/sell ships, the Yarder) — only on inhabited worlds ---------- */
   screen_shipyard(){
-    const w=state.world, canLeave=Game.canLeave(), sys=state.system, stock=shipStockAt();
+    const w=state.world, stock=shipStockAt();
     return `
     ${this.statHeader()}
     <div class="card"><h2>&#128736; ${w.name} Shipyard</h2>
@@ -1545,20 +1563,7 @@ const UI = {
             ${state.vehicles.length>1&&!active?`<button class="small ghost" data-sellship="${v.id}">Sell &middot; ${shipSell(v)}c</button>`:""}
           </div></div>`; }).join("")}
     </div>
-    <div class="card"><h3>Leave the planet</h3>
-      ${!canLeave?(()=>{ const s=Game.ship();
-          if(s && spaceworthy(s) && atHere(s) && !Game.operational(s))
-            return `<p class="small red">Your ${s.name} needs more crew to fly — ${s.reqPilots||1} pilot${(s.reqPilots||1)>1?"s":""}${s.reqMech?` and ${s.reqMech} mechanic${s.reqMech>1?"s":""}`:""} aboard. Hire and seat them (Crew tab).</p>`;
-          return `<p class="small red">You're grounded — buy a system-capable ship above to reach the other worlds.</p>`; })()
-      :!sys?`<button id="takeoff" class="primary full center">&#9650; Take off &amp; chart your system</button>`
-      :`<p class="small dim">In the <b class="blue">${sys.name}</b> system &mdash; set course to a world (travel within a system is free):</p>
-        ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
-          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name}</span>
-            <span class="kv">${here?'<span class="green small">you are here</span>':`<button class="small" data-travel="${i}">&#9992; Travel</button>`}</span></div>`;
-          return `<div class="krow"><span class="lbl dim">Unexplored world ${i+1}</span>
-            <span class="kv"><button class="small" data-travel="${i}">&#10022; Explore</button></span></div>`; }).join("")}
-        ${state.galaxy && state.galaxy.systems.length>1?`<button id="starmap" class="full center" style="margin-top:10px">&#10024; Star Map &mdash; jump to another system</button>`:""}`}
-    </div>
+    <div class="card"><p class="small dim">To move ships or travel between worlds, use the <b>Crew &rarr; Ships / Fleets</b> tab.</p></div>
     <div class="card"><h3>The Yarder</h3>
       <p class="small dim">The dockmaster who runs this yard — hauling, salvage, lost ships.</p>
       <button id="yarder" class="full center">Talk to the Yarder</button>
@@ -1566,45 +1571,55 @@ const UI = {
     <div class="card"><button id="syBack" class="ghost full center">&larr; Back outside</button></div>`;
   },
 
-  /* ---------- STAR MAP (interstellar jumps between systems) ---------- */
-  screen_starmap(){
-    const g=state.galaxy; if(!g) return this.screen_shipyard();
-    const here=curSys(), s=Game.ship();
-    const interstellar = s && s.range==="interstellar" && Game.canLeave();
-    const range = interstellar ? jumpRange(s) : 0;
-    // list every other system by distance from where you are
-    const others=g.systems.filter(x=>x.id!==state.sysId)
-      .map(x=>({ sys:x, d:sysDist(state.sysId,x.id) }))
-      .sort((a,b)=>a.d-b.d);
+  /* ---------- TRAVEL / MOVE (a ship or a whole fleet) ---------- */
+  screen_travel(){
+    const ctx=travelCtx; if(!ctx) return this.screen_crew();
+    const ids=ctx.ids, caps=groupCaps(ids), origin=caps.sysId, osys=state.galaxy.systems[origin];
+    const playerIn=ids.includes(state.activeShip);
+    const blockers=groupBlockers(ids), g=state.galaxy;
+    const planets = osys.planets||[];
+    const inSys = caps.tier!=="surface";
+    const jumpable = caps.tier==="interstellar";
+    const others = g.systems.filter(x=>x.id!==origin).map(x=>({ sys:x, d:sysDist(origin,x.id) })).sort((a,b)=>a.d-b.d);
     return `
     ${this.statHeader()}
-    <div class="card"><h2>&#10024; Star Map</h2>
-      <p class="small dim">You are in <b class="blue">${here.name}</b>. ${interstellar
-        ? `Your <b>${s.name}</b> has a <b class="gold">${range.toFixed(1)} ly</b> hyperdrive.`
-        : `<span class="red">No interstellar ship ready here — you can only jump in an operational interstellar-class ship.</span>`}</p>
-      ${this.mapGrid()}
+    <div class="card"><h2>&#9992; ${ctx.title||"Move"}</h2>
+      <p class="small dim">In <b class="blue">${osys.name}</b> &middot; ${RANGE_LABEL[caps.tier]} group${jumpable?` &middot; hyperdrive reach <b class="gold">${caps.jump.toFixed(1)} ly</b> (set by the weakest ship)`:""}.
+      ${playerIn?" You're aboard — you travel with it.":" You're not aboard; it can only go to charted worlds."}</p>
+      ${blockers.length?`<p class="small red">Grounded: ${blockers.map(b=>b.name).join(", ")} ${blockers.length>1?"need":"needs"} more crew to fly.</p>`:""}
+      ${caps.tier==="surface"?`<p class="small red">No ship in this group can leave the ground.</p>`:""}
     </div>
-    <div class="card sheet"><h3>Systems <span class="dim small">&middot; nearest first</span></h3>
-      ${others.map(o=>{ const reach=interstellar && o.d<=range+1e-6, ch=o.sys.discovered;
+    ${inSys?`<div class="card sheet"><h3>Within ${osys.name}</h3>
+      ${planets.map((p,i)=>{ const hereSlot=i===groupSlot(ids);
+        if(p&&p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name}</span>
+          <span class="kv">${hereSlot?'<span class="green small">fleet is here</span>':`<button class="small" data-go="${origin}:${i}">&#9992; Travel</button>`}</span></div>`;
+        return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
+          <span class="kv">${playerIn?`<button class="small" data-go="${origin}:${i}">&#10022; Explore</button>`:'<span class="dim small">&#128274; need to be aboard</span>'}</span></div>`; }).join("")}
+    </div>`:""}
+    ${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapGrid()}</div>
+    <div class="card sheet"><h3>Jump to another system <span class="dim small">&middot; nearest first</span></h3>
+      ${others.map(o=>{ const inRange=o.d<=caps.jump+1e-6, ch=o.sys.discovered, canGo=inRange&&(ch||playerIn);
         return `<div class="krow"><span class="lbl">${ch?o.sys.name:'<span class="dim">Uncharted star</span>'}
             <span class="dim small">&middot; ${o.d.toFixed(1)} ly${ch?` &middot; ${o.sys.size} world${o.sys.size>1?"s":""}`:""}</span></span>
-          <span class="kv">${reach?`<button class="small" data-jump="${o.sys.id}">&#9650; Jump</button>`
-            :`<span class="dim small">${interstellar?`out of range`:`&#128274;`}</span>`}</span></div>`; }).join("")}
-    </div>
-    <div class="card"><button id="smBack" class="ghost full center">&larr; Back to the shipyard</button></div>`;
+          <span class="kv">${canGo?`<button class="small" data-jumpsys="${o.sys.id}">&#9650; Jump</button>`
+            :`<span class="dim small">${!inRange?"out of range":"need to be aboard"}</span>`}</span></div>`; }).join("")}
+    </div>`:`<div class="card"><p class="small dim">This group can only travel within its own system. A fleet can jump between stars only if every ship aboard is interstellar-class.</p></div>`}
+    <div class="card"><button id="tvBack" class="ghost full center">&larr; Back</button></div>`;
   },
-  /* a compact text plot of the galaxy on its flat plane */
+  /* a compact text plot of your local cluster (fits the bounding box of the known systems) */
   mapGrid(){
     const g=state.galaxy, W=29, H=15;
-    let maxR=8; g.systems.forEach(s=>{ maxR=Math.max(maxR, Math.abs(s.x), Math.abs(s.y)); });
-    maxR*=1.08;
+    let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;
+    g.systems.forEach(s=>{ minx=Math.min(minx,s.x); maxx=Math.max(maxx,s.x); miny=Math.min(miny,s.y); maxy=Math.max(maxy,s.y); });
+    const padx=Math.max((maxx-minx)*0.08,1), pady=Math.max((maxy-miny)*0.08,1);
+    minx-=padx; maxx+=padx; miny-=pady; maxy+=pady;
     const grid=Array.from({length:H},()=>Array(W).fill(" "));
-    const px=x=>Math.round((x/maxR*0.5+0.5)*(W-1));
-    const py=y=>Math.round((-y/maxR*0.5+0.5)*(H-1));   // +y points up
+    const px=x=>clamp(Math.round((x-minx)/(maxx-minx)*(W-1)),0,W-1);
+    const py=y=>clamp(Math.round((maxy-y)/(maxy-miny)*(H-1)),0,H-1);   // +y points up
     g.systems.forEach(s=>{ const gx=px(s.x), gy=py(s.y);
-      let m = s.id===state.sysId ? "@" : s.discovered ? "*" : ".";
-      if(s.id===0 && s.id!==state.sysId) m = grid[gy][gx]==="@"?m:"H";
-      if(grid[gy][gx]===" "||grid[gy][gx]===".") grid[gy][gx]=m; });
+      const m = s.id===state.sysId ? "@" : s.id===0 ? "H" : s.discovered ? "*" : ".";
+      const cur=grid[gy][gx];
+      if(cur===" "||cur==="."||(cur==="*"&&m!==".")) grid[gy][gx]=m; });
     const body=grid.map(r=>r.join("")).join("\n");
     return `<pre class="map">${body}</pre>
       <p class="small dim" style="margin-top:4px">@ you &middot; H home &middot; * charted &middot; . uncharted</p>`;
@@ -1981,8 +1996,9 @@ const UI = {
     <div class="card"><h2>&#128101; Crew</h2>
       <p class="small dim">Annual upkeep: <b class="gold">${commas(wages+maint)}c/yr</b> — wages ${commas(wages)}c, ship maintenance ${commas(maint)}c. Billed each year; can't pay and crew walk off.</p>
       <div class="row"><button class="${tab==="crewmates"?"sel":""}" data-crewtab="crewmates">Crewmates</button>
-        <button class="${tab==="ships"?"sel":""}" data-crewtab="ships">Ships</button></div></div>
-    ${tab==="crewmates"?this.crewmatesView():this.shipsView()}`;
+        <button class="${tab==="ships"?"sel":""}" data-crewtab="ships">Ships</button>
+        <button class="${tab==="fleets"?"sel":""}" data-crewtab="fleets">Fleets</button></div></div>
+    ${tab==="crewmates"?this.crewmatesView():tab==="fleets"?this.fleetsView():this.shipsView()}`;
   },
   crewmatesView(){
     const crew=state.crew||[];
@@ -2012,33 +2028,93 @@ const UI = {
           ? `<div class="krow"><span class="lbl">Seat ${n+1}</span><span class="kv">${occ.name} <span class="dim small">${careerName(occ.career)}</span> <button class="small ghost" data-unseat="${state.crew.indexOf(occ)}">Remove</button></span></div>`
           : `<div class="krow"><span class="lbl">Seat ${n+1}</span><span class="kv">${here?`<button class="small" data-seat="${v.id}:${n}">Assign</button>`:'<span class="dim">empty</span>'}</span></div>`;
       }
-      const inFleet=v.fleet!==false;
+      const fleet=fleetOf(v), grounded=state.grounded && active && spaceworthy(v);
+      const canMove=!grounded && (v.range!=="surface") && Game.operational(v);
       return `<div class="card">
         <div class="row between"><h2 class="gold">${active?'&#9654; ':''}${v.name}</h2>
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
         <p class="small dim">${v.clsName} &middot; ${RANGE_LABEL[v.range]} &middot; docked at <b class="blue">${shipLocationName(v)}</b>${here?' <span class="green small">(here)</span>':''}</p>
-        ${krow("Fleet status", inFleet?'<span class="green">Active</span> <span class="dim small">(shares the Depot cargo pool)</span>':'<span class="dim">Inactive (set aside)</span>')}
+        ${krow("Fleet", fleet?`<b class="blue">${fleet.name}</b>`:'<span class="dim">Independent</span>')}
         ${krow("Crew needed", `${v.reqPilots||1} pilot${(v.reqPilots||1)>1?"s":""}${v.reqMech?`, ${v.reqMech} mechanic${v.reqMech>1?"s":""}`:""}${v.reqGun?` <span class="dim">(+${v.reqGun} gunners, coming soon)</span>`:""}`)}
         ${krow("Aboard", `${Game.pilots(v)} pilot${Game.pilots(v)!==1?"s":""}${active?' <span class="dim small">(incl. you)</span>':''}, ${Game.aboard(v,"mechanic")} mechanic${Game.aboard(v,"mechanic")!==1?"s":""}`)}
         ${krow("Operational", Game.operational(v)?'<span class="green">Yes — ready to fly</span>':'<span class="red">No — needs more crew</span>')}
+        ${krow("Range", v.range==="interstellar"?`<span class="gold">${jumpRange(v).toFixed(1)} ly hyperdrive</span>`:RANGE_LABEL[v.range])}
         ${krow("Maintenance", `${commas(shipMaint(v))}c/yr`)}
-        <button class="small ${inFleet?'ghost':''}" data-togglefleet="${v.id}" style="margin-top:6px">${inFleet?"Set inactive":"Set active"}</button>
-        ${!here?`<p class="small dim">Travel here to assign crew to this ship's seats.</p>`:""}
+        <div class="row" style="margin-top:8px">
+          ${grounded?`<button class="primary" data-takeoff="${v.id}">&#9650; Take off &amp; chart your system</button>`:""}
+          ${canMove?`<button data-moveship="${v.id}">&#9992; ${fleet?`Move (via ${fleet.name})`:"Move ship"}</button>`:""}
+        </div>
+        ${!here?`<p class="small dim">You're not docked with this ship — travel to it to assign crew or pilot it.</p>`:""}
       </div>
       <div class="card sheet"><h3>Seats <span class="dim small">&middot; ${cmax}</span></h3>${seats}
-        <p class="small dim" style="margin-top:6px">A ship needs a Pilot aboard to follow you when you travel.</p></div>
+        <p class="small dim" style="margin-top:6px">Crew aboard a ship travel with it. A ship needs its full pilot/mechanic crew to fly.</p></div>
       <div class="card"><div class="row">
         ${!active&&here?`<button class="small" data-selship="${v.id}">Pilot this</button>`:""}
         <button class="small ghost" data-renship="${v.id}">Rename</button>
         <button class="ghost" id="shipsBack">&larr; All ships</button>
       </div></div>`;
     }
-    return `<div class="card sheet"><h3>Your fleet <span class="dim small">&middot; ${ships.length}</span></h3>
-      <p class="small dim">Select a ship to manage its crew seats.</p>
-      ${ships.map(v=>{ const active=v.id===state.activeShip, here=atHere(v), n=Game.shipCrew(v).length, inFleet=v.fleet!==false;
-        return `<div class="krow"><span class="lbl"><button class="small ghost" data-selshipview="${v.id}">${active?'&#9654; ':''}${v.name}</button>${inFleet?'':' <span class="dim small">(inactive)</span>'}</span>
+    return `<div class="card sheet"><h3>Your ships <span class="dim small">&middot; ${ships.length}</span></h3>
+      <p class="small dim">Select a ship to manage its crew, fleet, and travel.</p>
+      ${ships.map(v=>{ const active=v.id===state.activeShip, here=atHere(v), n=Game.shipCrew(v).length, fleet=fleetOf(v);
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-selshipview="${v.id}">${active?'&#9654; ':''}${v.name}</button>${fleet?` <span class="dim small">&middot; ${fleet.name}</span>`:''}</span>
           <span class="kv">${RANGE_LABEL[v.range]} <span class="dim">&middot; ${shipLocationName(v)}${here?' (here)':''} &middot; crew ${(active?1:0)+n}/${v.crewMax||1}</span></span></div>`; }).join("")}
     </div>`;
+  },
+  /* ---------- FLEETS (named ship groups you can move together) ---------- */
+  fleetsView(){
+    const fleets=state.fleets||[];
+    if(fleetBuild){            // creating a new fleet — only ships in your current system, not already in a fleet
+      const avail=fleetShipsHereWithYou();
+      const sel=new Set(fleetBuild.shipIds);
+      return `<div class="card"><h2>New fleet</h2>
+        <p class="small dim">Add ships docked in <b class="blue">${curSys()?curSys().name:"this"}</b> system. You must be here to form the fleet.</p>
+        ${nameField("fleetName","Name this fleet","ship",fleetBuild.name)}
+        <div class="sheet" style="margin-top:8px">
+        ${avail.length?avail.map(v=>`<div class="krow"><span class="lbl">${sel.has(v.id)?'&#9745; ':'&#9744; '}${v.name} <span class="dim small">&middot; ${RANGE_LABEL[v.range]}</span></span>
+          <span class="kv"><button class="small ${sel.has(v.id)?'':'ghost'}" data-fbtoggle="${v.id}">${sel.has(v.id)?"Remove":"Add"}</button></span></div>`).join("")
+          :`<p class="small dim">No free ships in this system. Buy or fly ships here first.</p>`}
+        </div>
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="fbCancel">Cancel</button>
+          <button class="primary" id="fbCreate" ${fleetBuild.shipIds.length?"":"disabled"}>Create fleet (${fleetBuild.shipIds.length})</button>
+        </div></div>`;
+    }
+    if(viewingFleet){
+      const f=fleetById(viewingFleet); if(!f){ viewingFleet=null; return this.fleetsView(); }
+      const caps=groupCaps(f.shipIds), fsys=state.galaxy.systems[fleetSys(f)];
+      const withYou=fleetSys(f)===state.sysId;
+      const addable=(state.vehicles||[]).filter(v=>!v.fleetId && (v.sysId??0)===fleetSys(f));
+      return `<div class="card">
+        <div class="row between"><h2 class="gold">${f.name}</h2><span class="tag">${f.shipIds.length} ship${f.shipIds.length>1?"s":""}</span></div>
+        <p class="small dim">In <b class="blue">${fsys?fsys.name:"?"}</b> system${withYou?' <span class="green small">(with you)</span>':''} &middot; ${RANGE_LABEL[caps.tier]}${caps.tier==="interstellar"?` &middot; reach <b class="gold">${caps.jump.toFixed(1)} ly</b>`:""}</p>
+        <div class="row" style="margin-top:8px">
+          <button data-fleetmove="${f.id}">&#9992; Move fleet</button>
+          <button class="ghost small" data-fleetrename="${f.id}">Rename</button>
+          <button class="ghost small ${withYou?'':'dim'}" data-fleetdisband="${f.id}">Disband</button>
+        </div>
+        ${withYou?"":'<p class="small dim" style="margin-top:6px">You can add/remove ships from anywhere, but must be with the fleet to disband it.</p>'}
+      </div>
+      <div class="card sheet"><h3>Ships in fleet</h3>
+        ${shipsByIds(f.shipIds).map(v=>`<div class="krow"><span class="lbl">${v.id===state.activeShip?'&#9654; ':''}${v.name} <span class="dim small">&middot; ${RANGE_LABEL[v.range]}${!Game.operational(v)?' <span class="red">no crew</span>':''}</span></span>
+          <span class="kv"><button class="small ghost" data-fleetremove="${f.id}:${v.id}">Remove</button></span></div>`).join("")}
+      </div>
+      <div class="card sheet"><h3>Add a ship <span class="dim small">&middot; must be in ${fsys?fsys.name:"the fleet's"} system</span></h3>
+        ${addable.length?addable.map(v=>`<div class="krow"><span class="lbl">${v.name} <span class="dim small">&middot; ${RANGE_LABEL[v.range]}</span></span>
+          <span class="kv"><button class="small" data-fleetadd="${f.id}:${v.id}">Add</button></span></div>`).join("")
+          :`<p class="small dim">No free ships in that system.</p>`}
+      </div>
+      <div class="card"><button class="ghost full center" id="fleetBack">&larr; All fleets</button></div>`;
+    }
+    return `<div class="card sheet"><h3>Your fleets <span class="dim small">&middot; ${fleets.length}</span></h3>
+      <p class="small dim">Group ships to move them together. A fleet jumps between systems only if every ship is interstellar-class, and is limited by its weakest ship's range.</p>
+      ${fleets.length?fleets.map(f=>{ const caps=groupCaps(f.shipIds), fs=state.galaxy.systems[fleetSys(f)];
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-fleetview="${f.id}">${f.name}</button> <span class="dim small">&middot; ${f.shipIds.length} ship${f.shipIds.length>1?"s":""}</span></span>
+          <span class="kv">${RANGE_LABEL[caps.tier]} <span class="dim">&middot; ${fs?fs.name:"?"}</span></span></div>`; }).join("")
+        :`<p class="small dim">No fleets yet.</p>`}
+    </div>
+    <div class="card"><button class="primary full center" id="fleetNew" ${state.galaxy?"":"disabled"}>+ Create a fleet</button>
+      ${state.galaxy?"":'<p class="small dim" style="margin-top:6px">Take off first (Ships tab) to chart your system.</p>'}</div>`;
   },
 
   /* ---------- MENAGERIE ---------- */
@@ -2136,6 +2212,8 @@ const UI = {
   /* ---------- binding ---------- */
   bind(screen){
     [...$("#nav").children].forEach(b=> b.onclick=()=>{ if(combat&&!combat.over&&b.dataset.screen!=="bag"){toast("Finish the encounter first");return;} UI.render(b.dataset.screen); });
+    // 🎲 randomize buttons work on every screen that hosts a nameField
+    app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
 
     if(screen==="title"){
       const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:0}; UI.render("create"); };
@@ -2148,7 +2226,7 @@ const UI = {
 
     if(screen==="hub"){
       $("#vWilds").onclick=()=>startEncounter();
-      $("#vShipyard").onclick=()=>UI.render("shipyard");
+      const vsy=$("#vShipyard"); if(vsy) vsy.onclick=()=>UI.render("shipyard");
       const vt=$("#vTavern"); if(vt) vt.onclick=()=>UI.render("tavern");
       const vd=$("#vDepot"); if(vd) vd.onclick=()=>UI.render("depot");
       const vb=$("#vBroker"); if(vb) vb.onclick=()=>UI.render("broker");
@@ -2185,16 +2263,17 @@ const UI = {
       app.querySelectorAll("[data-sellship]").forEach(b=> b.onclick=()=>sellShip(b.dataset.sellship));
       app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
-      app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
-      const tk=$("#takeoff"); if(tk) tk.onclick=()=>departFirstFlight();
       const yd=$("#yarder"); if(yd) yd.onclick=()=>talkToYarder();
-      const sm=$("#starmap"); if(sm) sm.onclick=()=>UI.render("starmap");
       const rs=$("#rentStub"); if(rs) rs.onclick=()=>toast("Ship rentals coming soon");
       $("#syBack").onclick=()=>UI.render("hub");
     }
-    if(screen==="starmap"){
-      app.querySelectorAll("[data-jump]").forEach(b=> b.onclick=()=>jumpTo(+b.dataset.jump));
-      $("#smBack").onclick=()=>UI.render("shipyard");
+    if(screen==="travel"){
+      app.querySelectorAll("[data-go]").forEach(b=> b.onclick=()=>{ const [s,p]=b.dataset.go.split(":").map(Number); moveGroupTo(travelCtx.ids, s, p, "crew"); });
+      app.querySelectorAll("[data-jumpsys]").forEach(b=> b.onclick=()=>{ const sid=+b.dataset.jumpsys, sys=state.galaxy.systems[sid];
+        if(!sys.planets) sys.planets=buildSystemPlanets(sys.size);
+        let slot=sys.planets.findIndex(p=>p&&p.discovered); if(slot<0) slot=0;
+        moveGroupTo(travelCtx.ids, sid, slot, "crew"); });
+      $("#tvBack").onclick=()=>{ travelCtx=null; UI.render("crew"); };
     }
     if(screen==="codex"){
       app.querySelectorAll("[data-cx]").forEach(b=> b.onclick=()=>UI.render("cx_"+b.dataset.cx));
@@ -2243,7 +2322,21 @@ const UI = {
       app.querySelectorAll("[data-dismiss]").forEach(b=> b.onclick=()=>dismissCrew(+b.dataset.dismiss));
       app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
-      app.querySelectorAll("[data-togglefleet]").forEach(b=> b.onclick=()=>toggleFleet(b.dataset.togglefleet));
+      app.querySelectorAll("[data-takeoff]").forEach(b=> b.onclick=()=>departFirstFlight());
+      app.querySelectorAll("[data-moveship]").forEach(b=> b.onclick=()=>moveShip(b.dataset.moveship));
+      // fleets
+      const fn=$("#fleetNew"); if(fn) fn.onclick=()=>{ fleetBuild={ name:genName("ship"), shipIds:[] }; UI.render("crew"); };
+      app.querySelectorAll("[data-fleetview]").forEach(b=> b.onclick=()=>{ viewingFleet=b.dataset.fleetview; UI.render("crew"); });
+      const flb=$("#fleetBack"); if(flb) flb.onclick=()=>{ viewingFleet=null; UI.render("crew"); };
+      app.querySelectorAll("[data-fbtoggle]").forEach(b=> b.onclick=()=>{ const id=b.dataset.fbtoggle;
+        const i=fleetBuild.shipIds.indexOf(id); if(i<0) fleetBuild.shipIds.push(id); else fleetBuild.shipIds.splice(i,1); UI.render("crew"); });
+      const fbc=$("#fbCancel"); if(fbc) fbc.onclick=()=>{ fleetBuild=null; UI.render("crew"); };
+      const fbk=$("#fbCreate"); if(fbk) fbk.onclick=()=>{ const nm=$("#fleetName"); createFleet(nm?nm.value:fleetBuild.name, fleetBuild.shipIds); };
+      app.querySelectorAll("[data-fleetmove]").forEach(b=> b.onclick=()=>moveFleet(b.dataset.fleetmove));
+      app.querySelectorAll("[data-fleetrename]").forEach(b=> b.onclick=()=>renameFleet(b.dataset.fleetrename));
+      app.querySelectorAll("[data-fleetdisband]").forEach(b=> b.onclick=()=>disbandFleet(b.dataset.fleetdisband));
+      app.querySelectorAll("[data-fleetremove]").forEach(b=> b.onclick=()=>{ const [fid,sid]=b.dataset.fleetremove.split(":"); removeFromFleet(fid,sid); });
+      app.querySelectorAll("[data-fleetadd]").forEach(b=> b.onclick=()=>{ const [fid,sid]=b.dataset.fleetadd.split(":"); addToFleet(fid,sid); });
     }
     if(screen==="menagerie"){
       app.querySelectorAll("[data-nick]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.nick;
@@ -2396,64 +2489,76 @@ function buildSystemPlanets(size){
   for(let i=0;i<size;i++) planets.push({ index:i, discovered:false, isHome:false, occupied:false, world:null });
   return planets;
 }
-/* scatter `n` neighbouring systems on the flat plane, ids starting at startId. The first
-   few sit close to the origin so a starter interstellar ship always has somewhere to jump. */
-function makeNeighborSystems(n, startId){
+/* Scatter neighbouring systems around a home position (galactic coordinates, ly). Count and
+   size scale with how central the home position is. The first few sit within a starter
+   interstellar ship's reach so there's always somewhere to jump. ids start at startId. */
+function makeNeighborSystems(hx, hy, startId){
+  const cf=centralFactor(hx,hy);
+  const n=clamp(Math.round((8 + 30*cf)*rndF(0.8,1.2)), 5, 44);  // dense core, sparse rim
   const out=[];
   for(let i=0;i<n;i++){
     const ang=Math.random()*Math.PI*2;
     const r = i<3 ? rndF(4.5,7.5) : rndF(4,55);  // ly from the home star (first few in clipper reach)
-    out.push({ id:startId+i, name:genName("system"),
-      x:+(Math.cos(ang)*r).toFixed(2), y:+(Math.sin(ang)*r).toFixed(2),
-      size:rollSystemSize(), discovered:false, planets:null });
+    const x=+(hx+Math.cos(ang)*r).toFixed(2), y=+(hy+Math.sin(ang)*r).toFixed(2);
+    out.push({ id:startId+i, name:genName("system"), x, y,
+      size:rollSystemSize(centralFactor(x,y)), discovered:false, planets:null });
   }
   return out;
 }
-/* relocate the player (and crewed followers) to an already-charted planet */
-function relocateTo(sid, slot){
-  const old={sys:state.sysId, slot:state.atSlot};
-  const sys=state.galaxy.systems[sid]; sys.discovered=true;
-  Game.ship().sysId=sid; Game.ship().slot=slot;
-  moveFollowers(old.sys, old.slot, sid, slot);
-  state.sysId=sid; state.system=sys; state.atSlot=slot; state.world=sys.planets[slot].world;
+/* ===================== MOVEMENT =====================
+   Ships move as a group. You ride along only if your active ship is in the group; a group
+   you aren't aboard can only travel to worlds you've already charted (no remote exploring). */
+function shipsByIds(ids){ const set=new Set(ids); return (state.vehicles||[]).filter(v=>set.has(v.id)); }
+const RANGE_ORDER={ surface:0, system:1, interstellar:2 };
+/* a group's capabilities: weakest range tier + weakest-link jump range (ly), and its system */
+function groupCaps(ids){
+  const ships=shipsByIds(ids); if(!ships.length) return { tier:"surface", jump:0, sysId:null };
+  let tier="interstellar", jump=Infinity;
+  ships.forEach(v=>{ if(RANGE_ORDER[v.range]<RANGE_ORDER[tier]) tier=v.range;
+    if(v.range==="interstellar") jump=Math.min(jump, jumpRange(v)); });
+  if(tier!=="interstellar") jump=0;
+  return { tier, jump:jump===Infinity?0:jump, sysId:ships[0].sysId??0 };
 }
-/* travel to a planet. sid defaults to the current system (free, in-system); a different
-   sid is an interstellar jump and requires an in-range interstellar hyperdrive. */
-function travelTo(slot, sid){
-  sid = (sid==null) ? state.sysId : sid;
-  const crossSys = sid!==state.sysId;
-  if(!Game.canLeave()){ toast("You need an operational ship docked here"); return; }
+/* ships in the group that lack the crew to fly — they block any move */
+function groupBlockers(ids){ return shipsByIds(ids).filter(v=>!Game.operational(v)); }
+/* drop a set of ships (and, if your ship is among them, you) onto a charted world */
+function relocateGroup(ids, destSys, destSlot){
+  const set=new Set(ids);
+  (state.vehicles||[]).forEach(v=>{ if(set.has(v.id)){ v.sysId=destSys; v.slot=destSlot; } });
+  const sys=state.galaxy.systems[destSys]; sys.discovered=true;
+  if(set.has(state.activeShip)){ state.sysId=destSys; state.atSlot=destSlot; state.system=sys;
+    state.world=sys.planets[destSlot].world; }
+}
+/* move a group to (destSys,destSlot). Uncharted worlds need you aboard (you do the charting). */
+function moveGroupTo(ids, destSys, destSlot, backTo){
+  const caps=groupCaps(ids), origin=caps.sysId, crossSys=destSys!==origin;
   if(crossSys){
-    const s=Game.ship();
-    if(s.range!=="interstellar"){ toast("This ship can't jump between systems"); return; }
-    const dist=sysDist(state.sysId, sid);
-    if(dist>jumpRange(s)+1e-6){ toast(`Out of range — needs a ${Math.ceil(dist)} ly hyperdrive`); return; }
-  } else if(slot===state.atSlot){ toast("You're already here"); return; }
-  const sys=state.galaxy.systems[sid];
+    if(caps.tier!=="interstellar"){ toast("Not every ship can jump between systems"); return; }
+    const dist=sysDist(origin,destSys);
+    if(dist>caps.jump+1e-6){ toast(`Out of range — the fleet reaches ${caps.jump.toFixed(1)} ly`); return; }
+  } else if(caps.tier==="surface"){ toast("These ships can't leave the ground"); return; }
+  const blockers=groupBlockers(ids);
+  if(blockers.length){ toast(`${blockers[0].name} needs more crew to fly`); return; }
+  const sys=state.galaxy.systems[destSys];
   if(!sys.planets) sys.planets=buildSystemPlanets(sys.size);
-  const p=sys.planets[slot];
-  if(advanceTime()) return;                      // flying/jumping is one action
-  if(p.discovered){                              // already charted — just fly there
-    relocateTo(sid, slot);
-    Game.logMsg(crossSys?`Your hyperdrive carries you to ${p.world.name} in the ${sys.name} system.`
-                        :`You set course for ${p.world.name} and touch down.`,"sys");
-    Game.save(); UI.render("hub"); UI.flashLog(); return;
+  const p=sys.planets[destSlot], playerIn=ids.includes(state.activeShip);
+  if(destSys===origin && destSlot===groupSlot(ids)){ toast("Already there"); return; }
+  if(!p.discovered && !playerIn){ toast("You must be aboard to chart a new world"); return; }
+  if(advanceTime()) return;                       // a move is one action
+  if(p.discovered){
+    relocateGroup(ids, destSys, destSlot);
+    Game.logMsg(crossSys?`The fleet jumps to ${p.world.name}, in the ${sys.name} system.`
+                        :`The fleet sets down on ${p.world.name}.`,"sys");
+    Game.save(); UI.render(playerIn?"hub":(backTo||"crew")); UI.flashLog(); return;
   }
-  const world=Gen.world();
-  const occupied=chance(0.7);                     // is anyone there?
-  const draw=occupied?drawRace():null;
-  arriving={ sysId:sid, slot, world, occupied, draw, outpost:pick(OUTPOSTS), person:null, step:1, crossSys };
+  // uncharted, and you're aboard -> chart it
+  const world=Gen.world(), occupied=chance(occupancyChance(sys.x,sys.y)), draw=occupied?drawRace():null;
+  arriving={ sysId:destSys, slot:destSlot, world, occupied, draw, outpost:pick(OUTPOSTS),
+    person:null, step:1, crossSys, shipIds:ids.slice() };
   UI.render("arrive");
 }
-/* interstellar jump from the Star Map: arrive at the system's first charted world, or
-   chart its first world if you've never been. */
-function jumpTo(sid){
-  if(sid===state.sysId){ toast("You're already in this system"); return; }
-  const sys=state.galaxy.systems[sid]; if(!sys) return;
-  if(!sys.planets) sys.planets=buildSystemPlanets(sys.size);
-  let slot=sys.planets.findIndex(p=>p.discovered); if(slot<0) slot=0;
-  travelTo(slot, sid);
-}
+/* a group's current planet slot (its lead ship's) */
+function groupSlot(ids){ const s=shipsByIds(ids)[0]; return s?s.slot:state.atSlot; }
 function finishArrival(){
   const a=arriving, slot=a.slot, sid=a.sysId;
   a.world.occupied=a.occupied;
@@ -2463,9 +2568,7 @@ function finishArrival(){
     occupied:a.occupied, raceId:a.draw?a.draw.id:null };
   const ws=worldSummary(a.world); ws.reported=false; ws.sysName=sys.name; state.codex.worlds.push(ws);
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
-  const old={sys:state.sysId, slot:state.atSlot};
-  Game.ship().sysId=sid; Game.ship().slot=slot; moveFollowers(old.sys, old.slot, sid, slot);  // you + crewed ships arrive
-  state.sysId=sid; state.system=sys; state.atSlot=slot; state.world=a.world;   // relocate BEFORE recording the meeting
+  relocateGroup(a.shipIds||[state.activeShip], sid, slot);   // you + your group arrive together
   if(a.occupied){
     recordMeeting(a.person, a.draw.race, a.world.name);   // greeter = the local dockmaster
     state.yarders=state.yarders||{}; state.yarders[sid+":"+slot]=state.codex.people.length-1;
@@ -2536,9 +2639,6 @@ function sellCommodity(id, all){
   if(qty>1) Game.logMsg(`Sold ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
   Game.save(); UI.render("depot");
 }
-/* toggle a ship in/out of your active fleet (active ships share the Depot cargo pool) */
-function toggleFleet(shipId){ const v=(state.vehicles||[]).find(x=>x.id===shipId);
-  if(v){ v.fleet=(v.fleet===false); Game.save(); UI.render("crew"); } }
 /* select which ship you're piloting — only if it's docked where you are */
 function selectShip(id){
   const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
@@ -2618,6 +2718,16 @@ function hireCrew(i){
 }
 function idleHires(){ return (state.crew||[]).filter(c=>!c.shipId); }
 let seatPick=null, crewTab="crewmates", viewingShip=null;   // Crew-tab UI state
+let travelCtx=null;   // {ids:[shipId], title} — what the Travel screen is moving
+/* open the Travel screen for a set of ships */
+function openTravel(ids, title){ travelCtx={ ids:ids.slice(), title }; UI.render("travel"); }
+/* move one ship; if it's in a fleet, that whole fleet moves (jump to its fleet view) */
+function moveShip(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  if(v.fleetId){ viewingFleet=v.fleetId; crewTab="fleets"; viewingShip=null; UI.render("crew"); return; }
+  openTravel([id], `Move ${v.name}`); }
+/* move a fleet (from its fleet view) */
+function moveFleet(fid){ const f=fleetById(fid); if(!f||!f.shipIds.length){ toast("Empty fleet"); return; }
+  openTravel(f.shipIds, `Move ${f.name}`); }
 function seatOccupant(shipId, seat){ return (state.crew||[]).find(c=>c.shipId===shipId && c.seat===seat); }
 /* assign a hire to a specific seat on a ship docked where you are */
 function assignToSeat(ci, shipId, seat){
@@ -2631,14 +2741,56 @@ function unassignCrew(ci){ const c=state.crew[ci]; if(c){ c.shipId=null; c.seat=
 function dismissCrew(ci){ const c=state.crew[ci]; if(!c) return;
   if(c.personIdx>=0 && state.codex.people[c.personIdx]) state.codex.people[c.personIdx].hired=false;
   state.crew.splice(ci,1); Game.logMsg(`You let ${c.name} go.`,"sys"); Game.save(); UI.render(UI.current); }
-/* when you fly, pilot-crewed ships at your old dock follow you to the new one */
-function moveFollowers(oldSys, oldSlot, newSys, newSlot){
-  (state.vehicles||[]).forEach(v=>{
-    if((v.sysId??0)===oldSys && v.slot===oldSlot && v.id!==state.activeShip && Game.operational(v)){
-      v.sysId=newSys; v.slot=newSlot;
-    }
-  });
+/* ===================== FLEETS =====================
+   A fleet is a named group of ships that travel together. Membership is tracked on the ship
+   (v.fleetId) and on the fleet (f.shipIds). All ships in a fleet stay in one system. */
+let newVfid=(()=>{ let n=Date.now(); return ()=>"f"+(n++).toString(36); })();
+let fleetBuild=null, viewingFleet=null;   // transient: the fleet being created / opened
+function fleetById(id){ return (state.fleets||[]).find(f=>f.id===id)||null; }
+function fleetOf(v){ return v&&v.fleetId?fleetById(v.fleetId):null; }
+/* a fleet's system (its ships'); fleets never straddle systems */
+function fleetSys(f){ const s=shipsByIds(f.shipIds)[0]; return s?(s.sysId??0):null; }
+function fleetShipsHereWithYou(){ // ships in your current system, free to add to a new fleet
+  return (state.vehicles||[]).filter(v=>(v.sysId??0)===state.sysId && !v.fleetId); }
+/* create a fleet from ships in your current system (you must be in that system) */
+function createFleet(name, shipIds){
+  shipIds=(shipIds||[]).filter(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id);
+    return v && (v.sysId??0)===state.sysId && !v.fleetId; });
+  if(!shipIds.length){ toast("Add at least one ship in this system"); return; }
+  const f={ id:newVfid(), name:(name||"Fleet").slice(0,24), shipIds };
+  state.fleets=state.fleets||[]; state.fleets.push(f);
+  shipIds.forEach(id=>{ const v=state.vehicles.find(x=>x.id===id); if(v) v.fleetId=f.id; });
+  fleetBuild=null; viewingFleet=f.id;
+  Game.logMsg(`Fleet "${f.name}" formed with ${shipIds.length} ship${shipIds.length>1?"s":""}.`,"good");
+  Game.save(); UI.render("crew");
 }
+/* add a ship to an existing fleet — the ship must be in the fleet's system (you needn't be) */
+function addToFleet(fid, shipId){
+  const f=fleetById(fid), v=(state.vehicles||[]).find(x=>x.id===shipId); if(!f||!v) return;
+  if(v.fleetId){ toast("Ship is already in a fleet"); return; }
+  if((v.sysId??0)!==fleetSys(f)){ toast("Ship must be in the fleet's system"); return; }
+  f.shipIds.push(shipId); v.fleetId=fid;
+  Game.save(); UI.render("crew");
+}
+/* remove a ship from a fleet (allowed from anywhere) */
+function removeFromFleet(fid, shipId){
+  const f=fleetById(fid), v=(state.vehicles||[]).find(x=>x.id===shipId); if(!f) return;
+  f.shipIds=f.shipIds.filter(id=>id!==shipId); if(v) v.fleetId=null;
+  if(!f.shipIds.length){ disbandFleet(fid, true); return; }
+  Game.save(); UI.render("crew");
+}
+/* disband a fleet — you must be with it (in its system), unless it's already empty */
+function disbandFleet(fid, silent){
+  const f=fleetById(fid); if(!f) return;
+  if(!silent && f.shipIds.length && fleetSys(f)!==state.sysId){ toast("You must be with the fleet to disband it"); return; }
+  f.shipIds.forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v) v.fleetId=null; });
+  state.fleets=(state.fleets||[]).filter(x=>x.id!==fid);
+  if(viewingFleet===fid) viewingFleet=null;
+  if(!silent) Game.logMsg(`Fleet "${f.name}" disbanded.`,"sys");
+  Game.save(); UI.render("crew");
+}
+function renameFleet(fid){ const f=fleetById(fid); if(!f) return;
+  const nn=prompt("Rename fleet:", f.name); if(nn){ f.name=nn.slice(0,24); Game.save(); UI.render("crew"); } }
 
 /* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
 function startDuel(i){
@@ -2745,18 +2897,20 @@ function buyShip(i){
 }
 function departFirstFlight(){
   if(advanceTime()) return;
-  // chart the home system: planet 0 (home) keeps the FULL world, the rest are uncharted
-  const size=rollSystemSize(), planets=[];
+  // your home sits at your galactic birthplace; the core is denser & more settled than the rim
+  const sp=state.spawn||{x:0,y:0}, cf=centralFactor(sp.x,sp.y);
+  const size=rollSystemSize(cf), planets=[];
   for(let i=0;i<size;i++) planets.push({ index:i, discovered:i===0, isHome:i===0,
     occupied:i===0, world:i===0?state.world:null });
-  const home={ id:0, name:genName("system"), x:0, y:0, size, discovered:true, planets };
-  // scatter the rest of the galaxy on a flat 2D plane around the home star
+  const home={ id:0, name:genName("system"), x:sp.x, y:sp.y, size, discovered:true, planets };
+  // scatter the rest of the galaxy on the flat 2D plane around the home star
   const galaxy={ name:state.galaxyName,
-    systems:[home].concat(makeNeighborSystems(rnd(23,33),1)) };
+    systems:[home].concat(makeNeighborSystems(sp.x, sp.y, 1)) };
   state.galaxy=galaxy; state.sysId=0; state.system=home; state.atSlot=0;
   state.grounded=false;
   state.achievements.first_flight=true; state.achievements.system_charted=true;
-  Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, holds ${size} world${size>1?"s":""} — and ${galaxy.systems.length-1} other systems glint in the dark.`,"hit");
+  const dist=Math.round(Math.hypot(sp.x,sp.y)), region=cf>0.66?"deep in the crowded core":cf>0.33?"in the galaxy's middle reaches":"out on the sparse rim";
+  Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, lies ${region} — ${dist} ly from the core — and holds ${size} world${size>1?"s":""}, with ${galaxy.systems.length-1} other systems glinting nearby.`,"hit");
   toast("Achievement: First Flight!");
   Game.save(); UI.render("codex"); UI.flashLog();
 }

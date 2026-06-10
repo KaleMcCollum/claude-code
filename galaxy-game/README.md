@@ -46,12 +46,20 @@ Galaxy constants (tunable, in `GALAXY`): ~**10,000** distinct sapient peoples, ~
 - `Gen` — procedural generators (return `name:null` for the player to christen)
 - `DATA` — hand-authored creatures, items, skills (procedural versions are the next system)
 
-## The galaxy & interstellar travel
-The save is a whole **galaxy** of star systems laid out on a flat 2D plane (light-years).
-- **Only systems have coordinates** — planets don't. Travel *within* a system is free; you fly to any world from the Shipyard.
-- Crossing *between* systems needs an **interstellar hyperdrive**. Reach scales with the ship's **Star Power** (~1 ly per 120 SHp), so a base Star Clipper jumps ~8 ly, a Frigate ~11 ly, a Capital Ship ~27 ly — and rarer hulls reach farther.
-- The **Star Map** (in any Shipyard) plots every system as a digestible text grid and lists them nearest-first with their distance and whether your current ship can make the jump.
-- The Codex's **Planets & systems** tab shows the system you're in, its charted worlds (tap any to study it), and every system you've charted with its distance from you.
+## The galaxy, your birthplace & travel
+The save is a whole **galaxy** on a flat 2D plane (light-years), with the **core at (0,0)**.
+- **You're born somewhere in it.** At creation you roll galactic coordinates. The **core is dense and well-settled** (more systems, bigger systems, most worlds inhabited); the **rim is sparse and mostly empty**. A core birth is a lucky roll you keep for life.
+- **Only systems have coordinates** — planets don't. Travel *within* a system is free.
+- Crossing *between* systems needs an **interstellar hyperdrive**. Reach scales with **Star Power** (~1 ly per 120 SHp): a base Star Clipper jumps ~8 ly, a Frigate ~11 ly, a Capital Ship ~27 ly — rarer hulls reach farther.
+- **Uninhabited worlds have no shipyard, trade, or settlement** — just the wilds.
+
+## Fleets & moving ships
+All ship movement lives in **Crew → Ships / Fleets** (not the Shipyard).
+- A **fleet** is a named group of ships that travel together. **Create** one (you must be in the same system as the ships you add), **edit** it from anywhere (a ship you add must be in the fleet's system), and **disband** it only when you're with it.
+- A fleet's **jump range is its weakest ship's**, and it can only jump between systems if **every** ship aboard is interstellar-class — one in-system-only ship grounds the whole fleet to its star.
+- **You ride along only if your active ship is in the group.** Send a fleet you're not aboard and it (and its crew) relocate without you; you can only dispatch it to worlds you've already charted.
+- To move a single ship, use the **Ships** tab — if it's in a fleet, that takes you to the fleet.
+- The **Star Map** plots your local cluster as a text grid; the Codex's **Planets & systems** tab shows your system, its charted worlds, and known systems with distances.
 
 ## Next up
 - Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).
