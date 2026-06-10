@@ -1063,7 +1063,7 @@ const UI = {
     if(s===3){ const w=creating.world; return `
       ${this.rarityBanner(w.tier, "your birthworld")}
       <div class="card reveal">
-        <h2>A <span class="blue">${w.biomeName}</span></h2>
+        <h2>${cap(article(w.biomeName))} <span class="blue">${w.biomeName}</span></h2>
         <p class="small dim">${worldDesc(w)}</p>
         <div class="divider"></div>
         <div class="statline"><span>Population</span><span>${cap(w.popName)}</span></div>
@@ -1482,6 +1482,7 @@ function importSave(e){ const f=e.target.files[0]; if(!f) return; const r=new Fi
 
 /* ---------- small text helpers ---------- */
 function article(w){ return /^[aeiou]/i.test(w)?"an":"a"; }
+function ordinal(n){ const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
 function powerLine(v){ return v.axes.map(a=>`${UNITS.power[a].abbr} ${commas(v.power[a])}`).join(" / ")+" "+UNITS.power.unit; }
 
 /* Render one genetic trait: your value, your species' range, the human anchor,
@@ -1490,7 +1491,7 @@ function traitBlock(label, t, fmt, humanRef){
   return `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
     <div class="row between"><span>${label}</span><span class="gold">${fmt(t.value)}</span></div>
     <div class="small dim">your kind ${fmt(t.min)}&ndash;${fmt(t.max)} &middot; avg ${fmt(t.mean)}${humanRef!=null?` &middot; human ~${humanRef}`:""}</div>
-    <div class="small" style="color:${pctColor(t.pct)}">${t.pct}th percentile of your species &mdash; ${pctLabel(t.pct)}</div>
+    <div class="small" style="color:${pctColor(t.pct)}">${ordinal(t.pct)} percentile of your species &mdash; ${pctLabel(t.pct)}</div>
   </div>`;
 }
 /* Biology, nature & heritage cards, shared by the species reveal and Self screen. */
@@ -1513,7 +1514,6 @@ function bioCards(sp){
   </div>
   <div class="card reveal">
     <h3>Inborn nature</h3>
-    <div class="statline"><span>Build</span><span class="gold">${cap(sp.build)}</span></div>
     <div class="statline"><span>Temperament</span><span class="gold">${tmp.name}</span></div>
     <p class="small dim">${cap(tmp.desc)}.</p>
   </div>
@@ -1536,14 +1536,16 @@ function bioCards(sp){
 /* Overall genome quality banner (your genetic luck WITHIN your species). */
 function genomeBanner(g){
   const c=pctColor(g.avgPct);
+  const standing = g.avgPct>=50 ? `top ${100-g.avgPct}% of your own kind`
+                                : `bottom ${g.avgPct}% of your own kind`;
   return `<div class="rarity-banner reveal" style="border-color:${c}">
     <div class="rn" style="color:${c}">${g.grade.toUpperCase()}</div>
-    <div class="odds">genetics: top ${100-g.avgPct}% of your own kind &middot; ${g.avgPct}th percentile overall</div>
+    <div class="odds">genetics: ${ordinal(g.avgPct)} percentile overall &middot; ${standing}</div>
   </div>`;
 }
 function worldDesc(w){
   const wl=WEALTH_LABELS[w.wealth].toLowerCase(), tl=TECH_LABELS[w.tech].toLowerCase();
-  return `A ${wl}, ${tl} world, ${w.popName}. The ${w.biomeName} is rated ${DANGER_LABELS[w.danger].toLowerCase()}.`;
+  return `${cap(article(wl))} ${wl}, ${tl} world, ${w.popName}. The ${w.biomeName} is rated ${DANGER_LABELS[w.danger].toLowerCase()}.`;
 }
 
 /* ============================================================ BOOT ===== */
