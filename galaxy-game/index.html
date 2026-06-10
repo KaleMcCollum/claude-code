@@ -839,6 +839,11 @@ const Game = {
       if(v.crewMax==null) v.crewMax=spaceworthy(v)?2:1; if(v.bays==null) v.bays=0;
       if(v.value==null) v.value=spaceworthy(v)?3000:600; });
     if(!state.activeShip) state.activeShip=((state.vehicles||[]).find(v=>spaceworthy(v))||(state.vehicles||[])[0]||{}).id;
+    state.crew=state.crew||[];
+    // migrate old ship.pilot objects into the crew roster
+    (state.vehicles||[]).forEach(v=>{ if(v.pilot){ state.crew.push({ name:v.pilot.name, raceName:v.pilot.raceName, personIdx:-1, shipId:v.id }); delete v.pilot; } });
+    // ensure any previously-hired person has a crew entry
+    (state.codex&&state.codex.people||[]).forEach((p,i)=>{ if(p.hired && !state.crew.some(c=>c.personIdx===i)) state.crew.push({ name:p.name, raceName:p.raceName, personIdx:i, shipId:p.shipId||null }); });
     if(state.cargo && Object.keys(state.cargo).length){ const a=Game.ship(); if(a) a.cargo=state.cargo; }
     delete state.cargo;
   },
@@ -846,6 +851,7 @@ const Game = {
 
   hasPower(id){ return state.species.powers.includes(id); },
   ship(){ return (state.vehicles||[]).find(v=>v.id===state.activeShip) || (state.vehicles||[])[0] || null; },
+  pilotOf(v){ return v?((state.crew||[]).find(c=>c.shipId===v.id)||null):null; },  // hired pilot crewing a ship
   canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && s.slot===state.atSlot); },
   shipsHere(){ return (state.vehicles||[]).filter(v=>v.slot===state.atSlot); },
 
@@ -892,7 +898,7 @@ const Game = {
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
       daysElapsed:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
-      grounded:true, system:null, atSlot:0, activeShip:veh.id, bounties:[],
+      grounded:true, system:null, atSlot:0, activeShip:veh.id, bounties:[], crew:[],
       stimReady:false, log:[],
     };
     veh.slot=0;                  // your inherited craft is docked on your homeworld
@@ -1538,7 +1544,8 @@ const UI = {
   screen_cx_person(){
     const p=(state.codex.people||[])[viewingPerson]; if(!p) return this.screen_cx_people();
     const here = state.atSlot===p.slot;
-    const crewShip = p.hired ? (state.vehicles||[]).find(v=>v.id===p.shipId) : null;
+    const member = p.hired ? (state.crew||[]).find(c=>c.personIdx===viewingPerson) : null;
+    const crewShip = member && member.shipId ? (state.vehicles||[]).find(v=>v.id===member.shipId) : null;
     return `
     <div class="card"><h2>${p.name}</h2>
       <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; ${careerName(p.career)} &middot; met at ${p.where}.</p>
@@ -1550,7 +1557,7 @@ const UI = {
     <div class="card">
       <h3>${p.career==="wanted"?"A wanted fugitive":"Speak with "+p.name.split(" ")[0]}</h3>
       ${p.captured?`<p class="small">Bounty claimed — you ${p.captureAlive?"restrained":"killed"} them.</p>`
-       : p.hired?`<p class="small green">In your crew, piloting the <b>${crewShip?crewShip.name:"—"}</b>. They follow you between worlds.</p>`
+       : p.hired?`<p class="small green">In your crew${crewShip?`, piloting the <b>${crewShip.name}</b>`:` — idle, awaiting a ship (assign from your Fleet)`}.</p>`
        : here?`<div class="row">
             <button id="sayHi">Say hi</button>
             ${p.career==="pilot"?`<button id="hire" class="primary">Hire as pilot &middot; 400c</button>`:""}
@@ -1788,21 +1795,28 @@ const UI = {
       <p class="small dim">Each ship has its own cargo hold and stays docked where you left it.
       You can only switch to a ship at the world you're currently on.</p></div>
     ${ships.map(v=>{ const active=v.id===state.activeShip, here=v.slot===state.atSlot,
-        used=Object.values(v.cargo||{}).reduce((a,n)=>a+n,0);
+        used=Object.values(v.cargo||{}).reduce((a,n)=>a+n,0), pil=Game.pilotOf(v);
       return `<div class="card">
         <div class="row between"><h2 class="gold">${active?'&#9654; ':''}${v.name}</h2>
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
         <p class="small dim">${v.clsName} &middot; ${RANGE_LABEL[v.range]||"?"}</p>
-        ${krow("Crew", `${v.pilot?1:0}/${v.crewMax||1}${v.bays?` &middot; ${v.bays} ship bay${v.bays>1?"s":""}`:""}`)}
+        ${krow("Crew", `${pil||active?1:0}/${v.crewMax||1}${v.bays?` &middot; ${v.bays} ship bay${v.bays>1?"s":""}`:""}`)}
         ${krow("Docked at", `<b class="blue">${shipLocationName(v.slot)}</b>${here?' <span class="green small">(here)</span>':''}`)}
-        ${krow("Pilot", active?'<span class="green">you</span>':v.pilot?`${v.pilot.name} <span class="dim small">(hired)</span>`:'<span class="dim">none (won&#39;t follow)</span>')}
+        ${krow("Pilot", active?'<span class="green">you</span>':pil?`${pil.name} <span class="dim small">(hired)</span>`:'<span class="dim">none (won&#39;t follow)</span>')}
         ${krow("Cargo", `${used}/${v.hold}${used?` &middot; ${Object.entries(v.cargo).map(([id,n])=>n+"× "+COMMODITIES.find(c=>c.id===id).name).join(", ")}`:""}`)}
         ${v.axes.map(a=>krow(UNITS.power[a].label, UNITS.fmtPower(v.power[a]))).join("")}
         <div class="row" style="margin-top:8px">
           ${active?'<span class="small green">piloting</span>':here?`<button class="small" data-selship="${v.id}">Pilot this</button>`:'<span class="small dim">travel here to pilot</span>'}
           <button class="small ghost" data-renship="${v.id}">Rename</button>
         </div>
-      </div>`; }).join("")}`;
+      </div>`; }).join("")}
+    <div class="card sheet"><h3>Crew <span class="dim small">&middot; ${(state.crew||[]).length}</span></h3>
+      ${(state.crew||[]).length?(state.crew||[]).map((c,ci)=>{ const sh=c.shipId?ships.find(v=>v.id===c.shipId):null;
+        return `<div class="krow"><span class="lbl">${c.name} <span class="dim small">&middot; Pilot</span></span>
+          <span class="kv">${sh?`piloting ${sh.name} <button class="small ghost" data-unassign="${ci}">Unassign</button>`
+            :`<span class="dim">idle</span> <button class="small" data-assign="${ci}">Assign</button>`}</span></div>`; }).join("")
+        :`<p class="small dim">No crew yet — hire Pilots from people you've met (Codex).</p>`}
+    </div>`;
   },
 
   /* ---------- MENAGERIE ---------- */
@@ -1987,6 +2001,8 @@ const UI = {
     if(screen==="garage"){
       app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
+      app.querySelectorAll("[data-assign]").forEach(b=> b.onclick=()=>assignCrew(+b.dataset.assign));
+      app.querySelectorAll("[data-unassign]").forEach(b=> b.onclick=()=>unassignCrew(+b.dataset.unassign));
     }
     if(screen==="menagerie"){
       app.querySelectorAll("[data-nick]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.nick;
@@ -2284,21 +2300,30 @@ function sayHi(i){
 function hirePilot(i){
   const p=(state.codex.people||[])[i]; if(!p) return;
   if(p.hired){ toast("Already in your crew"); return; }
-  if(p.career!=="pilot"){ toast("Only Pilots can be hired to fly your ships"); return; }
-  // need a spare ship docked here that you aren't flying and that has no pilot
-  const ship=(state.vehicles||[]).find(v=>v.slot===state.atSlot && v.id!==state.activeShip && spaceworthy(v) && !v.pilot);
-  if(!ship){ toast("No spare ship here for them to fly"); return; }
+  if(p.career!=="pilot"){ toast("Only Pilots can be hired (for now)"); return; }
   const fee=400;
   if(state.credits<fee){ toast("Hiring costs "+fee+"c"); return; }
-  state.credits-=fee; ship.pilot={ name:p.name, raceName:p.raceName };
-  p.hired=true; p.shipId=ship.id;
-  Game.logMsg(`You hire ${p.name} to pilot the ${ship.name}. They'll follow you between worlds.`,"good");
+  state.credits-=fee; state.crew=state.crew||[];
+  const member={ name:p.name, raceName:p.raceName, personIdx:i, shipId:null };
+  // if a spare spaceworthy ship is docked with you and needs a pilot, put them on it now
+  const ship=(state.vehicles||[]).find(v=>v.slot===state.atSlot && v.id!==state.activeShip && spaceworthy(v) && !Game.pilotOf(v));
+  if(ship) member.shipId=ship.id;
+  state.crew.push(member); p.hired=true;
+  Game.logMsg(`You hire ${p.name} as a pilot${ship?`, assigned to the ${ship.name}`:" — assign them a ship from your Fleet"}.`,"good");
   toast("Hired "+p.name);
   Game.save(); UI.render("cx_person");
 }
+/* assign an idle crew pilot to a free, spaceworthy ship docked where you are */
+function assignCrew(ci){
+  const c=state.crew[ci]; if(!c) return;
+  const v=(state.vehicles||[]).find(x=>x.slot===state.atSlot && x.id!==state.activeShip && spaceworthy(x) && !Game.pilotOf(x));
+  if(!v){ toast("No free ship here to assign them to"); return; }
+  c.shipId=v.id; Game.logMsg(`${c.name} takes the helm of the ${v.name}.`,"sys"); Game.save(); UI.render("garage");
+}
+function unassignCrew(ci){ const c=state.crew[ci]; if(c){ c.shipId=null; Game.save(); UI.render("garage"); } }
 /* when you fly, pilot-crewed ships at your old dock follow you to the new one */
 function moveFollowers(oldSlot, newSlot){
-  (state.vehicles||[]).forEach(v=>{ if(v.slot===oldSlot && v.pilot && v.id!==state.activeShip) v.slot=newSlot; });
+  (state.vehicles||[]).forEach(v=>{ if(v.slot===oldSlot && v.id!==state.activeShip && Game.pilotOf(v)) v.slot=newSlot; });
 }
 
 /* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
