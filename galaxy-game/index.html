@@ -701,6 +701,9 @@ const weaponById=id=>WEAPONS.find(w=>w.id===id);
 /* Hull plating tiers — multiply a ship's base HP. Rarer ships roll better plating. */
 const ARMOR=[ {name:"Unplated",mult:1.0}, {name:"Light Plating",mult:1.4}, {name:"Combat Plating",mult:2.0},
   {name:"Heavy Plating",mult:3.0}, {name:"Exotic Plating",mult:4.5} ];
+/* Hyperdrive tiers 1-5 — each a percentage boost to jump range. Upgrade at a shipyard. */
+const HYPERDRIVE=[ {name:"Standard",mult:1.0}, {name:"Tuned",mult:1.25}, {name:"Enhanced",mult:1.55},
+  {name:"Military",mult:1.95}, {name:"Quantum",mult:2.5} ];
 const RANGE_LABEL={ surface:"Planet-bound", system:"In-system", interstellar:"Interstellar" };
 /* The dockmaster's clunker — always available to buy off the Yarder so you're never
    truly stranded. Barely spaceworthy: tiny hold, room for you alone. */
@@ -715,7 +718,8 @@ const LY_PER_STAR=120;                       // Star-Power per light-year of hyp
 function sysDist(aId,bId){ const g=state.galaxy; if(!g) return 0;
   const A=g.systems[aId], B=g.systems[bId]; if(!A||!B) return 0;
   return Math.hypot(A.x-B.x, A.y-B.y); }
-function jumpRange(v){ v=v||Game.ship(); return (v && v.range==="interstellar") ? (v.power.star||0)/LY_PER_STAR : 0; }
+function jumpRange(v){ v=v||Game.ship(); if(!v||v.range!=="interstellar") return 0;
+  return (v.power.star||0)/LY_PER_STAR * HYPERDRIVE[v.hyper||0].mult; }
 /* is ship v docked exactly where the player is — same system AND same planet? */
 function atHere(v){ return !!(v && (v.sysId??0)===(state.sysId??0) && v.slot===state.atSlot); }
 /* the system the player is currently in (null while adrift in deep space) */
@@ -1207,6 +1211,7 @@ const Game = {
       if(v.pilotGuns==null){ v.pilotGuns=c?c.pilotGuns:0; v.gunnerGuns=c?c.gunnerGuns:0; }
       if(!v.guns) v.guns=new Array((v.pilotGuns||0)+(v.gunnerGuns||0)).fill(null);
       if(v.armor==null) v.armor=0;
+      if(v.hyper==null) v.hyper=0;
       if(v.maxHp==null) v.maxHp=c?Math.round(c.baseHp*HP_SCALE*(spaceworthy(v)?1.4:1)):200;
       if(v.hp==null) v.hp=v.maxHp; });
     // migrate old equipment slots (weapon/armor/relic) -> the expanded armor slots
@@ -1928,20 +1933,30 @@ const UI = {
     const pilotN=v.pilotGuns||0, total=(v.guns||[]).length;
     const nextArmor=(v.armor||0)<ARMOR.length-1?(v.armor||0)+1:null;
     const armorCost=nextArmor!=null?Math.round((shipClass(v.cls)?shipClass(v.cls).baseHp:200)*ARMOR[nextArmor].mult*8*(1+w.wealth*0.04)):0;
+    const armorPct=a=>Math.round((ARMOR[a].mult-1)*100), hyper=v.hyper||0;
+    const interstellar=v.range==="interstellar";
+    const nextHyper=interstellar&&hyper<HYPERDRIVE.length-1?hyper+1:null;
+    const hyperCost=nextHyper!=null?Math.round((v.power.star||0)*10*nextHyper*(1+w.wealth*0.03)):0;
+    const hyperPct=h=>Math.round((HYPERDRIVE[h].mult-1)*100);
     return `
     ${this.statHeader()}
     <div class="card"><div class="row between"><h2 class="gold">&#128295; ${v.name}</h2>
       <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
       <p class="small dim">${v.role||v.clsName} &middot; ${RANGE_LABEL[v.range]}</p>
       ${krow("Hull", `<b>${commas(v.hp||0)} / ${commas(v.maxHp||0)}</b> HP`)}
-      ${krow("Plating", ARMOR[v.armor||0].name)}
+      ${krow("Plating", `Tier ${(v.armor||0)+1}/5 &middot; ${ARMOR[v.armor||0].name} <span class="dim small">(+${armorPct(v.armor||0)}% hull)</span>`)}
+      ${interstellar?krow("Hyperdrive", `Tier ${hyper+1}/5 &middot; ${HYPERDRIVE[hyper].name} <span class="dim small">(+${hyperPct(hyper)}% range &middot; ${jumpRange(v).toFixed(1)} ly)</span>`):""}
       ${krow("Total attack", `<span class="gold">${commas(atk)}</span> ${total?`<span class="dim small">(${gunners} gunner${gunners!==1?"s":""} aboard for ${v.gunnerGuns||0} heavy mounts)</span>`:""}`)}
     </div>
     <div class="card"><h3>Repair hull</h3>
       ${rc>0?`<button class="primary full center" id="ofRepair" ${state.credits<rc?"disabled":""}>Repair to full &middot; ${commas(rc)}c</button>`
         :`<p class="small green">Hull is at full integrity.</p>`}</div>
-    <div class="card"><h3>Hull plating</h3>
-      ${nextArmor!=null?`<p class="small dim">Upgrade to <b>${ARMOR[nextArmor].name}</b> (&times;${ARMOR[nextArmor].mult} base HP).</p>
+    ${interstellar?`<div class="card"><h3>Hyperdrive <span class="dim small">&middot; Tier ${hyper+1}/5</span></h3>
+      ${nextHyper!=null?`<p class="small dim">Upgrade to <b>${HYPERDRIVE[nextHyper].name}</b> (Tier ${nextHyper+1}) &mdash; +${hyperPct(nextHyper)}% range, reaching <b class="gold">${(jumpRange(v)/HYPERDRIVE[hyper].mult*HYPERDRIVE[nextHyper].mult).toFixed(1)} ly</b>.</p>
+        <button class="full center" id="ofHyper" ${state.credits<hyperCost?"disabled":""}>Fit hyperdrive &middot; ${commas(hyperCost)}c</button>`
+        :`<p class="small green">Already the top-tier Quantum hyperdrive.</p>`}</div>`:""}
+    <div class="card"><h3>Hull plating <span class="dim small">&middot; Tier ${(v.armor||0)+1}/5</span></h3>
+      ${nextArmor!=null?`<p class="small dim">Upgrade to <b>${ARMOR[nextArmor].name}</b> (Tier ${nextArmor+1}) &mdash; +${armorPct(nextArmor)}% base hull.</p>
         <button class="full center" id="ofArmor" ${state.credits<armorCost?"disabled":""}>Refit plating &middot; ${commas(armorCost)}c</button>`
         :`<p class="small green">Already the heaviest plating available.</p>`}</div>
     <div class="card sheet"><h3>Weapon hardpoints <span class="dim small">&middot; ${total||"none"}</span></h3>
@@ -2808,6 +2823,7 @@ const UI = {
     if(screen==="outfit"){
       const rp=$("#ofRepair"); if(rp) rp.onclick=()=>repairShip(outfitShip);
       const ar=$("#ofArmor"); if(ar) ar.onclick=()=>upgradeArmor(outfitShip);
+      const hy=$("#ofHyper"); if(hy) hy.onclick=()=>upgradeHyper(outfitShip);
       app.querySelectorAll("[data-unmount]").forEach(b=> b.onclick=()=>unmountWeapon(outfitShip, +b.dataset.unmount));
       app.querySelectorAll("[data-mountslot]").forEach(b=> b.onclick=()=>{ mountPick=+b.dataset.mountslot; UI.render("outfit"); });
       app.querySelectorAll("[data-buygun]").forEach(b=> b.onclick=()=>{ mountWeapon(outfitShip, mountPick, b.dataset.buygun); mountPick=null; });
@@ -3455,6 +3471,16 @@ function upgradeArmor(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!
   v.armor=next; v.maxHp=Math.round(baseNoArmor*ARMOR[next].mult); v.hp=Math.round(v.maxHp*ratio);
   v.value=(v.value||0)+Math.round(cost*0.5); state.credits-=cost;
   Game.logMsg(`You refit the ${v.name} with ${ARMOR[next].name}.`,"good"); Game.save(); UI.render("outfit"); }
+/* upgrade hyperdrive one tier (extends jump range by a percentage) */
+function upgradeHyper(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  if(v.range!=="interstellar"){ toast("Only interstellar ships have a hyperdrive"); return; }
+  if((v.hyper||0)>=HYPERDRIVE.length-1){ toast("Already the top hyperdrive"); return; }
+  const next=(v.hyper||0)+1;
+  const cost=Math.round((v.power.star||0)*10*next*(1+(state.world?state.world.wealth:4)*0.03));
+  if(state.credits<cost){ toast(`That hyperdrive costs ${commas(cost)}c`); return; }
+  v.hyper=next; v.value=(v.value||0)+Math.round(cost*0.5); state.credits-=cost;
+  Game.logMsg(`You fit the ${v.name} with a ${HYPERDRIVE[next].name} hyperdrive — range now ${jumpRange(v).toFixed(1)} ly.`,"good");
+  Game.save(); UI.render("outfit"); }
 function shipLocationName(v){
   if(!v||!state.galaxy) return "home";
   const sys=state.galaxy.systems[v.sysId??0]; if(!sys) return "uncharted space";
