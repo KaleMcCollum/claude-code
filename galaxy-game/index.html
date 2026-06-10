@@ -678,13 +678,19 @@ function raceFrom(sp){
 
 /* How many distinct races of each rarity exist (fewer common ones saturate fast). */
 const RACE_POOL=[5,10,30,80,200,600,2000,6000];
+/* Information value paid for documenting a NEW find, by rarity tier index. */
+const RACE_VALUE =[50,150,600,2000,7000,30000,120000,500000];
+const WORLD_VALUE=[30,90,300,900,3000,12000,50000,200000];
+const CREATURE_VALUE=40;
+function raceValue(tier){ return RACE_VALUE[RARITY.index(tier)]; }
+function worldValue(tier){ return WORLD_VALUE[RARITY.index(tier)]; }
 /* Draw the race you meet — population-weighted by tier, recognized if already known. */
 function drawRace(){
   const tier=RARITY.roll(), ti=RARITY.index(tier.id);
   const slot=rnd(0, RACE_POOL[ti]-1);
   const id="w_"+tier.id+"_"+slot;
   if(state.codex.races[id]) return { id, race:state.codex.races[id], isNew:false };
-  const race=raceFrom(Gen.species(tier)); race.id=id;
+  const race=raceFrom(Gen.species(tier)); race.id=id; race.reported=false;
   return { id, race, isNew:true };
 }
 
@@ -803,9 +809,10 @@ const Game = {
     state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
     // you know your own race and your homeworld from the start — into the Codex
-    const selfRace=raceFrom(sp); selfRace.id="self";
+    const selfRace=raceFrom(sp); selfRace.id="self"; selfRace.reported=true;
     state.codex.races["self"]=selfRace;
-    state.codex.worlds.push(worldSummary(world));
+    const homeW=worldSummary(world); homeW.reported=true;
+    state.codex.worlds.push(homeW);
     Game.logMsg(`You are born on ${world.name}, ${article(world.biomeName)} ${world.biomeName}.`,"sys");
     Game.logMsg(`You are ${creating.name}, a young ${sp.name} child — far from your potential, but growing.`,"hit");
     checkObjectives();
@@ -930,7 +937,7 @@ function startEncounter(){
   if(chance(peace)) return peacefulEvent(w);
   const cid=pick(w.creatures), tpl=DATA.creatures[cid];
   if(!state.codex.creatures) state.codex.creatures={};
-  const seen=state.codex.creatures[cid]||(state.codex.creatures[cid]={name:tpl.name, blurb:tpl.blurb, count:0, where:w.name});
+  const seen=state.codex.creatures[cid]||(state.codex.creatures[cid]={name:tpl.name, blurb:tpl.blurb, count:0, where:w.name, reported:false});
   seen.count++;
   const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06;
   combat={ cid, name:tpl.name, blurb:tpl.blurb,
@@ -1244,6 +1251,7 @@ const UI = {
         <button id="vTavern">&#127866; Tavern</button>
         <button id="vShipyard">&#128736; Shipyard</button>
         <button id="vMarket">&#9879; Market</button>
+        <button id="vBroker">&#128225; Info Broker</button>
         <button id="vTalk">&#128483; Talk to a stranger</button>
         <button id="vWilds" class="primary">&#127807; Wander the wilds</button>
         <button id="vRest">&#9789; Rest</button>
@@ -1266,6 +1274,27 @@ const UI = {
       <button class="full ghost" id="tDrink">Buy a round &middot; 10c (rest your bones)</button>
     </div>
     <div class="card"><button id="tBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+
+  /* ---------- INFORMATION BROKER (sell your discoveries) ---------- */
+  screen_broker(){
+    const w=state.world, u=unreportedInfo();
+    const row=(label,val)=>`<div class="krow"><span class="lbl">${label}</span><span class="kv gold">${commas(val)}c</span></div>`;
+    return `
+    ${this.statHeader()}
+    <div class="card"><h2>&#128225; ${w.name} Information Broker</h2>
+      <p class="small dim">Charts, peoples, beasts — fresh knowledge fetches good credits. The rarer
+      the find, the fatter the fee.</p></div>
+    <div class="card sheet">
+      <h3>Unreported finds</h3>
+      ${u.total<=0?`<p class="small dim">Nothing new since your last report. Go meet someone or chart a world.</p>`
+      :`${u.races.map(r=>row(`${r.name} <span class="dim small">(${RARITY.byId(r.tier).name} race)</span>`, raceValue(r.tier))).join("")}
+        ${u.worlds.map(x=>row(`${x.name} <span class="dim small">(${RARITY.byId(x.tier).name} world)</span>`, worldValue(x.tier))).join("")}
+        ${u.creatures.map(c=>row(`${c.name} <span class="dim small">(creature)</span>`, CREATURE_VALUE)).join("")}
+        <div class="krow" style="border-top:1px solid var(--line);margin-top:4px"><span class="lbl"><b>Total</b></span><span class="kv gold"><b>${commas(u.total)}c</b></span></div>`}
+    </div>
+    ${u.total>0?`<div class="card"><button id="sellInfo" class="primary full center">Sell all information &middot; +${commas(u.total)}c</button></div>`:""}
+    <div class="card"><button id="brBack" class="ghost full center">&larr; Back outside</button></div>`;
   },
 
   /* ---------- SHIPYARD (buy/sell ships, leave the planet, the Yarder) ---------- */
@@ -1691,6 +1720,7 @@ const UI = {
       $("#vMarket").onclick=()=>UI.render("market");
       $("#vShipyard").onclick=()=>UI.render("shipyard");
       $("#vTavern").onclick=()=>UI.render("tavern");
+      $("#vBroker").onclick=()=>UI.render("broker");
       $("#vTalk").onclick=()=>startMeeting("Out among the crowds you fall into talk with a passing stranger.","hub");
       $("#vRest").onclick=()=>{
         if(advanceTime(rnd(5,12))) return;            // resting passes a week or two
@@ -1705,6 +1735,10 @@ const UI = {
         state.credits-=10; state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.25));
         state.energy=Game.effMaxEnergy(); Game.logMsg("You buy a round and rest a while. Energy restored, wounds eased.","good"); Game.save(); UI.render("tavern"); UI.flashLog(); };
       $("#tBack").onclick=()=>UI.render("hub");
+    }
+    if(screen==="broker"){
+      const sb=$("#sellInfo"); if(sb) sb.onclick=()=>sellInformation();
+      $("#brBack").onclick=()=>UI.render("hub");
     }
     if(screen==="shipyard"){
       app.querySelectorAll("[data-ship]").forEach(b=> b.onclick=()=>buyShip(b.dataset.ship));
@@ -1900,7 +1934,7 @@ function finishArrival(){
   const a=arriving, slot=a.slot;
   state.system.planets[slot]={ index:slot, discovered:true, isHome:false, world:worldSummary(a.world),
     occupied:a.occupied, raceId:a.draw?a.draw.id:null };
-  state.codex.worlds.push(worldSummary(a.world));
+  const ws=worldSummary(a.world); ws.reported=false; state.codex.worlds.push(ws);
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
   if(a.occupied) recordMeeting(a.person, a.draw.race, a.world.name);
   Game.logMsg(`You chart ${a.world.name}${a.occupied?` and meet the ${a.draw.race.name}`:" — uninhabited"}.`,"sys");
@@ -1938,6 +1972,28 @@ function sellShip(i){
   const v=state.vehicles[i], p=shipSell(v);
   state.vehicles.splice(i,1); state.credits+=p;
   Game.logMsg(`You sell the ${v.name} for ${p}c.`,"sys"); Game.save(); UI.render("shipyard");
+}
+
+/* ---- Information Broker: sell your unreported discoveries for credits ---- */
+function unreportedInfo(){
+  const cx=state.codex;
+  const races=Object.values(cx.races||{}).filter(r=>r.id!=="self" && !r.reported);
+  const worlds=(cx.worlds||[]).filter(w=>!w.reported);
+  const creatures=Object.values(cx.creatures||{}).filter(c=>!c.reported);
+  const total=races.reduce((s,r)=>s+raceValue(r.tier),0)
+    +worlds.reduce((s,w)=>s+worldValue(w.tier),0)
+    +creatures.length*CREATURE_VALUE;
+  return { races, worlds, creatures, total };
+}
+function sellInformation(){
+  const u=unreportedInfo();
+  if(u.total<=0){ toast("Nothing new to report"); return; }
+  u.races.forEach(r=>r.reported=true); u.worlds.forEach(w=>w.reported=true); u.creatures.forEach(c=>c.reported=true);
+  state.credits+=u.total;
+  const n=u.races.length+u.worlds.length+u.creatures.length;
+  Game.logMsg(`You sell information on ${n} new find${n>1?"s":""} for ${u.total}c.`,"good");
+  toast("+"+u.total+"c");
+  Game.save(); UI.render("broker");
 }
 
 /* record an individual you've met (compact snapshot) + bump their race's tally */
