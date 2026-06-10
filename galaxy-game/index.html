@@ -1173,14 +1173,7 @@ const UI = {
 
     if(s===2){ const sp=creating.species; const t=RARITY.byId(sp.tier); return `
       ${this.rarityBanner(sp.tier, `${humanizeCount(sp.population)} alive of ~${humanizeCount(GALAXY.totalSapients)}`)}
-      ${genomeBanner(sp.genome)}
-      <div class="card sheet">
-        <h3>Origin</h3>
-        ${krow("Body-plan", sp.archeName)}
-        ${krow("Race rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
-        ${krow("Population", humanizeCount(sp.population))}
-        ${krow("Genome", `<span style="color:${pctColor(sp.genome.avgPct)}">${sp.genome.grade}</span> &middot; ${ordinal(sp.genome.avgPct)} pct`)}
-      </div>
+      ${originCard(sp)}
       ${speciesSheet(sp)}
       <div class="card reveal">
         <p class="small">Name your race:</p>
@@ -1402,7 +1395,7 @@ const UI = {
         ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
           :`<p class="small gold">Their kind is new to your Codex.</p>`}
       </div>
-      ${genomeBanner(person.genome)}
+      ${originCard(person)}
       ${speciesSheet(person)}
       <div class="card">
         ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
@@ -1445,16 +1438,12 @@ const UI = {
   },
   screen_cx_person(){
     const p=(state.codex.people||[])[viewingPerson]; if(!p) return this.screen_cx_people();
-    const t=RARITY.byId(p.tier);
     return `
     <div class="card"><h2>${p.name}</h2>
-      <p class="small dim">Met at ${p.where}.</p>
-      <div class="divider"></div>
-      ${krow("Race", `<b class="violet">${p.raceName}</b> <span class="dim">(${p.archeName})</span>`)}
-      ${krow("Race rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
+      <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; met at ${p.where}.</p>
       ${p.raceId?`<button class="small ghost" data-race="${p.raceId}" style="margin-top:8px">View ${p.raceName} race &rarr;</button>`:""}
     </div>
-    ${genomeBanner(p.genome)}
+    ${originCard(p)}
     ${speciesSheet(p)}
     <div class="card"><button class="ghost full center" id="backPeople">&larr; Back to people</button></div>`;
   },
@@ -1569,7 +1558,7 @@ const UI = {
         ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
           :`<p class="small gold">Their kind is new to your Codex.</p>`}
       </div>
-      ${genomeBanner(person.genome)}
+      ${originCard(person)}
       ${speciesSheet(person)}
       <div class="card">
         ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
@@ -2189,6 +2178,19 @@ function krow(label, val){
 
 /* The whole species as a compact stat sheet — shared by the reveal and Self screen
    so any two people read the same way and line up for comparison. */
+/* The ORIGIN card — body-plan, race rarity, population, genome. Works for the player,
+   anyone you meet, and Codex entries (any species/person-shaped object). */
+function originCard(o){
+  const t=RARITY.byId(o.tier);
+  return `<div class="card sheet">
+    <h3>Origin</h3>
+    ${krow("Body-plan", o.archeName)}
+    ${krow("Race rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
+    ${krow("Population", humanizeCount(o.population))}
+    ${krow("Genome", `<span style="color:${pctColor(o.genome.avgPct)}">${o.genome.grade}</span> &middot; ${ordinal(o.genome.avgPct)} pct`)}
+  </div>`;
+}
+
 /* Render a RACE's stat sheet — species-level ranges (avg + range), no individual. */
 function raceSheet(race){
   const R=race.ranges;
