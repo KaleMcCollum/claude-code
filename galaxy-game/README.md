@@ -9,20 +9,27 @@ A completely text-based galaxy RPG that runs in a **single HTML file** — perfe
 4. Progress **autosaves to the browser** after every action.
 5. Use the **Save** tab to **export a backup `.json` file** you can store anywhere or import on another device.
 
-## What's in this first build
-- **Character creation**: name → species → path (specialization) → review.
-- **6 species**, each with stat modifiers and a unique trait.
-- **5 paths** (Warden, Ranger, Adept, Smuggler, Tamer), each granting a signature skill.
-- **Random starter world** chosen from the quiet frontier (Tier 1: limited resources, weak beasts, thin markets).
-- **Explore / fight / tame** creatures, build a **menagerie** of pets.
-- **Inventory, equipment, market, travel**, leveling, XP, energy, credits.
-- **Save system**: browser autosave + file export/import.
+## Design pillars
+- **You name, the galaxy rolls.** You choose names (character, species, world, ship, beast…). The game decides *everything else* — stats, power, rarity, life and death — by weighted randomness. **No re-rolls.**
+- **Rarity drives power.** Every generated thing rolls a tier (Common → Primordial) with transparent odds ("a 1-in-10,000 origin"). Rarer = stronger, and may carry rarer powers (e.g. flight).
+- **Universal metrics.** Shared units measure everything. First: the vehicle power triad — **Star / Flight / Ground Power**, all in *Stellar-Horsepower (SHp)*.
 
-## Where to grow it next
-The whole game is driven by the `DATA` object at the top of the `<script>`:
-- Add worlds → `DATA.worlds` (set higher `tier` for harder zones)
-- Add species → `DATA.species`
-- Add creatures → `DATA.creatures`
-- Add items/vehicles → `DATA.items`
+## What's in this build
+- **Procedural character creation**: name yourself → game rolls your **species** (with rarity, archetype, stats, innate powers) → you name it → rolls your **birthworld** (rarity, biome, tech, wealth, population, danger) → you name it → rolls your **starter ship** (class + Star/Flight/Ground power) → you name it → begin. Species and world are rolled **independently** (a common people can land on a rare hi-tech world).
+- **Rarity engine** (`RARITY`): 8 tiers, weights summing to 1,000,000 for clean odds.
+- **Generators** (`Gen.species`, `Gen.world`, `Gen.vehicle`): rarity + archetype/biome tables.
+- **Universal units** (`UNITS`): the vehicle power triad in SHp — the template for future metrics (gun power, etc.).
+- **Play loop**: explore, turn-based combat, tame creatures into a menagerie, inventory/equipment, a market whose stock is gated by the world's tech & wealth, leveling, the Hangar showing ship power.
+- **Save system**: browser autosave + `.json` export/import.
 
-Open design question we're deciding: how species and starting world relate (free pick vs. homeworld-locked vs. random).
+## Code map (top of the `<script>`)
+- `UNITS` — universal measurements (the power triad)
+- `RARITY` — weighted tier engine (roll / odds / power scaling)
+- `ARCHETYPES`, `POWERS`, `BIOMES`, `POPULATIONS`, `VEHICLE_CLASSES` — generation tables
+- `Gen` — procedural generators (return `name:null` for the player to christen)
+- `DATA` — hand-authored creatures, items, skills (procedural versions are the next system)
+
+## Next up
+- Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).
+- Procedurally generated creatures & weapons.
+- Travel between multiple named worlds; a galaxy map.

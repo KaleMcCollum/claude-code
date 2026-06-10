@@ -7,16 +7,28 @@
 <title>Edge of the Outer Stars</title>
 <!--
   EDGE OF THE OUTER STARS
-  A self-contained, text-based galaxy RPG that runs entirely in a single HTML file.
-  Open it in any phone or desktop browser. Progress autosaves to the browser, and you
-  can export/import a save file to back it up or move it between devices.
+  A self-contained, text-based galaxy RPG in a single HTML file. Open it in any phone
+  or desktop browser; progress autosaves to the browser and can be exported to a file.
 
-  Architecture (kept simple on purpose so it's easy to grow):
-    DATA   - all game content (species, worlds, skills, items, creatures)
-    state  - the live save object for the current player
-    Game   - logic (character creation, exploring, combat, economy, saving)
-    UI     - screen rendering + a scrolling log
-  Add a world by pushing to DATA.worlds, a species to DATA.species, etc.
+  DESIGN PILLARS
+   - You are the NAMER and EXPLORER, not the rule-maker. You choose names (character,
+     species, world, ship, beast, gun, ...). The GAME rolls everything else — stats,
+     power, rarity, life and death — through weighted randomness. No re-rolls.
+   - RARITY drives power. Every generated thing rolls a tier (Common -> Primordial)
+     with transparent odds. Rarer = stronger and may carry rarer powers (e.g. flight).
+   - UNIVERSAL METRICS. Shared units measure everything. First up: the vehicle power
+     triad — Star / Flight / Ground Power, all in "Stellar-Horsepower" (SHp).
+
+  CODE MAP
+    UNITS    - documented universal measurements
+    RARITY   - weighted tier engine (roll, odds, power scaling)
+    TABLES   - archetypes, biomes, populations, vehicle classes, names of axes
+    Gen      - procedural generators (species, world, vehicle) -> player names them
+    DATA     - hand-authored creatures & items (procedural versions come later)
+    state    - the live save object
+    Game     - logic (creation, economy, leveling, saving)
+    combat   - turn-based encounters
+    UI       - screen rendering + scrolling log
 -->
 <style>
   :root{
@@ -90,10 +102,15 @@
   .small{font-size:.8rem;}
   .divider{height:1px; background:var(--line); margin:12px 0;}
   .tag{font-size:.72rem; padding:2px 7px; border-radius:6px; background:var(--panel2); color:var(--dim);}
-  .tier1{color:var(--green);} .tier2{color:var(--blue);} .tier3{color:var(--violet);} .tier4{color:var(--gold);}
   .hidden{display:none;}
   .flash{animation:flash .5s;}
   @keyframes flash{0%{background:#1a2233;}100%{background:var(--panel);}}
+  .reveal{animation:reveal .5s ease;}
+  @keyframes reveal{from{opacity:0; transform:translateY(8px);}to{opacity:1; transform:none;}}
+  .rarity-banner{border-radius:12px; padding:12px; margin:0 0 12px; text-align:center;
+    border:1px solid; background:#0a0d14;}
+  .rarity-banner .rn{font-size:1.3rem; font-weight:700; letter-spacing:1px;}
+  .rarity-banner .odds{font-size:.78rem; color:var(--dim); letter-spacing:1px;}
   .toast{position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:50;
     background:#141a26; border:1px solid var(--gold); color:var(--gold); padding:10px 16px;
     border-radius:10px; font-size:.85rem; opacity:0; transition:.25s; pointer-events:none; max-width:90%;}
@@ -111,8 +128,9 @@
 
 <nav id="nav" class="hidden">
   <button data-screen="hub"><span class="ico">&#9737;</span>World</button>
-  <button data-screen="char"><span class="ico">&#9670;</span>Character</button>
+  <button data-screen="char"><span class="ico">&#9670;</span>Self</button>
   <button data-screen="bag"><span class="ico">&#9776;</span>Items</button>
+  <button data-screen="garage"><span class="ico">&#9992;</span>Ships</button>
   <button data-screen="menagerie"><span class="ico">&#9758;</span>Beasts</button>
   <button data-screen="save"><span class="ico">&#8635;</span>Save</button>
 </nav>
@@ -121,498 +139,586 @@
 
 <script>
 "use strict";
-/* ============================================================ DATA ===== */
-const DATA = {
-  /* --- Playable species. Each modifies base stats and grants a trait. --- */
-  species: [
-    { id:"terran", name:"Terran", blurb:"Adaptable wanderers from the inner colonies. Jacks of all trades.",
-      mods:{hp:10, force:1, might:1, agility:1, tech:1, charm:1}, trait:"Versatile: +5% XP from every source." },
-    { id:"voskan", name:"Voskan", blurb:"Stone-skinned highlanders bred for harsh worlds. Hard to put down.",
-      mods:{hp:30, might:3, force:0, agility:-1, tech:0, charm:0}, trait:"Stoneblood: take 1 less damage from every hit." },
-    { id:"sylith", name:"Sylith", blurb:"Slender forest-folk, quick and attuned to the unseen Current.",
-      mods:{hp:-5, agility:3, force:2, might:-1, tech:0, charm:1}, trait:"Currentborn: start with the Current Sense skill." },
-    { id:"keldari", name:"Keldari", blurb:"Reptilian desert nomads, deadly traders and sharper survivors.",
-      mods:{hp:5, charm:3, agility:1, might:1, force:-1, tech:0}, trait:"Silver Tongue: 15% better prices at any market." },
-    { id:"gromm", name:"Gromm", blurb:"Tinker-engineers raised in orbital scrapyards. They speak to machines.",
-      mods:{hp:5, tech:4, might:0, agility:0, force:-1, charm:0}, trait:"Machinist: tech items and vehicles cost 20% less." },
-    { id:"nytheri", name:"Nytheri", blurb:"Pale void-dwellers rumored to bend the Current with a thought.",
-      mods:{hp:-10, force:4, tech:1, might:-1, agility:1, charm:0}, trait:"Voidtouched: Current powers cost 25% less energy." },
-  ],
-
-  /* --- Specializations: choose ONE at creation; shapes your build. --- */
-  specializations: [
-    { id:"warden",   name:"Warden",   blurb:"Frontline blade-and-shield fighter.", grants:["Heavy Strike"], mods:{might:2,hp:15} },
-    { id:"ranger",   name:"Ranger",   blurb:"Tracker and marksman of the wild.", grants:["Steady Shot"], mods:{agility:2,hp:5} },
-    { id:"adept",    name:"Adept",    blurb:"Channels the Current as a weapon.", grants:["Current Bolt"], mods:{force:2,energy:15} },
-    { id:"smuggler", name:"Smuggler", blurb:"Fast talker, faster trigger, full pockets.", grants:["Lucky Find"], mods:{charm:2,agility:1} },
-    { id:"tamer",    name:"Tamer",    blurb:"Befriends and commands wild beasts.", grants:["Beast Bond"], mods:{charm:1,force:1} },
-  ],
-
-  /* --- Skills you can know. Some are combat actions, some passive. --- */
-  skills: {
-    "Heavy Strike":  { type:"attack", energy:6,  blurb:"A crushing blow. Damage scales with Might.", scale:"might", mult:2.2 },
-    "Steady Shot":   { type:"attack", energy:5,  blurb:"A precise ranged hit. Rarely misses; scales with Agility.", scale:"agility", mult:2.0, acc:0.95 },
-    "Current Bolt":  { type:"attack", energy:7,  blurb:"A lance of raw Current. Scales with Force.", scale:"force", mult:2.4 },
-    "Current Sense": { type:"passive", blurb:"You feel danger early: +10% to flee and first-strike chance." },
-    "Lucky Find":    { type:"passive", blurb:"Encounters drop more credits and loot." },
-    "Beast Bond":    { type:"passive", blurb:"Far better odds to tame defeated creatures." },
-    "Mend":          { type:"heal",   energy:6,  blurb:"Knit your wounds using the Current. Restores HP." },
-    "Focus":         { type:"buff",   energy:0,  blurb:"Center yourself: recover energy, slightly heal." },
-  },
-
-  /* --- Worlds. tier 1 = starter (easy). Higher tiers come later. --- */
-  worlds: [
-    { id:"dustwallow", name:"Dustwallow", tier:1, biome:"arid scrubland",
-      blurb:"A sun-bleached frontier moon of salt flats and rusted homesteads. Quiet, poor, and safe enough to learn the ropes.",
-      market:0.7, danger:1, creatures:["sandskitter","dusthound","saltcrawler"] },
-    { id:"green-hollow", name:"Green Hollow", tier:1, biome:"temperate forest",
-      blurb:"A misty woodland world dotted with trapper villages. Game is plentiful; trouble is small.",
-      market:0.8, danger:1, creatures:["thornhare","mossback","glimmer-moth"] },
-    { id:"tidepool", name:"Tidepool", tier:1, biome:"shallow archipelago",
-      blurb:"Warm island shallows and stilt-town markets. Fishers, divers, and the occasional snapping thing.",
-      market:0.85, danger:1, creatures:["reef-darter","shellback","brineling"] },
-    { id:"emberlow", name:"Emberlow", tier:1, biome:"volcanic lowlands",
-      blurb:"Black-rock badlands warmed by sleeping volcanoes. Scrap is cheap; the critters bite.",
-      market:0.75, danger:2, creatures:["cinder-rat","ashbeak","magma-slug"] },
-  ],
-
-  /* --- Creatures: catchable beasts / pets / enemies. --- */
-  creatures: {
-    "sandskitter": { name:"Sandskitter", hp:18, atk:4, xp:8,  tame:0.5, blurb:"A skittish six-legged lizard. Harmless in packs of one." },
-    "dusthound":   { name:"Dusthound", hp:26, atk:7, xp:14, tame:0.35, blurb:"Lean scavenger that hunts the salt flats at dusk." },
-    "saltcrawler": { name:"Saltcrawler", hp:34, atk:9, xp:20, tame:0.25, blurb:"An armored grub the size of a speeder. Slow but tough." },
-    "thornhare":   { name:"Thornhare", hp:16, atk:5, xp:9,  tame:0.55, blurb:"A quick, bristle-backed hopper. Good first pet." },
-    "mossback":    { name:"Mossback", hp:30, atk:6, xp:16, tame:0.4,  blurb:"A placid grazing beast camouflaged in living moss." },
-    "glimmer-moth":{ name:"Glimmer-moth", hp:12, atk:8, xp:12, tame:0.45, blurb:"Palm-sized, fast, and faintly luminous." },
-    "reef-darter": { name:"Reef-darter", hp:14, atk:6, xp:10, tame:0.5,  blurb:"A darting amphibious fish-lizard." },
-    "shellback":   { name:"Shellback", hp:38, atk:5, xp:18, tame:0.3,  blurb:"A boulder-shelled crawler of the shallows." },
-    "brineling":   { name:"Brineling", hp:20, atk:9, xp:15, tame:0.35, blurb:"A stinging jelly-thing that drifts the tide pools." },
-    "cinder-rat":  { name:"Cinder-rat", hp:15, atk:7, xp:11, tame:0.45, blurb:"A heat-loving rodent with smoldering fur." },
-    "ashbeak":     { name:"Ashbeak", hp:24, atk:10,xp:19, tame:0.3,  blurb:"A bad-tempered flightless bird of the badlands." },
-    "magma-slug":  { name:"Magma-slug", hp:40, atk:8, xp:24, tame:0.2,  blurb:"A molten gastropod. Tough, slow, and very hot." },
-  },
-
-  /* --- Items: consumables, gear, vehicles. value scales prices. --- */
-  items: {
-    "medpack":     { name:"Medpack", kind:"consumable", value:25, blurb:"Restores 40 HP.", heal:40 },
-    "ration":      { name:"Field Ration", kind:"consumable", value:8, blurb:"Restores 12 HP and 10 energy.", heal:12, energy:10 },
-    "energy-cell":{ name:"Energy Cell", kind:"consumable", value:18, blurb:"Restores 30 energy.", energy:30 },
-    "stim":        { name:"Combat Stim", kind:"consumable", value:40, blurb:"+50% damage for the next fight.", buff:"stim" },
-    "vibroblade":  { name:"Vibroblade", kind:"weapon", value:120, blurb:"+5 Might in combat.", mods:{might:5} },
-    "scout-rifle": { name:"Scout Rifle", kind:"weapon", value:140, blurb:"+5 Agility in combat.", mods:{agility:5} },
-    "hide-vest":   { name:"Hide Vest", kind:"armor", value:90, blurb:"+15 max HP.", mods:{hp:15} },
-    "current-focus":{ name:"Current Focus", kind:"relic", value:160, blurb:"+4 Force, +10 max energy.", mods:{force:4,energy:10} },
-    "scrap":       { name:"Scrap", kind:"trade", value:5, blurb:"Salvaged parts. Sells well to tinkers." },
-    "pelt":        { name:"Beast Pelt", kind:"trade", value:12, blurb:"A cured hide. Trade goods." },
-    "speeder":     { name:"Dust Speeder", kind:"vehicle", value:500, blurb:"A battered repulsor bike. Faster exploring, better finds." },
-  },
-
-  /* Starter loadout granted to every new character. */
-  startKit: [ ["ration",3], ["medpack",1], ["energy-cell",1] ],
-};
-
-/* What each market on a starter world stocks. */
-const STARTER_STOCK = ["ration","medpack","energy-cell","stim","vibroblade","scout-rifle","hide-vest","pelt","scrap"];
-
-/* ============================================================ STATE ==== */
-const SAVE_KEY = "eots_save_v1";
-let state = null;        // current player save
-let combat = null;       // transient combat object
-let creating = {};       // transient char-creation choices
-
 /* ============================================================ UTIL ===== */
 const $ = (sel,el=document)=>el.querySelector(sel);
 const app = $("#app");
-const rnd = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const rnd  = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const rndF = (a,b)=>Math.random()*(b-a)+a;
 const pick = arr => arr[Math.floor(Math.random()*arr.length)];
 const chance = p => Math.random() < p;
 const cap = s => s.charAt(0).toUpperCase()+s.slice(1);
-
-function toast(msg){
-  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
-  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove("show"), 1800);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const commas = n => n.toLocaleString("en-US");
+// pick one entry from [{...,weight}] proportional to weight
+function weightedPick(list){
+  const total=list.reduce((s,e)=>s+e.weight,0);
+  let r=Math.random()*total;
+  for(const e of list){ if((r-=e.weight)<0) return e; }
+  return list[list.length-1];
 }
+// integer 0..max, biased low when skew>1 (rare highs); biased high when skew<1
+const skewRoll=(max,skew)=>Math.floor(Math.pow(Math.random(),skew)*(max+1));
 
-/* ============================================================ SAVE ===== */
+/* ============================================================ UNITS ==== */
+/* Universal measurements every system shares. Display helpers live here so
+   the whole game speaks the same language. Add new metrics in one place. */
+const UNITS = {
+  // Vehicle power triad — the "horsepower equivalent" of the galaxy.
+  power:{
+    unit:"SHp", unitLong:"Stellar-Horsepower",
+    star:{   label:"Star Power",   abbr:"STR", desc:"Interstellar drive output among the stars (hyperlanes)." },
+    flight:{ label:"Flight Power", abbr:"FLT", desc:"Sublight & atmospheric flight thrust." },
+    ground:{ label:"Ground Power", abbr:"GRD", desc:"Locomotion for craft that ride the ground." },
+  },
+  fmtPower:v=>`${commas(Math.round(v))} ${UNITS.power.unit}`,
+};
+
+/* ============================================================ RARITY === */
+/* The heart of the game. Everything generated rolls a tier here. Weights are
+   relative; odds are computed and shown to the player ("a 1-in-N origin").
+   `pow` is the stat/power multiplier band for that tier. */
+const RARITY = {
+  tiers:[
+    { id:"common",     name:"Common",     color:"#9aa7bd", weight:600000, pow:[0.85,1.15] },
+    { id:"uncommon",   name:"Uncommon",   color:"#6ee7a0", weight:240000, pow:[1.1,1.45] },
+    { id:"rare",       name:"Rare",       color:"#5fd0ff", weight:100000, pow:[1.4,1.9] },
+    { id:"epic",       name:"Epic",       color:"#b98cff", weight:40000,  pow:[1.85,2.5] },
+    { id:"legendary",  name:"Legendary",  color:"#e8c372", weight:15000,  pow:[2.4,3.4] },
+    { id:"mythic",     name:"Mythic",     color:"#ff9f5a", weight:4000,   pow:[3.2,4.6] },
+    { id:"godlike",    name:"Godlike",    color:"#ff6b6b", weight:900,    pow:[4.4,6.5] },
+    { id:"primordial", name:"Primordial", color:"#ffffff", weight:100,    pow:[6,9] },
+  ],
+  _total:0,
+  init(){ this._total=this.tiers.reduce((s,t)=>s+t.weight,0); },
+  byId(id){ return this.tiers.find(t=>t.id===id); },
+  index(id){ return this.tiers.findIndex(t=>t.id===id); },
+  roll(){ // weighted tier draw
+    let r=Math.random()*this._total;
+    for(const t of this.tiers){ if((r-=t.weight)<0) return t; }
+    return this.tiers[0];
+  },
+  mult(tier){ return rndF(tier.pow[0],tier.pow[1]); },
+  // "1 in N" string for a tier's odds
+  odds(tier){ const n=Math.round(this._total/tier.weight); return n<=1?"near-certain":`1 in ${commas(n)}`; },
+};
+RARITY.init();
+
+/* ============================================================ TABLES === */
+/* Species body-plans. statBias nudges the rolled stats; powers are the pool
+   this archetype can draw from (on top of the universal pool). */
+const ARCHETYPES = [
+  { id:"humanlike", name:"Humanlike", weight:34, bias:{}, sig:"might",
+    powers:["hardy","mercantile","telepath"],
+    flavor:"familiar of frame — two arms, two legs, endless ambition" },
+  { id:"reptilian", name:"Reptilian", weight:16, bias:{might:1,agility:1}, sig:"agility",
+    powers:["armored","venom","nightsight","amphibious"],
+    flavor:"cold-blooded and scaled, patient and quick to strike" },
+  { id:"avian", name:"Avian", weight:9, bias:{agility:2,might:-1}, sig:"agility",
+    powers:["flight","nightsight","telepath"],
+    flavor:"hollow-boned and feathered, built for the open sky" },
+  { id:"insectoid", name:"Insectoid", weight:11, bias:{agility:1,tech:1}, sig:"agility",
+    powers:["armored","venom","hivemind","flight"],
+    flavor:"chitin-plated and many-limbed, thinking in swarms" },
+  { id:"aquatic", name:"Aquatic", weight:8, bias:{force:1}, sig:"force",
+    powers:["amphibious","regen","telepath"],
+    flavor:"sleek and gilled, more at home beneath the waves" },
+  { id:"saurian", name:"Saurian", weight:7, bias:{might:2,agility:-1}, sig:"might",
+    powers:["armored","hardy","venom"],
+    flavor:"great and heavy-jawed, a walking fortress of muscle" },
+  { id:"plantkin", name:"Plantkin", weight:5, bias:{force:1,tech:-1}, sig:"force",
+    powers:["photosynth","regen","venom"],
+    flavor:"rooted heritage — bark, sap, and slow green patience" },
+  { id:"crystalline", name:"Crystalline", weight:3, bias:{tech:2,agility:-1}, sig:"tech",
+    powers:["armored","current","hardy"],
+    flavor:"living lattice of mineral, humming with stored charge" },
+  { id:"machinekin", name:"Machine-kin", weight:4, bias:{tech:3,charm:-1}, sig:"tech",
+    powers:["armored","hardy","current"],
+    flavor:"part-forged, part-grown — circuits laced through sinew" },
+  { id:"energy", name:"Energy-being", weight:1, bias:{force:3,might:-1}, sig:"force",
+    powers:["flight","current","telepath","regen"],
+    flavor:"barely-bound light given will — a rumor made flesh" },
+];
+
+/* Powers a species can roll. Functional ones hook into combat/economy. */
+const POWERS = {
+  flight:{ name:"Flight", desc:"Take wing — far better evasion and escape." },
+  armored:{ name:"Armored Hide", desc:"Natural plating reduces incoming damage." },
+  regen:{ name:"Regeneration", desc:"Knit wounds — heal a little each combat round." },
+  current:{ name:"Current Attunement", desc:"Born to the Current: cheaper powers, innate sense." },
+  venom:{ name:"Venomous", desc:"Strikes may leave a biting venom." },
+  telepath:{ name:"Telepathy", desc:"Read intent — better taming and escape." },
+  nightsight:{ name:"Night Sight", desc:"See in the dark — sharper critical strikes." },
+  amphibious:{ name:"Amphibious", desc:"Equally at home in water." },
+  photosynth:{ name:"Photosynthesis", desc:"Drink the light — regain energy each round." },
+  hivemind:{ name:"Hive Mind", desc:"Never truly alone — steadier under fire." },
+  mercantile:{ name:"Mercantile Instinct", desc:"A nose for a deal — 15% better market prices." },
+  hardy:{ name:"Hardy", desc:"Tough constitution — extra maximum HP." },
+};
+
+/* World biomes. Each maps to a creature pool (reusing DATA.creatures for now). */
+const BIOMES = [
+  { id:"forest",   weight:18, name:"temperate forest",  creatures:["thornhare","mossback","glimmer-moth"] },
+  { id:"arid",     weight:16, name:"arid scrubland",     creatures:["sandskitter","dusthound","saltcrawler"] },
+  { id:"ocean",    weight:14, name:"island shallows",    creatures:["reef-darter","shellback","brineling"] },
+  { id:"grassland",weight:13, name:"open grassland",     creatures:["thornhare","dusthound","mossback"] },
+  { id:"jungle",   weight:10, name:"dense jungle",       creatures:["thornhare","glimmer-moth","brineling"] },
+  { id:"tundra",   weight:9,  name:"frozen tundra",      creatures:["mossback","shellback","dusthound"] },
+  { id:"volcanic", weight:7,  name:"volcanic badlands",  creatures:["cinder-rat","ashbeak","magma-slug"] },
+  { id:"wasteland",weight:7,  name:"toxic wasteland",    creatures:["cinder-rat","saltcrawler","ashbeak"] },
+  { id:"urban",    weight:6,  name:"sprawling city-world",creatures:["dusthound","cinder-rat","sandskitter"] },
+];
+
+/* How many people live there. Shapes flavor + a little economy/encounter feel. */
+const POPULATIONS = [
+  { id:"desolate",     weight:3,  name:"all but desolate",  peaceMod:-0.12, stock:0.5 },
+  { id:"sparse",       weight:8,  name:"sparsely settled",  peaceMod:-0.05, stock:0.7 },
+  { id:"frontier",     weight:14, name:"a thin frontier",   peaceMod:0,     stock:0.85 },
+  { id:"moderate",     weight:26, name:"modestly populated",peaceMod:0.04,  stock:1.0 },
+  { id:"crowded",      weight:22, name:"crowded",           peaceMod:0.08,  stock:1.15 },
+  { id:"teeming",      weight:14, name:"teeming with life", peaceMod:0.1,   stock:1.25 },
+  { id:"overpopulated",weight:9,  name:"choked and overpopulated", peaceMod:0.06, stock:1.1 },
+];
+
+const TECH_LABELS  = ["Stone-age","Pre-industrial","Industrial","Atomic","Information-age","Spacefaring","Interstellar","Advanced","Hyper-advanced","Transcendent"];
+const WEALTH_LABELS= ["Destitute","Impoverished","Poor","Modest","Comfortable","Prosperous","Wealthy","Opulent","Lavish","Gilded"];
+const DANGER_LABELS= ["","Tranquil","Calm","Mild","Unsettled","Rough","Dangerous","Hostile","Deadly","Lethal","Hellish"];
+
+/* Vehicle classes. axes = which power metrics apply; base = baseline SHp. */
+const VEHICLE_CLASSES = [
+  { id:"landspeeder", name:"Landspeeder", weight:20, axes:["ground"],            base:{ground:120} },
+  { id:"swoop",       name:"Swoop Bike",  weight:18, axes:["ground","flight"],   base:{ground:90,flight:160} },
+  { id:"skiff",       name:"Repulsor Skiff",weight:14,axes:["flight"],           base:{flight:140} },
+  { id:"crawler",     name:"Ground Crawler",weight:10,axes:["ground"],           base:{ground:200} },
+  { id:"shuttle",     name:"Light Shuttle",weight:12, axes:["flight","star"],    base:{flight:180,star:300} },
+  { id:"fighter",     name:"Starfighter",  weight:9,  axes:["flight","star"],    base:{flight:240,star:520} },
+  { id:"freighter",   name:"Freighter",    weight:7,  axes:["flight","star"],    base:{flight:160,star:420} },
+  { id:"interceptor", name:"Interceptor",  weight:4,  axes:["flight","star"],    base:{flight:300,star:680} },
+];
+
+/* ============================================================ GEN ====== */
+/* Procedural generators. Each rolls rarity + traits, returns an object with
+   name:null so the player can christen it. NOTHING here is chosen by the player. */
+const Gen = {
+  species(){
+    const tier=RARITY.roll();
+    const arche=weightedPick(ARCHETYPES);
+    const mult=RARITY.mult(tier);
+    const ti=RARITY.index(tier.id);
+    // base stats ~5 each, scaled by tier multiplier + archetype bias + jitter
+    const mk=base=>Math.max(1,Math.round((base+(arche.bias.__||0))*mult+rnd(-1,1)));
+    const stats={
+      might:  Math.max(1,Math.round((5+(arche.bias.might||0))*mult+rnd(-1,1))),
+      agility:Math.max(1,Math.round((5+(arche.bias.agility||0))*mult+rnd(-1,1))),
+      force:  Math.max(1,Math.round((5+(arche.bias.force||0))*mult+rnd(-1,1))),
+      tech:   Math.max(1,Math.round((5+(arche.bias.tech||0))*mult+rnd(-1,1))),
+      charm:  Math.max(1,Math.round((5+(arche.bias.charm||0))*mult+rnd(-1,1))),
+    };
+    let hp=Math.round(60*mult+rnd(-5,5));
+    // powers: count grows with rarity; drawn from archetype pool + a little universal
+    const pool=[...arche.powers];
+    ["telepath","nightsight","regen","hardy"].forEach(p=>{ if(!pool.includes(p)) pool.push(p); });
+    // flight is special: only a candidate for high tiers unless the body-plan flies
+    const fliesNaturally=arche.powers.includes("flight");
+    if(!fliesNaturally && ti<3){ const i=pool.indexOf("flight"); if(i>=0) pool.splice(i,1); }
+    const count=clamp(Math.round((ti-1)*0.8)+rnd(0,1),0,6);
+    const powers=[];
+    const shuffled=pool.sort(()=>Math.random()-0.5);
+    for(const p of shuffled){ if(powers.length>=count) break; powers.push(p); }
+    if(powers.includes("hardy")) hp=Math.round(hp*1.25);
+    return { kind:"species", name:null, tier:tier.id, arche:arche.id, archeName:arche.name,
+             flavor:arche.flavor, sig:arche.sig, mult:+mult.toFixed(2), stats, hp, powers };
+  },
+
+  world(){
+    const tier=RARITY.roll();              // overall "specialness" / resource richness
+    const biome=weightedPick(BIOMES);
+    const pop=weightedPick(POPULATIONS);
+    const ti=RARITY.index(tier.id);
+    // independent skewed axes (rarer worlds nudge tech/wealth up a touch)
+    const tech  =clamp(skewRoll(9,1.7)+Math.round(ti*0.4),0,9);
+    const wealth=clamp(skewRoll(9,1.7)+Math.round(ti*0.5),0,9);
+    const danger=clamp(skewRoll(9,1.5)+1+Math.round(ti*0.3),1,10);
+    const market=+(0.5+tech*0.05+wealth*0.05).toFixed(2); // breadth/quality of goods
+    return { kind:"world", name:null, tier:tier.id, biome:biome.id, biomeName:biome.name,
+             creatures:biome.creatures, pop:pop.id, popName:pop.name, peaceMod:pop.peaceMod,
+             stockMod:pop.stock, tech, wealth, danger, market };
+  },
+
+  vehicle(humble=false){
+    // starter craft skews toward humble classes but the galaxy can always surprise you
+    const tier=humble?(chance(0.8)?RARITY.tiers[rnd(0,2)]:RARITY.roll()):RARITY.roll();
+    const cls=weightedPick(humble?VEHICLE_CLASSES.filter(v=>v.weight>=10):VEHICLE_CLASSES);
+    const mult=RARITY.mult(tier);
+    const power={};
+    cls.axes.forEach(a=>{ power[a]=Math.round(cls.base[a]*mult*rndF(0.9,1.15)); });
+    return { kind:"vehicle", name:null, tier:tier.id, cls:cls.id, clsName:cls.name,
+             axes:cls.axes, power, mult:+mult.toFixed(2) };
+  },
+};
+
+/* ============================================================ DATA ===== */
+/* Hand-authored creatures & items. (Procedural creatures/guns/flowers are the
+   next systems to grow — they'll use the same RARITY engine + naming layer.) */
+const DATA = {
+  creatures:{
+    "sandskitter":{ name:"Sandskitter", hp:18, atk:4, xp:8,  tame:0.5,  blurb:"A skittish six-legged lizard." },
+    "dusthound":  { name:"Dusthound", hp:26, atk:7, xp:14, tame:0.35, blurb:"Lean scavenger of dusk." },
+    "saltcrawler":{ name:"Saltcrawler", hp:34, atk:9, xp:20, tame:0.25, blurb:"An armored grub, slow but tough." },
+    "thornhare":  { name:"Thornhare", hp:16, atk:5, xp:9,  tame:0.55, blurb:"A quick bristle-backed hopper." },
+    "mossback":   { name:"Mossback", hp:30, atk:6, xp:16, tame:0.4,  blurb:"A placid moss-camouflaged grazer." },
+    "glimmer-moth":{ name:"Glimmer-moth", hp:12, atk:8, xp:12, tame:0.45, blurb:"Fast and faintly luminous." },
+    "reef-darter":{ name:"Reef-darter", hp:14, atk:6, xp:10, tame:0.5,  blurb:"A darting amphibious fish-lizard." },
+    "shellback":  { name:"Shellback", hp:38, atk:5, xp:18, tame:0.3,  blurb:"A boulder-shelled crawler." },
+    "brineling":  { name:"Brineling", hp:20, atk:9, xp:15, tame:0.35, blurb:"A stinging drift of jelly." },
+    "cinder-rat": { name:"Cinder-rat", hp:15, atk:7, xp:11, tame:0.45, blurb:"A heat-loving smoldering rodent." },
+    "ashbeak":    { name:"Ashbeak", hp:24, atk:10,xp:19, tame:0.3,  blurb:"A bad-tempered flightless bird." },
+    "magma-slug": { name:"Magma-slug", hp:40, atk:8, xp:24, tame:0.2,  blurb:"A molten, very hot gastropod." },
+  },
+
+  skills:{
+    "Strike":       { type:"attack", energy:3, blurb:"A basic attack. Scales with Might.", scale:"might", mult:1.7, acc:0.88 },
+    "Heavy Strike": { type:"attack", energy:6, blurb:"A crushing blow. Scales with Might.", scale:"might", mult:2.2 },
+    "Steady Shot":  { type:"attack", energy:5, blurb:"A precise ranged hit. Scales with Agility.", scale:"agility", mult:2.0, acc:0.95 },
+    "Current Bolt": { type:"attack", energy:7, blurb:"A lance of Current. Scales with Force.", scale:"force", mult:2.4 },
+    "Current Sense":{ type:"passive", blurb:"Feel danger early: better flee odds." },
+    "Mend":         { type:"heal", energy:6, blurb:"Mend wounds with the Current." },
+    "Focus":        { type:"buff", energy:0, blurb:"Center yourself: recover energy and a little HP." },
+  },
+
+  // minTech gates whether a world's market stocks the item.
+  items:{
+    "ration":      { name:"Field Ration", kind:"consumable", value:8,  minTech:0, blurb:"+12 HP, +10 energy.", heal:12, energy:10 },
+    "medpack":     { name:"Medpack", kind:"consumable", value:25, minTech:1, blurb:"Restores 40 HP.", heal:40 },
+    "energy-cell": { name:"Energy Cell", kind:"consumable", value:18, minTech:2, blurb:"Restores 30 energy.", energy:30 },
+    "stim":        { name:"Combat Stim", kind:"consumable", value:40, minTech:3, blurb:"+50% damage next fight.", buff:"stim" },
+    "hide-vest":   { name:"Hide Vest", kind:"armor", value:90, minTech:0, blurb:"+15 max HP.", mods:{hp:15} },
+    "vibroblade":  { name:"Vibroblade", kind:"weapon", value:120, minTech:2, blurb:"+5 Might in combat.", mods:{might:5} },
+    "scout-rifle": { name:"Scout Rifle", kind:"weapon", value:140, minTech:3, blurb:"+5 Agility in combat.", mods:{agility:5} },
+    "plasma-edge": { name:"Plasma Edge", kind:"weapon", value:260, minTech:6, blurb:"+9 Might in combat.", mods:{might:9} },
+    "current-focus":{ name:"Current Focus", kind:"relic", value:160, minTech:5, blurb:"+4 Force, +10 max energy.", mods:{force:4,energy:10} },
+    "scrap":       { name:"Scrap", kind:"trade", value:5,  minTech:0, blurb:"Salvaged parts." },
+    "pelt":        { name:"Beast Pelt", kind:"trade", value:12, minTech:0, blurb:"A cured hide." },
+  },
+
+  startKit:[ ["ration",3], ["medpack",1], ["energy-cell",1] ],
+};
+
+/* ============================================================ STATE ==== */
+const SAVE_KEY = "eots_save_v2";
+let state=null, combat=null, creating={};
+
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),1800); }
+
+/* ============================================================ GAME ===== */
 const Game = {
   hasSave(){ try{ return !!localStorage.getItem(SAVE_KEY); }catch(e){ return false; } },
-  save(){
-    if(!state) return;
-    state.updated = Date.now();
-    try{ localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }catch(e){ toast("Save failed (storage off?)"); }
-  },
-  load(){
-    try{ const raw = localStorage.getItem(SAVE_KEY); if(!raw) return false;
-      state = JSON.parse(raw); return true; }catch(e){ return false; }
-  },
+  save(){ if(!state) return; state.updated=Date.now();
+    try{ localStorage.setItem(SAVE_KEY,JSON.stringify(state)); }catch(e){ toast("Save failed"); } },
+  load(){ try{ const r=localStorage.getItem(SAVE_KEY); if(!r) return false; state=JSON.parse(r); return true; }catch(e){ return false; } },
   wipe(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} state=null; },
 
-  /* ---- character creation ---- */
-  newCharacter(name, speciesId, specId){
-    const sp = DATA.species.find(s=>s.id===speciesId);
-    const spec = DATA.specializations.find(s=>s.id===specId);
-    const base = { hp:60, energy:40, force:3, might:3, agility:3, tech:3, charm:3 };
-    const apply = mods => { for(const k in mods){ base[k] = (base[k]||0) + mods[k]; } };
-    apply(sp.mods); apply(spec.mods);
+  hasPower(id){ return state.species.powers.includes(id); },
 
-    const skills = new Set();
-    spec.grants.forEach(s=>skills.add(s));
-    if(sp.trait.includes("Current Sense")) skills.add("Current Sense");
-    skills.add("Focus"); // everyone can focus
+  /* ---- assemble a new life from the generated (and now named) pieces ---- */
+  begin(){
+    const sp=creating.species, world=creating.world, veh=creating.vehicle;
+    // starting skills derive from the species, not a chosen class
+    const skills=new Set(["Strike","Focus"]);
+    const sig={ might:"Heavy Strike", agility:"Steady Shot", force:"Current Bolt", tech:"Steady Shot", charm:"Strike" }[sp.sig];
+    if(sig) skills.add(sig);
+    if(sp.powers.includes("current")){ skills.add("Current Bolt"); skills.add("Current Sense"); skills.add("Mend"); }
 
-    const world = pick(DATA.worlds.filter(w=>w.tier===1));
-
-    state = {
-      v:1, created:Date.now(), updated:Date.now(),
-      name, species:speciesId, spec:specId,
+    state={
+      v:2, created:Date.now(), updated:Date.now(),
+      name:creating.name, species:sp, world, vehicles:[veh],
       level:1, xp:0, xpNext:50,
-      stats:{ force:base.force, might:base.might, agility:base.agility, tech:base.tech, charm:base.charm },
-      maxHp:base.hp, hp:base.hp, maxEnergy:base.energy, energy:base.energy,
-      credits:120,
-      skills:[...skills],
-      inv:{}, equipped:{ weapon:null, armor:null, relic:null },
-      pets:[],
-      world:world.id,
-      visited:[world.id],
-      stimReady:false,
-      log:[],
-      flags:{},
+      maxHp:sp.hp, hp:sp.hp, maxEnergy:40+sp.stats.force*2, energy:40+sp.stats.force*2,
+      credits:120, skills:[...skills],
+      inv:{}, equipped:{weapon:null,armor:null,relic:null}, pets:[],
+      stimReady:false, log:[],
     };
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
-    Game.logMsg(`You arrive on ${world.name}. A new life begins at the edge of the stars.`,"sys");
+    Game.logMsg(`You draw your first breath on ${world.name}, a ${world.biomeName}.`,"sys");
+    Game.logMsg(`You are ${creating.name}, of the ${sp.name}. The galaxy has decided the rest.`,"hit");
     Game.save();
   },
 
-  /* ---- derived combat stats incl. gear ---- */
+  /* ---- derived combat stats (species + equipment) ---- */
   effStat(key){
-    let v = state.stats[key] || 0;
-    for(const slot of ["weapon","armor","relic"]){
-      const id = state.equipped[slot];
-      if(id && DATA.items[id].mods && DATA.items[id].mods[key]) v += DATA.items[id].mods[key];
-    }
+    let v=state.species.stats[key]||0;
+    for(const slot of ["weapon","armor","relic"]){ const id=state.equipped[slot];
+      if(id && DATA.items[id].mods && DATA.items[id].mods[key]) v+=DATA.items[id].mods[key]; }
     return v;
   },
-  effMaxHp(){
-    let v = state.maxHp;
-    const a = state.equipped.armor; if(a && DATA.items[a].mods && DATA.items[a].mods.hp) v += DATA.items[a].mods.hp;
-    return v;
-  },
-  effMaxEnergy(){
-    let v = state.maxEnergy;
-    const r = state.equipped.relic; if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v += DATA.items[r].mods.energy;
-    return v;
-  },
+  effMaxHp(){ let v=state.maxHp; const a=state.equipped.armor;
+    if(a && DATA.items[a].mods && DATA.items[a].mods.hp) v+=DATA.items[a].mods.hp; return v; },
+  effMaxEnergy(){ let v=state.maxEnergy; const r=state.equipped.relic;
+    if(r && DATA.items[r].mods && DATA.items[r].mods.energy) v+=DATA.items[r].mods.energy; return v; },
 
-  /* ---- inventory ---- */
-  addItem(id,n=1){ state.inv[id] = (state.inv[id]||0)+n; },
+  addItem(id,n=1){ state.inv[id]=(state.inv[id]||0)+n; },
   removeItem(id,n=1){ if(!state.inv[id]) return; state.inv[id]-=n; if(state.inv[id]<=0) delete state.inv[id]; },
 
-  /* ---- economy: market multiplier from world + species trait ---- */
-  buyPrice(id){
-    const w = DATA.worlds.find(x=>x.id===state.world);
-    let p = DATA.items[id].value * (1 + w.market*0.5);
-    const sp = DATA.species.find(s=>s.id===state.species);
-    if(sp.trait.includes("Silver Tongue")) p *= 0.85;
-    if(sp.trait.includes("Machinist") && ["weapon","vehicle","relic"].includes(DATA.items[id].kind)) p *= 0.8;
-    return Math.max(1, Math.round(p));
-  },
-  sellPrice(id){
-    let p = DATA.items[id].value * 0.55;
-    const sp = DATA.species.find(s=>s.id===state.species);
-    if(sp.trait.includes("Silver Tongue")) p *= 1.15;
-    return Math.max(1, Math.round(p));
-  },
+  /* ---- economy: prices shaped by the WORLD (wealth) + species power ---- */
+  buyPrice(id){ const w=state.world;
+    let p=DATA.items[id].value*(1.4-w.wealth*0.05);
+    if(Game.hasPower("mercantile")) p*=0.85;
+    return Math.max(1,Math.round(p)); },
+  sellPrice(id){ let p=DATA.items[id].value*0.55*(1+state.world.wealth*0.02);
+    if(Game.hasPower("mercantile")) p*=1.15; return Math.max(1,Math.round(p)); },
+  marketStock(){ const w=state.world;
+    return Object.keys(DATA.items).filter(id=>{ const it=DATA.items[id];
+      if(it.kind==="trade") return false; return it.minTech<=w.tech; }); },
 
-  /* ---- XP / leveling ---- */
-  gainXp(n){
-    const sp = DATA.species.find(s=>s.id===state.species);
-    if(sp.trait.includes("Versatile")) n = Math.round(n*1.05);
-    state.xp += n;
-    let leveled = false;
-    while(state.xp >= state.xpNext){
-      state.xp -= state.xpNext; state.level++; leveled = true;
-      state.xpNext = Math.round(state.xpNext*1.4 + 20);
-      state.maxHp += 12; state.maxEnergy += 5;
-      state.hp = state.maxHp; state.energy = state.maxEnergy;
-      // small auto stat bump, rotating
-      const keys=["might","agility","force","tech","charm"];
-      state.stats[keys[(state.level)%keys.length]] += 1;
-    }
-    if(leveled) Game.logMsg(`You reached level ${state.level}! You feel stronger.`,"good");
-    return leveled;
-  },
+  gainXp(n){ state.xp+=n; let lv=false;
+    while(state.xp>=state.xpNext){ state.xp-=state.xpNext; state.level++; lv=true;
+      state.xpNext=Math.round(state.xpNext*1.4+20);
+      state.maxHp+=12; state.maxEnergy+=5; state.hp=state.maxHp; state.energy=state.maxEnergy;
+      const keys=["might","agility","force","tech","charm"]; state.species.stats[keys[state.level%keys.length]]++; }
+    if(lv) Game.logMsg(`You reached level ${state.level}!`,"good"); return lv; },
 
-  logMsg(text,cls=""){ state.log.push({t:text,c:cls,ts:Date.now()});
-    if(state.log.length>60) state.log = state.log.slice(-60); },
+  logMsg(t,c=""){ state.log.push({t,c}); if(state.log.length>60) state.log=state.log.slice(-60); },
 };
 
 /* ============================================================ COMBAT === */
 function startEncounter(){
-  const w = DATA.worlds.find(x=>x.id===state.world);
-  // chance of a peaceful event instead of a fight
-  if(chance(0.22)) return peacefulEvent(w);
-
-  const cid = pick(w.creatures);
-  const tpl = DATA.creatures[cid];
-  // scale lightly with player level on harder worlds
-  const lvlScale = 1 + (state.level-1)*0.06*(w.danger);
-  combat = {
-    cid, name:tpl.name,
-    maxHp:Math.round(tpl.hp*lvlScale), hp:Math.round(tpl.hp*lvlScale),
-    atk:Math.round(tpl.atk*lvlScale), xp:Math.round(tpl.xp*lvlScale),
-    tame:tpl.tame, blurb:tpl.blurb, over:false, stim:state.stimReady,
-  };
-  state.stimReady = false;
+  const w=state.world;
+  const peace=clamp(0.2+w.peaceMod,0.05,0.4);
+  if(chance(peace)) return peacefulEvent(w);
+  const cid=pick(w.creatures), tpl=DATA.creatures[cid];
+  const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06;
+  combat={ cid, name:tpl.name, blurb:tpl.blurb,
+    maxHp:Math.round(tpl.hp*scale), hp:Math.round(tpl.hp*scale),
+    atk:Math.round(tpl.atk*scale), xp:Math.round(tpl.xp*scale),
+    tame:tpl.tame, over:false, stim:state.stimReady };
+  state.stimReady=false;
   Game.logMsg(`A wild ${tpl.name} appears! ${tpl.blurb}`,"hit");
   UI.render("combat");
 }
-
 function peacefulEvent(w){
-  const sp = DATA.species.find(s=>s.id===state.species);
-  const lucky = state.skills.includes("Lucky Find");
-  const roll = Math.random();
-  if(roll < 0.5){
-    let c = rnd(8,22) * (lucky?2:1);
-    state.credits += c;
-    Game.logMsg(`You find an abandoned cache and recover ${c} credits.`,"good");
-  } else if(roll < 0.8){
-    const id = pick(["scrap","pelt","ration","energy-cell"]);
-    const n = lucky?rnd(1,3):1;
-    Game.addItem(id,n);
-    Game.logMsg(`You salvage ${n}x ${DATA.items[id].name}.`,"good");
-  } else {
-    const xp = rnd(4,10);
-    Game.gainXp(xp);
-    Game.logMsg(`You study the ${w.biome} and learn something. +${xp} XP.`,"good");
-  }
-  Game.save();
-  UI.render("hub"); UI.flashLog();
+  const r=Math.random();
+  if(r<0.5){ const c=rnd(8,22); state.credits+=c; Game.logMsg(`You find a cache: +${c} credits.`,"good"); }
+  else if(r<0.8){ const id=pick(["scrap","pelt","ration","energy-cell"]); Game.addItem(id,1);
+    Game.logMsg(`You salvage a ${DATA.items[id].name}.`,"good"); }
+  else { const xp=rnd(4,10); Game.gainXp(xp); Game.logMsg(`You study the ${w.biomeName}. +${xp} XP.`,"good"); }
+  Game.save(); UI.render("hub"); UI.flashLog();
 }
-
-function playerAttack(skillName){
-  if(!combat || combat.over) return;
-  const sk = DATA.skills[skillName];
-  const cost = sk.energy||0;
-  if(state.energy < cost){ toast("Not enough energy"); return; }
-  state.energy -= cost;
-  const sp = DATA.species.find(s=>s.id===state.species);
-  if(sp.trait.includes("Voidtouched") && skillName.includes("Current"))
-    state.energy = Math.min(Game.effMaxEnergy(), state.energy + Math.round(cost*0.25));
-
-  if(sk.type==="heal"){
-    const amt = 20 + Game.effStat("force")*3;
-    state.hp = Math.min(Game.effMaxHp(), state.hp+amt);
-    Game.logMsg(`You channel the Current and mend ${amt} HP.`,"good");
-  } else if(sk.type==="buff"){ // Focus
-    state.energy = Math.min(Game.effMaxEnergy(), state.energy+12);
-    state.hp = Math.min(Game.effMaxHp(), state.hp+5);
-    Game.logMsg(`You center yourself. +12 energy, +5 HP.`,"sys");
-  } else { // attack
-    const acc = sk.acc || 0.85;
-    if(!chance(acc + Game.effStat("agility")*0.01)){
-      Game.logMsg(`Your ${skillName} misses!`,"bad");
-    } else {
-      let dmg = Math.round(Game.effStat(sk.scale)*sk.mult + rnd(0,4));
-      if(combat.stim) dmg = Math.round(dmg*1.5);
-      const crit = chance(0.1+Game.effStat("agility")*0.005);
-      if(crit) dmg = Math.round(dmg*1.6);
-      combat.hp -= dmg;
-      Game.logMsg(`${skillName} hits ${combat.name} for ${dmg}${crit?" (CRIT!)":""}.`,"hit");
-    }
+function playerAttack(name){
+  if(!combat||combat.over) return;
+  const sk=DATA.skills[name], cost=sk.energy||0;
+  if(state.energy<cost){ toast("Not enough energy"); return; }
+  state.energy-=cost;
+  if(Game.hasPower("current") && name.includes("Current"))
+    state.energy=Math.min(Game.effMaxEnergy(),state.energy+Math.round(cost*0.25));
+  if(sk.type==="heal"){ const amt=20+Game.effStat("force")*3;
+    state.hp=Math.min(Game.effMaxHp(),state.hp+amt); Game.logMsg(`You mend ${amt} HP.`,"good"); }
+  else if(sk.type==="buff"){ state.energy=Math.min(Game.effMaxEnergy(),state.energy+12);
+    state.hp=Math.min(Game.effMaxHp(),state.hp+5); Game.logMsg(`You focus. +12 energy, +5 HP.`,"sys"); }
+  else {
+    const acc=sk.acc||0.85;
+    if(!chance(acc+Game.effStat("agility")*0.01)){ Game.logMsg(`Your ${name} misses!`,"bad"); }
+    else { let dmg=Math.round(Game.effStat(sk.scale)*sk.mult+rnd(0,4));
+      if(combat.stim) dmg=Math.round(dmg*1.5);
+      const critChance=0.1+Game.effStat("agility")*0.005+(Game.hasPower("nightsight")?0.1:0);
+      const crit=chance(critChance); if(crit) dmg=Math.round(dmg*1.6);
+      let venom=""; if(Game.hasPower("venom")&&chance(0.25)){ dmg+=4; venom=" (+venom)"; }
+      combat.hp-=dmg; Game.logMsg(`${name} hits ${combat.name} for ${dmg}${crit?" CRIT!":""}${venom}.`,"hit"); }
   }
-  if(combat.hp<=0){ return winEncounter(); }
+  if(combat.hp<=0) return winEncounter();
   enemyTurn();
 }
-
 function enemyTurn(){
-  const sp = DATA.species.find(s=>s.id===state.species);
-  let dmg = combat.atk + rnd(0,3);
-  if(sp.trait.includes("Stoneblood")) dmg = Math.max(1, dmg-1);
-  // dodge
-  if(chance(Game.effStat("agility")*0.012)){
-    Game.logMsg(`You dodge the ${combat.name}'s attack.`,"good");
-  } else {
-    state.hp -= dmg;
-    Game.logMsg(`${combat.name} strikes you for ${dmg}.`,"bad");
-  }
+  let dmg=combat.atk+rnd(0,3);
+  if(Game.hasPower("armored")) dmg=Math.max(1,dmg-2);
+  let dodge=Game.effStat("agility")*0.012; if(Game.hasPower("flight")) dodge+=0.12;
+  if(chance(dodge)){ Game.logMsg(`You evade the ${combat.name}.`,"good"); }
+  else { state.hp-=dmg; Game.logMsg(`${combat.name} strikes you for ${dmg}.`,"bad"); }
+  // species powers that tick each round
+  if(Game.hasPower("regen")){ const h=Math.round(Game.effMaxHp()*0.04);
+    state.hp=Math.min(Game.effMaxHp(),state.hp+h); }
+  if(Game.hasPower("photosynth")) state.energy=Math.min(Game.effMaxEnergy(),state.energy+2);
   if(state.hp<=0) return loseEncounter();
   Game.save(); UI.render("combat");
 }
-
 function tryTame(){
-  if(!combat || combat.over) return;
-  // taming works best when the creature is weakened
-  const hpFrac = combat.hp/combat.maxHp;
-  let base = combat.tame * (1.2 - hpFrac); // lower hp => higher chance
-  base += Game.effStat("charm")*0.01;
-  if(state.skills.includes("Beast Bond")) base += 0.25;
-  base = Math.max(0.03, Math.min(0.92, base));
-  if(chance(base)){
-    state.pets.push({ cid:combat.cid, name:combat.name, hp:combat.maxHp, atk:combat.atk, level:1, nick:null });
+  if(!combat||combat.over) return;
+  let p=combat.tame*(1.2-combat.hp/combat.maxHp)+Game.effStat("charm")*0.01;
+  if(Game.hasPower("telepath")) p+=0.12;
+  p=clamp(p,0.03,0.92);
+  if(chance(p)){ state.pets.push({cid:combat.cid,name:combat.name,hp:combat.maxHp,atk:combat.atk,level:1,nick:null});
     Game.logMsg(`You bond with the ${combat.name}! It joins your menagerie.`,"good");
-    combat.over = true;
-    Game.gainXp(Math.round(combat.xp*0.5));
-    Game.save(); UI.render("hub"); UI.flashLog();
-  } else {
-    Game.logMsg(`The ${combat.name} resists your attempt to tame it!`,"bad");
-    enemyTurn();
-  }
+    combat.over=true; Game.gainXp(Math.round(combat.xp*0.5)); Game.save(); UI.render("hub"); UI.flashLog(); }
+  else { Game.logMsg(`The ${combat.name} resists!`,"bad"); enemyTurn(); }
 }
-
 function fleeEncounter(){
-  let p = 0.5 + Game.effStat("agility")*0.015;
-  if(state.skills.includes("Current Sense")) p += 0.1;
-  if(chance(p)){
-    Game.logMsg(`You slip away from the ${combat.name}.`,"sys");
-    combat.over=true; Game.save(); UI.render("hub"); UI.flashLog();
-  } else {
-    Game.logMsg(`You fail to escape!`,"bad");
-    enemyTurn();
-  }
+  let p=0.5+Game.effStat("agility")*0.015;
+  if(state.skills.includes("Current Sense")) p+=0.1;
+  if(Game.hasPower("flight")) p+=0.12; if(Game.hasPower("telepath")) p+=0.06;
+  if(chance(p)){ Game.logMsg(`You slip away from the ${combat.name}.`,"sys");
+    combat.over=true; Game.save(); UI.render("hub"); UI.flashLog(); }
+  else { Game.logMsg(`You fail to escape!`,"bad"); enemyTurn(); }
 }
-
 function winEncounter(){
-  combat.over = true;
-  const lucky = state.skills.includes("Lucky Find");
-  let cr = rnd(6,18) * (lucky?2:1);
-  state.credits += cr;
-  Game.gainXp(combat.xp);
+  combat.over=true; const cr=rnd(6,18); state.credits+=cr; Game.gainXp(combat.xp);
   Game.logMsg(`You defeat the ${combat.name}! +${combat.xp} XP, +${cr} credits.`,"good");
-  // loot
-  if(chance(lucky?0.6:0.4)){
-    const id = pick(["scrap","pelt","ration"]);
-    Game.addItem(id,1); Game.logMsg(`Loot: ${DATA.items[id].name}.`,"good");
-  }
+  if(chance(0.4)){ const id=pick(["scrap","pelt","ration"]); Game.addItem(id,1);
+    Game.logMsg(`Loot: ${DATA.items[id].name}.`,"good"); }
   Game.save(); UI.render("hub"); UI.flashLog();
 }
-
 function loseEncounter(){
-  combat.over = true;
-  const lost = Math.min(state.credits, Math.round(state.credits*0.2));
-  state.credits -= lost;
-  state.hp = Math.max(1, Math.round(Game.effMaxHp()*0.3));
-  Game.logMsg(`You black out and wake at camp, ${lost} credits lighter. (HP restored partly.)`,"bad");
+  combat.over=true; const lost=Math.round(state.credits*0.2); state.credits-=lost;
+  state.hp=Math.max(1,Math.round(Game.effMaxHp()*0.3));
+  Game.logMsg(`You black out and wake at camp, ${lost} credits lighter.`,"bad");
   Game.save(); UI.render("hub"); UI.flashLog();
 }
 
 /* ============================================================ UI ======= */
 const UI = {
   current:"title",
-  go(screen){ this.render(screen); },
-
   render(screen){
-    this.current = screen;
-    $("#nav").classList.toggle("hidden", !state || screen==="title" || screen==="create");
-    [...$("#nav").children].forEach(b=>b.classList.toggle("on", b.dataset.screen===screen));
-    const fn = this["screen_"+screen];
-    app.innerHTML = fn ? fn() : "<p>?</p>";
-    this.bind(screen);
-    window.scrollTo(0,0);
+    this.current=screen;
+    $("#nav").classList.toggle("hidden", !state||screen==="title"||screen==="create");
+    [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===screen));
+    app.innerHTML=(this["screen_"+screen]||(()=> "<p>?</p>")).call(this);
+    this.bind(screen); window.scrollTo(0,0);
+  },
+
+  /* shared rarity banner used across reveals + detail screens */
+  rarityBanner(tier, sub){
+    const t=RARITY.byId(tier);
+    return `<div class="rarity-banner reveal" style="border-color:${t.color}">
+      <div class="rn" style="color:${t.color}">${t.name.toUpperCase()}</div>
+      <div class="odds">${RARITY.odds(t)} &middot; ${sub||""}</div></div>`;
   },
 
   /* ---------- TITLE ---------- */
   screen_title(){
-    const cont = Game.hasSave();
+    const cont=Game.hasSave();
     return `
     <div class="card center">
-      <p class="dim small">Somewhere past the trade lanes, on a quiet world,
-      a new name is about to be written into the galaxy's long ledger.</p>
+      <p class="dim small">The galaxy is already written. Every world, every people, every engine
+      and beast was decided by chance long before you arrived. Your gift is smaller, and greater:
+      you get to <b>name</b> them.</p>
       <div class="divider"></div>
       ${cont?`<button class="primary full center" id="btnContinue">&#9654; Continue Journey</button>`:""}
-      <button class="full center ${cont?'ghost':'primary'}" id="btnNew">&#10022; New Game</button>
+      <button class="full center ${cont?'ghost':'primary'}" id="btnNew">&#10022; Roll a New Life</button>
       ${cont?`<button class="full center ghost small" id="btnWipe">Delete saved game</button>`:""}
     </div>
     <div class="card small dim">
-      <h3>How to play on your phone</h3>
-      <p>This whole game is one file. Save it to your phone and open it in your browser,
-      or "Add to Home Screen" for an app-like icon. Progress saves automatically.
-      Use the <b>Save</b> tab to export a backup file.</p>
+      <h3>Play on your phone</h3>
+      <p>This whole game is one file. Save it to your phone, open it in your browser, and
+      "Add to Home Screen" for an app icon. Progress autosaves; back it up from the Save tab.</p>
     </div>`;
   },
 
-  /* ---------- CREATION ---------- */
+  /* ---------- CREATION (name -> reveal species -> reveal world -> reveal ship) ---------- */
   screen_create(){
-    const step = creating.step||1;
-    if(step===1){
-      return `
+    const s=creating.step||1;
+    if(s===1) return `
       <div class="card">
-        <h2>Name your character</h2>
-        <p class="dim small">What will the galaxy call you?</p>
-        <input type="text" id="nameInput" maxlength="18" placeholder="e.g. Kael Voss" value="${creating.name||""}">
+        <h2>What is your name?</h2>
+        <p class="dim small">This much is yours to decide.</p>
+        <input type="text" id="nameInput" maxlength="20" placeholder="e.g. Kael Voss" value="${creating.name||""}">
         <div class="divider"></div>
         <div class="row between">
           <button class="ghost" id="backTitle">&larr; Back</button>
-          <button class="primary" id="toStep2">Next: Species &rarr;</button>
+          <button class="primary" id="rollSpecies">Roll my origin &rarr;</button>
+        </div>
+      </div>`;
+
+    if(s===2){ const sp=creating.species; return `
+      ${this.rarityBanner(sp.tier, "your bloodline")}
+      <div class="card reveal">
+        <h2>Fate made you ${article(sp.archeName)} <span class="violet">${sp.archeName}</span></h2>
+        <p class="small dim">${cap(sp.flavor)}.</p>
+        <div class="divider"></div>
+        <h3>Attributes</h3>
+        ${statRows(sp.stats)}
+        <div class="statline"><span>Vitality (HP)</span><span class="gold">${sp.hp}</span></div>
+        ${sp.powers.length?`<div class="divider"></div><h3>Innate powers</h3>
+          ${sp.powers.map(p=>`<p class="small"><b class="blue">${POWERS[p].name}</b> — ${POWERS[p].desc}</p>`).join("")}`
+          :`<p class="small dim">No innate powers — an ordinary people.</p>`}
+        <div class="divider"></div>
+        <p class="small">Now, what are your people <b>called</b>?</p>
+        <input type="text" id="spNameInput" maxlength="22" placeholder="Name your species" value="${sp.name||""}">
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="backStep1">&larr; Back</button>
+          <button class="primary" id="rollWorld">Name &amp; continue &rarr;</button>
         </div>
       </div>`;
     }
-    if(step===2){
-      return `
-      <div class="card">
-        <h2>Choose your species</h2>
-        <p class="dim small">Each people brings its own gifts.</p>
-      </div>
-      ${DATA.species.map(s=>`
-        <button class="full ${creating.species===s.id?'sel':''}" data-sp="${s.id}">
-          <b>${s.name}</b><br><span class="small dim">${s.blurb}</span><br>
-          <span class="small gold">Trait — ${s.trait}</span><br>
-          <span class="small">${statModStr(s.mods)}</span>
-        </button>`).join("")}
-      <div class="card row between">
-        <button class="ghost" id="backStep1">&larr; Back</button>
-        <button class="primary" id="toStep3" ${creating.species?"":"disabled"}>Next: Path &rarr;</button>
+
+    if(s===3){ const w=creating.world; return `
+      ${this.rarityBanner(w.tier, "your birthworld")}
+      <div class="card reveal">
+        <h2>A <span class="blue">${w.biomeName}</span></h2>
+        <p class="small dim">${worldDesc(w)}</p>
+        <div class="divider"></div>
+        <div class="statline"><span>Population</span><span>${cap(w.popName)}</span></div>
+        <div class="statline"><span>Technology</span><span>${TECH_LABELS[w.tech]} <span class="dim">(${w.tech}/9)</span></span></div>
+        <div class="statline"><span>Wealth</span><span>${WEALTH_LABELS[w.wealth]} <span class="dim">(${w.wealth}/9)</span></span></div>
+        <div class="statline"><span>Danger</span><span class="${w.danger>=7?'red':w.danger>=4?'gold':'green'}">${DANGER_LABELS[w.danger]} <span class="dim">(${w.danger}/10)</span></span></div>
+        <div class="divider"></div>
+        <p class="small">What will you call this world?</p>
+        <input type="text" id="wNameInput" maxlength="22" placeholder="Name your world" value="${w.name||""}">
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="backStep2">&larr; Back</button>
+          <button class="primary" id="rollShip">Name &amp; continue &rarr;</button>
+        </div>
       </div>`;
     }
-    if(step===3){
-      return `
-      <div class="card">
-        <h2>Choose your path</h2>
-        <p class="dim small">Your specialization grants a signature skill.</p>
-      </div>
-      ${DATA.specializations.map(s=>`
-        <button class="full ${creating.spec===s.id?'sel':''}" data-spec="${s.id}">
-          <b>${s.name}</b><br><span class="small dim">${s.blurb}</span><br>
-          <span class="small blue">Skill — ${s.grants.join(", ")}</span><br>
-          <span class="small">${statModStr(s.mods)}</span>
-        </button>`).join("")}
-      <div class="card row between">
-        <button class="ghost" id="backStep2">&larr; Back</button>
-        <button class="primary" id="toStep4" ${creating.spec?"":"disabled"}>Review &rarr;</button>
+
+    if(s===4){ const v=creating.vehicle; return `
+      ${this.rarityBanner(v.tier, "your first craft")}
+      <div class="card reveal">
+        <h2>You inherit ${article(v.clsName)} <span class="gold">${v.clsName}</span></h2>
+        <p class="small dim">A battered machine, but it runs. ${powerLine(v)}</p>
+        <div class="divider"></div>
+        ${v.axes.map(a=>`<div class="statline"><span>${UNITS.power[a].label}</span><span class="gold">${UNITS.fmtPower(v.power[a])}</span></div>`).join("")}
+        <p class="small dim" style="margin-top:6px">Power is measured in ${UNITS.power.unitLong} (${UNITS.power.unit}).</p>
+        <div class="divider"></div>
+        <p class="small">Every good pilot names their ship.</p>
+        <input type="text" id="vNameInput" maxlength="22" placeholder="Name your craft" value="${v.name||""}">
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="backStep3">&larr; Back</button>
+          <button class="primary" id="toReview">Name &amp; review &rarr;</button>
+        </div>
       </div>`;
     }
-    // step 4 review
-    const sp = DATA.species.find(s=>s.id===creating.species);
-    const spec = DATA.specializations.find(s=>s.id===creating.spec);
+
+    // step 5 review
+    const sp=creating.species, w=creating.world, v=creating.vehicle;
     return `
-    <div class="card">
-      <h2>Ready to begin?</h2>
-      <p><span class="dim">Name:</span> <b class="gold">${creating.name}</b></p>
-      <p><span class="dim">Species:</span> <b>${sp.name}</b> — <span class="small">${sp.trait}</span></p>
-      <p><span class="dim">Path:</span> <b>${spec.name}</b> — <span class="small blue">${spec.grants.join(", ")}</span></p>
+    <div class="card reveal">
+      <h2>The galaxy has decided.</h2>
+      <p><span class="dim">You are</span> <b class="gold">${creating.name}</b>,
+         <span class="dim">of the</span> <b class="violet">${sp.name}</b>
+         <span class="small" style="color:${RARITY.byId(sp.tier).color}">(${RARITY.byId(sp.tier).name})</span></p>
+      <p><span class="dim">Born on</span> <b class="blue">${w.name}</b>,
+         a ${w.biomeName} <span class="small" style="color:${RARITY.byId(w.tier).color}">(${RARITY.byId(w.tier).name})</span></p>
+      <p><span class="dim">Flying</span> <b class="gold">${v.name}</b>,
+         ${article(v.clsName)} ${v.clsName} <span class="small" style="color:${RARITY.byId(v.tier).color}">(${RARITY.byId(v.tier).name})</span></p>
       <div class="divider"></div>
-      <p class="small dim">Your starter world will be chosen at random from the galaxy's
-      quiet frontier — limited resources, weaker beasts, thin markets. A gentle place to begin.</p>
+      <p class="small dim">There are no second rolls. This life is yours.</p>
       <div class="row between">
-        <button class="ghost" id="backStep3">&larr; Back</button>
-        <button class="primary" id="beginGame">&#9654; Launch into the stars</button>
+        <button class="ghost" id="backStep4">&larr; Back</button>
+        <button class="primary" id="beginGame">&#9654; Begin</button>
       </div>
     </div>`;
   },
 
-  /* ---------- HUB (current world) ---------- */
+  /* ---------- HUB ---------- */
   screen_hub(){
-    const w = DATA.worlds.find(x=>x.id===state.world);
+    const w=state.world;
     return `
     ${this.statHeader()}
     <div class="card">
-      <div class="row between">
-        <h2>&#9737; ${w.name}</h2>
-        <span class="tag tier${w.tier}">Tier ${w.tier} · ${["","Frontier","Settled","Wild","Hostile"][w.tier]}</span>
-      </div>
-      <p class="small dim">${w.biome}. ${w.blurb}</p>
-      <span class="pill b">danger ${w.danger}</span>
-      <span class="pill">market ${Math.round(w.market*100)}%</span>
-      <span class="pill v">${w.creatures.length} known beasts</span>
+      <div class="row between"><h2>&#9737; ${w.name}</h2>
+        <span class="tag" style="color:${RARITY.byId(w.tier).color}">${RARITY.byId(w.tier).name}</span></div>
+      <p class="small dim">${worldDesc(w)}</p>
+      <span class="pill b">${TECH_LABELS[w.tech]}</span>
+      <span class="pill g">${WEALTH_LABELS[w.wealth]}</span>
+      <span class="pill ${w.danger>=7?'':'v'}">${DANGER_LABELS[w.danger]}</span>
     </div>
     <div class="card">
       <h3>Actions</h3>
@@ -620,18 +726,16 @@ const UI = {
         <button id="actExplore" class="primary">&#9968; Explore</button>
         <button id="actMarket">&#9879; Market</button>
         <button id="actRest">&#9789; Rest</button>
-        <button id="actTravel">&#9992; Travel</button>
+        <button id="actChar">&#9670; Self</button>
       </div>
     </div>
-    ${this.logCard()}
-    `;
+    ${this.logCard()}`;
   },
 
   /* ---------- COMBAT ---------- */
   screen_combat(){
     if(!combat) return this.screen_hub();
-    const c = combat;
-    const atkSkills = state.skills.filter(s=>DATA.skills[s].type==="attack");
+    const c=combat, atk=state.skills.filter(s=>DATA.skills[s].type==="attack");
     return `
     ${this.statHeader()}
     <div class="card">
@@ -640,12 +744,12 @@ const UI = {
       <p class="small dim">${c.blurb}</p>
       <div class="statline"><span>HP</span><span>${Math.max(0,c.hp)} / ${c.maxHp}</span></div>
       <div class="bar"><i class="hpfill" style="width:${Math.max(0,c.hp/c.maxHp*100)}%"></i></div>
-      <span class="pill">atk ${c.atk}</span><span class="pill v">tame base ${Math.round(c.tame*100)}%</span>
+      <span class="pill">atk ${c.atk}</span>
     </div>
     <div class="card">
       <h3>Your move</h3>
       <div class="grid">
-        ${atkSkills.map(s=>`<button data-atk="${s}">${s}<br><span class="small dim">${DATA.skills[s].energy||0} en</span></button>`).join("")}
+        ${atk.map(s=>`<button data-atk="${s}">${s}<br><span class="small dim">${DATA.skills[s].energy||0} en</span></button>`).join("")}
         ${state.skills.includes("Mend")?`<button data-atk="Mend">Mend<br><span class="small dim">6 en</span></button>`:""}
         <button data-atk="Focus" class="ghost">Focus<br><span class="small dim">+energy</span></button>
         <button id="actTame">Tame</button>
@@ -653,73 +757,84 @@ const UI = {
         <button id="actBag">Use item</button>
       </div>
     </div>
-    ${this.logCard()}
-    `;
+    ${this.logCard()}`;
   },
 
-  /* ---------- CHARACTER ---------- */
+  /* ---------- SELF ---------- */
   screen_char(){
-    const sp = DATA.species.find(s=>s.id===state.species);
-    const spec = DATA.specializations.find(s=>s.id===state.spec);
+    const sp=state.species;
     return `
     ${this.statHeader()}
+    ${this.rarityBannerInline(sp.tier, "bloodline")}
     <div class="card">
       <h2>${state.name}</h2>
-      <p><span class="dim">Species:</span> ${sp.name} · <span class="dim">Path:</span> ${spec.name}</p>
-      <p class="small gold">${sp.trait}</p>
+      <p><span class="dim">People:</span> <b class="violet">${sp.name}</b>
+        <span class="small dim">(${sp.archeName})</span></p>
+      <p class="small dim">${cap(sp.flavor)}.</p>
       <div class="divider"></div>
       <h3>Attributes</h3>
       ${["might","agility","force","tech","charm"].map(k=>{
-        const base=state.stats[k], eff=Game.effStat(k), bonus=eff-base;
-        return `<div class="statline"><span>${cap(k)}</span><span>${eff}${bonus?` <span class="green small">(+${bonus})</span>`:""}</span></div>`;
+        const base=sp.stats[k], eff=Game.effStat(k), b=eff-base;
+        return `<div class="statline"><span>${cap(k)}</span><span>${eff}${b?` <span class="green small">(+${b})</span>`:""}</span></div>`;
       }).join("")}
     </div>
     <div class="card">
-      <h3>Skills known</h3>
+      <h3>Innate powers</h3>
+      ${sp.powers.length?sp.powers.map(p=>`<p class="small"><b class="blue">${POWERS[p].name}</b> — ${POWERS[p].desc}</p>`).join("")
+        :`<p class="small dim">None — an ordinary people.</p>`}
+    </div>
+    <div class="card">
+      <h3>Skills</h3>
       ${state.skills.map(s=>`<p class="small"><b class="blue">${s}</b> — ${DATA.skills[s].blurb}</p>`).join("")}
     </div>
     <div class="card">
       <h3>Equipment</h3>
-      ${["weapon","armor","relic"].map(slot=>{
-        const id=state.equipped[slot];
-        return `<div class="statline"><span class="dim">${cap(slot)}</span><span>${id?DATA.items[id].name:"<span class='dim'>— empty —</span>"}</span></div>`;
-      }).join("")}
-      <p class="small dim">Equip gear from the Items tab.</p>
-    </div>
-    `;
+      ${["weapon","armor","relic"].map(slot=>{ const id=state.equipped[slot];
+        return `<div class="statline"><span class="dim">${cap(slot)}</span><span>${id?DATA.items[id].name:"<span class='dim'>— empty —</span>"}</span></div>`; }).join("")}
+    </div>`;
   },
 
-  /* ---------- BAG / ITEMS ---------- */
+  /* ---------- BAG ---------- */
   screen_bag(){
-    const ids = Object.keys(state.inv);
-    const inCombat = combat && !combat.over;
+    const ids=Object.keys(state.inv), inC=combat&&!combat.over;
     return `
     ${this.statHeader()}
     <div class="card">
       <h2>&#9776; Inventory</h2>
       <p class="small dim">Credits: <b class="gold">${state.credits}</b></p>
       ${ids.length===0?`<p class="dim">Your pack is empty.</p>`:""}
-      ${ids.map(id=>{
-        const it=DATA.items[id], n=state.inv[id];
-        const equipped = Object.values(state.equipped).includes(id);
-        let btn="";
-        if(it.kind==="consumable") btn=`<button data-use="${id}">Use</button>`;
-        else if(["weapon","armor","relic"].includes(it.kind))
-          btn=`<button data-equip="${id}">${equipped?"Unequip":"Equip"}</button>`;
+      ${ids.map(id=>{ const it=DATA.items[id], n=state.inv[id], eq=Object.values(state.equipped).includes(id);
+        let btn=""; if(it.kind==="consumable") btn=`<button data-use="${id}">Use</button>`;
+        else if(["weapon","armor","relic"].includes(it.kind)) btn=`<button data-equip="${id}">${eq?"Unequip":"Equip"}</button>`;
         return `<div class="card" style="margin:8px 0;padding:10px">
-          <div class="row between"><b>${it.name} ${n>1?`<span class="dim">x${n}</span>`:""}</b>
-          <span class="tag">${it.kind}</span></div>
+          <div class="row between"><b>${it.name} ${n>1?`<span class="dim">x${n}</span>`:""}</b><span class="tag">${it.kind}</span></div>
           <p class="small dim" style="margin:4px 0">${it.blurb}</p>
-          <div class="row">${btn}<button class="ghost small" data-sell="${id}">Sell · ${Game.sellPrice(id)}c</button></div>
-        </div>`;
-      }).join("")}
+          <div class="row">${btn}<button class="ghost small" data-sell="${id}">Sell &middot; ${Game.sellPrice(id)}c</button></div>
+        </div>`; }).join("")}
     </div>
-    ${inCombat?`<div class="card"><button id="backCombat" class="primary full center">&larr; Back to fight</button></div>`:""}
+    ${inC?`<div class="card"><button id="backCombat" class="primary full center">&larr; Back to fight</button></div>`:""}`;
+  },
+
+  /* ---------- GARAGE (vehicles + the power metrics) ---------- */
+  screen_garage(){
+    return `
+    ${this.statHeader()}
     <div class="card">
-      <h3>Menagerie</h3>
-      <p class="small dim">${state.pets.length} companion(s). See the Beasts tab.</p>
+      <h2>&#9992; Hangar</h2>
+      <p class="small dim">Craft are rated by the universal power triad, all in
+        ${UNITS.power.unitLong} (${UNITS.power.unit}):</p>
+      <p class="small"><b class="gold">${UNITS.power.star.label}</b> — ${UNITS.power.star.desc}</p>
+      <p class="small"><b class="gold">${UNITS.power.flight.label}</b> — ${UNITS.power.flight.desc}</p>
+      <p class="small"><b class="gold">${UNITS.power.ground.label}</b> — ${UNITS.power.ground.desc}</p>
     </div>
-    `;
+    ${state.vehicles.map((v,i)=>`
+      <div class="card">
+        <div class="row between"><h2 class="gold">${v.name}</h2>
+          <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
+        <p class="small dim">${v.clsName}</p>
+        ${v.axes.map(a=>`<div class="statline"><span>${UNITS.power[a].label}</span><span class="gold">${UNITS.fmtPower(v.power[a])}</span></div>`).join("")}
+        <button class="small" data-vnick="${i}" style="margin-top:8px">Rename</button>
+      </div>`).join("")}`;
   },
 
   /* ---------- MENAGERIE ---------- */
@@ -728,13 +843,11 @@ const UI = {
     ${this.statHeader()}
     <div class="card">
       <h2>&#9758; Menagerie</h2>
-      <p class="small dim">Beasts you have tamed travel with you. Defeat weakened creatures
-      and choose <b>Tame</b> to add them here.</p>
-      ${state.pets.length===0?`<p class="dim">You haven't tamed any creatures yet.</p>`:""}
+      <p class="small dim">Defeat weakened creatures and choose <b>Tame</b> to add them here.</p>
+      ${state.pets.length===0?`<p class="dim">No companions yet.</p>`:""}
       ${state.pets.map((p,i)=>`
         <div class="card" style="margin:8px 0;padding:10px">
-          <div class="row between"><b class="violet">${p.nick||p.name}</b>
-            <span class="tag">lv ${p.level}</span></div>
+          <div class="row between"><b class="violet">${p.nick||p.name}</b><span class="tag">lv ${p.level}</span></div>
           <p class="small dim" style="margin:4px 0">${DATA.creatures[p.cid].blurb}</p>
           <span class="pill">HP ${p.hp}</span><span class="pill">ATK ${p.atk}</span>
           <div class="row" style="margin-top:6px">
@@ -742,61 +855,37 @@ const UI = {
             <button class="small ghost" data-release="${i}">Release</button>
           </div>
         </div>`).join("")}
-    </div>
-    `;
+    </div>`;
   },
 
   /* ---------- MARKET ---------- */
   screen_market(){
-    const w = DATA.worlds.find(x=>x.id===state.world);
+    const w=state.world, stock=Game.marketStock();
     return `
     ${this.statHeader()}
     <div class="card">
       <h2>&#9879; ${w.name} Market</h2>
-      <p class="small dim">A thin frontier market. Stock is limited and prices run high.
-      Credits: <b class="gold">${state.credits}</b></p>
+      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]}. Stock reflects this world's
+        tech and wealth. Credits: <b class="gold">${state.credits}</b></p>
     </div>
     <div class="card">
-      <h3>For sale</h3>
-      ${STARTER_STOCK.map(id=>{
-        const it=DATA.items[id], price=Game.buyPrice(id);
+      ${stock.length===0?`<p class="dim small">This world is too primitive to sell much of anything.</p>`:""}
+      ${stock.map(id=>{ const it=DATA.items[id], p=Game.buyPrice(id);
         return `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
           <span><b>${it.name}</b><br><span class="small dim">${it.blurb}</span></span>
-          <button data-buy="${id}" ${state.credits<price?"disabled":""}>${price}c</button>
-        </div>`;
-      }).join("")}
+          <button data-buy="${id}" ${state.credits<p?"disabled":""}>${p}c</button></div>`; }).join("")}
     </div>
-    <div class="card"><button id="leaveMarket" class="ghost full center">Leave market</button></div>
-    `;
+    <div class="card"><button id="leaveMarket" class="ghost full center">Leave market</button></div>`;
   },
 
-  /* ---------- TRAVEL ---------- */
-  screen_travel(){
-    return `
-    ${this.statHeader()}
-    <div class="card">
-      <h2>&#9992; Travel</h2>
-      <p class="small dim">From this frontier world you can reach other quiet worlds.
-      (Deep-space lanes to dangerous worlds open up as you grow stronger — coming soon.)</p>
-    </div>
-    ${DATA.worlds.filter(w=>w.tier===1).map(w=>`
-      <button class="full ${w.id===state.world?'sel':''}" data-travel="${w.id}" ${w.id===state.world?"disabled":""}>
-        <b>${w.name}</b> ${state.visited.includes(w.id)?'<span class="small green">visited</span>':'<span class="small dim">new</span>'}<br>
-        <span class="small dim">${w.biome} · danger ${w.danger}</span>
-      </button>`).join("")}
-    <div class="card"><button id="leaveTravel" class="ghost full center">Stay here</button></div>
-    `;
-  },
-
-  /* ---------- SAVE / DATA ---------- */
+  /* ---------- SAVE ---------- */
   screen_save(){
-    const d = new Date(state.updated||Date.now());
+    const d=new Date(state.updated||Date.now());
     return `
     ${this.statHeader()}
     <div class="card">
       <h2>&#8635; Save &amp; Data</h2>
-      <p class="small dim">The game autosaves to this browser after every action.
-      Last saved: ${d.toLocaleString()}.</p>
+      <p class="small dim">Autosaves to this browser after every action. Last saved: ${d.toLocaleString()}.</p>
       <div class="divider"></div>
       <button class="full center" id="btnExport">&#8681; Export save file</button>
       <button class="full center" id="btnImport">&#8679; Import save file</button>
@@ -805,22 +894,23 @@ const UI = {
       <button class="full center ghost small red" id="btnReset">Delete this character</button>
     </div>
     <div class="card small dim">
-      <h3>Tips</h3>
-      <p>Export creates a small <b>.json</b> file you can save to your phone, cloud drive,
-      or email to yourself as a backup. Import it on any device to continue where you left off.</p>
-    </div>
-    `;
+      <h3>Tip</h3>
+      <p>Export makes a small <b>.json</b> backup you can store in cloud or email to yourself,
+      then import on any device to continue.</p>
+    </div>`;
   },
 
   /* ---------- shared bits ---------- */
+  rarityBannerInline(tier, sub){ const t=RARITY.byId(tier);
+    return `<div class="rarity-banner" style="border-color:${t.color}">
+      <div class="rn" style="color:${t.color}">${t.name.toUpperCase()}</div>
+      <div class="odds">${RARITY.odds(t)} &middot; ${sub||""}</div></div>`; },
   statHeader(){
     const hpMax=Game.effMaxHp(), enMax=Game.effMaxEnergy();
     return `
     <div class="card">
-      <div class="row between">
-        <b>${state.name}</b>
-        <span class="small dim">Lv ${state.level} · <span class="gold">${state.credits}c</span></span>
-      </div>
+      <div class="row between"><b>${state.name}</b>
+        <span class="small dim">Lv ${state.level} &middot; <span class="gold">${state.credits}c</span></span></div>
       <div class="statline"><span class="small">HP</span><span class="small">${Math.max(0,state.hp)} / ${hpMax}</span></div>
       <div class="bar"><i class="hpfill" style="width:${Math.max(0,state.hp/hpMax*100)}%"></i></div>
       <div class="statline"><span class="small">Energy</span><span class="small">${state.energy} / ${enMax}</span></div>
@@ -829,188 +919,135 @@ const UI = {
       <div class="bar"><i class="xpfill" style="width:${state.xp/state.xpNext*100}%"></i></div>
     </div>`;
   },
-  logCard(){
-    const items = state.log.slice(-30).reverse();
-    return `<div class="card"><h3>Log</h3>
-      <div class="log" id="logBox">${items.map(l=>`<p class="${l.c}">${l.t}</p>`).join("")}</div></div>`;
-  },
+  logCard(){ const items=state.log.slice(-30).reverse();
+    return `<div class="card"><h3>Log</h3><div class="log" id="logBox">${items.map(l=>`<p class="${l.c}">${l.t}</p>`).join("")}</div></div>`; },
   flashLog(){ const el=$("#logBox"); if(el){ el.scrollTop=0; el.parentElement.classList.add("flash");
     setTimeout(()=>el.parentElement.classList.remove("flash"),500);} },
 
-  /* ---------- event binding per screen ---------- */
+  /* ---------- binding ---------- */
   bind(screen){
-    // nav
     [...$("#nav").children].forEach(b=> b.onclick=()=>{ if(combat&&!combat.over&&b.dataset.screen!=="bag"){toast("Finish the encounter first");return;} UI.render(b.dataset.screen); });
 
     if(screen==="title"){
       const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:1}; UI.render("create"); };
       const c=$("#btnContinue"); if(c) c.onclick=()=>{ Game.load(); UI.render("hub"); };
-      const w=$("#btnWipe"); if(w) w.onclick=()=>{ if(confirm("Delete your saved game permanently?")){Game.wipe(); UI.render("title");} };
+      const w=$("#btnWipe"); if(w) w.onclick=()=>{ if(confirm("Delete your saved game?")){Game.wipe(); UI.render("title");} };
     }
-
     if(screen==="create") this.bindCreate();
 
     if(screen==="hub"){
       $("#actExplore").onclick=()=>startEncounter();
       $("#actMarket").onclick=()=>UI.render("market");
-      $("#actTravel").onclick=()=>UI.render("travel");
-      $("#actRest").onclick=()=>{
-        state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
-        Game.logMsg("You make camp and rest. HP and energy restored.","sys");
-        Game.save(); UI.render("hub"); UI.flashLog();
-      };
+      $("#actChar").onclick=()=>UI.render("char");
+      $("#actRest").onclick=()=>{ state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
+        Game.logMsg("You make camp and rest. HP and energy restored.","sys"); Game.save(); UI.render("hub"); UI.flashLog(); };
     }
-
     if(screen==="combat"){
       app.querySelectorAll("[data-atk]").forEach(b=> b.onclick=()=>playerAttack(b.dataset.atk));
-      $("#actTame").onclick=()=>tryTame();
-      $("#actFlee").onclick=()=>fleeEncounter();
-      $("#actBag").onclick=()=>UI.render("bag");
+      $("#actTame").onclick=()=>tryTame(); $("#actFlee").onclick=()=>fleeEncounter(); $("#actBag").onclick=()=>UI.render("bag");
     }
-
     if(screen==="bag"){
       app.querySelectorAll("[data-use]").forEach(b=> b.onclick=()=>useItem(b.dataset.use));
       app.querySelectorAll("[data-equip]").forEach(b=> b.onclick=()=>equipItem(b.dataset.equip));
       app.querySelectorAll("[data-sell]").forEach(b=> b.onclick=()=>sellItem(b.dataset.sell));
       const bc=$("#backCombat"); if(bc) bc.onclick=()=>UI.render("combat");
     }
-
-    if(screen==="menagerie"){
-      app.querySelectorAll("[data-nick]").forEach(b=> b.onclick=()=>{
-        const i=+b.dataset.nick; const nn=prompt("Name your companion:", state.pets[i].nick||state.pets[i].name);
-        if(nn){ state.pets[i].nick=nn.slice(0,18); Game.save(); UI.render("menagerie"); }
-      });
-      app.querySelectorAll("[data-release]").forEach(b=> b.onclick=()=>{
-        const i=+b.dataset.release;
-        if(confirm(`Release ${state.pets[i].nick||state.pets[i].name} back to the wild?`)){
-          state.pets.splice(i,1); Game.save(); UI.render("menagerie"); }
-      });
+    if(screen==="garage"){
+      app.querySelectorAll("[data-vnick]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.vnick;
+        const nn=prompt("Rename your craft:", state.vehicles[i].name); if(nn){ state.vehicles[i].name=nn.slice(0,22); Game.save(); UI.render("garage"); } });
     }
-
+    if(screen==="menagerie"){
+      app.querySelectorAll("[data-nick]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.nick;
+        const nn=prompt("Name your companion:", state.pets[i].nick||state.pets[i].name); if(nn){ state.pets[i].nick=nn.slice(0,20); Game.save(); UI.render("menagerie"); } });
+      app.querySelectorAll("[data-release]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.release;
+        if(confirm(`Release ${state.pets[i].nick||state.pets[i].name}?`)){ state.pets.splice(i,1); Game.save(); UI.render("menagerie"); } });
+    }
     if(screen==="market"){
       app.querySelectorAll("[data-buy]").forEach(b=> b.onclick=()=>buyItem(b.dataset.buy));
       $("#leaveMarket").onclick=()=>UI.render("hub");
     }
-
-    if(screen==="travel"){
-      app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(b.dataset.travel));
-      $("#leaveTravel").onclick=()=>UI.render("hub");
-    }
-
     if(screen==="save"){
-      $("#btnExport").onclick=exportSave;
-      $("#btnImport").onclick=()=>$("#fileInput").click();
+      $("#btnExport").onclick=exportSave; $("#btnImport").onclick=()=>$("#fileInput").click();
       $("#fileInput").onchange=importSave;
       $("#btnReset").onclick=()=>{ if(confirm("Delete this character forever?")){ Game.wipe(); UI.render("title"); } };
     }
   },
 
   bindCreate(){
-    const step=creating.step||1;
-    if(step===1){
+    const s=creating.step||1;
+    if(s===1){
       $("#backTitle").onclick=()=>UI.render("title");
-      $("#toStep2").onclick=()=>{
-        const v=$("#nameInput").value.trim();
-        if(!v){ toast("Enter a name"); return; }
-        creating.name=v; creating.step=2; UI.render("create");
-      };
+      $("#rollSpecies").onclick=()=>{ const v=$("#nameInput").value.trim();
+        if(!v){ toast("Enter a name"); return; } creating.name=v;
+        creating.species=Gen.species(); creating.step=2; UI.render("create"); };
     }
-    if(step===2){
-      app.querySelectorAll("[data-sp]").forEach(b=> b.onclick=()=>{ creating.species=b.dataset.sp; UI.render("create"); });
+    if(s===2){
       $("#backStep1").onclick=()=>{ creating.step=1; UI.render("create"); };
-      const n=$("#toStep3"); if(n) n.onclick=()=>{ creating.step=3; UI.render("create"); };
+      $("#rollWorld").onclick=()=>{ const v=$("#spNameInput").value.trim();
+        if(!v){ toast("Name your species"); return; } creating.species.name=v;
+        if(!creating.world) creating.world=Gen.world(); creating.step=3; UI.render("create"); };
     }
-    if(step===3){
-      app.querySelectorAll("[data-spec]").forEach(b=> b.onclick=()=>{ creating.spec=b.dataset.spec; UI.render("create"); });
+    if(s===3){
       $("#backStep2").onclick=()=>{ creating.step=2; UI.render("create"); };
-      const n=$("#toStep4"); if(n) n.onclick=()=>{ creating.step=4; UI.render("create"); };
+      $("#rollShip").onclick=()=>{ const v=$("#wNameInput").value.trim();
+        if(!v){ toast("Name your world"); return; } creating.world.name=v;
+        if(!creating.vehicle) creating.vehicle=Gen.vehicle(true); creating.step=4; UI.render("create"); };
     }
-    if(step===4){
+    if(s===4){
       $("#backStep3").onclick=()=>{ creating.step=3; UI.render("create"); };
-      $("#beginGame").onclick=()=>{
-        Game.newCharacter(creating.name, creating.species, creating.spec);
-        creating={}; UI.render("hub");
-      };
+      $("#toReview").onclick=()=>{ const v=$("#vNameInput").value.trim();
+        if(!v){ toast("Name your craft"); return; } creating.vehicle.name=v; creating.step=5; UI.render("create"); };
+    }
+    if(s===5){
+      $("#backStep4").onclick=()=>{ creating.step=4; UI.render("create"); };
+      $("#beginGame").onclick=()=>{ Game.begin(); creating={}; UI.render("hub"); };
     }
   },
 };
 
 /* ============================================================ ACTIONS == */
-function useItem(id){
-  const it=DATA.items[id]; if(!it || !state.inv[id]) return;
-  if(it.kind!=="consumable"){ toast("Can't use that"); return; }
-  let msg=[];
-  if(it.heal){ const before=state.hp; state.hp=Math.min(Game.effMaxHp(),state.hp+it.heal); msg.push(`+${state.hp-before} HP`); }
-  if(it.energy){ const before=state.energy; state.energy=Math.min(Game.effMaxEnergy(),state.energy+it.energy); msg.push(`+${state.energy-before} energy`); }
-  if(it.buff==="stim"){ state.stimReady=true; msg.push("combat stim primed"); }
-  Game.removeItem(id,1);
-  Game.logMsg(`Used ${it.name}: ${msg.join(", ")}.`,"good");
-  Game.save();
-  UI.render(combat&&!combat.over?"combat":"bag");
-}
-function equipItem(id){
-  const it=DATA.items[id];
+function useItem(id){ const it=DATA.items[id]; if(!it||!state.inv[id]) return;
+  if(it.kind!=="consumable"){ toast("Can't use that"); return; } let msg=[];
+  if(it.heal){ const b=state.hp; state.hp=Math.min(Game.effMaxHp(),state.hp+it.heal); msg.push(`+${state.hp-b} HP`); }
+  if(it.energy){ const b=state.energy; state.energy=Math.min(Game.effMaxEnergy(),state.energy+it.energy); msg.push(`+${state.energy-b} energy`); }
+  if(it.buff==="stim"){ state.stimReady=true; msg.push("stim primed"); }
+  Game.removeItem(id,1); Game.logMsg(`Used ${it.name}: ${msg.join(", ")}.`,"good"); Game.save();
+  UI.render(combat&&!combat.over?"combat":"bag"); }
+function equipItem(id){ const it=DATA.items[id];
   const slot=it.kind==="weapon"?"weapon":it.kind==="armor"?"armor":"relic";
   if(state.equipped[slot]===id){ state.equipped[slot]=null; toast("Unequipped"); }
   else { state.equipped[slot]=id; toast(`Equipped ${it.name}`); }
   state.hp=Math.min(state.hp,Game.effMaxHp()); state.energy=Math.min(state.energy,Game.effMaxEnergy());
-  Game.save(); UI.render("bag");
-}
-function sellItem(id){
-  if(!state.inv[id]) return;
+  Game.save(); UI.render("bag"); }
+function sellItem(id){ if(!state.inv[id]) return;
   if(Object.values(state.equipped).includes(id)){ toast("Unequip it first"); return; }
   const p=Game.sellPrice(id); state.credits+=p; Game.removeItem(id,1);
-  Game.logMsg(`Sold ${DATA.items[id].name} for ${p}c.`,"sys");
-  Game.save(); UI.render("bag");
-}
-function buyItem(id){
-  const p=Game.buyPrice(id);
-  if(state.credits<p){ toast("Not enough credits"); return; }
-  state.credits-=p; Game.addItem(id,1);
-  Game.logMsg(`Bought ${DATA.items[id].name} for ${p}c.`,"sys");
-  Game.save(); UI.render("market");
-}
-function travelTo(id){
-  if(id===state.world) return;
-  const w=DATA.worlds.find(x=>x.id===id);
-  state.world=id; if(!state.visited.includes(id)) state.visited.push(id);
-  Game.logMsg(`You travel to ${w.name}. ${w.blurb}`,"sys");
-  Game.save(); UI.render("hub"); UI.flashLog();
-}
+  Game.logMsg(`Sold ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save(); UI.render("bag"); }
+function buyItem(id){ const p=Game.buyPrice(id); if(state.credits<p){ toast("Not enough credits"); return; }
+  state.credits-=p; Game.addItem(id,1); Game.logMsg(`Bought ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save(); UI.render("market"); }
 
-/* ---- save file export/import ---- */
-function exportSave(){
-  Game.save();
+function exportSave(){ Game.save();
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
+  const url=URL.createObjectURL(blob), a=document.createElement("a");
   a.href=url; a.download=`eots-${(state.name||"hero").replace(/\s+/g,"_")}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast("Save exported");
-}
-function importSave(e){
-  const f=e.target.files[0]; if(!f) return;
-  const r=new FileReader();
-  r.onload=()=>{ try{
-    const obj=JSON.parse(r.result);
-    if(!obj || !obj.name || !obj.stats) throw new Error("bad");
-    state=obj; Game.save(); toast("Save imported"); UI.render("hub");
-  }catch(err){ toast("Couldn't read that file"); } };
-  r.readAsText(f);
-}
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); toast("Save exported"); }
+function importSave(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader();
+  r.onload=()=>{ try{ const o=JSON.parse(r.result); if(!o||!o.name||!o.species) throw 0;
+    state=o; Game.save(); toast("Save imported"); UI.render("hub"); }catch(err){ toast("Couldn't read that file"); } };
+  r.readAsText(f); }
 
-/* ---- helper for creation screens ---- */
-function statModStr(mods){
-  const names={hp:"HP",energy:"Energy",force:"Force",might:"Might",agility:"Agility",tech:"Tech",charm:"Charm"};
-  return Object.entries(mods).map(([k,v])=>`<span class="pill ${v>=0?'g':''}">${names[k]||k} ${v>=0?'+':''}${v}</span>`).join("");
+/* ---------- small text helpers ---------- */
+function article(w){ return /^[aeiou]/i.test(w)?"an":"a"; }
+function statRows(stats){ return ["might","agility","force","tech","charm"].map(k=>
+  `<div class="statline"><span>${cap(k)}</span><span>${stats[k]}</span></div>`).join(""); }
+function powerLine(v){ return v.axes.map(a=>`${UNITS.power[a].abbr} ${commas(v.power[a])}`).join(" / ")+" "+UNITS.power.unit; }
+function worldDesc(w){
+  const wl=WEALTH_LABELS[w.wealth].toLowerCase(), tl=TECH_LABELS[w.tech].toLowerCase();
+  return `A ${wl}, ${tl} world, ${w.popName}. The ${w.biomeName} is rated ${DANGER_LABELS[w.danger].toLowerCase()}.`;
 }
 
 /* ============================================================ BOOT ===== */
-(function init(){
-  // start on title; if a save exists the title offers Continue
-  UI.render("title");
-})();
+UI.render("title");
 </script>
 </body>
 </html>
