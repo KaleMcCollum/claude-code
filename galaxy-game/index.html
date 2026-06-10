@@ -1445,10 +1445,15 @@ const UI = {
   },
   screen_cx_person(){
     const p=(state.codex.people||[])[viewingPerson]; if(!p) return this.screen_cx_people();
+    const t=RARITY.byId(p.tier);
     return `
-    ${this.statHeader()}
     <div class="card"><h2>${p.name}</h2>
-      <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; met at ${p.where}</p></div>
+      <p class="small dim">Met at ${p.where}.</p>
+      <div class="divider"></div>
+      ${krow("Race", `<b class="violet">${p.raceName}</b> <span class="dim">(${p.archeName})</span>`)}
+      ${krow("Race rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
+      ${p.raceId?`<button class="small ghost" data-race="${p.raceId}" style="margin-top:8px">View ${p.raceName} race &rarr;</button>`:""}
+    </div>
     ${genomeBanner(p.genome)}
     ${speciesSheet(p)}
     <div class="card"><button class="ghost full center" id="backPeople">&larr; Back to people</button></div>`;
@@ -1458,11 +1463,27 @@ const UI = {
     return `
     ${this.statHeader()}
     <div class="card sheet"><h2>&#9670; Races <span class="dim small">&middot; ${races.length}</span></h2>
-      ${races.map(r=>`<div class="krow"><span class="lbl">${r.id==="self"?"&#9670; ":""}${r.name} <span class="dim small">(${r.archeName})</span></span>
+      ${races.map(r=>`<div class="krow"><span class="lbl"><button class="small ghost" data-race="${r.id}">${r.id==="self"?"&#9670; ":""}${r.name}</button> <span class="dim small">(${r.archeName})</span></span>
         <span class="kv"><span style="color:${RARITY.byId(r.tier).color}">${RARITY.byId(r.tier).name}</span>
           <span class="dim">&middot; ${r.id==="self"?"your kind":(r.met||0)+" met"}</span></span></div>`).join("")}
     </div>
     ${this.codexBack()}`;
+  },
+  screen_cx_race(){
+    const race=(state.codex.races||{})[viewingRace]; if(!race) return this.screen_cx_races();
+    const t=RARITY.byId(race.tier);
+    return `
+    <div class="card"><h2 class="violet">${race.name}</h2>
+      <p class="small dim">${cap(race.flavor)}.</p></div>
+    ${this.rarityBannerInline(race.tier, `${humanizeCount(race.population)} in the galaxy`)}
+    <div class="card sheet"><h3>Overview</h3>
+      ${krow("Body-plan", race.archeName)}
+      ${krow("Rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
+      ${krow("Population", humanizeCount(race.population))}
+      ${krow("Individuals met", race.id==="self"?"your own race":(race.met||0))}
+    </div>
+    ${raceSheet(race)}
+    <div class="card"><button class="ghost full center" id="backRaces">&larr; Back to races</button></div>`;
   },
   screen_cx_wildlife(){
     const wild=Object.values(state.codex.creatures||{});
@@ -1812,7 +1833,9 @@ const UI = {
     if(screen.indexOf("cx_")===0){
       const bk=$("#cxBack"); if(bk) bk.onclick=()=>UI.render("codex");
       const bp=$("#backPeople"); if(bp) bp.onclick=()=>UI.render("cx_people");
+      const br=$("#backRaces"); if(br) br.onclick=()=>UI.render("cx_races");
       app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ viewingPerson=+b.dataset.person; UI.render("cx_person"); });
+      app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>{ viewingRace=b.dataset.race; UI.render("cx_race"); });
     }
     if(screen==="arrive") this.bindArrive();
     if(screen==="meet") this.bindMeet();
@@ -2078,7 +2101,7 @@ function sellInformation(){
 }
 
 /* record an individual you've met (compact snapshot) + bump their race's tally */
-let viewingPerson=null;
+let viewingPerson=null, viewingRace=null;
 function recordMeeting(person, race, where){
   if(!state.codex.people) state.codex.people=[];
   const p=JSON.parse(JSON.stringify(person));
@@ -2166,6 +2189,48 @@ function krow(label, val){
 
 /* The whole species as a compact stat sheet — shared by the reveal and Self screen
    so any two people read the same way and line up for comparison. */
+/* Render a RACE's stat sheet — species-level ranges (avg + range), no individual. */
+function raceSheet(race){
+  const R=race.ranges;
+  const rr=(label,rng,fmt)=>`<div class="srow"><span class="lbl">${label}</span>`+
+    `<span class="v">${fmt(rng.mean)} <span class="rg">${fmt(rng.min)}&ndash;${fmt(rng.max)}</span></span>`+
+    `<span class="pc dim" style="font-weight:400">avg</span></div>`;
+  const cir=CIRCADIAN.find(c=>c.id===race.detail.circadian);
+  const nb=BIOMES.find(b=>b.id===race.detail.nativeBiome);
+  return `
+  <div class="card sheet">
+    <h3>Physical <span class="dim small">&middot; average / range</span></h3>
+    ${rr("Height", R.height, cmToFt)}
+    ${rr("Mass", R.mass, kgToLb)}
+    ${rr("Maturity", R.maturity, x=>Math.round(x)+"yr")}
+    ${rr("Lifespan", R.lifespan, x=>Math.round(x)+"yr")}
+  </div>
+  <div class="card sheet">
+    <h3>Attributes <span class="dim small">&middot; 10 = human average</span></h3>
+    ${ATTR_KEYS.map(k=>rr(ATTR_LABEL[k], R.attrs[k], x=>Math.round(x))).join("")}
+  </div>
+  <div class="card sheet">
+    <h3>Biology <span class="dim small">&middot; 10 = human average</span></h3>
+    ${["metabolism","perception","resilience","recovery","fertility"].map(k=>rr(cap(k), R.bio[k], x=>Math.round(x))).join("")}
+  </div>
+  <div class="card sheet">
+    <h3>Heritage</h3>
+    ${krow("Diet", DIETS[race.detail.diet].name)}
+    ${krow("Rhythm", cir.name)}
+    ${krow("Locomotion", cap(race.detail.locomotion))}
+    ${krow("Biochemistry", cap(race.detail.biochem))}
+    ${krow("Communication", cap(race.detail.communication))}
+    ${krow("Reproduction", race.reproduction)}
+    ${krow("Ancestral biome", cap(nb.name))}
+    ${krow("Special senses", race.detail.senses.length?race.detail.senses.join(", "):"ordinary")}
+  </div>
+  <div class="card sheet">
+    <h3>Innate powers</h3>
+    ${race.powers.length?race.powers.map(p=>krow(POWERS[p].name, `<span class="dim">${POWERS[p].desc}</span>`)).join("")
+      :`<p class="small dim">None.</p>`}
+  </div>`;
+}
+
 function speciesSheet(sp){
   const tmp=TEMPERAMENTS.find(t=>t.id===sp.temperament);
   const cir=CIRCADIAN.find(c=>c.id===sp.detail.circadian);
