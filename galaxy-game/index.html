@@ -115,9 +115,6 @@
   .small{font-size:.8rem;}
   .divider{height:1px; background:var(--line); margin:12px 0;}
   .tag{font-size:.72rem; padding:2px 7px; border-radius:6px; background:var(--panel2); color:var(--dim);}
-  pre.map{background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:8px;
-    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.82rem; line-height:1.05;
-    letter-spacing:2px; color:var(--dim); overflow-x:auto; white-space:pre; text-align:center;}
   svg.gmap{display:block; width:100%; max-width:340px; margin:8px auto; aspect-ratio:1/1;
     background:radial-gradient(circle at 50% 50%, #0d1322, #070a11); border:1px solid var(--line); border-radius:10px;}
   .hidden{display:none;}
@@ -1811,7 +1808,7 @@ const UI = {
         return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
           <span class="kv">${playerIn?`<button class="small" data-go="${origin}:${i}">&#10022; Explore</button>`:'<span class="dim small">&#128274; need to be aboard</span>'}</span></div>`; }).join("")}
     </div>`:""}
-    ${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapGrid()}</div>
+    ${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapSvg({cx:osys.x, cy:osys.y, span:Math.max(caps.jump*2.6, 26)}, {originId:origin, reach:caps.jump})}</div>
     <div class="card sheet"><h3>Jump to another system <span class="dim small">&middot; nearest first</span></h3>
       ${others.map(o=>{ const inRange=o.d<=caps.jump+1e-6, ch=o.sys.discovered, canGo=inRange&&(ch||playerIn);
         return `<div class="krow"><span class="lbl">${ch?o.sys.name:'<span class="dim">Uncharted star</span>'}
@@ -1821,25 +1818,6 @@ const UI = {
     </div>`:`<div class="card"><p class="small dim">This group can only travel within its own system. A fleet can jump between stars only if every ship aboard is interstellar-class.</p></div>`}
     <div class="card"><button id="tvBack" class="ghost full center">&larr; Back</button></div>`;
   },
-  /* a compact text plot of your local cluster (fits the bounding box of the known systems) */
-  mapGrid(){
-    const g=state.galaxy, W=29, H=15;
-    let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;
-    g.systems.forEach(s=>{ minx=Math.min(minx,s.x); maxx=Math.max(maxx,s.x); miny=Math.min(miny,s.y); maxy=Math.max(maxy,s.y); });
-    const padx=Math.max((maxx-minx)*0.08,1), pady=Math.max((maxy-miny)*0.08,1);
-    minx-=padx; maxx+=padx; miny-=pady; maxy+=pady;
-    const grid=Array.from({length:H},()=>Array(W).fill(" "));
-    const px=x=>clamp(Math.round((x-minx)/(maxx-minx)*(W-1)),0,W-1);
-    const py=y=>clamp(Math.round((maxy-y)/(maxy-miny)*(H-1)),0,H-1);   // +y points up
-    g.systems.forEach(s=>{ const gx=px(s.x), gy=py(s.y);
-      const m = s.id===state.sysId ? "@" : s.id===0 ? "H" : s.discovered ? "*" : ".";
-      const cur=grid[gy][gx];
-      if(cur===" "||cur==="."||(cur==="*"&&m!==".")) grid[gy][gx]=m; });
-    const body=grid.map(r=>r.join("")).join("\n");
-    return `<pre class="map">${body}</pre>
-      <p class="small dim" style="margin-top:4px">@ you &middot; H home &middot; * charted &middot; . uncharted</p>`;
-  },
-
   /* ---------- GALAXY MAP (zoomable, fog-of-war) ---------- */
   screen_map(){
     if(!state.galaxy) return `${this.statHeader()}
@@ -1865,12 +1843,15 @@ const UI = {
         <button class="small ghost" id="mapL">&#9664;</button>
         <button class="small ghost" id="mapR">&#9654;</button>
       </div>
-      <p class="small dim center" style="margin-top:6px">&#9737; core &middot; &#9678; you &middot; &#9679; charted &middot; &#8728; sensor contact</p>
     </div>`;
   },
   /* build the SVG for the current mapView window */
-  mapSvg(){
-    const SIZE=300, v=mapView, half=v.span/2;
+  /* view defaults to the Map-tab viewport. opts.originId marks the "you/fleet" star; opts.reach
+     (ly) draws a hyperdrive-range ring around it so you can see what's in jump distance. */
+  mapSvg(view, opts){
+    view = view || mapView; opts = opts || {};
+    const originId = opts.originId!=null ? opts.originId : state.sysId, reach = opts.reach||0;
+    const SIZE=300, v=view, half=v.span/2;
     const L=v.cx-half, T=v.cy+half;                 // top-left in ly (+y is up)
     const sx=x=>(x-L)/v.span*SIZE, sy=y=>(T-y)/v.span*SIZE;
     const inView=(px,py,m)=>px>=-m&&px<=SIZE+m&&py>=-m&&py<=SIZE+m;
@@ -1880,17 +1861,22 @@ const UI = {
     els+=`<circle cx="${cx0.toFixed(1)}" cy="${cy0.toFixed(1)}" r="${cR.toFixed(1)}" fill="none" stroke="#26314a" stroke-dasharray="3 4"/>`;
     if(inView(cx0,cy0,40)) els+=`<text x="${cx0.toFixed(1)}" y="${(cy0+4).toFixed(1)}" fill="#caa84a" font-size="13" text-anchor="middle">&#9737;</text>
       <text x="${cx0.toFixed(1)}" y="${(cy0-9).toFixed(1)}" fill="#7d8aa5" font-size="7" text-anchor="middle">CORE</text>`;
+    // hyperdrive-range ring around the fleet's star
+    const o=state.galaxy.systems[originId];
+    if(reach>0 && o){ const ox=sx(o.x), oy=sy(o.y), rr=reach/v.span*SIZE;
+      els+=`<circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="${rr.toFixed(1)}" fill="#1f6f4322" stroke="#3f9c6a" stroke-dasharray="2 3"/>`; }
     // systems (only those you can see), labels only when zoomed in enough
     const showLabels=v.span<=46;
     visibleSystems().forEach(s=>{ const px=sx(s.x), py=sy(s.y); if(!inView(px,py,8)) return;
-      const here=s.id===state.sysId;
+      const here=s.id===originId;
       if(here){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.5" fill="none" stroke="#5aa9ff" stroke-width="1.5"/>
         <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2" fill="#5aa9ff"/>`; }
       else if(s.discovered){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.6" fill="#cfe0ff"/>`; }
       else { els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.2" fill="none" stroke="#5b6b8a" stroke-width="1"/>`; }
-      if(showLabels && (s.discovered||here)) els+=`<text x="${px.toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${here?'#5aa9ff':'#9fb0cc'}" font-size="7" text-anchor="middle">${here?"You":s.name}</text>`;
+      if(showLabels && (s.discovered||here)) els+=`<text x="${px.toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${here?'#5aa9ff':'#9fb0cc'}" font-size="7" text-anchor="middle">${here?(originId===state.sysId?"You":"Fleet"):s.name}</text>`;
     });
-    return `<svg viewBox="0 0 ${SIZE} ${SIZE}" class="gmap" preserveAspectRatio="xMidYMid meet">${els}</svg>`;
+    return `<svg viewBox="0 0 ${SIZE} ${SIZE}" class="gmap" preserveAspectRatio="xMidYMid meet">${els}</svg>
+      <p class="small dim center" style="margin-top:4px">&#9678; ${originId===state.sysId?"you":"fleet"} &middot; &#9737; core &middot; &#9679; charted &middot; &#8728; contact${reach>0?' &middot; ring = jump range':''}</p>`;
   },
   mapCenterMe(){ const c=curSys(); mapView={ cx:c.x, cy:c.y, span:36 }; },
 
