@@ -100,6 +100,15 @@ Every inhabited world has a **Depot**, and **prices follow what the world makes 
 - A world's **settlement type** decides what it **produces** (cheap to buy) and **demands** (pays a premium). A mining world sells ore cheap but won't deal you a chassis at all; haul that ore to an **industrial** world that craves it, then run finished goods on to a **capital**. Capitals and trade hubs are general markets that deal in everything at a spread — there's no single-world arbitrage, so profit comes from **buying where it's produced and selling where it's demanded**.
 - The depot pools the holds of every ship docked with you, so a fleet trades together.
 
+## Ships: hulls, weapons & combat
+Every ship now has **combat stats** and a **role**, and ship classes specialize:
+- **Cargo Hauler** (bulk freight), **Shuttle** (passengers), **Star Clipper** (courier), **Corvette** (gunship), **Frigate** (warship), **Capital Ship** — each with its own hull HP, hardpoints, cargo, and crew.
+- **Weapon hardpoints** come in two kinds: **pilot mounts** the captain fires for free, and **gunner mounts** that each need a gunner aboard. A **gunship** is 2 pilot + 2 gunner — cheap and lethal in your own hands; a **frigate** is 2 pilot + 6 gunner, so it only hits hard with a full gun crew. Transports have none (a rare one might sprout a gun or two).
+- **Weapons** range from a **100-attack Light Laser** to a **10,000-attack Siege Lance**; a ship's attack is the sum of its manned guns. Buy and mount them at a **shipyard's Outfitting**.
+- **Hull HP + armor plating** (Unplated → Exotic) scale a ship's toughness. **Rarer hulls are legendary** — far more HP, extra hardpoints, and a real shot at heavy plating — so chasing a rare Corvette or a rare armed transport is worth it. More guns and capacity also raise **maintenance**.
+- **Outfitting** (at any shipyard): **repair** a battered hull, **upgrade armor plating**, and **buy/mount weapons** on hardpoints.
+- **Ship-to-ship combat:** out in deep space you can now **Attack** the ships and fleets you meet. Both sides trade salvos — your fleet's guns vs theirs — and you can win loot (and sometimes **capture** an intact hull), retreat, or get crippled and limp home to repair. A lone freighter is easy; a pirate wing needs real firepower; a war fleet needs a proper warship.
+
 ## On foot: encounters, foes & gear
 What you run into when you explore depends on **where you are**:
 - **Cities** (capitals, trade hubs, urban worlds) → **bad people**: pickpockets, thieves, muggers, thugs, armed robbers, and — on dangerous worlds — gang enforcers and raiders. They loot credits and XP, never tame.

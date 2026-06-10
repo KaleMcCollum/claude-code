@@ -567,7 +567,11 @@ const HIRE_ROLES={
 };
 const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
 /* Yearly upkeep: spaceworthy ships cost ~30% of value/yr; surface craft are cheap to keep. */
-function shipMaint(v){ return Math.round((v.value||0)*(spaceworthy(v)?0.3:0.05)); }
+function shipMaint(v){ let m=(v.value||0)*(spaceworthy(v)?0.3:0.05);
+  m += (v.guns||[]).reduce((s,g)=>s+(g?weaponById(g).price*0.18:0),0);   // armed ships cost more to keep
+  return Math.round(m); }
+/* what it costs to fully repair a ship's hull right now */
+function repairCost(v){ const miss=(v.maxHp||0)-(v.hp||0); return miss<=0?0:Math.round(miss*3*(1+(state.world?state.world.wealth:4)*0.03)); }
 function annualWages(){ return (state.crew||[]).reduce((s,c)=>s+careerSalary(c.career),0); }
 function annualMaint(){ return (state.vehicles||[]).reduce((s,v)=>s+shipMaint(v),0); }
 const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
@@ -667,20 +671,36 @@ const VEHICLE_CLASSES = [
   { id:"interceptor", name:"Interceptor",  weight:4,  axes:["flight","star"],    base:{flight:300,star:680} },
 ];
 
-/* Ship classes — clear capability tiers. range: where it can go; cargo: hold; crew: max
-   crew; bays: smaller ships it can carry (future fleet battles). minTech gates whether a
-   world's shipyard stocks it, so poor/backward worlds sell only speeders. */
+/* Ship classes — each specializes. role = what it's for; baseHp = hull before armor/rarity;
+   pilotGuns = hardpoints the captain/pilot mans alone (cheap firepower); gunnerGuns = heavy
+   mounts that each need a gunner aboard. A gunship is captain-run and lethal for its price;
+   a frigate hits harder but needs a full gun crew. minTech gates a world's shipyard stock. */
 const SHIP_CLASSES = [
-  { id:"speeder", name:"Speeder",        range:"surface",      cargo:4,   crew:1,  bays:0, price:600,    minTech:0, weight:22, power:{ground:120,flight:70},  reqPilots:1, reqMech:0, reqGun:0 },
-  { id:"crawler", name:"Ground Hauler",  range:"surface",      cargo:26,  crew:1,  bays:0, price:1600,   minTech:1, weight:12, power:{ground:260},            reqPilots:1, reqMech:0, reqGun:0 },
-  { id:"shuttle", name:"System Shuttle", range:"system",       cargo:30,  crew:2,  bays:0, price:3000,   minTech:3, weight:14, power:{flight:200,star:300},   reqPilots:1, reqMech:0, reqGun:0 },
-  { id:"hauler",  name:"Cargo Hauler",   range:"system",       cargo:150, crew:3,  bays:0, price:9000,   minTech:4, weight:10, power:{flight:160,star:280},   reqPilots:1, reqMech:1, reqGun:0 },
-  { id:"clipper", name:"Star Clipper",   range:"interstellar", cargo:45,  crew:4,  bays:0, price:24000,  minTech:6, weight:8,  power:{flight:340,star:950},   reqPilots:2, reqMech:1, reqGun:0 },
-  { id:"corvette",name:"Corvette",       range:"interstellar", cargo:120, crew:8,  bays:0, price:48000,  minTech:6, weight:6,  power:{flight:360,star:1150},  reqPilots:2, reqMech:1, reqGun:1 },
-  { id:"frigate", name:"Frigate",        range:"interstellar", cargo:90,  crew:12, bays:1, price:75000,  minTech:7, weight:5,  power:{flight:280,star:1300},  reqPilots:3, reqMech:2, reqGun:2 },
-  { id:"capital", name:"Capital Ship",   range:"interstellar", cargo:420, crew:40, bays:5, price:320000, minTech:8, weight:2,  power:{flight:420,star:3200},  reqPilots:4, reqMech:5, reqGun:6 },
+  { id:"speeder", name:"Speeder",        role:"Surface runabout", range:"surface",      cargo:4,   crew:1,  bays:0, baseHp:50,   pilotGuns:0, gunnerGuns:0, price:600,    minTech:0, weight:22, power:{ground:120,flight:70},  reqPilots:1, reqMech:0, reqGun:0 },
+  { id:"crawler", name:"Ground Hauler",  role:"Surface cargo",    range:"surface",      cargo:26,  crew:1,  bays:0, baseHp:80,   pilotGuns:0, gunnerGuns:0, price:1600,   minTech:1, weight:12, power:{ground:260},            reqPilots:1, reqMech:0, reqGun:0 },
+  { id:"shuttle", name:"System Shuttle", role:"Passenger ferry",  range:"system",       cargo:30,  crew:2,  bays:0, baseHp:130,  pilotGuns:0, gunnerGuns:0, price:3000,   minTech:3, weight:14, power:{flight:200,star:300},   reqPilots:1, reqMech:0, reqGun:0 },
+  { id:"hauler",  name:"Cargo Hauler",   role:"Bulk freight",     range:"system",       cargo:150, crew:3,  bays:0, baseHp:240,  pilotGuns:1, gunnerGuns:0, price:9000,   minTech:4, weight:10, power:{flight:160,star:280},   reqPilots:1, reqMech:1, reqGun:0 },
+  { id:"clipper", name:"Star Clipper",   role:"Courier",          range:"interstellar", cargo:45,  crew:4,  bays:0, baseHp:300,  pilotGuns:1, gunnerGuns:0, price:24000,  minTech:6, weight:8,  power:{flight:340,star:950},   reqPilots:2, reqMech:1, reqGun:0 },
+  { id:"corvette",name:"Corvette",       role:"Gunship",          range:"interstellar", cargo:120, crew:8,  bays:0, baseHp:480,  pilotGuns:2, gunnerGuns:2, price:48000,  minTech:6, weight:6,  power:{flight:360,star:1150},  reqPilots:2, reqMech:1, reqGun:1 },
+  { id:"frigate", name:"Frigate",        role:"Warship",          range:"interstellar", cargo:90,  crew:12, bays:1, baseHp:850,  pilotGuns:2, gunnerGuns:6, price:75000,  minTech:7, weight:5,  power:{flight:280,star:1300},  reqPilots:3, reqMech:2, reqGun:2 },
+  { id:"capital", name:"Capital Ship",   role:"Capital warship",  range:"interstellar", cargo:420, crew:40, bays:5, baseHp:2800, pilotGuns:2, gunnerGuns:10,price:320000, minTech:8, weight:2,  power:{flight:420,star:3200},  reqPilots:4, reqMech:5, reqGun:6 },
 ];
 const SHIP_CLASS_IDX=id=>SHIP_CLASSES.findIndex(c=>c.id===id);
+const shipClass=id=>SHIP_CLASSES.find(c=>c.id===id);
+/* Ship weapons (mount on hardpoints) — attack ranges from a 100 light laser to a 10,000 siege
+   lance. Sold at shipyards, tech-gated. A ship's attack = sum of its manned weapons. */
+const WEAPONS=[
+  { id:"laser",     name:"Light Laser",    atk:100,   price:800,    minTech:4 },
+  { id:"autocannon",name:"Autocannon",     atk:350,   price:2600,   minTech:5 },
+  { id:"rocket",    name:"Rocket Pod",     atk:600,   price:5000,   minTech:5 },
+  { id:"heavygun",  name:"Heavy Cannon",   atk:1500,  price:14000,  minTech:6 },
+  { id:"plasma",    name:"Plasma Battery", atk:4000,  price:42000,  minTech:7 },
+  { id:"siege",     name:"Siege Lance",    atk:10000, price:160000, minTech:8 },
+];
+const weaponById=id=>WEAPONS.find(w=>w.id===id);
+/* Hull plating tiers — multiply a ship's base HP. Rarer ships roll better plating. */
+const ARMOR=[ {name:"Unplated",mult:1.0}, {name:"Light Plating",mult:1.4}, {name:"Combat Plating",mult:2.0},
+  {name:"Heavy Plating",mult:3.0}, {name:"Exotic Plating",mult:4.5} ];
 const RANGE_LABEL={ surface:"Planet-bound", system:"In-system", interstellar:"Interstellar" };
 /* The dockmaster's clunker — always available to buy off the Yarder so you're never
    truly stranded. Barely spaceworthy: tiny hold, room for you alone. */
@@ -728,6 +748,39 @@ function visibleSystems(){ return state.galaxy ? state.galaxy.systems.filter(sys
 /* Ship rarity scales a hull's size/power. Common is the smallest; rarer hulls are much
    bigger — an Epic Cargo Hauler dwarfs a Common one. */
 const SHIP_RARITY_MULT=[1, 1.3, 1.7, 2.4, 3.2, 4.5, 6, 8];
+/* roll hull plating (0..4). Common hulls are unplated; only rarer ships can mount heavy/exotic. */
+function rollArmor(tierId){ const ti=RARITY.index(tierId), maxA=clamp(Math.round(ti/1.4),0,4);
+  let a=0; for(let k=0;k<maxA;k++) if(chance(0.45)) a++; return Math.min(a,4); }
+/* combat stats for a freshly generated hull of a class + rarity tier */
+const HP_SCALE=3;   // hulls are tough relative to weapon attack, so battles last several salvos
+function shipStatsFor(c, tierId){
+  const ti=RARITY.index(tierId), armor=rollArmor(tierId);
+  const maxHp=Math.round(c.baseHp * HP_SCALE * ARMOR[armor].mult * (1+ti*0.6) * rndF(0.9,1.15));
+  // rarer hulls gain hardpoints; even normally-unarmed hulls can turn up rarely with a gun or two
+  const pilotGuns = c.pilotGuns + ((c.pilotGuns+c.gunnerGuns===0 && ti>=4) ? Math.min(2, ti-3) : 0);
+  const gunnerGuns = c.gunnerGuns + (c.gunnerGuns>0 ? Math.floor(ti/2) : 0);
+  return { maxHp, armor, pilotGuns, gunnerGuns };
+}
+/* write combat fields onto a ship object (empty hardpoints) */
+function applyShipStats(ship, c, tierId){
+  const s=shipStatsFor(c, tierId);
+  ship.maxHp=s.maxHp; ship.hp=s.maxHp; ship.armor=s.armor;
+  ship.pilotGuns=s.pilotGuns; ship.gunnerGuns=s.gunnerGuns;
+  ship.guns=new Array(s.pilotGuns+s.gunnerGuns).fill(null);
+  return ship;
+}
+/* a ship's battle attack: pilot mounts fire under the captain; each gunner mount needs a gunner */
+function shipAttack(v){
+  if(!v||!v.guns||!v.guns.length) return 0;
+  const pilotN=v.pilotGuns||0, gunners=Game.aboard(v,"gunner");
+  let atk=0, used=0;
+  v.guns.forEach((gid,i)=>{ if(!gid) return; const w=weaponById(gid); if(!w) return;
+    if(i<pilotN) atk+=w.atk;                       // captain mans these for free
+    else if(used<gunners){ atk+=w.atk; used++; }   // heavy mounts need a gunner each
+  });
+  return atk;
+}
+function mountedCount(v){ return (v.guns||[]).filter(Boolean).length; }
 /* Rarer hulls only turn up at higher-tech worlds (and are still rare even there). */
 function rollShipTier(tech){
   const maxIdx=clamp(Math.floor(tech*0.9), 0, RARITY.tiers.length-1);
@@ -748,10 +801,12 @@ function genShipStock(w){
   for(let i=0;i<count;i++){
     const c=weightedPick(avail), t=rollShipTier(w.tech), m=SHIP_RARITY_MULT[RARITY.index(t.id)], vf=rndF(0.9,1.12);
     const power={}; Object.keys(c.power).forEach(a=>power[a]=Math.round(c.power[a]*m));
-    stock.push({ cls:c.id, name:c.name, tier:t.id, range:c.range,
+    const cs=shipStatsFor(c, t.id);
+    stock.push({ cls:c.id, name:c.name, role:c.role, tier:t.id, range:c.range,
       cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
       reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun,
-      power, price:Math.round(c.price*m*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) });
+      maxHp:cs.maxHp, armor:cs.armor, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns,
+      power, price:Math.round((c.price + cs.armor*c.price*0.25)*m*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) });
   }
   return stock;
 }
@@ -935,7 +990,8 @@ const Gen = {
     cls.axes.forEach(a=>{ power[a]=Math.round(cls.base[a]*mult*rndF(0.9,1.15)); });
     return { kind:"vehicle", id:newVid(), name:null, tier:tier.id, cls:cls.id, clsName:cls.name,
              axes:cls.axes, power, mult:+mult.toFixed(2),
-             range:"surface", hold:8, crewMax:1, bays:0, reqPilots:1, reqMech:0, reqGun:0, value:600, cargo:{}, slot:0 };
+             range:"surface", hold:8, crewMax:1, bays:0, reqPilots:1, reqMech:0, reqGun:0, value:600, cargo:{}, slot:0,
+             maxHp:60, hp:60, armor:0, pilotGuns:0, gunnerGuns:0, guns:[] };
   },
 
   /* A PERSON is a fresh individual rolled WITHIN a race's fixed ranges. Same shape as a
@@ -1146,6 +1202,13 @@ const Game = {
     const CARGO_RENAME={ raw:"ore", engine:"machinery" };
     (state.vehicles||[]).forEach(v=>{ if(v.cargo) for(const k in CARGO_RENAME){ if(v.cargo[k]){
       v.cargo[CARGO_RENAME[k]]=(v.cargo[CARGO_RENAME[k]]||0)+v.cargo[k]; delete v.cargo[k]; } } });
+    // backfill ship combat stats (HP, armor, weapon hardpoints) for pre-combat saves
+    (state.vehicles||[]).forEach(v=>{ const c=shipClass(v.cls);
+      if(v.pilotGuns==null){ v.pilotGuns=c?c.pilotGuns:0; v.gunnerGuns=c?c.gunnerGuns:0; }
+      if(!v.guns) v.guns=new Array((v.pilotGuns||0)+(v.gunnerGuns||0)).fill(null);
+      if(v.armor==null) v.armor=0;
+      if(v.maxHp==null) v.maxHp=c?Math.round(c.baseHp*HP_SCALE*(spaceworthy(v)?1.4:1)):200;
+      if(v.hp==null) v.hp=v.maxHp; });
     // migrate old equipment slots (weapon/armor/relic) -> the expanded armor slots
     const eq=state.equipped||{};
     if(!("chest" in eq)) state.equipped={ weapon:eq.weapon||null, head:eq.head||null,
@@ -1549,7 +1612,7 @@ const UI = {
     const sameScreen = screen===this.current;
     const keepY = sameScreen ? (window.scrollY||window.pageYOffset||0) : 0;
     this.current=screen;
-    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive"||screen==="meet"||screen==="voidmeet";
+    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive"||screen==="meet"||screen==="voidmeet"||screen==="shipbattle";
     $("#nav").classList.toggle("hidden", noNav);
     const navScreen = screen.indexOf("cx_")===0?"codex":screen;
     [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===navScreen));
@@ -1831,18 +1894,21 @@ const UI = {
       ${stock.length?stock.map((o,i)=>`<div class="card" style="margin:8px 0;padding:10px">
         <div class="row between"><b>${o.name} <span class="small" style="color:${RARITY.byId(o.tier).color}">${RARITY.byId(o.tier).name}</span></b>
           <button data-ship="${i}" ${state.credits<o.price?"disabled":""}>${commas(o.price)}c</button></div>
-        <p class="small dim" style="margin:4px 0">${RANGE_LABEL[o.range]} &middot; cargo ${o.cargo} &middot; crew ${o.crew}${o.bays?` &middot; ${o.bays} ship bay${o.bays>1?"s":""}`:""}</p>
+        <p class="small dim" style="margin:4px 0">${o.role||RANGE_LABEL[o.range]} &middot; ${RANGE_LABEL[o.range]} &middot; cargo ${o.cargo} &middot; crew ${o.crew}</p>
+        <p class="small dim" style="margin:2px 0">&#10084; ${commas(o.maxHp)} HP${o.armor?` &middot; ${ARMOR[o.armor].name}`:""} &middot; ${(o.pilotGuns||0)+(o.gunnerGuns||0)} hardpoint${(o.pilotGuns||0)+(o.gunnerGuns||0)!==1?"s":""}${o.bays?` &middot; ${o.bays} bay${o.bays>1?"s":""}`:""}</p>
       </div>`).join("")
         :`<p class="small dim">No ships for sale here — this world hasn't the industry for it. Try a more developed world.</p>`}
     </div>
     <div class="card"><h3>Ships docked here</h3>
-      ${Game.shipsHere().map(v=>{ const active=v.id===state.activeShip, used=shipUsed(v);
+      ${Game.shipsHere().map(v=>{ const active=v.id===state.activeShip, used=shipUsed(v), atk=shipAttack(v);
         return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
           <div class="row between"><span>${active?'<span class="green">&#9654; </span>':''}${v.name}
             <span class="small dim">(${v.clsName} &middot; ${RANGE_LABEL[v.range]||"?"})</span></span>
             <span class="small dim">cargo ${used}/${v.hold}</span></div>
+          <p class="small dim" style="margin:2px 0">&#10084; ${commas(v.hp||0)}/${commas(v.maxHp||0)} HP${v.armor?` &middot; ${ARMOR[v.armor].name}`:""}${atk?` &middot; &#9876; ${commas(atk)} atk`:""}</p>
           <div class="row" style="margin-top:4px">
             ${active?'<span class="small green">piloting</span>':`<button class="small" data-selship="${v.id}">Pilot this</button>`}
+            <button class="small" data-outfit="${v.id}">&#128295; Outfit</button>
             <button class="small ghost" data-renship="${v.id}">Rename</button>
             ${state.vehicles.length>1&&!active?`<button class="small ghost" data-sellship="${v.id}">Sell &middot; ${shipSell(v)}c</button>`:""}
           </div></div>`; }).join("")}
@@ -1853,6 +1919,73 @@ const UI = {
       <button id="yarder" class="full center">Talk to the Yarder</button>
     </div>
     <div class="card"><button id="syBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+
+  /* ---------- OUTFITTING (repair, weapons, armor) ---------- */
+  screen_outfit(){
+    const v=(state.vehicles||[]).find(x=>x.id===outfitShip); if(!v) return this.screen_shipyard();
+    const w=state.world, rc=repairCost(v), atk=shipAttack(v), gunners=Game.aboard(v,"gunner");
+    const pilotN=v.pilotGuns||0, total=(v.guns||[]).length;
+    const nextArmor=(v.armor||0)<ARMOR.length-1?(v.armor||0)+1:null;
+    const armorCost=nextArmor!=null?Math.round((shipClass(v.cls)?shipClass(v.cls).baseHp:200)*ARMOR[nextArmor].mult*8*(1+w.wealth*0.04)):0;
+    return `
+    ${this.statHeader()}
+    <div class="card"><div class="row between"><h2 class="gold">&#128295; ${v.name}</h2>
+      <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
+      <p class="small dim">${v.role||v.clsName} &middot; ${RANGE_LABEL[v.range]}</p>
+      ${krow("Hull", `<b>${commas(v.hp||0)} / ${commas(v.maxHp||0)}</b> HP`)}
+      ${krow("Plating", ARMOR[v.armor||0].name)}
+      ${krow("Total attack", `<span class="gold">${commas(atk)}</span> ${total?`<span class="dim small">(${gunners} gunner${gunners!==1?"s":""} aboard for ${v.gunnerGuns||0} heavy mounts)</span>`:""}`)}
+    </div>
+    <div class="card"><h3>Repair hull</h3>
+      ${rc>0?`<button class="primary full center" id="ofRepair" ${state.credits<rc?"disabled":""}>Repair to full &middot; ${commas(rc)}c</button>`
+        :`<p class="small green">Hull is at full integrity.</p>`}</div>
+    <div class="card"><h3>Hull plating</h3>
+      ${nextArmor!=null?`<p class="small dim">Upgrade to <b>${ARMOR[nextArmor].name}</b> (&times;${ARMOR[nextArmor].mult} base HP).</p>
+        <button class="full center" id="ofArmor" ${state.credits<armorCost?"disabled":""}>Refit plating &middot; ${commas(armorCost)}c</button>`
+        :`<p class="small green">Already the heaviest plating available.</p>`}</div>
+    <div class="card sheet"><h3>Weapon hardpoints <span class="dim small">&middot; ${total||"none"}</span></h3>
+      ${total?(v.guns||[]).map((gid,i)=>{ const pilot=i<pilotN, wp=gid?weaponById(gid):null;
+        return `<div class="krow"><span class="lbl">${pilot?'<span class="green">Pilot mount</span>':'<span class="blue">Gunner mount</span>'} ${i+1}</span>
+          <span class="kv">${wp?`${wp.name} <span class="dim small">&middot; ${commas(wp.atk)}</span> <button class="small ghost" data-unmount="${i}">Strip</button>`
+            :`<button class="small" data-mountslot="${i}">Mount &hellip;</button>`}</span></div>`; }).join("")
+        :`<p class="small dim">This hull has no weapon hardpoints. Gunships and warships do — rarer hulls have more.</p>`}
+      ${pilotN&&total?`<p class="small dim" style="margin-top:6px">Pilot mounts fire under your own hand — no gunner needed. Heavy mounts each need a gunner aboard.</p>`:""}
+    </div>
+    ${mountPick!=null?`<div class="card sheet"><h3>Mount on slot ${mountPick+1}</h3>
+      ${WEAPONS.filter(wp=>wp.minTech<=w.tech).map(wp=>`<div class="krow"><span class="lbl">${wp.name} <span class="dim small">&middot; &#9876; ${commas(wp.atk)}</span></span>
+        <span class="kv"><button class="small" data-buygun="${wp.id}" ${state.credits<wp.price?"disabled":""}>${commas(wp.price)}c</button></span></div>`).join("")
+        || `<p class="small dim">No ship weapons sold at this world's tech level.</p>`}
+      <button class="ghost full center" id="ofMountCancel" style="margin-top:6px">Cancel</button></div>`:""}
+    <div class="card"><button class="ghost full center" id="ofBack">&larr; Back to shipyard</button></div>`;
+  },
+  /* ---------- SHIP-TO-SHIP BATTLE ---------- */
+  screen_shipbattle(){
+    const c=shipCombat; if(!c) return this.screen_hub();
+    const mine=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(Boolean);
+    const myHp=mine.reduce((s,v)=>s+Math.max(0,v.hp),0), myMax=mine.reduce((s,v)=>s+v.maxHp,0), myAtk=fleetAttack(c.my);
+    return `
+    ${this.statHeader()}
+    <div class="card"><div class="row between"><h2 class="red">${c.name}</h2><span class="tag">${c.ships} ship${c.ships>1?"s":""}</span></div>
+      <div class="statline"><span>Enemy hull</span><span>${commas(Math.max(0,c.eHp))} / ${commas(c.eMaxHp)}</span></div>
+      <div class="bar"><i class="hpfill" style="width:${Math.max(0,c.eHp/c.eMaxHp*100)}%"></i></div>
+      <p class="small dim">Their guns: <span class="red">${commas(c.eAtk)}</span>/salvo</p>
+    </div>
+    <div class="card"><h3>Your fleet</h3>
+      <div class="statline"><span>Fleet hull</span><span>${commas(myHp)} / ${commas(myMax)}</span></div>
+      <div class="bar"><i class="hpfill" style="width:${myMax?Math.max(0,myHp/myMax*100):0}%"></i></div>
+      <p class="small dim">Your guns: <span class="gold">${commas(myAtk)}</span>/salvo across ${mine.length} ship${mine.length!==1?"s":""}</p>
+      ${mine.map(v=>`<div class="krow"><span class="lbl">${v.name} <span class="dim small">&middot; ${v.clsName}</span></span>
+        <span class="kv ${v.hp<=0?'red':''}">${v.hp<=0?'crippled':commas(v.hp)+' HP'} &middot; &#9876; ${commas(shipAttack(v))}</span></div>`).join("")}
+    </div>
+    ${c.log&&c.log.length?`<div class="card"><p class="small">${c.log.join("<br>")}</p></div>`:""}
+    ${c.over?`<div class="card"><p class="small ${c.win?'green':'red'}">${c.msg}</p>
+      <button class="primary full center" id="sbDone">${c.win?"Collect &amp; carry on":"Limp away"}</button></div>`
+    :`<div class="card"><div class="grid">
+      <button id="sbFire" class="primary">&#9876; Fire salvo</button>
+      <button id="sbRetreat" class="ghost">&#127756; Retreat</button>
+      </div></div>`}
+    ${this.logCard()}`;
   },
 
   /* ---------- TRAVEL / MOVE (a ship or a whole fleet) ---------- */
@@ -1943,7 +2076,7 @@ const UI = {
     :`<div class="card"><div class="grid">
       ${m.id==="derelict"?`<button id="voidSalvage" class="primary">&#9874; Salvage</button>`
         :`<button id="voidContact" class="primary">&#128483; Contact</button>
-      <button class="ghost" disabled>&#9876; Attack <span class="small dim">(ship combat soon)</span></button>`}
+      <button id="voidAttack" class="ghost">&#9876; Attack</button>`}
       <button id="voidEvade" class="ghost">&#127756; Evade</button>
       </div>${m.id==="derelict"?"":`<p class="small dim" style="margin-top:6px">Contact them to meet who commands this ${m.ships>1?"fleet":"ship"} — name them and record their kind.</p>`}</div>`}
     ${this.logCard()}`;
@@ -2434,9 +2567,11 @@ const UI = {
       return `<div class="card">
         <div class="row between"><h2 class="gold">${active?'&#9654; ':''}${v.name}</h2>
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
-        <p class="small dim">${v.clsName} &middot; ${RANGE_LABEL[v.range]} &middot; docked at <b class="blue">${shipLocationName(v)}</b>${here?' <span class="green small">(here)</span>':''}</p>
+        <p class="small dim">${v.role||v.clsName} &middot; ${RANGE_LABEL[v.range]} &middot; docked at <b class="blue">${shipLocationName(v)}</b>${here?' <span class="green small">(here)</span>':''}</p>
+        ${krow("Hull", `<b>${commas(v.hp||0)} / ${commas(v.maxHp||0)}</b> HP${v.armor?` &middot; ${ARMOR[v.armor].name}`:""}`)}
+        ${krow("Weapons", `${mountedCount(v)}/${(v.guns||[]).length} mounted &middot; <span class="gold">${commas(shipAttack(v))}</span> attack`)}
         ${krow("Fleet", fleet?`<b class="blue">${fleet.name}</b>`:'<span class="dim">Independent</span>')}
-        ${krow("Crew needed", `${v.reqPilots||1} pilot${(v.reqPilots||1)>1?"s":""}${v.reqMech?`, ${v.reqMech} mechanic${v.reqMech>1?"s":""}`:""}${v.reqGun?` <span class="dim">(+${v.reqGun} gunners, coming soon)</span>`:""}`)}
+        ${krow("Crew needed", `${v.reqPilots||1} pilot${(v.reqPilots||1)>1?"s":""}${v.reqMech?`, ${v.reqMech} mechanic${v.reqMech>1?"s":""}`:""}${(v.gunnerGuns||0)?` <span class="dim">(${v.gunnerGuns} gunner mounts)</span>`:""}`)}
         ${krow("Aboard", `${Game.pilots(v)} pilot${Game.pilots(v)!==1?"s":""}${active?' <span class="dim small">(incl. you)</span>':''}, ${Game.aboard(v,"mechanic")} mechanic${Game.aboard(v,"mechanic")!==1?"s":""}`)}
         ${krow("Operational", Game.operational(v)?'<span class="green">Yes — ready to fly</span>':'<span class="red">No — needs more crew</span>')}
         ${krow("Range", v.range==="interstellar"?`<span class="gold">${jumpRange(v).toFixed(1)} ly hyperdrive</span>`:RANGE_LABEL[v.range])}
@@ -2661,8 +2796,23 @@ const UI = {
     if(screen==="voidmeet"){
       const s=$("#voidSalvage"); if(s) s.onclick=()=>voidSalvage();
       const c=$("#voidContact"); if(c) c.onclick=()=>voidContact();
+      const a=$("#voidAttack"); if(a) a.onclick=()=>startShipBattle();
       const e=$("#voidEvade"); if(e) e.onclick=()=>voidEvade();
       const g=$("#voidGo"); if(g) g.onclick=()=>voidLeave();
+    }
+    if(screen==="shipbattle"){
+      const f=$("#sbFire"); if(f) f.onclick=()=>shipFire();
+      const r=$("#sbRetreat"); if(r) r.onclick=()=>shipRetreat();
+      const d=$("#sbDone"); if(d) d.onclick=()=>shipBattleDone();
+    }
+    if(screen==="outfit"){
+      const rp=$("#ofRepair"); if(rp) rp.onclick=()=>repairShip(outfitShip);
+      const ar=$("#ofArmor"); if(ar) ar.onclick=()=>upgradeArmor(outfitShip);
+      app.querySelectorAll("[data-unmount]").forEach(b=> b.onclick=()=>unmountWeapon(outfitShip, +b.dataset.unmount));
+      app.querySelectorAll("[data-mountslot]").forEach(b=> b.onclick=()=>{ mountPick=+b.dataset.mountslot; UI.render("outfit"); });
+      app.querySelectorAll("[data-buygun]").forEach(b=> b.onclick=()=>{ mountWeapon(outfitShip, mountPick, b.dataset.buygun); mountPick=null; });
+      const mc=$("#ofMountCancel"); if(mc) mc.onclick=()=>{ mountPick=null; UI.render("outfit"); };
+      $("#ofBack").onclick=()=>{ mountPick=null; UI.render("shipyard"); };
     }
     if(screen==="tavern"){
       $("#tPatron").onclick=()=>startMeeting("A patron at a corner table waves you over.","tavern");
@@ -2690,6 +2840,7 @@ const UI = {
       app.querySelectorAll("[data-sellship]").forEach(b=> b.onclick=()=>sellShip(b.dataset.sellship));
       app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
+      app.querySelectorAll("[data-outfit]").forEach(b=> b.onclick=()=>{ outfitShip=b.dataset.outfit; mountPick=null; UI.render("outfit"); });
       const yd=$("#yarder"); if(yd) yd.onclick=()=>talkToYarder();
       const rs=$("#rentStub"); if(rs) rs.onclick=()=>toast("Ship rentals coming soon");
       $("#syBack").onclick=()=>UI.render("hub");
@@ -3050,6 +3201,7 @@ const VOID_FLEETS=[
   { id:"armada",    name:"Grand Armada",     weight:0.5, ships:[30,90], threat:4, blurb:"a vast armada — an entire army adrift between worlds" },
 ];
 let voidMeet=null;   // transient deep-space ship encounter
+let shipCombat=null; // transient ship-to-ship battle
 /* drop your group out of a system (or further along) into open space at `np` */
 function enterVoid(ids, np){
   const set=new Set(ids);
@@ -3118,6 +3270,87 @@ function voidEvade(){
   Game.save(); UI.render("voidmeet");
 }
 function voidLeave(){ voidMeet=null; UI.render("hub"); UI.flashLog(); }
+
+/* ---- SHIP-TO-SHIP COMBAT ----
+   Your fleet's guns vs theirs. Each round both sides fire: you deal your fleet's total attack
+   to the enemy pool; they focus-fire your ships one at a time. Repair disabled hulls later. */
+function myBattleShips(){ return shipsByIds(playerGroupIds()).filter(v=>Game.operational(v)); }
+function fleetAttack(ids){ return ids.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0).reduce((s,v)=>s+shipAttack(v),0); }
+function startShipBattle(){
+  const m=voidMeet; if(!m) return;
+  const mine=myBattleShips();
+  if(!mine.length){ toast("No crewed ship to fight with"); return; }
+  if(mine.reduce((s,v)=>s+shipAttack(v),0)<=0){ toast("Your ships have no working guns — mount weapons at a shipyard"); return; }
+  const t=m.threat, n=m.ships;
+  const eMax=Math.round(n * 700*(1+t*1.1) * rndF(0.9,1.1));
+  shipCombat={ name:m.name, faction:m.faction, ships:n, threat:t,
+    eMaxHp:eMax, eHp:eMax, eAtk:Math.round(n * 45*(1+t*1.1)),
+    my:mine.map(v=>v.id), loot:Math.round(n*900*(1+t*1.4)), over:false, win:false, round:0, log:[] };
+  voidMeet=null; Game.logMsg(`You bring your guns to bear on the ${m.name}.`,"hit"); UI.render("shipbattle");
+}
+function shipFire(){
+  const c=shipCombat; if(!c||c.over) return;
+  c.round++;
+  const myAtk=fleetAttack(c.my);
+  c.eHp-=myAtk; c.log=[`Your salvo hits for ${commas(myAtk)}.`];
+  if(c.eHp<=0){ return winShipBattle(); }
+  // enemy fires back, focusing your ships in order
+  let dmg=c.eAtk;
+  for(const id of c.my){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v||v.hp<=0) continue;
+    const hit=Math.min(v.hp, dmg); v.hp-=hit; dmg-=hit;
+    if(v.hp<=0) c.log.push(`The ${v.name} is crippled!`);
+    if(dmg<=0) break; }
+  c.log.push(`Enemy fire deals ${commas(c.eAtk)} across your hulls.`);
+  if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
+  Game.save(); UI.render("shipbattle");
+}
+function shipRetreat(){
+  const c=shipCombat; if(!c) return;
+  const p=clamp(0.5+Game.gearMod("flee")-c.threat*0.08, 0.15, 0.9);
+  if(chance(p)){ c.over=true; c.win=false; c.msg=`You break off and jump clear.`; Game.save(); UI.render("shipbattle"); }
+  else { c.log=[`You can't shake them — they get a salvo in.`]; let dmg=Math.round(c.eAtk*0.7);
+    for(const id of c.my){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v||v.hp<=0) continue;
+      const hit=Math.min(v.hp,dmg); v.hp-=hit; dmg-=hit; if(dmg<=0) break; }
+    if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
+    Game.save(); UI.render("shipbattle"); }
+}
+function winShipBattle(){
+  const c=shipCombat; c.over=true; c.win=true; c.eHp=0;
+  state.credits+=c.loot; Game.gainXp(Math.round(c.loot*0.02));
+  c.msg=`You shatter the ${c.name}! You strip the wrecks for ${commas(c.loot)}c.`;
+  // a chance to capture an intact hull from a larger fleet
+  if(c.ships>=2 && chance(0.25)){
+    const cls=c.threat>=3?"frigate":c.threat>=2?"corvette":"hauler", cd=shipClass(cls);
+    const ship={ kind:"vehicle", id:newVid(), name:`Captured ${cd.name}`, tier:"common", cls, clsName:cd.name, role:cd.role,
+      range:cd.range, axes:Object.keys(cd.power), power:{...cd.power}, hold:cd.cargo, crewMax:cd.crew, bays:cd.bays,
+      reqPilots:cd.reqPilots, reqMech:cd.reqMech, reqGun:cd.reqGun, value:Math.round(cd.price*0.6),
+      cargo:{}, slot:0, sysId:state.sysId, voidCapture:true };
+    applyShipStats(ship, cd, "common"); ship.hp=Math.round(ship.maxHp*0.4);
+    // it arrives wherever you are (the void or a system)
+    ship.sysId=state.sysId; ship.slot=state.atSlot;
+    state.vehicles.push(ship);
+    c.msg+=` You seize an intact ${cd.name} from the wreckage — board it from your Crew tab.`;
+  }
+  Game.save(); UI.render("shipbattle");
+}
+function loseShipBattle(){
+  const c=shipCombat; c.over=true; c.win=false;
+  c.msg=`Your ships are shot to pieces. You limp away — hull integrity gone.`;
+  Game.logMsg(`Your fleet is crippled by the ${c.name}.`,"bad");
+  Game.save(); UI.render("shipbattle");
+}
+/* leave the battle screen — knocked out fleets limp home */
+function shipBattleDone(){
+  const c=shipCombat; const lost=!c.win; shipCombat=null;
+  if(lost){ const stranded=Game.ship();
+    // crippled ships (and you) limp home if you can; otherwise you wake on your homeworld
+    if(state.galaxy){ playerGroupIds().forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v){ v.sysId=0; v.slot=0; } });
+      state.voidPos=null; state.sysId=0; state.atSlot=0; state.system=state.galaxy.systems[0]; state.world=state.system.planets[0].world; }
+    state.hp=Math.max(1,Math.round(Game.effMaxHp()*0.4));
+    Game.logMsg(`You limp home to ${state.world?state.world.name:"port"}. Repair your hulls at the Shipyard.`,"bad");
+  }
+  Game.save(); UI.render("hub"); UI.flashLog();
+}
 
 /* ---- meet a person on the planet you're on (tavern patrons, strangers, ...) ---- */
 let meeting=null;
@@ -3192,6 +3425,36 @@ function renameShip(id){
   const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
   const nn=prompt("Rename your ship:", v.name); if(nn){ v.name=nn.slice(0,22); Game.save(); UI.render(UI.current); }
 }
+/* ---- shipyard outfitting: repair, weapons, armor (only where there's a shipyard) ---- */
+let outfitShip=null, mountPick=null;   // ship id being outfitted, hardpoint slot being filled
+function repairShip(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  const cost=repairCost(v); if(cost<=0){ toast("Hull is already whole"); return; }
+  if(state.credits<cost){ toast(`Repairs cost ${commas(cost)}c`); return; }
+  state.credits-=cost; v.hp=v.maxHp;
+  Game.logMsg(`You repair the ${v.name}'s hull for ${commas(cost)}c.`,"sys"); Game.save(); UI.render("outfit"); }
+/* buy a weapon and mount it on a hardpoint (slot index) in one step */
+function mountWeapon(id, slot, wid){ const v=(state.vehicles||[]).find(x=>x.id===id), w=weaponById(wid); if(!v||!w) return;
+  if(state.world && w.minTech>state.world.tech){ toast("Not sold at this shipyard"); return; }
+  if(state.credits<w.price){ toast(`That weapon costs ${commas(w.price)}c`); return; }
+  if(slot>=v.guns.length){ toast("No such hardpoint"); return; }
+  state.credits-=w.price; v.guns[slot]=wid; v.value=(v.value||0)+Math.round(w.price*0.5);
+  Game.logMsg(`You mount ${article(w.name)} ${w.name} on the ${v.name}.`,"good"); Game.save(); UI.render("outfit"); }
+/* strip a weapon off a hardpoint (sell it back for half) */
+function unmountWeapon(id, slot){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  const wid=v.guns[slot]; if(!wid) return; const w=weaponById(wid);
+  const refund=Math.round(w.price*0.5); state.credits+=refund; v.guns[slot]=null; v.value=Math.max(0,(v.value||0)-refund);
+  Game.logMsg(`You strip the ${w.name} off the ${v.name} (+${commas(refund)}c).`,"sys"); Game.save(); UI.render("outfit"); }
+/* upgrade hull plating one tier (boosts max HP) */
+function upgradeArmor(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  if((v.armor||0)>=ARMOR.length-1){ toast("Already the best plating"); return; }
+  const next=(v.armor||0)+1, c=shipClass(v.cls);
+  const cost=Math.round((c?c.baseHp:200)*ARMOR[next].mult*8*(1+(state.world?state.world.wealth:4)*0.04));
+  if(state.credits<cost){ toast(`That plating costs ${commas(cost)}c`); return; }
+  // re-scale max HP to the new plating (keep current damage ratio)
+  const ratio=v.maxHp>0?v.hp/v.maxHp:1, baseNoArmor=v.maxHp/ARMOR[v.armor||0].mult;
+  v.armor=next; v.maxHp=Math.round(baseNoArmor*ARMOR[next].mult); v.hp=Math.round(v.maxHp*ratio);
+  v.value=(v.value||0)+Math.round(cost*0.5); state.credits-=cost;
+  Game.logMsg(`You refit the ${v.name} with ${ARMOR[next].name}.`,"good"); Game.save(); UI.render("outfit"); }
 function shipLocationName(v){
   if(!v||!state.galaxy) return "home";
   const sys=state.galaxy.systems[v.sysId??0]; if(!sys) return "uncharted space";
@@ -3386,9 +3649,10 @@ function buyYarderShip(){
   const o=YARDER_SHIP;
   if(state.credits<o.price){ toast("That costs "+commas(o.price)+"c"); return; }
   state.credits-=o.price;
-  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:"common", cls:"junker", clsName:o.name,
+  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:"common", cls:"junker", clsName:o.name, role:"Clunker",
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
-    bays:o.bays, reqPilots:1, reqMech:0, reqGun:0, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId };
+    bays:o.bays, reqPilots:1, reqMech:0, reqGun:0, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
+    maxHp:120, hp:120, armor:0, pilotGuns:0, gunnerGuns:0, guns:[] };
   state.vehicles.push(ship);
   if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;
   Game.logMsg(`The dockmaster sells you their old ${o.name} for ${commas(o.price)}c — barely spaceworthy, but it flies.`,"good");
@@ -3435,9 +3699,11 @@ function buyShip(i){
   const stock=shipStockAt(), o=stock[i]; if(!o) return;
   if(state.credits<o.price){ toast("Not enough credits"); return; }
   state.credits-=o.price;
-  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name,
+  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name, role:o.role,
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
-    bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId };
+    bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
+    maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
+    guns:new Array((o.pilotGuns||0)+(o.gunnerGuns||0)).fill(null) };
   state.vehicles.push(ship);
   if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;  // auto-pilot if it frees you to leave
   stock.splice(i,1);
