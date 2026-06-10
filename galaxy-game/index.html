@@ -2080,7 +2080,7 @@ const UI = {
     if(a.step===1){
       $("#arrCancel").onclick=()=>{ arriving=null; UI.render("codex"); };
       $("#arrStep1").onclick=()=>{ a.world.name=$("#arrWorld").value.trim()||genName("world");
-        if(a.occupied){ a.person=Gen.person(a.draw.race); a.step=2; UI.render("arrive"); }
+        if(a.occupied){ a.person=Gen.person(a.draw.race); a.person.career="shipwright"; delete a.person.bounty; a.step=2; UI.render("arrive"); }
         else finishArrival(); };
     }
     if(a.step===2){
@@ -2188,10 +2188,13 @@ function finishArrival(){
     occupied:a.occupied, raceId:a.draw?a.draw.id:null };
   const ws=worldSummary(a.world); ws.reported=false; state.codex.worlds.push(ws);
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
-  if(a.occupied) recordMeeting(a.person, a.draw.race, a.world.name);
   const old=state.atSlot; Game.ship().slot=slot; moveFollowers(old,slot);   // you + crewed ships arrive
-  state.world=a.world; state.atSlot=slot;
-  Game.logMsg(`You chart ${a.world.name}${a.occupied?` and meet the ${a.draw.race.name}`:" — uninhabited"}.`,"sys");
+  state.world=a.world; state.atSlot=slot;            // relocate BEFORE recording the meeting
+  if(a.occupied){
+    recordMeeting(a.person, a.draw.race, a.world.name);   // greeter = the local dockmaster
+    state.yarders=state.yarders||{}; state.yarders[slot]=state.codex.people.length-1;
+  }
+  Game.logMsg(`You chart ${a.world.name}${a.occupied?`, met at the dock by ${a.person.name}`:" — uninhabited"}.`,"sys");
   checkObjectives();
   arriving=null; Game.save(); UI.render("hub"); UI.flashLog();
 }
