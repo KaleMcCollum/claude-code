@@ -203,38 +203,128 @@ const RARITY = {
 };
 RARITY.init();
 
+/* ============================================================ GENETICS = */
+/* Two independent layers of luck decide who you are:
+     1) SPECIES rarity  — how unusual the PEOPLE you're born to are. Rarer peoples
+        have smaller populations, so being born one is itself rare (population-weighted).
+        Rarer species also drift further from the human baseline (taller giants, etc.).
+     2) GENETICS        — where YOU land within your own species' range. Even a common
+        humanlike person can roll a 1-in-1000 genome. Sampled near the middle, so
+        extremes (runts and prodigies) are rare. These values are FIXED for life.
+   Everything is anchored to humans so the numbers are intuitive at a glance. */
+const HUMAN = { height:175, mass:78, maturity:18, lifespan:82, attr:10 }; // cm, kg, yrs, yrs, pts
+
+/* Conceptual scale of the setting (tunable). Drives flavor + population math. */
+const GALAXY = {
+  speciesCap: 10000,     // estimated number of distinct sapient peoples in the galaxy
+  totalSapients: 1e12,   // ~1 trillion thinking beings across all worlds
+};
+
+const ATTR_KEYS  = ["strength","agility","endurance","intellect","attunement","presence"];
+const ATTR_LABEL = { strength:"Strength", agility:"Agility", endurance:"Endurance",
+  intellect:"Intellect", attunement:"Attunement", presence:"Presence" };
+
+/* How far a species' average can drift from human, by rarity index (0..7). */
+const SPECIES_DEV = [0.10, 0.16, 0.26, 0.40, 0.60, 0.90, 1.30, 1.90];
+/* Population band of a species, by rarity index — rarer peoples are fewer. */
+const POP_RANGE = [
+  [2e9, 2.5e10], [3e8, 2e9], [2e7, 3e8], [1e6, 2e7],
+  [8e4, 1e6], [6e3, 8e4], [400, 6e3], [12, 400],
+];
+function rollPopulation(ti){ const [lo,hi]=POP_RANGE[ti];
+  return Math.round(Math.exp(rndF(Math.log(lo),Math.log(hi)))); }
+
+/* ~normal-ish draw in [-1,1], clustered at 0 (most beings are average). */
+const approxNorm = ()=>((Math.random()+Math.random()+Math.random())/3)*2-1;
+
+/* Generate one fixed genetic trait:
+   - the SPECIES gets an average that drifts from `humanMean` by the rarity `dev`
+   - the species gets a min..max spread around that average
+   - YOU get a specific value sampled within, plus the percentile you landed at. */
+function genTrait(humanMean, dev, opts={}){
+  let meanMult = 1 + approxNorm()*dev*(opts.devScale??1) + (opts.skew||0);
+  meanMult = Math.max(opts.floorMult??0.2, meanMult);
+  const mean = humanMean*meanMult;
+  const spread = opts.spread ?? rndF(0.1,0.18);
+  const min = mean*(1-spread), max = mean*(1+spread);
+  const z = approxNorm();
+  const value = clamp(mean*(1+z*spread), min, max);
+  const pct = clamp(Math.round((z+1)/2*98+1), 1, 99);
+  const r = opts.intval ? (x=>Math.max(opts.floor??1, Math.round(x))) : (x=>x);
+  return { mean:r(mean), min:r(min), max:r(max), value:r(value), pct };
+}
+
+/* Words for where a roll landed within its own species. */
+function pctLabel(p){
+  if(p>=98) return "once in a generation";
+  if(p>=90) return "exceptional for its kind";
+  if(p>=75) return "well above average";
+  if(p>=60) return "above average";
+  if(p>40)  return "typical of its kind";
+  if(p>25)  return "below average";
+  if(p>12)  return "poor for its kind";
+  if(p>3)   return "very poor";
+  return "the runt of the line";
+}
+function gradeLabel(p){
+  if(p>=90) return "Pristine genome";
+  if(p>=75) return "Gifted genome";
+  if(p>=60) return "Strong genome";
+  if(p>40)  return "Sound genome";
+  if(p>25)  return "Frail genome";
+  if(p>12)  return "Poor genome";
+  return "Wretched genome";
+}
+function pctColor(p){ return p>=85?"#6ee7a0":p>=60?"#5fd0ff":p>=40?"#7c8aa3":p<=15?"#ff6b6b":"#e8c372"; }
+
+/* formatters anchored to human-readable units */
+function cmToFt(cm){ const ti=cm/2.54; let ft=Math.floor(ti/12), inch=Math.round(ti-ft*12);
+  if(inch===12){ft++; inch=0;} return `${ft}'${inch}"`; }
+function kgToLb(kg){ return `${commas(Math.round(kg*2.20462))} lb`; }
+const yrsFmt = y=>`${Math.round(y)} yr`;
+function humanizeCount(n){
+  if(n>=1e12) return (n/1e12).toFixed(1)+" trillion";
+  if(n>=1e9)  return (n/1e9).toFixed(n>=1e10?0:1)+" billion";
+  if(n>=1e6)  return (n/1e6).toFixed(n>=1e7?0:1)+" million";
+  if(n>=1e3)  return commas(Math.round(n));
+  return commas(Math.round(n));
+}
+
 /* ============================================================ TABLES === */
-/* Species body-plans. statBias nudges the rolled stats; powers are the pool
-   this archetype can draw from (on top of the universal pool). */
+/* Species body-plans (the broad templates every generated people is built from).
+   `bias` nudges that people's average attributes off the human baseline of 10;
+   `powers` is the pool of innate abilities this body-plan can roll; `sig`
+   is the attribute that defines its signature combat skill. Weights make
+   humanlike peoples by far the most common, exotic ones rare. */
 const ARCHETYPES = [
-  { id:"humanlike", name:"Humanlike", weight:34, bias:{}, sig:"might",
+  { id:"humanlike", name:"Humanlike", weight:34, bias:{}, sig:"strength",
     powers:["hardy","mercantile","telepath"],
     flavor:"familiar of frame — two arms, two legs, endless ambition" },
-  { id:"reptilian", name:"Reptilian", weight:16, bias:{might:1,agility:1}, sig:"agility",
+  { id:"reptilian", name:"Reptilian", weight:16, bias:{strength:2,agility:2,endurance:1}, sig:"agility",
     powers:["armored","venom","nightsight","amphibious"],
     flavor:"cold-blooded and scaled, patient and quick to strike" },
-  { id:"avian", name:"Avian", weight:9, bias:{agility:2,might:-1}, sig:"agility",
+  { id:"avian", name:"Avian", weight:9, bias:{agility:4,strength:-2,endurance:-1}, sig:"agility",
     powers:["flight","nightsight","telepath"],
     flavor:"hollow-boned and feathered, built for the open sky" },
-  { id:"insectoid", name:"Insectoid", weight:11, bias:{agility:1,tech:1}, sig:"agility",
+  { id:"insectoid", name:"Insectoid", weight:11, bias:{agility:2,intellect:2,strength:-1}, sig:"agility",
     powers:["armored","venom","hivemind","flight"],
     flavor:"chitin-plated and many-limbed, thinking in swarms" },
-  { id:"aquatic", name:"Aquatic", weight:8, bias:{force:1}, sig:"force",
+  { id:"aquatic", name:"Aquatic", weight:8, bias:{attunement:2,endurance:1}, sig:"attunement",
     powers:["amphibious","regen","telepath"],
     flavor:"sleek and gilled, more at home beneath the waves" },
-  { id:"saurian", name:"Saurian", weight:7, bias:{might:2,agility:-1}, sig:"might",
+  { id:"saurian", name:"Saurian", weight:7, bias:{strength:5,endurance:3,agility:-3}, sig:"strength",
     powers:["armored","hardy","venom"],
     flavor:"great and heavy-jawed, a walking fortress of muscle" },
-  { id:"plantkin", name:"Plantkin", weight:5, bias:{force:1,tech:-1}, sig:"force",
+  { id:"plantkin", name:"Plantkin", weight:5, bias:{attunement:2,endurance:2,intellect:-2,agility:-2}, sig:"attunement",
     powers:["photosynth","regen","venom"],
     flavor:"rooted heritage — bark, sap, and slow green patience" },
-  { id:"crystalline", name:"Crystalline", weight:3, bias:{tech:2,agility:-1}, sig:"tech",
+  { id:"crystalline", name:"Crystalline", weight:3, bias:{intellect:3,endurance:2,agility:-2}, sig:"intellect",
     powers:["armored","current","hardy"],
     flavor:"living lattice of mineral, humming with stored charge" },
-  { id:"machinekin", name:"Machine-kin", weight:4, bias:{tech:3,charm:-1}, sig:"tech",
+  { id:"machinekin", name:"Machine-kin", weight:4, bias:{intellect:5,presence:-2,attunement:-1}, sig:"intellect",
     powers:["armored","hardy","current"],
     flavor:"part-forged, part-grown — circuits laced through sinew" },
-  { id:"energy", name:"Energy-being", weight:1, bias:{force:3,might:-1}, sig:"force",
+  { id:"energy", name:"Energy-being", weight:1, bias:{attunement:6,strength:-3,endurance:-2}, sig:"attunement",
     powers:["flight","current","telepath","regen"],
     flavor:"barely-bound light given will — a rumor made flesh" },
 ];
@@ -300,33 +390,42 @@ const VEHICLE_CLASSES = [
    name:null so the player can christen it. NOTHING here is chosen by the player. */
 const Gen = {
   species(){
-    const tier=RARITY.roll();
-    const arche=weightedPick(ARCHETYPES);
-    const mult=RARITY.mult(tier);
+    const tier=RARITY.roll();                 // how rare these PEOPLE are to be born to
+    const arche=weightedPick(ARCHETYPES);      // body-plan template
     const ti=RARITY.index(tier.id);
-    // base stats ~5 each, scaled by tier multiplier + archetype bias + jitter
-    const mk=base=>Math.max(1,Math.round((base+(arche.bias.__||0))*mult+rnd(-1,1)));
-    const stats={
-      might:  Math.max(1,Math.round((5+(arche.bias.might||0))*mult+rnd(-1,1))),
-      agility:Math.max(1,Math.round((5+(arche.bias.agility||0))*mult+rnd(-1,1))),
-      force:  Math.max(1,Math.round((5+(arche.bias.force||0))*mult+rnd(-1,1))),
-      tech:   Math.max(1,Math.round((5+(arche.bias.tech||0))*mult+rnd(-1,1))),
-      charm:  Math.max(1,Math.round((5+(arche.bias.charm||0))*mult+rnd(-1,1))),
-    };
-    let hp=Math.round(60*mult+rnd(-5,5));
-    // powers: count grows with rarity; drawn from archetype pool + a little universal
+    const dev=SPECIES_DEV[ti];                 // how far this people drifts from human
+    const population=rollPopulation(ti);       // how many of them exist in the galaxy
+
+    // fixed physical genetics (raw numbers; formatted at display time)
+    const height   = genTrait(HUMAN.height,   dev,      { spread:rndF(0.10,0.20) });
+    const massBase = HUMAN.mass*Math.pow(height.value/HUMAN.height, 2.0); // mass tracks size
+    const mass     = genTrait(massBase,       dev*0.6,  { spread:rndF(0.12,0.22) });
+    const maturity = genTrait(HUMAN.maturity, dev*0.8,  { spread:rndF(0.12,0.20) });
+    const lifespan = genTrait(HUMAN.lifespan, dev,      { spread:rndF(0.10,0.18), skew:dev*0.15 });
+
+    // fixed attribute genetics — each rolled INDEPENDENTLY (strong but slow is possible)
+    const attrs={};
+    for(const a of ATTR_KEYS){
+      attrs[a]=genTrait(HUMAN.attr+(arche.bias[a]||0), dev, { spread:rndF(0.10,0.16), devScale:0.7, intval:true, floor:1 });
+    }
+
+    // innate powers: count grows with rarity; flight stays special
     const pool=[...arche.powers];
     ["telepath","nightsight","regen","hardy"].forEach(p=>{ if(!pool.includes(p)) pool.push(p); });
-    // flight is special: only a candidate for high tiers unless the body-plan flies
     const fliesNaturally=arche.powers.includes("flight");
     if(!fliesNaturally && ti<3){ const i=pool.indexOf("flight"); if(i>=0) pool.splice(i,1); }
     const count=clamp(Math.round((ti-1)*0.8)+rnd(0,1),0,6);
     const powers=[];
-    const shuffled=pool.sort(()=>Math.random()-0.5);
-    for(const p of shuffled){ if(powers.length>=count) break; powers.push(p); }
-    if(powers.includes("hardy")) hp=Math.round(hp*1.25);
+    for(const p of pool.sort(()=>Math.random()-0.5)){ if(powers.length>=count) break; powers.push(p); }
+
+    // overall genome grade = how you compare to your OWN kind across the board
+    const pcts=[...ATTR_KEYS.map(a=>attrs[a].pct), height.pct, lifespan.pct];
+    const avgPct=Math.round(pcts.reduce((s,x)=>s+x,0)/pcts.length);
+
     return { kind:"species", name:null, tier:tier.id, arche:arche.id, archeName:arche.name,
-             flavor:arche.flavor, sig:arche.sig, mult:+mult.toFixed(2), stats, hp, powers };
+             flavor:arche.flavor, sig:arche.sig, population,
+             height, mass, maturity, lifespan, attrs, powers,
+             genome:{ avgPct, grade:gradeLabel(avgPct) } };
   },
 
   world(){
@@ -425,15 +524,30 @@ const Game = {
     const sp=creating.species, world=creating.world, veh=creating.vehicle;
     // starting skills derive from the species, not a chosen class
     const skills=new Set(["Strike","Focus"]);
-    const sig={ might:"Heavy Strike", agility:"Steady Shot", force:"Current Bolt", tech:"Steady Shot", charm:"Strike" }[sp.sig];
+    const sig={ strength:"Heavy Strike", agility:"Steady Shot", endurance:"Heavy Strike",
+                intellect:"Steady Shot", attunement:"Current Bolt", presence:"Strike" }[sp.sig];
     if(sig) skills.add(sig);
     if(sp.powers.includes("current")){ skills.add("Current Bolt"); skills.add("Current Sense"); skills.add("Mend"); }
+
+    // Trained combat stats are SEEDED from your fixed genetics, then improve with levels.
+    // Genetics stay fixed for life; training is the part you can grow.
+    const a=sp.attrs;
+    const stats={
+      might:  Math.max(1,Math.round(a.strength.value/2)),
+      agility:Math.max(1,Math.round(a.agility.value/2)),
+      force:  Math.max(1,Math.round(a.attunement.value/2)),
+      tech:   Math.max(1,Math.round(a.intellect.value/2)),
+      charm:  Math.max(1,Math.round(a.presence.value/2)),
+    };
+    let maxHp=Math.round(a.endurance.value*5 + sp.height.value*0.06);
+    if(sp.powers.includes("hardy")) maxHp=Math.round(maxHp*1.25);
+    const maxEnergy=30+Math.round(a.attunement.value*1.5);
 
     state={
       v:2, created:Date.now(), updated:Date.now(),
       name:creating.name, species:sp, world, vehicles:[veh],
-      level:1, xp:0, xpNext:50,
-      maxHp:sp.hp, hp:sp.hp, maxEnergy:40+sp.stats.force*2, energy:40+sp.stats.force*2,
+      level:1, xp:0, xpNext:50, stats,
+      maxHp, hp:maxHp, maxEnergy, energy:maxEnergy,
       credits:120, skills:[...skills],
       inv:{}, equipped:{weapon:null,armor:null,relic:null}, pets:[],
       stimReady:false, log:[],
@@ -446,7 +560,7 @@ const Game = {
 
   /* ---- derived combat stats (species + equipment) ---- */
   effStat(key){
-    let v=state.species.stats[key]||0;
+    let v=state.stats[key]||0;
     for(const slot of ["weapon","armor","relic"]){ const id=state.equipped[slot];
       if(id && DATA.items[id].mods && DATA.items[id].mods[key]) v+=DATA.items[id].mods[key]; }
     return v;
@@ -474,7 +588,7 @@ const Game = {
     while(state.xp>=state.xpNext){ state.xp-=state.xpNext; state.level++; lv=true;
       state.xpNext=Math.round(state.xpNext*1.4+20);
       state.maxHp+=12; state.maxEnergy+=5; state.hp=state.maxHp; state.energy=state.maxEnergy;
-      const keys=["might","agility","force","tech","charm"]; state.species.stats[keys[state.level%keys.length]]++; }
+      const keys=["might","agility","force","tech","charm"]; state.stats[keys[state.level%keys.length]]++; }
     if(lv) Game.logMsg(`You reached level ${state.level}!`,"good"); return lv; },
 
   logMsg(t,c=""){ state.log.push({t,c}); if(state.log.length>60) state.log=state.log.slice(-60); },
@@ -626,20 +740,35 @@ const UI = {
         </div>
       </div>`;
 
-    if(s===2){ const sp=creating.species; return `
-      ${this.rarityBanner(sp.tier, "your bloodline")}
+    if(s===2){ const sp=creating.species; const t=RARITY.byId(sp.tier); return `
+      ${this.rarityBanner(sp.tier, `${humanizeCount(sp.population)} of them live in the galaxy`)}
       <div class="card reveal">
         <h2>Fate made you ${article(sp.archeName)} <span class="violet">${sp.archeName}</span></h2>
         <p class="small dim">${cap(sp.flavor)}.</p>
-        <div class="divider"></div>
-        <h3>Attributes</h3>
-        ${statRows(sp.stats)}
-        <div class="statline"><span>Vitality (HP)</span><span class="gold">${sp.hp}</span></div>
-        ${sp.powers.length?`<div class="divider"></div><h3>Innate powers</h3>
-          ${sp.powers.map(p=>`<p class="small"><b class="blue">${POWERS[p].name}</b> — ${POWERS[p].desc}</p>`).join("")}`
-          :`<p class="small dim">No innate powers — an ordinary people.</p>`}
-        <div class="divider"></div>
-        <p class="small">Now, what are your people <b>called</b>?</p>
+        <p class="small"><span class="dim">To be born one of so</span>
+          <b style="color:${t.color}">${RARITY.odds(t)}</b>
+          <span class="dim">a people — population about</span> <b>${humanizeCount(sp.population)}</b>
+          <span class="dim">of the galaxy's ~${humanizeCount(GALAXY.totalSapients)} souls.</span></p>
+      </div>
+      ${genomeBanner(sp.genome)}
+      <div class="card reveal">
+        <h3>Body &amp; lifespan <span class="dim small">(fixed for life)</span></h3>
+        ${traitBlock("Adult height", sp.height, cmToFt, cmToFt(HUMAN.height))}
+        ${traitBlock("Adult mass",   sp.mass,   kgToLb, kgToLb(HUMAN.mass))}
+        ${traitBlock("Age of maturity", sp.maturity, yrsFmt, yrsFmt(HUMAN.maturity))}
+        ${traitBlock("Natural lifespan", sp.lifespan, yrsFmt, yrsFmt(HUMAN.lifespan))}
+      </div>
+      <div class="card reveal">
+        <h3>Attributes <span class="dim small">(10 = human average)</span></h3>
+        ${ATTR_KEYS.map(k=>traitBlock(ATTR_LABEL[k], sp.attrs[k], v=>v, HUMAN.attr)).join("")}
+      </div>
+      <div class="card reveal">
+        <h3>Innate powers</h3>
+        ${sp.powers.length?sp.powers.map(p=>`<p class="small"><b class="blue">${POWERS[p].name}</b> — ${POWERS[p].desc}</p>`).join("")
+          :`<p class="small dim">None — an ordinary people, gifts earned not given.</p>`}
+      </div>
+      <div class="card reveal">
+        <p class="small">Now — what are your people <b>called</b>?</p>
         <input type="text" id="spNameInput" maxlength="22" placeholder="Name your species" value="${sp.name||""}">
         <div class="row between" style="margin-top:10px">
           <button class="ghost" id="backStep1">&larr; Back</button>
@@ -762,20 +891,35 @@ const UI = {
 
   /* ---------- SELF ---------- */
   screen_char(){
-    const sp=state.species;
+    const sp=state.species, t=RARITY.byId(sp.tier);
     return `
     ${this.statHeader()}
-    ${this.rarityBannerInline(sp.tier, "bloodline")}
+    ${this.rarityBannerInline(sp.tier, `${humanizeCount(sp.population)} of your kind in the galaxy`)}
     <div class="card">
       <h2>${state.name}</h2>
       <p><span class="dim">People:</span> <b class="violet">${sp.name}</b>
         <span class="small dim">(${sp.archeName})</span></p>
       <p class="small dim">${cap(sp.flavor)}.</p>
-      <div class="divider"></div>
-      <h3>Attributes</h3>
+      <p class="small"><span class="dim">Born</span> <b style="color:${t.color}">${RARITY.odds(t)}</b>
+        <span class="dim">rare a people.</span></p>
+    </div>
+    ${genomeBanner(sp.genome)}
+    <div class="card">
+      <h3>Body &amp; lifespan <span class="dim small">(genetic, fixed)</span></h3>
+      ${traitBlock("Adult height", sp.height, cmToFt, cmToFt(HUMAN.height))}
+      ${traitBlock("Adult mass",   sp.mass,   kgToLb, kgToLb(HUMAN.mass))}
+      ${traitBlock("Age of maturity", sp.maturity, yrsFmt, yrsFmt(HUMAN.maturity))}
+      ${traitBlock("Natural lifespan", sp.lifespan, yrsFmt, yrsFmt(HUMAN.lifespan))}
+    </div>
+    <div class="card">
+      <h3>Attributes <span class="dim small">(10 = human avg)</span></h3>
+      ${ATTR_KEYS.map(k=>traitBlock(ATTR_LABEL[k], sp.attrs[k], v=>v, HUMAN.attr)).join("")}
+    </div>
+    <div class="card">
+      <h3>Trained combat stats <span class="dim small">(grow with levels)</span></h3>
       ${["might","agility","force","tech","charm"].map(k=>{
-        const base=sp.stats[k], eff=Game.effStat(k), b=eff-base;
-        return `<div class="statline"><span>${cap(k)}</span><span>${eff}${b?` <span class="green small">(+${b})</span>`:""}</span></div>`;
+        const base=state.stats[k], eff=Game.effStat(k), b=eff-base;
+        return `<div class="statline"><span>${cap(k)}</span><span>${eff}${b?` <span class="green small">(+${b} gear)</span>`:""}</span></div>`;
       }).join("")}
     </div>
     <div class="card">
@@ -1038,9 +1182,25 @@ function importSave(e){ const f=e.target.files[0]; if(!f) return; const r=new Fi
 
 /* ---------- small text helpers ---------- */
 function article(w){ return /^[aeiou]/i.test(w)?"an":"a"; }
-function statRows(stats){ return ["might","agility","force","tech","charm"].map(k=>
-  `<div class="statline"><span>${cap(k)}</span><span>${stats[k]}</span></div>`).join(""); }
 function powerLine(v){ return v.axes.map(a=>`${UNITS.power[a].abbr} ${commas(v.power[a])}`).join(" / ")+" "+UNITS.power.unit; }
+
+/* Render one genetic trait: your value, your species' range, the human anchor,
+   and where you landed within your own kind. Used in the reveal and Self screen. */
+function traitBlock(label, t, fmt, humanRef){
+  return `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
+    <div class="row between"><span>${label}</span><span class="gold">${fmt(t.value)}</span></div>
+    <div class="small dim">your kind ${fmt(t.min)}&ndash;${fmt(t.max)} &middot; avg ${fmt(t.mean)}${humanRef!=null?` &middot; human ~${humanRef}`:""}</div>
+    <div class="small" style="color:${pctColor(t.pct)}">${t.pct}th percentile of your species &mdash; ${pctLabel(t.pct)}</div>
+  </div>`;
+}
+/* Overall genome quality banner (your genetic luck WITHIN your species). */
+function genomeBanner(g){
+  const c=pctColor(g.avgPct);
+  return `<div class="rarity-banner reveal" style="border-color:${c}">
+    <div class="rn" style="color:${c}">${g.grade.toUpperCase()}</div>
+    <div class="odds">genetics: top ${100-g.avgPct}% of your own kind &middot; ${g.avgPct}th percentile overall</div>
+  </div>`;
+}
 function worldDesc(w){
   const wl=WEALTH_LABELS[w.wealth].toLowerCase(), tl=TECH_LABELS[w.tech].toLowerCase();
   return `A ${wl}, ${tl} world, ${w.popName}. The ${w.biomeName} is rated ${DANGER_LABELS[w.danger].toLowerCase()}.`;
