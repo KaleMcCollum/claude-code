@@ -244,7 +244,10 @@ const GALAXY = {
    and how likely a world is to be inhabited. */
 function centralFactor(x,y){ return clamp(1 - Math.hypot(x,y)/GALAXY.radius, 0, 1); }
 /* odds a charted world is inhabited, given its galactic position */
-function occupancyChance(x,y){ return clamp(0.12 + 0.83*centralFactor(x,y), 0.05, 0.96); }
+/* odds a charted world is inhabited: central, mild worlds are readily settled; rim worlds
+   and harsh biomes (molten, frozen, airless) almost never are. (biomeHab defined w/ BIOMES) */
+function occChanceFor(sys, biomeId){ const cf=centralFactor(sys.x,sys.y);
+  return clamp((0.15 + 0.8*cf) * Math.pow(biomeHab(biomeId), 0.9), 0.02, 0.97); }
 
 /* You begin as a YOUNG CHILD — able to do a bit of everything, but far from your
    genetic potential — and grow toward it as the years pass (full power at maturity). */
@@ -400,17 +403,23 @@ const POWERS = {
 };
 
 /* World biomes. Each maps to a creature pool (reusing DATA.creatures for now). */
+/* biome `hab` = how habitable it is (0..1): mild, temperate worlds are readily settled;
+   molten, frozen, airless worlds almost never are. Drives the odds a world is inhabited. */
 const BIOMES = [
-  { id:"forest",   weight:18, name:"temperate forest",  creatures:["thornhare","mossback","glimmer-moth"] },
-  { id:"arid",     weight:16, name:"arid scrubland",     creatures:["sandskitter","dusthound","saltcrawler"] },
-  { id:"ocean",    weight:14, name:"island shallows",    creatures:["reef-darter","shellback","brineling"] },
-  { id:"grassland",weight:13, name:"open grassland",     creatures:["thornhare","dusthound","mossback"] },
-  { id:"jungle",   weight:10, name:"dense jungle",       creatures:["thornhare","glimmer-moth","brineling"] },
-  { id:"tundra",   weight:9,  name:"frozen tundra",      creatures:["mossback","shellback","dusthound"] },
-  { id:"volcanic", weight:7,  name:"volcanic badlands",  creatures:["cinder-rat","ashbeak","magma-slug"] },
-  { id:"wasteland",weight:7,  name:"toxic wasteland",    creatures:["cinder-rat","saltcrawler","ashbeak"] },
-  { id:"urban",    weight:6,  name:"sprawling city-world",creatures:["dusthound","cinder-rat","sandskitter"] },
+  { id:"forest",   weight:16, hab:1.0,  name:"temperate forest",   creatures:["thornhare","mossback","glimmer-moth"] },
+  { id:"grassland",weight:13, hab:1.0,  name:"open grassland",      creatures:["thornhare","dusthound","mossback"] },
+  { id:"ocean",    weight:13, hab:0.85, name:"island shallows",     creatures:["reef-darter","shellback","brineling"] },
+  { id:"arid",     weight:13, hab:0.6,  name:"arid scrubland",      creatures:["sandskitter","dusthound","saltcrawler"] },
+  { id:"jungle",   weight:10, hab:0.6,  name:"dense jungle",        creatures:["thornhare","glimmer-moth","brineling"] },
+  { id:"urban",    weight:5,  hab:1.0,  name:"sprawling city-world",creatures:["dusthound","cinder-rat","sandskitter"] },
+  { id:"tundra",   weight:8,  hab:0.32, name:"frozen tundra",       creatures:["mossback","shellback","dusthound"] },
+  { id:"volcanic", weight:6,  hab:0.14, name:"volcanic badlands",   creatures:["cinder-rat","ashbeak","magma-slug"] },
+  { id:"wasteland",weight:6,  hab:0.12, name:"toxic wasteland",     creatures:["cinder-rat","saltcrawler","ashbeak"] },
+  { id:"glacier",  weight:5,  hab:0.10, name:"glacial expanse",     creatures:["shellback","mossback","brineling"] },
+  { id:"barren",   weight:5,  hab:0.05, name:"airless barren rock", creatures:["saltcrawler","sandskitter","shellback"] },
+  { id:"molten",   weight:4,  hab:0.03, name:"molten wastes",       creatures:["magma-slug","cinder-rat","ashbeak"] },
 ];
+function biomeHab(id){ const b=BIOMES.find(x=>x.id===id); return b&&b.hab!=null?b.hab:0.6; }
 
 /* How many people live there. Shapes flavor + a little economy/encounter feel. */
 const POPULATIONS = [
@@ -422,6 +431,53 @@ const POPULATIONS = [
   { id:"teeming",      weight:14, name:"teeming with life", peaceMod:0.1,   stock:1.25 },
   { id:"overpopulated",weight:9,  name:"choked and overpopulated", peaceMod:0.06, stock:1.1 },
 ];
+
+/* When a world is inhabited it grows into a SETTLEMENT of some kind, which decides what it
+   offers you. amen = which town services are open here; shipMax = the biggest ship class its
+   shipyard will sell (only capitals deal in capital ships). Capitals are semi-rare and gated
+   to advanced, wealthy worlds — there is NOT one in every system, but they're a prize to find.
+   weight 0 = never rolled (the homeworld colony / fallbacks). */
+const SETTLEMENTS = [
+  { id:"capital",   name:"Capital City",      weight:1.1, minTech:6, minWealth:6, shipMax:"capital",
+    amen:["tavern","depot","market","broker","shipyard","talk"],
+    desc:"a gleaming capital — seat of power, every trade open, and a shipyard that sells corvettes, freighters and capital ships" },
+  { id:"trade",     name:"Trade Hub",         weight:6,  minTech:3, shipMax:"corvette",
+    amen:["tavern","depot","market","broker","shipyard","talk"],
+    desc:"a bustling trade hub where every cargo changes hands" },
+  { id:"industrial",name:"Industrial World",  weight:6,  minTech:4, shipMax:"frigate",
+    amen:["depot","market","shipyard","talk"],
+    desc:"smokestacks and shipworks — they build more than they buy" },
+  { id:"agri",      name:"Agricultural World", weight:9,
+    amen:["tavern","depot","market","talk"],
+    desc:"open farmland and quiet towns — the galaxy's pantry" },
+  { id:"mining",    name:"Mining Colony",     weight:7,
+    amen:["depot","market","talk"],
+    desc:"a raw-ore colony clinging to a hard rock" },
+  { id:"scrap",     name:"Scrap World",       weight:4,  shipMax:"hauler",
+    amen:["depot","shipyard","talk"],
+    desc:"a salvage world of hull-breakers and bargain wrecks" },
+  { id:"frontier",  name:"Frontier Outpost",  weight:11,
+    amen:["tavern","depot","talk"],
+    desc:"a thin frontier outpost — a dock, a bar, and not much else" },
+  // never randomly rolled — the world you were born on (always has a working spaceport)
+  { id:"colony",    name:"Spaceport Colony",  weight:0,  shipMax:"frigate",
+    amen:["tavern","depot","market","shipyard","talk"],
+    desc:"your home colony — a working spaceport among your own kind" },
+];
+const settleDef=id=>SETTLEMENTS.find(s=>s.id===id)||null;
+function settleAmen(w){ if(!w||w.occupied===false) return [];
+  const s=settleDef(w.settle); return s?s.amen:["tavern","depot","market","broker","shipyard","talk"]; }
+function settleHasShipyard(w){ return settleAmen(w).includes("shipyard"); }
+/* choose a settlement for a freshly-charted inhabited world (gated by its tech/wealth) */
+function pickSettlement(world, sysId){
+  let pool=SETTLEMENTS.filter(s=> s.weight>0
+    && (s.minTech==null||world.tech>=s.minTech) && (s.minWealth==null||world.wealth>=s.minWealth));
+  if(!pool.length) pool=SETTLEMENTS.filter(s=>s.id==="frontier");
+  return weightedPick(pool).id;
+}
+/* the local who greets you at the dock — a shipwright where there's a yard, else a fitting local */
+const GREETER_CIV={ agri:"farmer", mining:"miner", frontier:"laborer" };
+function greeterCareer(w){ return settleHasShipyard(w)?"shipwright":(GREETER_CIV[w.settle]||"laborer"); }
 
 const TECH_LABELS  = ["Stone-age","Pre-industrial","Industrial","Atomic","Information-age","Spacefaring","Interstellar","Advanced","Hyper-advanced","Transcendent"];
 const WEALTH_LABELS= ["Destitute","Impoverished","Poor","Modest","Comfortable","Prosperous","Wealthy","Opulent","Lavish","Gilded"];
@@ -620,9 +676,11 @@ const SHIP_CLASSES = [
   { id:"shuttle", name:"System Shuttle", range:"system",       cargo:30,  crew:2,  bays:0, price:3000,   minTech:3, weight:14, power:{flight:200,star:300},   reqPilots:1, reqMech:0, reqGun:0 },
   { id:"hauler",  name:"Cargo Hauler",   range:"system",       cargo:150, crew:3,  bays:0, price:9000,   minTech:4, weight:10, power:{flight:160,star:280},   reqPilots:1, reqMech:1, reqGun:0 },
   { id:"clipper", name:"Star Clipper",   range:"interstellar", cargo:45,  crew:4,  bays:0, price:24000,  minTech:6, weight:8,  power:{flight:340,star:950},   reqPilots:2, reqMech:1, reqGun:0 },
+  { id:"corvette",name:"Corvette",       range:"interstellar", cargo:120, crew:8,  bays:0, price:48000,  minTech:6, weight:6,  power:{flight:360,star:1150},  reqPilots:2, reqMech:1, reqGun:1 },
   { id:"frigate", name:"Frigate",        range:"interstellar", cargo:90,  crew:12, bays:1, price:75000,  minTech:7, weight:5,  power:{flight:280,star:1300},  reqPilots:3, reqMech:2, reqGun:2 },
   { id:"capital", name:"Capital Ship",   range:"interstellar", cargo:420, crew:40, bays:5, price:320000, minTech:8, weight:2,  power:{flight:420,star:3200},  reqPilots:4, reqMech:5, reqGun:6 },
 ];
+const SHIP_CLASS_IDX=id=>SHIP_CLASSES.findIndex(c=>c.id===id);
 const RANGE_LABEL={ surface:"Planet-bound", system:"In-system", interstellar:"Interstellar" };
 /* The dockmaster's clunker — always available to buy off the Yarder so you're never
    truly stranded. Barely spaceworthy: tiny hold, room for you alone. */
@@ -664,9 +722,12 @@ function rollShipTier(tech){
   for(const t of allowed){ if((r-=t.weight)<0) return t; }
   return allowed[0];
 }
-/* A planet's shipyard stock, shaped by its tech & wealth (cached per planet). */
+/* A planet's shipyard stock, shaped by its tech & wealth AND its settlement: a frontier
+   scrap yard sells junkers, while only a Capital City deals in capital ships. */
 function genShipStock(w){
-  const avail=SHIP_CLASSES.filter(c=>w.tech>=c.minTech);
+  const sd=settleDef(w.settle);
+  const cap = sd && sd.shipMax ? SHIP_CLASS_IDX(sd.shipMax) : SHIP_CLASSES.length-1;  // legacy worlds: no cap
+  const avail=SHIP_CLASSES.filter((c,i)=>w.tech>=c.minTech && i<=cap);
   if(!avail.length) return [];
   const count=clamp(Math.round((w.tech+w.wealth)/3)+rnd(-1,1), 0, 8);
   const stock=[];
@@ -1059,6 +1120,7 @@ const Game = {
     };
     veh.slot=0; veh.sysId=0;      // your inherited craft is docked on your homeworld
     state.world.occupied=true;   // your homeworld is inhabited (your own kind live here)
+    state.world.settle="colony"; // a working spaceport — always has a yard so you can leave
     state.lastStage=Game.stage();
     state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
@@ -1514,18 +1576,19 @@ const UI = {
     </div>
     <div class="card">
       <h3>Around ${w.name}</h3>
-      ${w.occupied===false?`<p class="small dim">This world is uninhabited — no settlement, no shipyard, no trade. Just the wilds. (Move ships and travel from the <b>Crew</b> tab.)</p>`:""}
+      ${(()=>{ const sd=settleDef(w.settle), amen=settleAmen(w);
+        if(w.occupied===false) return `<p class="small dim">This world is uninhabited — no settlement, no shipyard, no trade. Just the wilds. (Move ships and travel from the <b>Crew</b> tab.)</p>`;
+        return `${sd?`<p class="small dim"><b class="gold">${sd.name}</b> — ${sd.desc}.</p>`:""}
       <div class="grid">
-        ${w.occupied!==false?`
-        <button id="vTavern">&#127866; Tavern</button>
-        <button id="vDepot">&#128230; Depot</button>
-        <button id="vMarket">&#9879; Market</button>
-        <button id="vBroker">&#128225; Info Broker</button>
-        <button id="vTalk">&#128483; Talk to a stranger</button>
-        <button id="vShipyard">&#128736; Shipyard</button>`:""}
+        ${amen.includes("tavern")?`<button id="vTavern">&#127866; Tavern</button>`:""}
+        ${amen.includes("depot")?`<button id="vDepot">&#128230; Depot</button>`:""}
+        ${amen.includes("market")?`<button id="vMarket">&#9879; Market</button>`:""}
+        ${amen.includes("broker")?`<button id="vBroker">&#128225; Info Broker</button>`:""}
+        ${amen.includes("talk")?`<button id="vTalk">&#128483; Talk to a stranger</button>`:""}
+        ${amen.includes("shipyard")?`<button id="vShipyard">&#128736; Shipyard</button>`:""}
         <button id="vWilds" class="primary">&#127807; Wander the wilds</button>
         <button id="vRest">&#9789; Rest</button>
-      </div>
+      </div>`; })()}
     </div>
     ${this.logCard()}`;
   },
@@ -1901,14 +1964,14 @@ const UI = {
         <p class="small dim">${sys.size} world${sys.size>1?"s":""} &middot; ${sys.planets.filter(p=>p.discovered).length} charted. <span class="dim">Tap a charted world to study it.</span></p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
           if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}<button class="small ghost" data-world="${sys.id}:${i}">${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
-               <span class="kv">${cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':p.occupied?'':' <span class="dim">(empty)</span>'}</span></div>`;
+               <span class="kv">${p.occupied&&settleDef(p.world.settle)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':!p.occupied?' <span class="dim">(empty)</span>':''}</span></div>`;
           return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
                <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`}
     </div>
     ${g&&g.systems.length>1?`<div class="card sheet"><h3>Known systems <span class="dim small">&middot; ${known.length} charted / ${g.systems.length} in range of sensors</span></h3>
       ${known.map(({s,d})=>`<div class="krow"><span class="lbl">${s.id===state.sysId?'&#9737; ':''}${s.name}${s.id===state.sysId?' <span class="green small">&#9679; here</span>':''}</span>
         <span class="kv">${s.id===state.sysId?'<span class="dim">current</span>':`${d.toFixed(1)} ly`} <span class="dim small">&middot; ${(s.planets||[]).filter(p=>p.discovered).length}/${s.size} charted</span></span></div>`).join("")}
-      <p class="small dim" style="margin-top:6px">Open the <b>Star Map</b> in any Shipyard to jump between systems.</p>
+      <p class="small dim" style="margin-top:6px">Open <b>Travel</b> from the Crew tab to fly or jump between systems.</p>
     </div>`:""}
     <div class="card sheet"><h3>Worlds logged <span class="dim small">&middot; ${worlds.length}</span></h3>
       ${worlds.length?worlds.map((w,wi)=>`<div class="krow"><span class="lbl"><button class="small ghost" data-worldlog="${wi}">${w.name}</button>${w.sysName?` <span class="dim small">&middot; ${w.sysName}</span>`:""}</span>
@@ -1926,12 +1989,14 @@ const UI = {
     ${this.rarityBannerInline(w.tier, `${cap(w.biomeName)} world`)}
     <div class="card sheet"><h3>Survey</h3>
       ${krow("Biome", cap(w.biomeName))}
+      ${krow("Settlement", w.occupied===false?'<span class="dim">Uninhabited</span>':(settleDef(w.settle)?settleDef(w.settle).name:"Inhabited"))}
       ${krow("Rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
       ${w.tech!=null?krow("Tech level", TECH_LABELS[w.tech]):""}
       ${w.wealth!=null?krow("Wealth", WEALTH_LABELS[w.wealth]):""}
       ${w.danger!=null?krow("Danger", `${w.danger}/9`):""}
       ${w.popName?krow("Population", w.popName):""}
     </div>
+    ${w.occupied!==false&&settleDef(w.settle)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
     <div class="card"><button class="ghost full center" id="backWorlds">&larr; Back to planets &amp; systems</button></div>`;
   },
   screen_cx_obj(){
@@ -1955,11 +2020,13 @@ const UI = {
       <div class="card sheet">
         <h2>${cap(article(w.biomeName))} <span class="blue">${w.biomeName}</span></h2>
         <p class="small dim">${worldDesc(w)}</p>
+        ${krow("Settlement", w.occupied?(settleDef(w.settle)?`<b class="gold">${settleDef(w.settle).name}</b>`:"Inhabited"):'<span class="dim">Uninhabited</span>')}
         ${krow("Population", cap(w.popName))}
         ${krow("Technology", TECH_LABELS[w.tech])}
         ${krow("Wealth", WEALTH_LABELS[w.wealth])}
         ${krow("Danger", `<span class="${w.danger>=7?'red':w.danger>=4?'gold':'green'}">${DANGER_LABELS[w.danger]}</span>`)}
       </div>
+      ${w.occupied&&settleDef(w.settle)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
       <div class="card">
         <p class="small">Name this world:</p>
         ${nameField("arrWorld","Name this world","world",w.name)}
@@ -2525,9 +2592,10 @@ const UI = {
     if(a.step===1){
       $("#arrCancel").onclick=()=>{ arriving=null; UI.render("codex"); };
       $("#arrStep1").onclick=()=>{ a.world.name=$("#arrWorld").value.trim()||genName("world");
-        if(a.occupied){ a.person=Gen.person(a.draw.race); a.person.career="shipwright";
-          delete a.person.bounty; delete a.person.hostile; delete a.person.force;
-          a.person.credits=shipwrightWorth(a.world.tech); a.step=2; UI.render("arrive"); }
+        if(a.occupied){ a.person=Gen.person(a.draw.race); const cr=greeterCareer(a.world);
+          a.person.career=cr; delete a.person.bounty; delete a.person.hostile; delete a.person.force;
+          a.person.credits = cr==="shipwright" ? shipwrightWorth(a.world.tech) : rollWealth(careerById(cr));
+          a.step=2; UI.render("arrive"); }
         else finishArrival(); };
     }
     if(a.step===2){
@@ -2605,7 +2673,7 @@ function checkObjectives(){
 
 /* ---- leaving the planet: buy a ship, then chart your system on first takeoff ---- */
 function worldSummary(w){ return { name:w.name, biome:w.biome, biomeName:w.biomeName, tier:w.tier,
-  tech:w.tech, wealth:w.wealth, danger:w.danger, pop:w.pop, popName:w.popName }; }
+  tech:w.tech, wealth:w.wealth, danger:w.danger, pop:w.pop, popName:w.popName, settle:w.settle, occupied:w.occupied }; }
 
 /* ---- travel to a world in your system; generate it on arrival; maybe meet someone ---- */
 let arriving=null;
@@ -2680,7 +2748,9 @@ function moveGroupTo(ids, destSys, destSlot, backTo){
     Game.save(); UI.render(playerIn?"hub":(backTo||"crew")); UI.flashLog(); return;
   }
   // uncharted, and you're aboard -> chart it
-  const world=Gen.world(), occupied=chance(occupancyChance(sys.x,sys.y)), draw=occupied?drawRace():null;
+  const world=Gen.world(), occupied=chance(occChanceFor(sys, world.biome));
+  if(occupied) world.settle=pickSettlement(world, destSys);   // capital, trade hub, farmworld, ...
+  const draw=occupied?drawRace():null;
   arriving={ sysId:destSys, slot:destSlot, world, occupied, draw, outpost:pick(OUTPOSTS),
     person:null, step:1, crossSys, shipIds:ids.slice() };
   UI.render("arrive");
@@ -2698,8 +2768,8 @@ function finishArrival(){
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
   relocateGroup(a.shipIds||[state.activeShip], sid, slot);   // you + your group arrive together
   if(a.occupied){
-    recordMeeting(a.person, a.draw.race, a.world.name);   // greeter = the local dockmaster
-    state.yarders=state.yarders||{}; state.yarders[sid+":"+slot]=state.codex.people.length-1;
+    recordMeeting(a.person, a.draw.race, a.world.name);   // the local who greets you
+    if(settleHasShipyard(a.world)){ state.yarders=state.yarders||{}; state.yarders[sid+":"+slot]=state.codex.people.length-1; }
   }
   Game.logMsg(`You chart ${a.world.name}${a.crossSys?` in the ${sys.name} system`:""}${a.occupied?`, met at the dock by ${a.person.name}`:" — uninhabited"}.`,"sys");
   checkObjectives();

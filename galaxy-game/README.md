@@ -76,6 +76,20 @@ Every NPC now has a **career** and a **credit balance** that fits it, and career
 
 A **Shipwright's** worth scales with what their world can build: a speeder-only yard is worth tens of thousands; a capital-ship yard, millions. Defeating any hostile figure yields their bounty (scaled by threat); the toughest are guarded, so taking them on alone is desperate work — their ships and crews are the seed for the fleet-vs-fleet combat to come.
 
+## Worlds, habitability & settlements
+A world's **biome decides how likely it is to be inhabited.** Mild, temperate worlds (forests, grasslands, shallows) are readily settled; harsh ones (frozen tundra, glacial expanse, toxic wastes, airless rock, molten wastes) almost never are. This stacks with galactic position — a temperate world near the core is almost certainly inhabited, while a molten rock on the rim is empty wilderness.
+
+Inhabited worlds grow into a **settlement type** that decides what services they offer:
+- **Capital City** *(semi-rare — only on advanced, wealthy worlds, and not in every system)* — every service open, and the only shipyard that sells **corvettes, freighters, and capital ships**. A real prize to find.
+- **Trade Hub** — full services; shipyard up to corvettes.
+- **Industrial World** — depot, market, shipyard (up to frigates); builds more than it buys.
+- **Agricultural World** — farmland: tavern, depot, market (the galaxy's pantry; future: buy farms).
+- **Mining Colony** — depot + market, raw ore.
+- **Scrap World** — salvage shipyard of bargain hulls (up to haulers) + depot.
+- **Frontier Outpost** — a dock, a bar, not much else.
+
+Only one Capital City can form per system, and a world's tech/wealth gate which settlements it can become — so a planetary system might hold a capital, a farmworld, and a mining colony, each worth visiting for different reasons. (Buying income-producing assets on these worlds — farms, factories — is the planned next step.)
+
 ## Next up
 - Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).
 - Procedurally generated creatures & weapons.
