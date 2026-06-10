@@ -444,12 +444,17 @@ const CAREERS = [
 /* Which careers you can hire as crew, their fee, and what they do aboard a ship.
    (Pilots fly; the rest are seated now and gain mechanical roles as the game grows.) */
 const HIRE_ROLES={
-  pilot:    { fee:400, role:"flies the ship — needed for it to follow you" },
-  mechanic: { fee:300, role:"keeps the ship running (larger ships will need several)" },
-  mercenary:{ fee:350, role:"hired muscle — fights for you (combat coming soon)" },
-  gunner:   { fee:350, role:"mans the guns (ship combat coming soon)" },
-  medic:    { fee:450, role:"tends the crew (healing coming soon)" },
+  pilot:    { fee:2500, salary:5000, role:"flies the ship — needed for it to follow you" },
+  mechanic: { fee:2000, salary:3500, role:"keeps the ship running (larger ships need several)" },
+  mercenary:{ fee:2200, salary:4000, role:"hired muscle — fights for you (combat coming soon)" },
+  gunner:   { fee:2200, salary:4000, role:"mans the guns (ship combat coming soon)" },
+  medic:    { fee:2800, salary:4500, role:"tends the crew (healing coming soon)" },
 };
+const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
+/* Yearly upkeep: spaceworthy ships cost ~30% of value/yr; surface craft are cheap to keep. */
+function shipMaint(v){ return Math.round((v.value||0)*(spaceworthy(v)?0.3:0.05)); }
+function annualWages(){ return (state.crew||[]).reduce((s,c)=>s+careerSalary(c.career),0); }
+function annualMaint(){ return (state.vehicles||[]).reduce((s,v)=>s+shipMaint(v),0); }
 const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
 /* Generic things people say when you greet them. */
 const HELLOS = [
@@ -551,13 +556,13 @@ const VEHICLE_CLASSES = [
    crew; bays: smaller ships it can carry (future fleet battles). minTech gates whether a
    world's shipyard stocks it, so poor/backward worlds sell only speeders. */
 const SHIP_CLASSES = [
-  { id:"speeder", name:"Speeder",        range:"surface",      cargo:4,   crew:1,  bays:0, price:600,    minTech:0, weight:22, power:{ground:120,flight:70} },
-  { id:"crawler", name:"Ground Hauler",  range:"surface",      cargo:26,  crew:1,  bays:0, price:1600,   minTech:1, weight:12, power:{ground:260} },
-  { id:"shuttle", name:"System Shuttle", range:"system",       cargo:30,  crew:2,  bays:0, price:3000,   minTech:3, weight:14, power:{flight:200,star:300} },
-  { id:"hauler",  name:"Cargo Hauler",   range:"system",       cargo:150, crew:2,  bays:0, price:9000,   minTech:4, weight:10, power:{flight:160,star:280} },
-  { id:"clipper", name:"Star Clipper",   range:"interstellar", cargo:45,  crew:3,  bays:0, price:24000,  minTech:6, weight:8,  power:{flight:340,star:950} },
-  { id:"frigate", name:"Frigate",        range:"interstellar", cargo:90,  crew:12, bays:1, price:75000,  minTech:7, weight:5,  power:{flight:280,star:1300} },
-  { id:"capital", name:"Capital Ship",   range:"interstellar", cargo:420, crew:40, bays:5, price:320000, minTech:8, weight:2,  power:{flight:420,star:3200} },
+  { id:"speeder", name:"Speeder",        range:"surface",      cargo:4,   crew:1,  bays:0, price:600,    minTech:0, weight:22, power:{ground:120,flight:70},  reqPilots:1, reqMech:0, reqGun:0 },
+  { id:"crawler", name:"Ground Hauler",  range:"surface",      cargo:26,  crew:1,  bays:0, price:1600,   minTech:1, weight:12, power:{ground:260},            reqPilots:1, reqMech:0, reqGun:0 },
+  { id:"shuttle", name:"System Shuttle", range:"system",       cargo:30,  crew:2,  bays:0, price:3000,   minTech:3, weight:14, power:{flight:200,star:300},   reqPilots:1, reqMech:0, reqGun:0 },
+  { id:"hauler",  name:"Cargo Hauler",   range:"system",       cargo:150, crew:3,  bays:0, price:9000,   minTech:4, weight:10, power:{flight:160,star:280},   reqPilots:1, reqMech:1, reqGun:0 },
+  { id:"clipper", name:"Star Clipper",   range:"interstellar", cargo:45,  crew:4,  bays:0, price:24000,  minTech:6, weight:8,  power:{flight:340,star:950},   reqPilots:2, reqMech:1, reqGun:0 },
+  { id:"frigate", name:"Frigate",        range:"interstellar", cargo:90,  crew:12, bays:1, price:75000,  minTech:7, weight:5,  power:{flight:280,star:1300},  reqPilots:3, reqMech:2, reqGun:2 },
+  { id:"capital", name:"Capital Ship",   range:"interstellar", cargo:420, crew:40, bays:5, price:320000, minTech:8, weight:2,  power:{flight:420,star:3200},  reqPilots:4, reqMech:5, reqGun:6 },
 ];
 const RANGE_LABEL={ surface:"Planet-bound", system:"In-system", interstellar:"Interstellar" };
 /* The dockmaster's clunker — always available to buy off the Yarder so you're never
@@ -586,6 +591,7 @@ function genShipStock(w){
     const power={}; Object.keys(c.power).forEach(a=>power[a]=Math.round(c.power[a]*m));
     stock.push({ cls:c.id, name:c.name, tier:t.id, range:c.range,
       cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
+      reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun,
       power, price:Math.round(c.price*m*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) });
   }
   return stock;
@@ -738,7 +744,7 @@ const Gen = {
     cls.axes.forEach(a=>{ power[a]=Math.round(cls.base[a]*mult*rndF(0.9,1.15)); });
     return { kind:"vehicle", id:newVid(), name:null, tier:tier.id, cls:cls.id, clsName:cls.name,
              axes:cls.axes, power, mult:+mult.toFixed(2),
-             range:"surface", hold:8, crewMax:1, bays:0, value:600, cargo:{}, slot:0 };
+             range:"surface", hold:8, crewMax:1, bays:0, reqPilots:1, reqMech:0, reqGun:0, value:600, cargo:{}, slot:0 };
   },
 
   /* A PERSON is a fresh individual rolled WITHIN a race's fixed ranges. Same shape as a
@@ -866,11 +872,13 @@ const Game = {
   // backfill fields added after a save was created (multi-ship cargo/locations)
   migrate(){
     if(state.atSlot==null) state.atSlot=0;
+    if(state.lastBillYear==null) state.lastBillYear=Math.floor((state.daysElapsed||0)/365);
     (state.vehicles||[]).forEach(v=>{ if(!v.id) v.id=newVid(); if(!v.cargo) v.cargo={};
       if(!v.range) v.range=v.systemCapable?"system":"surface";   // migrate old systemCapable flag
       if(v.hold==null) v.hold=spaceworthy(v)?50:8; if(v.slot==null) v.slot=0;
       if(v.crewMax==null) v.crewMax=spaceworthy(v)?2:1; if(v.bays==null) v.bays=0;
-      if(v.value==null) v.value=spaceworthy(v)?3000:600; });
+      if(v.value==null) v.value=spaceworthy(v)?3000:600;
+      if(v.reqPilots==null){ const c=SHIP_CLASSES.find(x=>x.id===v.cls); v.reqPilots=c?c.reqPilots:1; v.reqMech=c?c.reqMech:0; v.reqGun=c?c.reqGun:0; } });
     if(!state.activeShip) state.activeShip=((state.vehicles||[]).find(v=>spaceworthy(v))||(state.vehicles||[])[0]||{}).id;
     state.crew=state.crew||[];
     // migrate old ship.pilot objects into the crew roster
@@ -886,9 +894,14 @@ const Game = {
 
   hasPower(id){ return state.species.powers.includes(id); },
   ship(){ return (state.vehicles||[]).find(v=>v.id===state.activeShip) || (state.vehicles||[])[0] || null; },
-  pilotOf(v){ return v?((state.crew||[]).find(c=>c.shipId===v.id && c.career==="pilot")||null):null; },  // a pilot aboard lets the ship follow
+  pilotOf(v){ return v?((state.crew||[]).find(c=>c.shipId===v.id && c.career==="pilot")||null):null; },  // a pilot aboard
   shipCrew(v){ return v?(state.crew||[]).filter(c=>c.shipId===v.id):[]; },
-  canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && s.slot===state.atSlot); },
+  aboard(v,career){ return Game.shipCrew(v).filter(c=>c.career===career).length; },
+  // pilots aboard, counting YOU on the ship you personally fly
+  pilots(v){ return Game.aboard(v,"pilot") + (v.id===state.activeShip?1:0); },
+  // a ship is operational (flyable) only with enough pilots + mechanics for its class
+  operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0); },
+  canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && s.slot===state.atSlot && Game.operational(s)); },
   shipsHere(){ return (state.vehicles||[]).filter(v=>v.slot===state.atSlot); },
 
   /* ---- assemble a new life from the generated (and now named) pieces ---- */
@@ -934,7 +947,7 @@ const Game = {
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
       daysElapsed:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
-      grounded:true, system:null, atSlot:0, activeShip:veh.id, bounties:[], crew:[],
+      grounded:true, system:null, atSlot:0, activeShip:veh.id, bounties:[], crew:[], lastBillYear:0,
       stimReady:false, log:[],
     };
     veh.slot=0;                  // your inherited craft is docked on your homeworld
@@ -1050,6 +1063,10 @@ function advanceTime(days){
     else Game.logMsg(`Age settles into your bones — you are an elder now.`,"sys");
     state.lastStage=st;
   }
+  // yearly upkeep: bill wages + maintenance for each year that elapses
+  const yrs=Math.floor(state.daysElapsed/365);
+  if(state.lastBillYear==null) state.lastBillYear=yrs;
+  while(state.lastBillYear<yrs){ chargeUpkeep(); state.lastBillYear++; }
   const a=Game.age(), l=Game.lifespan();
   if(a>=l){
     const over=a-l, p=clamp(0.04+over*0.05, 0.04, 0.6);
@@ -1495,7 +1512,10 @@ const UI = {
           </div></div>`; }).join("")}
     </div>
     <div class="card"><h3>Leave the planet</h3>
-      ${!canLeave?`<p class="small red">You're grounded — buy a system-capable ship above to reach the other worlds.</p>`
+      ${!canLeave?(()=>{ const s=Game.ship();
+          if(s && spaceworthy(s) && s.slot===state.atSlot && !Game.operational(s))
+            return `<p class="small red">Your ${s.name} needs more crew to fly — ${s.reqPilots||1} pilot${(s.reqPilots||1)>1?"s":""}${s.reqMech?` and ${s.reqMech} mechanic${s.reqMech>1?"s":""}`:""} aboard. Hire and seat them (Crew tab).</p>`;
+          return `<p class="small red">You're grounded — buy a system-capable ship above to reach the other worlds.</p>`; })()
       :!sys?`<button id="takeoff" class="primary full center">&#9650; Take off &amp; chart your system</button>`
       :`<p class="small dim">Set course to a world in your system:</p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
@@ -1851,9 +1871,10 @@ const UI = {
         <div class="divider"></div><button class="ghost full center" id="seatCancel">Cancel</button>
       </div>`;
     }
-    const tab=crewTab||"crewmates";
+    const tab=crewTab||"crewmates", wages=annualWages(), maint=annualMaint();
     return `${this.statHeader()}
     <div class="card"><h2>&#128101; Crew</h2>
+      <p class="small dim">Annual upkeep: <b class="gold">${commas(wages+maint)}c/yr</b> — wages ${commas(wages)}c, ship maintenance ${commas(maint)}c. Billed each year; can't pay and crew walk off.</p>
       <div class="row"><button class="${tab==="crewmates"?"sel":""}" data-crewtab="crewmates">Crewmates</button>
         <button class="${tab==="ships"?"sel":""}" data-crewtab="ships">Ships</button></div></div>
     ${tab==="crewmates"?this.crewmatesView():this.shipsView()}`;
@@ -1863,7 +1884,7 @@ const UI = {
     return `<div class="card sheet"><h3>Your crewmates <span class="dim small">&middot; ${crew.length}</span></h3>
       ${crew.length?crew.map((c,ci)=>{ const sh=c.shipId?(state.vehicles||[]).find(v=>v.id===c.shipId):null;
         return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
-          <div class="row between"><span>${c.name} <span class="dim small">&middot; ${careerName(c.career)}</span></span>
+          <div class="row between"><span>${c.name} <span class="dim small">&middot; ${careerName(c.career)} &middot; ${commas(careerSalary(c.career))}c/yr</span></span>
             <span class="small ${sh?'green':'dim'}">${sh?`aboard ${sh.name} (seat ${(c.seat||0)+1})`:"idle"}</span></div>
           <div class="row" style="margin-top:4px">
             <button class="small ghost" disabled>Assign a job (soon)</button>
@@ -1892,6 +1913,10 @@ const UI = {
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
         <p class="small dim">${v.clsName} &middot; ${RANGE_LABEL[v.range]} &middot; docked at <b class="blue">${shipLocationName(v.slot)}</b>${here?' <span class="green small">(here)</span>':''}</p>
         ${krow("Fleet status", inFleet?'<span class="green">Active</span> <span class="dim small">(shares the Depot cargo pool)</span>':'<span class="dim">Inactive (set aside)</span>')}
+        ${krow("Crew needed", `${v.reqPilots||1} pilot${(v.reqPilots||1)>1?"s":""}${v.reqMech?`, ${v.reqMech} mechanic${v.reqMech>1?"s":""}`:""}${v.reqGun?` <span class="dim">(+${v.reqGun} gunners, coming soon)</span>`:""}`)}
+        ${krow("Aboard", `${Game.pilots(v)} pilot${Game.pilots(v)!==1?"s":""}${active?' <span class="dim small">(incl. you)</span>':''}, ${Game.aboard(v,"mechanic")} mechanic${Game.aboard(v,"mechanic")!==1?"s":""}`)}
+        ${krow("Operational", Game.operational(v)?'<span class="green">Yes — ready to fly</span>':'<span class="red">No — needs more crew</span>')}
+        ${krow("Maintenance", `${commas(shipMaint(v))}c/yr`)}
         <button class="small ${inFleet?'ghost':''}" data-togglefleet="${v.id}" style="margin-top:6px">${inFleet?"Set inactive":"Set active"}</button>
         ${!here?`<p class="small dim">Travel here to assign crew to this ship's seats.</p>`:""}
       </div>
@@ -2442,7 +2467,7 @@ function dismissCrew(ci){ const c=state.crew[ci]; if(!c) return;
   state.crew.splice(ci,1); Game.logMsg(`You let ${c.name} go.`,"sys"); Game.save(); UI.render(UI.current); }
 /* when you fly, pilot-crewed ships at your old dock follow you to the new one */
 function moveFollowers(oldSlot, newSlot){
-  (state.vehicles||[]).forEach(v=>{ if(v.slot===oldSlot && v.id!==state.activeShip && Game.pilotOf(v)) v.slot=newSlot; });
+  (state.vehicles||[]).forEach(v=>{ if(v.slot===oldSlot && v.id!==state.activeShip && Game.operational(v)) v.slot=newSlot; });
 }
 
 /* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
@@ -2492,7 +2517,7 @@ function buyYarderShip(){
   state.credits-=o.price;
   const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:"common", cls:"junker", clsName:o.name,
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
-    bays:o.bays, value:o.price, cargo:{}, slot:state.atSlot };
+    bays:o.bays, reqPilots:1, reqMech:0, reqGun:0, value:o.price, cargo:{}, slot:state.atSlot };
   state.vehicles.push(ship);
   if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;
   Game.logMsg(`The dockmaster sells you their old ${o.name} for ${commas(o.price)}c — barely spaceworthy, but it flies.`,"good");
@@ -2507,6 +2532,27 @@ function meetAttack(){
   const idx=state.codex.people.length-1; meeting=null;
   startDuel(idx);
 }
+/* charged once per year of play: crew wages + ship maintenance */
+function chargeUpkeep(){
+  const wages=annualWages(), maint=annualMaint(), bill=wages+maint;
+  if(bill<=0) return;
+  if(state.credits>=bill){ state.credits-=bill;
+    Game.logMsg(`Annual upkeep: -${commas(bill)}c (${commas(wages)}c wages, ${commas(maint)}c maintenance).`,"sys");
+    return;
+  }
+  let shortfall=bill-state.credits; state.credits=0;
+  Game.logMsg(`You can't cover ${commas(bill)}c of annual upkeep!`,"bad");
+  // unpaid crew quit (highest-paid first) until the saved wages would have covered the gap
+  let saved=0;
+  while(saved<shortfall && (state.crew||[]).length){
+    let bi=0,bs=-1; state.crew.forEach((c,i)=>{ const s=careerSalary(c.career); if(s>bs){bs=s;bi=i;} });
+    const c=state.crew[bi];
+    if(c.personIdx>=0 && state.codex.people[c.personIdx]) state.codex.people[c.personIdx].hired=false;
+    state.crew.splice(bi,1); saved+=bs;
+    Game.logMsg(`${c.name} walks off — unpaid wages.`,"bad");
+  }
+  if(saved<shortfall) Game.logMsg(`Your ships fall behind on maintenance — keep your credits up or risk losing them.`,"bad");
+}
 function redeemBounties(){
   const list=state.bounties||[]; if(!list.length){ toast("No bounties to redeem"); return; }
   const total=list.reduce((s,b)=>s+b.value,0), n=list.length;
@@ -2520,7 +2566,7 @@ function buyShip(i){
   state.credits-=o.price;
   const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name,
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
-    bays:o.bays, value:o.price, cargo:{}, slot:state.atSlot };
+    bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, value:o.price, cargo:{}, slot:state.atSlot };
   state.vehicles.push(ship);
   if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;  // auto-pilot if it frees you to leave
   stock.splice(i,1);
