@@ -1336,8 +1336,10 @@ const UI = {
           <div class="row between"><b>${c.name}</b><span class="gold">${price}c</span></div>
           <p class="small dim" style="margin:4px 0">${tag}${have?` &middot; <span class="blue">hold ${have}</span>`:""}</p>
           <div class="row">
-            ${buy?`<button data-buyc="${c.id}" ${state.credits<price||used>=cap?"disabled":""}>Buy ${price}c</button>`:""}
-            ${sell&&have>0?`<button class="ghost" data-sellc="${c.id}">Sell ${Math.round(price*0.9)}c</button>`:""}
+            ${buy?`<button data-buyc="${c.id}" ${state.credits<price||used>=cap?"disabled":""}>Buy ${price}c</button>
+              <button class="ghost" data-buyallc="${c.id}" ${state.credits<price||used>=cap?"disabled":""}>Buy all</button>`:""}
+            ${sell&&have>0?`<button class="ghost" data-sellc="${c.id}">Sell ${Math.round(price*0.9)}c</button>
+              <button class="ghost" data-sellallc="${c.id}">Sell all</button>`:""}
           </div>
         </div>`; }).join("")}
     </div>
@@ -1809,7 +1811,9 @@ const UI = {
     }
     if(screen==="depot"){
       app.querySelectorAll("[data-buyc]").forEach(b=> b.onclick=()=>buyCommodity(b.dataset.buyc));
+      app.querySelectorAll("[data-buyallc]").forEach(b=> b.onclick=()=>buyCommodity(b.dataset.buyallc,true));
       app.querySelectorAll("[data-sellc]").forEach(b=> b.onclick=()=>sellCommodity(b.dataset.sellc));
+      app.querySelectorAll("[data-sellallc]").forEach(b=> b.onclick=()=>sellCommodity(b.dataset.sellallc,true));
       $("#depBack").onclick=()=>UI.render("hub");
     }
     if(screen==="shipyard"){
@@ -2054,21 +2058,26 @@ function sellShip(i){
 }
 
 /* ---- Depot: buy/sell commodities at this world's fixed prices ---- */
-function buyCommodity(id){
+function buyCommodity(id, all){
   const c=COMMODITIES.find(x=>x.id===id), w=state.world;
   if(!canBuyHere(w,c)){ toast("Not sold here"); return; }
-  if(cargoUsed()>=cargoMax()){ toast("Cargo hold full"); return; }
+  const space=cargoMax()-cargoUsed();
+  if(space<=0){ toast("Cargo hold full"); return; }
   const p=commodityPrice(w,c);
   if(state.credits<p){ toast("Not enough credits"); return; }
-  state.credits-=p; state.cargo[id]=(state.cargo[id]||0)+1;
+  const qty = all ? Math.min(space, Math.floor(state.credits/p)) : 1;
+  state.credits-=qty*p; state.cargo[id]=(state.cargo[id]||0)+qty;
+  if(qty>1) Game.logMsg(`Bought ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
   Game.save(); UI.render("depot");
 }
-function sellCommodity(id){
-  const c=COMMODITIES.find(x=>x.id===id), w=state.world;
-  if(!state.cargo[id]){ return; }
+function sellCommodity(id, all){
+  const c=COMMODITIES.find(x=>x.id===id), w=state.world, have=state.cargo[id]||0;
+  if(!have) return;
   if(!canSellHere(w,c)){ toast("Not bought here"); return; }
   const p=Math.round(commodityPrice(w,c)*0.9);   // depot takes a small cut
-  state.credits+=p; state.cargo[id]--; if(state.cargo[id]<=0) delete state.cargo[id];
+  const qty = all ? have : 1;
+  state.credits+=qty*p; state.cargo[id]-=qty; if(state.cargo[id]<=0) delete state.cargo[id];
+  if(qty>1) Game.logMsg(`Sold ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
   Game.save(); UI.render("depot");
 }
 
