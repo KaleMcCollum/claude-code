@@ -514,9 +514,9 @@ const VEHICLE_CLASSES = [
 
 /* Ships you can BUY. The first system-capable ship is your ticket off the home planet. */
 const SHIPYARD = [
-  { id:"system-shuttle", name:"Used System Shuttle", price:2500, systemCapable:true,
+  { id:"system-shuttle", name:"Used System Shuttle", price:2500, systemCapable:true, hold:50,
     cls:"shuttle", clsName:"System Shuttle", axes:["flight","star"], power:{flight:200, star:340},
-    blurb:"A worn but spaceworthy shuttle — reaches any world in your home system." },
+    blurb:"A worn but spaceworthy shuttle — reaches any world in your home system. Hold: 50." },
 ];
 
 /* Planetary-system size: how many worlds orbit your home star. Avg ~5, rarely alone,
@@ -547,8 +547,10 @@ function commodityPrice(w, c){
 const inRange=(t,r)=>t>=r[0]&&t<=r[1];
 function canBuyHere(w,c){ return inRange(w.tech,c.buyTech); }
 function canSellHere(w,c){ return inRange(w.tech,c.sellTech); }
-function cargoUsed(){ return Object.values(state.cargo||{}).reduce((s,n)=>s+n,0); }
-function cargoMax(){ return Game.canLeave()?50:10; }
+function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
+// cargo lives on the ACTIVE ship — each ship has its own hold
+function cargoUsed(){ const s=Game.ship(); return s?Object.values(s.cargo||{}).reduce((a,n)=>a+n,0):0; }
+function cargoMax(){ const s=Game.ship(); return s?(s.hold||0):0; }
 
 /* ============================================================ GEN ====== */
 /* Procedural generators. Each rolls rarity + traits, returns an object with
@@ -654,8 +656,9 @@ const Gen = {
     const mult=RARITY.mult(tier);
     const power={};
     cls.axes.forEach(a=>{ power[a]=Math.round(cls.base[a]*mult*rndF(0.9,1.15)); });
-    return { kind:"vehicle", name:null, tier:tier.id, cls:cls.id, clsName:cls.name,
-             axes:cls.axes, power, mult:+mult.toFixed(2), systemCapable:cls.axes.includes("star") };
+    return { kind:"vehicle", id:newVid(), name:null, tier:tier.id, cls:cls.id, clsName:cls.name,
+             axes:cls.axes, power, mult:+mult.toFixed(2), systemCapable:cls.axes.includes("star"),
+             hold: humble?8:30, cargo:{}, slot:0 };
   },
 
   /* A PERSON is a fresh individual rolled WITHIN a race's fixed ranges. Same shape as a
@@ -775,11 +778,22 @@ const Game = {
   hasSave(){ try{ return !!localStorage.getItem(SAVE_KEY); }catch(e){ return false; } },
   save(){ if(!state) return; state.updated=Date.now();
     try{ localStorage.setItem(SAVE_KEY,JSON.stringify(state)); }catch(e){ toast("Save failed"); } },
-  load(){ try{ const r=localStorage.getItem(SAVE_KEY); if(!r) return false; state=JSON.parse(r); return true; }catch(e){ return false; } },
+  load(){ try{ const r=localStorage.getItem(SAVE_KEY); if(!r) return false; state=JSON.parse(r); Game.migrate(); return true; }catch(e){ return false; } },
+  // backfill fields added after a save was created (multi-ship cargo/locations)
+  migrate(){
+    if(state.atSlot==null) state.atSlot=0;
+    (state.vehicles||[]).forEach(v=>{ if(!v.id) v.id=newVid(); if(!v.cargo) v.cargo={};
+      if(v.hold==null) v.hold=v.systemCapable?50:8; if(v.slot==null) v.slot=0; });
+    if(!state.activeShip) state.activeShip=((state.vehicles||[]).find(v=>v.systemCapable)||(state.vehicles||[])[0]||{}).id;
+    if(state.cargo && Object.keys(state.cargo).length){ const a=Game.ship(); if(a) a.cargo=state.cargo; }
+    delete state.cargo;
+  },
   wipe(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} state=null; },
 
   hasPower(id){ return state.species.powers.includes(id); },
-  canLeave(){ return (state.vehicles||[]).some(v=>v.systemCapable); },
+  ship(){ return (state.vehicles||[]).find(v=>v.id===state.activeShip) || (state.vehicles||[])[0] || null; },
+  canLeave(){ const s=Game.ship(); return !!(s && s.systemCapable && s.slot===state.atSlot); },
+  shipsHere(){ return (state.vehicles||[]).filter(v=>v.slot===state.atSlot); },
 
   /* ---- assemble a new life from the generated (and now named) pieces ---- */
   begin(){
@@ -824,9 +838,10 @@ const Game = {
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
       daysElapsed:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
-      grounded:true, system:null, atSlot:0, cargo:{},
+      grounded:true, system:null, atSlot:0, activeShip:veh.id,
       stimReady:false, log:[],
     };
+    veh.slot=0;                  // your inherited craft is docked on your homeworld
     state.world.occupied=true;   // your homeworld is inhabited (your own kind live here)
     state.lastStage=Game.stage();
     state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
@@ -1074,7 +1089,16 @@ function winEncounter(){
 function loseEncounter(){
   combat.over=true; const lost=Math.round(state.credits*0.2); state.credits-=lost;
   state.hp=Math.max(1,Math.round(Game.effMaxHp()*0.3));
-  Game.logMsg(`You black out and wake at camp, ${lost} credits lighter.`,"bad");
+  Game.logMsg(`You black out, ${lost} credits lighter.`,"bad");
+  // knocked out -> carried back to your home world. Your ship stays where it was docked.
+  if(state.system && state.atSlot!==0){
+    const stranded=Game.ship();
+    state.atSlot=0; state.world=state.system.planets[0].world;
+    const here=Game.shipsHere();
+    state.activeShip=(here.find(v=>v.systemCapable)||here[0]||{}).id||null;
+    Game.logMsg(`You wake on your homeworld. Your ${stranded?stranded.name:"ship"} is still docked at ${shipLocationName(stranded?stranded.slot:0)}.`,"bad");
+    if(!Game.canLeave()) Game.logMsg(`You have no ship here that can fly — you'll need to buy one at the Shipyard.`,"sys");
+  }
   Game.save(); UI.render("hub"); UI.flashLog();
 }
 
@@ -1330,7 +1354,7 @@ const UI = {
       <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — prices are set by this world's
       industry. Cargo hold: <b>${used}/${cap}</b>.</p></div>
     <div class="card">
-      ${COMMODITIES.map(c=>{ const price=commodityPrice(w,c), buy=canBuyHere(w,c), sell=canSellHere(w,c), have=state.cargo[c.id]||0;
+      ${COMMODITIES.map(c=>{ const ship=Game.ship(); const price=commodityPrice(w,c), buy=canBuyHere(w,c), sell=canSellHere(w,c), have=(ship&&ship.cargo[c.id])||0;
         const tag=buy&&sell?"buys &amp; sells":buy?"for sale":sell?"buys":"<span class='dim'>not traded</span>";
         return `<div class="card" style="margin:8px 0;padding:10px">
           <div class="row between"><b>${c.name}</b><span class="gold">${price}c</span></div>
@@ -1359,10 +1383,17 @@ const UI = {
         <button data-ship="${s.id}" ${state.credits<s.price?"disabled":""}>${s.price}c</button></div>`).join("")}
       <button class="ghost small" id="rentStub" style="margin-top:8px">Rent a ship — coming soon</button>
     </div>
-    <div class="card"><h3>Your ships</h3>
-      ${state.vehicles.map((v,i)=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)">
-        <span>${v.name} <span class="small dim">(${v.clsName}${v.systemCapable?", spaceworthy":""})</span></span>
-        ${state.vehicles.length>1?`<button class="small ghost" data-sellship="${i}">Sell &middot; ${shipSell(v)}c</button>`:`<span class="small dim">only craft</span>`}</div>`).join("")}
+    <div class="card"><h3>Ships docked here</h3>
+      ${Game.shipsHere().map(v=>{ const active=v.id===state.activeShip, used=Object.values(v.cargo||{}).reduce((a,n)=>a+n,0);
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
+          <div class="row between"><span>${active?'<span class="green">&#9654; </span>':''}${v.name}
+            <span class="small dim">(${v.clsName}${v.systemCapable?"":", surface only"})</span></span>
+            <span class="small dim">cargo ${used}/${v.hold}</span></div>
+          <div class="row" style="margin-top:4px">
+            ${active?'<span class="small green">piloting</span>':`<button class="small" data-selship="${v.id}">Pilot this</button>`}
+            <button class="small ghost" data-renship="${v.id}">Rename</button>
+            ${state.vehicles.length>1&&!active?`<button class="small ghost" data-sellship="${v.id}">Sell &middot; ${shipSell(v)}c</button>`:""}
+          </div></div>`; }).join("")}
     </div>
     <div class="card"><h3>Leave the planet</h3>
       ${!canLeave?`<p class="small red">You're grounded — buy a system-capable ship above to reach the other worlds.</p>`
@@ -1428,6 +1459,7 @@ const UI = {
       <button class="full" data-cx="races">&#9670; Races <span class="dim">&middot; ${races.length}</span></button>
       <button class="full" data-cx="wildlife">&#128062; Wildlife species <span class="dim">&middot; ${wild.length}</span></button>
       <button class="full" data-cx="worlds">&#9737; Planets &amp; systems <span class="dim">&middot; ${worlds.length}</span></button>
+      <button class="full" data-goto="garage">&#9992; Ships <span class="dim">&middot; ${(state.vehicles||[]).length}</span></button>
       <button class="full" data-cx="obj">&#9733; Objectives <span class="dim">&middot; ${done}/${OBJECTIVES.length}</span></button>
     </div>`;
   },
@@ -1658,24 +1690,26 @@ const UI = {
 
   /* ---------- GARAGE (vehicles + the power metrics) ---------- */
   screen_garage(){
+    const ships=state.vehicles||[];
     return `
     ${this.statHeader()}
-    <div class="card">
-      <h2>&#9992; Hangar</h2>
-      <p class="small dim">Craft are rated by the universal power triad, all in
-        ${UNITS.power.unitLong} (${UNITS.power.unit}):</p>
-      <p class="small"><b class="gold">${UNITS.power.star.label}</b> — ${UNITS.power.star.desc}</p>
-      <p class="small"><b class="gold">${UNITS.power.flight.label}</b> — ${UNITS.power.flight.desc}</p>
-      <p class="small"><b class="gold">${UNITS.power.ground.label}</b> — ${UNITS.power.ground.desc}</p>
-    </div>
-    ${state.vehicles.map((v,i)=>`
-      <div class="card">
-        <div class="row between"><h2 class="gold">${v.name}</h2>
+    <div class="card"><h2>&#9992; Your fleet <span class="dim small">&middot; ${ships.length}</span></h2>
+      <p class="small dim">Each ship has its own cargo hold and stays docked where you left it.
+      You can only switch to a ship at the world you're currently on.</p></div>
+    ${ships.map(v=>{ const active=v.id===state.activeShip, here=v.slot===state.atSlot,
+        used=Object.values(v.cargo||{}).reduce((a,n)=>a+n,0);
+      return `<div class="card">
+        <div class="row between"><h2 class="gold">${active?'&#9654; ':''}${v.name}</h2>
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
-        <p class="small dim">${v.clsName}</p>
-        ${v.axes.map(a=>`<div class="statline"><span>${UNITS.power[a].label}</span><span class="gold">${UNITS.fmtPower(v.power[a])}</span></div>`).join("")}
-        <button class="small" data-vnick="${i}" style="margin-top:8px">Rename</button>
-      </div>`).join("")}`;
+        <p class="small dim">${v.clsName}${v.systemCapable?"":" · surface only"}</p>
+        ${krow("Docked at", `<b class="blue">${shipLocationName(v.slot)}</b>${here?' <span class="green small">(here)</span>':''}`)}
+        ${krow("Cargo", `${used}/${v.hold}${used?` &middot; ${Object.entries(v.cargo).map(([id,n])=>n+"× "+COMMODITIES.find(c=>c.id===id).name).join(", ")}`:""}`)}
+        ${v.axes.map(a=>krow(UNITS.power[a].label, UNITS.fmtPower(v.power[a]))).join("")}
+        <div class="row" style="margin-top:8px">
+          ${active?'<span class="small green">piloting</span>':here?`<button class="small" data-selship="${v.id}">Pilot this</button>`:'<span class="small dim">travel here to pilot</span>'}
+          <button class="small ghost" data-renship="${v.id}">Rename</button>
+        </div>
+      </div>`; }).join("")}`;
   },
 
   /* ---------- MENAGERIE ---------- */
@@ -1818,7 +1852,9 @@ const UI = {
     }
     if(screen==="shipyard"){
       app.querySelectorAll("[data-ship]").forEach(b=> b.onclick=()=>buyShip(b.dataset.ship));
-      app.querySelectorAll("[data-sellship]").forEach(b=> b.onclick=()=>sellShip(+b.dataset.sellship));
+      app.querySelectorAll("[data-sellship]").forEach(b=> b.onclick=()=>sellShip(b.dataset.sellship));
+      app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
+      app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
       app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
       const tk=$("#takeoff"); if(tk) tk.onclick=()=>departFirstFlight();
       const yd=$("#yarder"); if(yd) yd.onclick=()=>{ toast("No contracts posted right now"); Game.logMsg("The Yarder shrugs — no hauling work today. (Shipping quests coming soon.)","sys"); };
@@ -1827,6 +1863,7 @@ const UI = {
     }
     if(screen==="codex"){
       app.querySelectorAll("[data-cx]").forEach(b=> b.onclick=()=>UI.render("cx_"+b.dataset.cx));
+      app.querySelectorAll("[data-goto]").forEach(b=> b.onclick=()=>UI.render(b.dataset.goto));
     }
     if(screen.indexOf("cx_")===0){
       const bk=$("#cxBack"); if(bk) bk.onclick=()=>UI.render("codex");
@@ -1848,8 +1885,8 @@ const UI = {
       const bc=$("#backCombat"); if(bc) bc.onclick=()=>UI.render("combat");
     }
     if(screen==="garage"){
-      app.querySelectorAll("[data-vnick]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.vnick;
-        const nn=prompt("Rename your craft:", state.vehicles[i].name); if(nn){ state.vehicles[i].name=nn.slice(0,22); Game.save(); UI.render("garage"); } });
+      app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
+      app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
     }
     if(screen==="menagerie"){
       app.querySelectorAll("[data-nick]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.nick;
@@ -2001,7 +2038,7 @@ function travelTo(slot){
   const p=state.system.planets[slot];
   if(advanceTime(rnd(10,30))) return;            // the crossing takes weeks
   if(p.discovered){                              // already charted — just fly there
-    state.world=p.world; state.atSlot=slot;
+    Game.ship().slot=slot; state.world=p.world; state.atSlot=slot;
     Game.logMsg(`You set course for ${p.world.name} and touch down.`,"sys");
     Game.save(); UI.render("hub"); UI.flashLog(); return;
   }
@@ -2019,7 +2056,7 @@ function finishArrival(){
   const ws=worldSummary(a.world); ws.reported=false; state.codex.worlds.push(ws);
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
   if(a.occupied) recordMeeting(a.person, a.draw.race, a.world.name);
-  state.world=a.world; state.atSlot=slot;          // you're now ON this world
+  Game.ship().slot=slot; state.world=a.world; state.atSlot=slot;   // you (and your ship) are now here
   Game.logMsg(`You chart ${a.world.name}${a.occupied?` and meet the ${a.draw.race.name}`:" — uninhabited"}.`,"sys");
   checkObjectives();
   arriving=null; Game.save(); UI.render("hub"); UI.flashLog();
@@ -2050,8 +2087,10 @@ function finishMeeting(){
   const back=m.back; meeting=null; Game.save(); UI.render(back); UI.flashLog();
 }
 function shipSell(v){ return v.systemCapable?1500:200; }
-function sellShip(i){
+function sellShip(id){
   if(state.vehicles.length<=1){ toast("That's your only craft"); return; }
+  if(id===state.activeShip){ toast("Pilot another ship first"); return; }
+  const i=state.vehicles.findIndex(v=>v.id===id); if(i<0) return;
   const v=state.vehicles[i], p=shipSell(v);
   state.vehicles.splice(i,1); state.credits+=p;
   Game.logMsg(`You sell the ${v.name} for ${p}c.`,"sys"); Game.save(); UI.render("shipyard");
@@ -2059,26 +2098,42 @@ function sellShip(i){
 
 /* ---- Depot: buy/sell commodities at this world's fixed prices ---- */
 function buyCommodity(id, all){
-  const c=COMMODITIES.find(x=>x.id===id), w=state.world;
+  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ship=Game.ship();
+  if(!ship){ toast("No ship to load"); return; }
   if(!canBuyHere(w,c)){ toast("Not sold here"); return; }
   const space=cargoMax()-cargoUsed();
   if(space<=0){ toast("Cargo hold full"); return; }
   const p=commodityPrice(w,c);
   if(state.credits<p){ toast("Not enough credits"); return; }
   const qty = all ? Math.min(space, Math.floor(state.credits/p)) : 1;
-  state.credits-=qty*p; state.cargo[id]=(state.cargo[id]||0)+qty;
+  state.credits-=qty*p; ship.cargo[id]=(ship.cargo[id]||0)+qty;
   if(qty>1) Game.logMsg(`Bought ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
   Game.save(); UI.render("depot");
 }
 function sellCommodity(id, all){
-  const c=COMMODITIES.find(x=>x.id===id), w=state.world, have=state.cargo[id]||0;
+  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ship=Game.ship(), have=ship?(ship.cargo[id]||0):0;
   if(!have) return;
   if(!canSellHere(w,c)){ toast("Not bought here"); return; }
   const p=Math.round(commodityPrice(w,c)*0.9);   // depot takes a small cut
   const qty = all ? have : 1;
-  state.credits+=qty*p; state.cargo[id]-=qty; if(state.cargo[id]<=0) delete state.cargo[id];
+  state.credits+=qty*p; ship.cargo[id]-=qty; if(ship.cargo[id]<=0) delete ship.cargo[id];
   if(qty>1) Game.logMsg(`Sold ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
   Game.save(); UI.render("depot");
+}
+/* select which ship you're piloting — only if it's docked where you are */
+function selectShip(id){
+  const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  if(v.slot!==state.atSlot){ toast("That ship is docked elsewhere"); return; }
+  state.activeShip=id; toast(`Now piloting ${v.name}`); Game.save(); UI.render(UI.current);
+}
+function renameShip(id){
+  const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  const nn=prompt("Rename your ship:", v.name); if(nn){ v.name=nn.slice(0,22); Game.save(); UI.render(UI.current); }
+}
+function shipLocationName(slot){
+  if(!state.system) return "home";
+  const p=state.system.planets[slot];
+  return p&&p.discovered ? p.world.name : "uncharted space";
 }
 
 /* ---- Information Broker: sell your unreported discoveries for credits ---- */
@@ -2119,8 +2174,10 @@ function buyShip(id){
   const s=SHIPYARD.find(x=>x.id===id); if(!s) return;
   if(state.credits<s.price){ toast("Not enough credits"); return; }
   state.credits-=s.price;
-  state.vehicles.push({ kind:"vehicle", name:s.clsName, tier:"common", cls:s.cls, clsName:s.clsName,
-    axes:s.axes, power:{...s.power}, systemCapable:true });
+  const ship={ kind:"vehicle", id:newVid(), name:s.clsName, tier:"common", cls:s.cls, clsName:s.clsName,
+    axes:s.axes, power:{...s.power}, systemCapable:true, hold:s.hold||50, cargo:{}, slot:state.atSlot };
+  state.vehicles.push(ship);
+  state.activeShip=ship.id;     // pilot your new ship by default
   Game.logMsg(`You buy a ${s.name} for ${s.price}c. The sky is no longer a ceiling.`,"good");
   Game.save(); UI.render("shipyard");
 }
