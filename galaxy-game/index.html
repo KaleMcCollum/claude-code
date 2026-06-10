@@ -782,28 +782,46 @@ function rollSystemSize(cf){ let s=weightedPick(SYSTEM_SIZE).size;
   if(cf!=null) s += Math.round(cf*rndF(0,4)) - Math.round((1-cf)*rndF(0,1.5));
   return clamp(s, 1, 12); }
 
-/* Tradeable commodities. Raw goods are cheap where mined (low tech), dear where industry
-   consumes them (high tech). Manufactured goods are the reverse: cheap where built (high
-   tech), dear where they can't be. buyTech/sellTech are the tech ranges where a world
-   sells the good to you / buys it from you — so some worlds only buy, some only sell. */
+/* Tradeable commodities. Each takes `bulk` cargo slots per unit (a chassis is 10, grain is 1).
+   `produce` = settlement types that make it (cheap to buy there); `demand` = types that crave
+   it (they pay a premium). Capitals & trade hubs are general markets that deal in everything.
+   The classic loop: buy where it's produced, haul it to where it's demanded. */
 const COMMODITIES=[
-  { id:"raw",       name:"Raw Materials",      base:8,   kind:"raw", buyTech:[0,5], sellTech:[4,9] },
-  { id:"fuel",      name:"Fuel",               base:20,  kind:"raw", buyTech:[2,7], sellTech:[0,9] },
-  { id:"circuitry", name:"Electric Circuitry", base:45,  kind:"mfg", buyTech:[5,9], sellTech:[0,5] },
-  { id:"engine",    name:"Engine Parts",       base:80,  kind:"mfg", buyTech:[6,9], sellTech:[0,6] },
-  { id:"chassis",   name:"Ship Chassis",       base:400, kind:"mfg", buyTech:[7,9], sellTech:[0,7] },
+  // —— food & agriculture ——
+  { id:"grain",      name:"Grain",                cat:"Food",       base:6,   bulk:1,  produce:["agri"],                 demand:["mining","industrial","scrap","frontier","colony"] },
+  { id:"livestock",  name:"Livestock",            cat:"Food",       base:16,  bulk:3,  produce:["agri"],                 demand:["capital","trade","frontier","colony"] },
+  { id:"textiles",   name:"Textiles",             cat:"Food",       base:18,  bulk:2,  produce:["agri","capital"],       demand:["mining","frontier","colony","scrap"] },
+  // —— raw materials & fuel ——
+  { id:"ore",        name:"Raw Ore",              cat:"Raw",        base:9,   bulk:4,  produce:["mining"],               demand:["industrial","capital"] },
+  { id:"alloys",     name:"Refined Alloys",       cat:"Raw",        base:34,  bulk:3,  produce:["industrial"],           demand:["capital","trade"] },
+  { id:"fuel",       name:"Fuel",                 cat:"Raw",        base:22,  bulk:2,  produce:["mining","industrial"],  demand:["frontier","agri","scrap","colony","trade"] },
+  { id:"scrap",      name:"Scrap Metal",          cat:"Raw",        base:7,   bulk:5,  produce:["scrap"],                demand:["industrial"] },
+  // —— components & manufactured ——
+  { id:"circuitry",  name:"Electronic Components",cat:"Manufactured",base:50, bulk:1,  produce:["industrial","capital"], demand:["frontier","colony","mining"] },
+  { id:"machinery",  name:"Machinery",            cat:"Manufactured",base:90, bulk:4,  produce:["industrial"],           demand:["mining","agri","frontier","colony"] },
+  { id:"chassis",    name:"Ship Chassis",         cat:"Manufactured",base:420,bulk:10, produce:["industrial"],           demand:["capital","trade"] },
+  // —— high-value goods ——
+  { id:"medicine",   name:"Medical Supplies",     cat:"High-value", base:65,  bulk:1,  produce:["capital"],              demand:["frontier","mining","scrap","agri","colony"] },
+  { id:"electronics",name:"Consumer Electronics", cat:"High-value", base:130, bulk:2,  produce:["capital","industrial"], demand:["trade","frontier","agri","mining","colony"] },
+  { id:"luxuries",   name:"Luxury Goods",         cat:"High-value", base:240, bulk:1,  produce:["capital"],              demand:["trade","mining","industrial"] },
 ];
-function commodityPrice(w, c){
-  let factor = c.kind==="raw" ? (0.6 + 0.09*w.tech) : (1.45 - 0.09*w.tech);
-  factor *= (1 + (w.wealth-4.5)*0.02);           // wealthier worlds run a little pricier
-  return Math.max(1, Math.round(c.base*factor));
+const commodityById=id=>COMMODITIES.find(c=>c.id===id);
+const isGeneralMarket=w=>w&&(w.settle==="capital"||w.settle==="trade");   // hubs deal in everything
+const produces=(w,c)=>!!(w&&c.produce.includes(w.settle));
+const demands =(w,c)=>!!(w&&c.demand.includes(w.settle));
+/* one local price per world (produce = cheap, demand = dear); buy at it, sell a touch under */
+function commodityFactor(w,c){
+  let f = produces(w,c) ? 0.6 : demands(w,c) ? 1.65 : 1.05;
+  f *= (1 + (w.wealth-4.5)*0.03);                 // wealthier worlds run pricier
+  return f;
 }
-const inRange=(t,r)=>t>=r[0]&&t<=r[1];
-function canBuyHere(w,c){ return inRange(w.tech,c.buyTech); }
-function canSellHere(w,c){ return inRange(w.tech,c.sellTech); }
+function commodityBuy(w,c){ return Math.max(1, Math.round(c.base*commodityFactor(w,c))); }
+function commoditySell(w,c){ return Math.max(1, Math.round(c.base*commodityFactor(w,c)*0.82)); }  // depot's cut
+function canBuyHere(w,c){ return produces(w,c) || isGeneralMarket(w); }   // they stock what they make (+hubs)
+function canSellHere(w,c){ return demands(w,c) || isGeneralMarket(w); }   // they buy what they crave (+hubs)
 function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
-// cargo lives on each ship; the Depot pools the holds of every ship docked with you here
-function shipUsed(v){ return Object.values(v.cargo||{}).reduce((a,n)=>a+n,0); }
+// cargo lives on each ship; bulk goods fill more of the hold than light ones
+function shipUsed(v){ const cg=v.cargo||{}; let s=0; for(const id in cg){ const c=commodityById(id); s+=cg[id]*(c?c.bulk:1); } return s; }
 function cargoUsed(){ const s=Game.ship(); return s?shipUsed(s):0; }
 function cargoMax(){ const s=Game.ship(); return s?(s.hold||0):0; }
 function poolShips(){ return (state.vehicles||[]).filter(atHere); }  // every ship docked right here with you
@@ -1124,6 +1142,10 @@ const Game = {
       if(c.shipId && c.seat==null) c.seat=0; });
     if(state.cargo && Object.keys(state.cargo).length){ const a=Game.ship(); if(a) a.cargo=state.cargo; }
     delete state.cargo;
+    // migrate renamed commodities in existing cargo holds
+    const CARGO_RENAME={ raw:"ore", engine:"machinery" };
+    (state.vehicles||[]).forEach(v=>{ if(v.cargo) for(const k in CARGO_RENAME){ if(v.cargo[k]){
+      v.cargo[CARGO_RENAME[k]]=(v.cargo[CARGO_RENAME[k]]||0)+v.cargo[k]; delete v.cargo[k]; } } });
     // migrate old equipment slots (weapon/armor/relic) -> the expanded armor slots
     const eq=state.equipped||{};
     if(!("chest" in eq)) state.equipped={ weapon:eq.weapon||null, head:eq.head||null,
@@ -1768,23 +1790,30 @@ const UI = {
 
   /* ---------- DEPOT (commodity trading) ---------- */
   screen_depot(){
-    const w=state.world, used=poolUsed(), cap=poolMax(), n=poolShips().length;
+    const w=state.world, used=poolUsed(), cap=poolMax(), n=poolShips().length, free=cap-used;
+    let lastCat=null;
     return `
     ${this.statHeader()}
     <div class="card"><h2>&#128230; ${w.name} Depot</h2>
-      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — prices set by this world's industry.
-      Shared hold: <b>${used}/${cap}</b> across ${n} ship${n!==1?"s":""} docked here with you.</p></div>
+      <p class="small dim">${isInhabited(w)?settleDef(w.settle).name:""} &middot; ${WEALTH_LABELS[w.wealth]}. Prices follow what this world makes and needs.
+      Shared hold: <b>${used}/${cap}</b> slot${cap!==1?"s":""} (${free} free) across ${n} ship${n!==1?"s":""} docked here.</p>
+      <p class="small dim">Bulk goods fill more of the hold &mdash; a Ship Chassis takes 10 slots, Grain just 1.</p></div>
     <div class="card">
-      ${COMMODITIES.map(c=>{ const price=commodityPrice(w,c), buy=canBuyHere(w,c), sell=canSellHere(w,c), have=poolHave(c.id);
-        const tag=buy&&sell?"buys &amp; sells":buy?"for sale":sell?"buys":"<span class='dim'>not traded</span>";
-        return `<div class="card" style="margin:8px 0;padding:10px">
-          <div class="row between"><b>${c.name}</b><span class="gold">${price}c</span></div>
-          <p class="small dim" style="margin:4px 0">${tag}${have?` &middot; <span class="blue">fleet holds ${have}</span>`:""}</p>
+      ${COMMODITIES.map(c=>{ const buy=canBuyHere(w,c), sell=canSellHere(w,c), have=poolHave(c.id);
+        const bp=commodityBuy(w,c), sp=commoditySell(w,c), prod=produces(w,c), dem=demands(w,c);
+        const tag = prod?'<span class="green">produced here &middot; buy low</span>'
+                  : dem?'<span class="gold">in demand &middot; sells high</span>'
+                  : (buy||sell)?'<span class="dim">market goods</span>':'<span class="dim">not traded here</span>';
+        const head = c.cat!==lastCat ? (lastCat=c.cat, `<h3 style="margin:10px 0 2px">${c.cat}</h3>`) : "";
+        if(!buy&&!sell&&!have) return head+`<div class="krow"><span class="lbl dim">${c.name} <span class="small">&middot; ${c.bulk} slot${c.bulk>1?"s":""}</span></span><span class="kv dim small">not traded here</span></div>`;
+        return `${head}<div class="card" style="margin:6px 0;padding:10px">
+          <div class="row between"><b>${c.name}</b> <span class="tag">${c.bulk} slot${c.bulk>1?"s":""}</span></div>
+          <p class="small" style="margin:3px 0">${tag}${have?` &middot; <span class="blue">you hold ${have}</span>`:""}</p>
           <div class="row">
-            ${buy?`<button data-buyc="${c.id}" ${state.credits<price||used>=cap?"disabled":""}>Buy ${price}c</button>
-              <button class="ghost" data-buyallc="${c.id}" ${state.credits<price||used>=cap?"disabled":""}>Buy all</button>`:""}
-            ${sell&&have>0?`<button class="ghost" data-sellc="${c.id}">Sell ${Math.round(price*0.9)}c</button>
-              <button class="ghost" data-sellallc="${c.id}">Sell all</button>`:""}
+            ${buy?`<button data-buyc="${c.id}" ${state.credits<bp||free<c.bulk?"disabled":""}>Buy &middot; ${commas(bp)}c</button>
+              <button class="ghost small" data-buyallc="${c.id}" ${state.credits<bp||free<c.bulk?"disabled":""}>Buy all</button>`:""}
+            ${sell&&have>0?`<button class="ghost" data-sellc="${c.id}">Sell &middot; ${commas(sp)}c</button>
+              <button class="ghost small" data-sellallc="${c.id}">Sell all</button>`:""}
           </div>
         </div>`; }).join("")}
     </div>
@@ -1807,7 +1836,7 @@ const UI = {
         :`<p class="small dim">No ships for sale here — this world hasn't the industry for it. Try a more developed world.</p>`}
     </div>
     <div class="card"><h3>Ships docked here</h3>
-      ${Game.shipsHere().map(v=>{ const active=v.id===state.activeShip, used=Object.values(v.cargo||{}).reduce((a,n)=>a+n,0);
+      ${Game.shipsHere().map(v=>{ const active=v.id===state.activeShip, used=shipUsed(v);
         return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
           <div class="row between"><span>${active?'<span class="green">&#9654; </span>':''}${v.name}
             <span class="small dim">(${v.clsName} &middot; ${RANGE_LABEL[v.range]||"?"})</span></span>
@@ -3126,29 +3155,31 @@ function sellShip(id){
 
 /* ---- Depot: buy/sell commodities across your active fleet docked here ---- */
 function buyCommodity(id, all){
-  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ships=poolShips();
-  if(!ships.length){ toast("No active ship docked here"); return; }
+  const c=commodityById(id), w=state.world, ships=poolShips();
+  if(!ships.length){ toast("No ship docked here"); return; }
   if(!canBuyHere(w,c)){ toast("Not sold here"); return; }
   const space=poolMax()-poolUsed();
-  if(space<=0){ toast("Cargo holds full"); return; }
-  const p=commodityPrice(w,c);
+  if(space<c.bulk){ toast("Not enough cargo space"); return; }
+  const p=commodityBuy(w,c);
   if(state.credits<p){ toast("Not enough credits"); return; }
-  let qty = all ? Math.min(space, Math.floor(state.credits/p)) : 1;
+  let qty = all ? Math.min(Math.floor(space/c.bulk), Math.floor(state.credits/p)) : 1;
+  if(qty<1){ toast("Not enough room or credits"); return; }
   state.credits-=qty*p; let rem=qty;
-  for(const v of ships){ if(rem<=0) break; const free=v.hold-shipUsed(v), add=Math.min(free, rem);
+  for(const v of ships){ if(rem<=0) break; const free=Math.floor((v.hold-shipUsed(v))/c.bulk), add=Math.min(free, rem);
     if(add>0){ v.cargo[id]=(v.cargo[id]||0)+add; rem-=add; } }
-  if(qty>1) Game.logMsg(`Bought ${qty} ${c.name} for ${commas(qty*p)}c (loaded across ${ships.length} ship${ships.length>1?"s":""}).`,"sys");
+  if(rem>0){ state.credits+=rem*p; qty-=rem; }    // couldn't pack the last few — refund them
+  if(qty>0) Game.logMsg(`Bought ${qty} ${c.name} for ${commas(qty*p)}c (${qty*c.bulk} slot${qty*c.bulk>1?"s":""}).`,"sys");
   Game.save(); UI.render("depot");
 }
 function sellCommodity(id, all){
-  const c=COMMODITIES.find(x=>x.id===id), w=state.world, ships=poolShips();
+  const c=commodityById(id), w=state.world, ships=poolShips();
   const have=ships.reduce((s,v)=>s+(v.cargo[id]||0),0); if(!have) return;
   if(!canSellHere(w,c)){ toast("Not bought here"); return; }
-  const p=Math.round(commodityPrice(w,c)*0.9);   // depot takes a small cut
+  const p=commoditySell(w,c);
   let qty = all ? have : 1; state.credits+=qty*p; let rem=qty;
   for(const v of ships){ if(rem<=0) break; const take=Math.min(v.cargo[id]||0, rem);
     if(take>0){ v.cargo[id]-=take; if(v.cargo[id]<=0) delete v.cargo[id]; rem-=take; } }
-  if(qty>1) Game.logMsg(`Sold ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
+  Game.logMsg(`Sold ${qty} ${c.name} for ${commas(qty*p)}c.`,"sys");
   Game.save(); UI.render("depot");
 }
 /* select which ship you're piloting — only if it's docked where you are */

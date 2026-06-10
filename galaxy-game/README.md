@@ -93,6 +93,13 @@ Inhabited worlds grow into a **settlement type** that decides what services they
 
 Only one Capital City can form per system, and a world's tech/wealth gate which settlements it can become — so a planetary system might hold a capital, a farmworld, and a mining colony, each worth visiting for different reasons. (Buying income-producing assets on these worlds — farms, factories — is the planned next step.)
 
+## Depot trading
+Every inhabited world has a **Depot**, and **prices follow what the world makes and needs**:
+- **13 commodities** across Food, Raw, Manufactured, and High-value tiers (grain, livestock, textiles, ore, alloys, fuel, scrap, electronic components, machinery, ship chassis, medicine, consumer electronics, luxuries).
+- Each fills a different amount of **cargo bulk** — a Ship Chassis takes **10 slots**, Grain just **1** — so a 100-slot hold is 10 chassis *or* 100 grain. Bulky cheap goods (ore) earn thin per-slot margins; compact high-value goods (luxuries, medicine) pay best per slot.
+- A world's **settlement type** decides what it **produces** (cheap to buy) and **demands** (pays a premium). A mining world sells ore cheap but won't deal you a chassis at all; haul that ore to an **industrial** world that craves it, then run finished goods on to a **capital**. Capitals and trade hubs are general markets that deal in everything at a spread — there's no single-world arbitrage, so profit comes from **buying where it's produced and selling where it's demanded**.
+- The depot pools the holds of every ship docked with you, so a fleet trades together.
+
 ## On foot: encounters, foes & gear
 What you run into when you explore depends on **where you are**:
 - **Cities** (capitals, trade hubs, urban worlds) → **bad people**: pickpockets, thieves, muggers, thugs, armed robbers, and — on dangerous worlds — gang enforcers and raiders. They loot credits and XP, never tame.
