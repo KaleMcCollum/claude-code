@@ -532,8 +532,8 @@ function rollSystemSize(){ return weightedPick(SYSTEM_SIZE).size; }
 /* Procedural generators. Each rolls rarity + traits, returns an object with
    name:null so the player can christen it. NOTHING here is chosen by the player. */
 const Gen = {
-  species(){
-    const tier=RARITY.roll();                 // how rare these PEOPLE are to be born to
+  species(forceTier){
+    const tier=forceTier||RARITY.roll();      // how rare these PEOPLE are to be born to
     const arche=weightedPick(ARCHETYPES);      // body-plan template
     const ti=RARITY.index(tier.id);
     const dev=SPECIES_DEV[ti];                 // how far this people drifts from human
@@ -635,7 +635,58 @@ const Gen = {
     return { kind:"vehicle", name:null, tier:tier.id, cls:cls.id, clsName:cls.name,
              axes:cls.axes, power, mult:+mult.toFixed(2), systemCapable:cls.axes.includes("star") };
   },
+
+  /* A PERSON is a fresh individual rolled WITHIN a race's fixed ranges. Same shape as a
+     generated species, so the stat sheet renders it identically. */
+  person(race){
+    const q={ lifeRoll:gauss(), corr:0.5 };       // this person's overall genetic luck
+    const R=race.ranges;
+    const t=(range,quality,intval)=>{ const g=(quality?q.corr*q.lifeRoll:0)+Math.sqrt(1-(quality?q.corr*q.corr:0))*gauss();
+      const spread=range.mean?(range.max-range.min)/(2*range.mean):0.1;
+      let value=clamp(range.mean*(1+g*spread/2.5), range.min, range.max);
+      const rd=intval?(x=>Math.max(1,Math.round(x))):(x=>x);
+      return { mean:rd(range.mean), min:rd(range.min), max:rd(range.max), value:rd(value),
+               pct:clamp(Math.round(normCdf(g)*100),1,99), g }; };
+    const height=t(R.height,false,false), mass=t(R.mass,false,false),
+          maturity=t(R.maturity,false,false), lifespan=t(R.lifespan,true,false);
+    const attrs={}; ATTR_KEYS.forEach(k=>attrs[k]=t(R.attrs[k],true,true));
+    const bio={}; ["metabolism","perception","resilience","recovery"].forEach(k=>bio[k]=t(R.bio[k],true,true));
+    bio.fertility=t(R.bio.fertility,false,true);
+    const qg=[...ATTR_KEYS.map(k=>attrs[k].g), lifespan.g, bio.perception.g, bio.metabolism.g, bio.resilience.g, bio.recovery.g];
+    const avgPct=clamp(Math.round(normCdf(qg.reduce((s,x)=>s+x,0)/qg.length)*100),1,99);
+    return { kind:"species", name:null, raceName:race.name, tier:race.tier, arche:race.arche,
+             archeName:race.archeName, flavor:race.flavor, sig:race.sig, population:race.population,
+             height, mass, maturity, lifespan, attrs, bio,
+             temperament:weightedPick(TEMPERAMENTS).id, build:buildLabel(height.value,mass.value),
+             detail:race.detail, reproduction:race.reproduction, powers:race.powers,
+             genome:{ avgPct, grade:gradeLabel(avgPct) } };
+  },
 };
+
+/* Extract the RACE-level record (fixed ranges + heritage) from a full species. */
+function raceFrom(sp){
+  const rng=x=>({mean:x.mean,min:x.min,max:x.max});
+  const attrs={}, bio={};
+  ATTR_KEYS.forEach(k=>attrs[k]=rng(sp.attrs[k]));
+  ["metabolism","perception","resilience","recovery","fertility"].forEach(k=>bio[k]=rng(sp.bio[k]));
+  return { id:null, name:sp.name||null, tier:sp.tier, arche:sp.arche, archeName:sp.archeName,
+    flavor:sp.flavor, sig:sp.sig, population:sp.population, powers:[...sp.powers],
+    detail:JSON.parse(JSON.stringify(sp.detail)), reproduction:sp.reproduction,
+    ranges:{ height:rng(sp.height), mass:rng(sp.mass), maturity:rng(sp.maturity),
+             lifespan:rng(sp.lifespan), attrs, bio } };
+}
+
+/* How many distinct races of each rarity exist (fewer common ones saturate fast). */
+const RACE_POOL=[5,10,30,80,200,600,2000,6000];
+/* Draw the race you meet — population-weighted by tier, recognized if already known. */
+function drawRace(){
+  const tier=RARITY.roll(), ti=RARITY.index(tier.id);
+  const slot=rnd(0, RACE_POOL[ti]-1);
+  const id="w_"+tier.id+"_"+slot;
+  if(state.codex.races[id]) return { id, race:state.codex.races[id], isNew:false };
+  const race=raceFrom(Gen.species(tier)); race.id=id;
+  return { id, race, isNew:true };
+}
 
 /* ============================================================ DATA ===== */
 /* Hand-authored creatures & items. (Procedural creatures/guns/flowers are the
@@ -750,8 +801,13 @@ const Game = {
     state.lastStage=Game.stage();
     state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy(); // child-scaled to start
     DATA.startKit.forEach(([id,n])=>Game.addItem(id,n));
+    // you know your own race and your homeworld from the start — into the Codex
+    const selfRace=raceFrom(sp); selfRace.id="self";
+    state.codex.races["self"]=selfRace;
+    state.codex.worlds.push(worldSummary(world));
     Game.logMsg(`You are born on ${world.name}, ${article(world.biomeName)} ${world.biomeName}.`,"sys");
     Game.logMsg(`You are ${creating.name}, a young ${sp.name} child — far from your potential, but growing.`,"hit");
+    checkObjectives();
     Game.save();
   },
 
@@ -993,7 +1049,7 @@ const UI = {
   current:"title",
   render(screen){
     this.current=screen;
-    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue";
+    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive";
     $("#nav").classList.toggle("hidden", noNav);
     [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===screen));
     app.innerHTML=(this["screen_"+screen]||(()=> "<p>?</p>")).call(this);
@@ -1220,6 +1276,7 @@ const UI = {
   screen_codex(){
     const races=Object.values(state.codex&&state.codex.races||{});
     const sys=state.system;
+    const done=OBJECTIVES.filter(o=>state.achievements[o.id]).length;
     return `
     ${this.statHeader()}
     <div class="card">
@@ -1229,17 +1286,78 @@ const UI = {
     <div class="card sheet">
       <h3>Planetary system</h3>
       ${!sys?`<p class="small dim">Unknown. Buy a ship at the Spaceport and take off to chart it.</p>`
-      :`<p class="small dim">${sys.size} world${sys.size>1?"s":""} orbit your home star.</p>
+      :`<p class="small dim">${sys.size} world${sys.size>1?"s":""} orbit your home star &middot; ${sys.planets.filter(p=>p.discovered).length} charted.</p>
         ${sys.planets.map((p,i)=> p.discovered
-          ? krow(`${p.isHome?"&#9737; ":""}${p.world.name}`, `${cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':""}`)
-          : krow(`<span class="dim">Unexplored world ${i+1}</span>`, `<span class="dim">&#128274; locked</span>`)
+          ? `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name}</span>
+               <span class="kv">${cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':p.occupied?'':' <span class="dim">(empty)</span>'}</span></div>`
+          : `<div class="krow"><span class="lbl dim">Unexplored world ${i+1}</span>
+               <span class="kv"><button class="small" data-travel="${i}">&#9992; Travel</button></span></div>`
         ).join("")}`}
     </div>
     <div class="card sheet">
       <h3>Races discovered <span class="dim small">&middot; ${races.length}</span></h3>
-      ${races.length?races.map(r=>krow(r.name, `${r.archeName} <span style="color:${RARITY.byId(r.tier).color}">${RARITY.byId(r.tier).name}</span>`)).join("")
-        :`<p class="small dim">None yet — travel to other worlds and meet their people.</p>`}
+      ${races.map(r=>`<div class="krow"><span class="lbl">${r.id==="self"?"&#9670; ":""}${r.name}</span>
+        <span class="kv">${r.archeName} <span style="color:${RARITY.byId(r.tier).color}">${RARITY.byId(r.tier).name}</span></span></div>`).join("")}
+    </div>
+    <div class="card sheet">
+      <h3>Objectives <span class="dim small">&middot; ${done}/${OBJECTIVES.length}</span></h3>
+      ${OBJECTIVES.map(o=>{ const d=!!state.achievements[o.id];
+        return `<div class="krow"><span class="lbl">${d?'<span class="green">&#10003;</span>':'<span class="dim">&#9675;</span>'} ${o.label}</span>
+          <span class="kv">${d?'<span class="green small">done</span>':''}</span></div>`; }).join("")}
     </div>`;
+  },
+
+  /* ---------- ARRIVAL (fly to a world: name it, meet its people, identify their race) ---------- */
+  screen_arrive(){
+    const a=arriving; if(!a) return this.screen_codex();
+    const w=a.world;
+    if(a.step===1) return `
+      ${this.rarityBanner(w.tier, "a world in your system")}
+      <div class="card sheet">
+        <h2>${cap(article(w.biomeName))} <span class="blue">${w.biomeName}</span></h2>
+        <p class="small dim">${worldDesc(w)}</p>
+        ${krow("Population", cap(w.popName))}
+        ${krow("Technology", TECH_LABELS[w.tech])}
+        ${krow("Wealth", WEALTH_LABELS[w.wealth])}
+        ${krow("Danger", `<span class="${w.danger>=7?'red':w.danger>=4?'gold':'green'}">${DANGER_LABELS[w.danger]}</span>`)}
+      </div>
+      <div class="card">
+        <p class="small">Name this world:</p>
+        ${nameField("arrWorld","Name this world","world",w.name)}
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="arrCancel">&larr; Leave orbit</button>
+          <button class="primary" id="arrStep1">${a.occupied?"Name &amp; land &rarr;":"Name &amp; log &rarr;"}</button>
+        </div>
+      </div>`;
+    if(a.step===2) return `
+      <div class="card">
+        <h2>${w.name}</h2>
+        <p class="small dim">You set down at ${a.outpost}. A figure approaches — you are introduced.</p>
+        <p class="small">Name this person:</p>
+        ${nameField("arrPerson","Name this person","person",a.person?a.person.name:"")}
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="arrBack2">&larr; Back</button>
+          <button class="primary" id="arrStep2">Meet them &rarr;</button>
+        </div>
+      </div>`;
+    // step 3 — their stat sheet + race identity
+    const person=a.person, known=!a.draw.isNew, race=a.draw.race;
+    return `
+      <div class="card">
+        <h2>${person.name||"A stranger"}</h2>
+        ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
+          :`<p class="small gold">Their kind is new to your Codex.</p>`}
+      </div>
+      ${genomeBanner(person.genome)}
+      ${speciesSheet(person)}
+      <div class="card">
+        ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
+          :`<p class="small">Name this new race:</p>${nameField("arrRace","Name this race","race",race.name)}`}
+        <div class="row between" style="margin-top:10px">
+          <button class="ghost" id="arrBack3">&larr; Back</button>
+          <button class="primary" id="arrFinish">Record &amp; continue &rarr;</button>
+        </div>
+      </div>`;
   },
 
   /* ---------- COMBAT ---------- */
@@ -1462,6 +1580,10 @@ const UI = {
       const tk=$("#takeoff"); if(tk) tk.onclick=()=>departFirstFlight();
       const tc=$("#toCodex"); if(tc) tc.onclick=()=>UI.render("codex");
     }
+    if(screen==="codex"){
+      app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
+    }
+    if(screen==="arrive") this.bindArrive();
     if(screen==="combat"){
       app.querySelectorAll("[data-atk]").forEach(b=> b.onclick=()=>playerAttack(b.dataset.atk));
       $("#actTame").onclick=()=>tryTame(); $("#actFlee").onclick=()=>fleeEncounter(); $("#actBag").onclick=()=>UI.render("bag");
@@ -1530,6 +1652,27 @@ const UI = {
       $("#beginGame").onclick=()=>{ Game.begin(); creating={}; UI.render("hub"); };
     }
   },
+
+  bindArrive(){
+    const a=arriving; if(!a) return;
+    app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
+    if(a.step===1){
+      $("#arrCancel").onclick=()=>{ arriving=null; UI.render("codex"); };
+      $("#arrStep1").onclick=()=>{ a.world.name=$("#arrWorld").value.trim()||genName("world");
+        if(a.occupied){ a.person=Gen.person(a.draw.race); a.step=2; UI.render("arrive"); }
+        else finishArrival(); };
+    }
+    if(a.step===2){
+      $("#arrBack2").onclick=()=>{ a.step=1; UI.render("arrive"); };
+      $("#arrStep2").onclick=()=>{ a.person.name=$("#arrPerson").value.trim()||genName("person"); a.step=3; UI.render("arrive"); };
+    }
+    if(a.step===3){
+      $("#arrBack3").onclick=()=>{ a.step=2; UI.render("arrive"); };
+      $("#arrFinish").onclick=()=>{
+        if(a.draw.isNew){ a.draw.race.name=$("#arrRace").value.trim()||genName("race"); }
+        a.person.raceName=a.draw.race.name; finishArrival(); };
+    }
+  },
 };
 
 /* ============================================================ ACTIONS == */
@@ -1555,9 +1698,61 @@ function sellItem(id){ if(!state.inv[id]) return;
 function buyItem(id){ const p=Game.buyPrice(id); if(state.credits<p){ toast("Not enough credits"); return; }
   state.credits-=p; Game.addItem(id,1); Game.logMsg(`Bought ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save(); UI.render("market"); }
 
+/* ============================================================ OBJECTIVES */
+const OBJECTIVES=[
+  { id:"first_flight", label:"Take your first flight off-world" },
+  { id:"discover_world", label:"Discover a new world", test:s=>s.codex.worlds.length>=2 },
+  { id:"worlds_5", label:"Discover 5 worlds", test:s=>s.codex.worlds.length>=5 },
+  { id:"meet_race", label:"Meet a race other than your own", test:s=>Object.keys(s.codex.races).length>=2 },
+  { id:"races_5", label:"Document 5 races", test:s=>Object.keys(s.codex.races).length>=5 },
+  { id:"giant", label:"Meet a giant people (avg ≥ 8 ft)", test:s=>codexRaces(s).some(r=>r.ranges.height.mean>=243.8) },
+  { id:"tiny", label:"Meet a tiny people (avg ≤ 3½ ft)", test:s=>codexRaces(s).some(r=>r.ranges.height.mean<=106.7) },
+  { id:"flier", label:"Meet a people who can fly", test:s=>codexRaces(s).some(r=>r.powers.includes("flight")) },
+  { id:"rareworld", label:"Find a Legendary-or-rarer world", test:s=>s.codex.worlds.some(w=>RARITY.index(w.tier)>=4) },
+  { id:"hostile", label:"Set foot on a hostile world (danger ≥ 8)", test:s=>s.codex.worlds.some(w=>w.danger>=8) },
+];
+function codexRaces(s){ return Object.values(s.codex.races); }
+function checkObjectives(){
+  if(!state.achievements) state.achievements={};
+  for(const o of OBJECTIVES){
+    if(!state.achievements[o.id] && o.test && o.test(state)){
+      state.achievements[o.id]=true;
+      Game.logMsg(`Objective complete: ${o.label}.`,"good");
+      toast("★ "+o.label);
+    }
+  }
+}
+
 /* ---- leaving the planet: buy a ship, then chart your system on first takeoff ---- */
 function worldSummary(w){ return { name:w.name, biome:w.biome, biomeName:w.biomeName, tier:w.tier,
   tech:w.tech, wealth:w.wealth, danger:w.danger, pop:w.pop, popName:w.popName }; }
+
+/* ---- travel to a world in your system; generate it on arrival; maybe meet someone ---- */
+let arriving=null;
+const OUTPOSTS=["a dusty trading post","a crowded ship dock","a frontier landing pad","a market caravanserai",
+  "a refueling depot","a quiet spaceport","a mining camp gate","a pilgrim's waystation"];
+function travelTo(slot){
+  if(!Game.canLeave()){ toast("You need a system-capable ship"); return; }
+  const p=state.system.planets[slot];
+  if(p.discovered){ toast("Already explored"); return; }
+  if(advanceTime(rnd(10,30))) return;            // the crossing takes weeks
+  const world=Gen.world();
+  // is anyone there? more habitable/populous worlds are likelier inhabited
+  const occupied=chance(0.7);
+  const draw=occupied?drawRace():null;
+  arriving={ slot, world, occupied, draw, outpost:pick(OUTPOSTS), person:null, step:1 };
+  UI.render("arrive");
+}
+function finishArrival(){
+  const a=arriving, slot=a.slot;
+  state.system.planets[slot]={ index:slot, discovered:true, isHome:false, world:worldSummary(a.world),
+    occupied:a.occupied, raceId:a.draw?a.draw.id:null };
+  state.codex.worlds.push(worldSummary(a.world));
+  if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
+  Game.logMsg(`You chart ${a.world.name}${a.occupied?` and meet the ${a.draw.race.name}`:" — uninhabited"}.`,"sys");
+  checkObjectives();
+  arriving=null; Game.save(); UI.render("codex"); UI.flashLog();
+}
 function buyShip(id){
   const s=SHIPYARD.find(x=>x.id===id); if(!s) return;
   if(state.credits<s.price){ toast("Not enough credits"); return; }
