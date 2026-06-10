@@ -1500,7 +1500,8 @@ const UI = {
     ${this.statHeader()}
     <div class="card sheet"><h2>&#128483; People met <span class="dim small">&middot; ${people.length}</span></h2>
       ${people.length?people.slice().reverse().map((p,ri)=>{ const i=people.length-1-ri;
-        return `<div class="krow"><span class="lbl"><button class="small ghost" data-person="${i}">${p.name}</button></span>
+        const cr = p.career==="wanted"&&!p.captured ? '<span class="red">Wanted</span>' : careerName(p.career);
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-person="${i}">${p.name}</button> <span class="dim small">&middot; ${cr}</span></span>
           <span class="kv">${p.raceName} <span class="dim">&middot; ${p.where}</span></span></div>`; }).join("")
         :`<p class="small dim">No one yet — talk to strangers and visit taverns.</p>`}
     </div>
