@@ -142,9 +142,9 @@
 <nav id="nav" class="hidden">
   <button data-screen="hub"><span class="ico">&#9737;</span>World</button>
   <button data-screen="char"><span class="ico">&#9670;</span>Self</button>
-  <button data-screen="bag"><span class="ico">&#9776;</span>Items</button>
+  <button data-screen="codex"><span class="ico">&#9776;</span>Codex</button>
+  <button data-screen="bag"><span class="ico">&#9783;</span>Items</button>
   <button data-screen="garage"><span class="ico">&#9992;</span>Ships</button>
-  <button data-screen="menagerie"><span class="ico">&#9758;</span>Beasts</button>
   <button data-screen="save"><span class="ico">&#8635;</span>Save</button>
 </nav>
 
@@ -512,6 +512,22 @@ const VEHICLE_CLASSES = [
   { id:"interceptor", name:"Interceptor",  weight:4,  axes:["flight","star"],    base:{flight:300,star:680} },
 ];
 
+/* Ships you can BUY. The first system-capable ship is your ticket off the home planet. */
+const SHIPYARD = [
+  { id:"system-shuttle", name:"Used System Shuttle", price:2500, systemCapable:true,
+    cls:"shuttle", clsName:"System Shuttle", axes:["flight","star"], power:{flight:200, star:340},
+    blurb:"A worn but spaceworthy shuttle — reaches any world in your home system." },
+];
+
+/* Planetary-system size: how many worlds orbit your home star. Avg ~5, rarely alone,
+   rarely crowded. Rolled the first time you leave your planet. */
+const SYSTEM_SIZE = [
+  {size:1,weight:4},{size:2,weight:8},{size:3,weight:14},{size:4,weight:18},{size:5,weight:18},
+  {size:6,weight:14},{size:7,weight:8},{size:8,weight:5},{size:9,weight:3},{size:10,weight:1.5},
+  {size:11,weight:1},{size:12,weight:0.7},
+];
+function rollSystemSize(){ return weightedPick(SYSTEM_SIZE).size; }
+
 /* ============================================================ GEN ====== */
 /* Procedural generators. Each rolls rarity + traits, returns an object with
    name:null so the player can christen it. NOTHING here is chosen by the player. */
@@ -607,14 +623,17 @@ const Gen = {
   },
 
   vehicle(humble=false){
-    // starter craft skews toward humble classes but the galaxy can always surprise you
+    // your INHERITED craft is always a humble SURFACE/atmospheric ride — never star-capable,
+    // so you start grounded and must buy a system ship to ever leave the planet.
+    const pool=humble ? VEHICLE_CLASSES.filter(v=>v.weight>=10 && !v.axes.includes("star"))
+                      : VEHICLE_CLASSES;
     const tier=humble?(chance(0.8)?RARITY.tiers[rnd(0,2)]:RARITY.roll()):RARITY.roll();
-    const cls=weightedPick(humble?VEHICLE_CLASSES.filter(v=>v.weight>=10):VEHICLE_CLASSES);
+    const cls=weightedPick(pool);
     const mult=RARITY.mult(tier);
     const power={};
     cls.axes.forEach(a=>{ power[a]=Math.round(cls.base[a]*mult*rndF(0.9,1.15)); });
     return { kind:"vehicle", name:null, tier:tier.id, cls:cls.id, clsName:cls.name,
-             axes:cls.axes, power, mult:+mult.toFixed(2) };
+             axes:cls.axes, power, mult:+mult.toFixed(2), systemCapable:cls.axes.includes("star") };
   },
 };
 
@@ -681,6 +700,7 @@ const Game = {
   wipe(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} state=null; },
 
   hasPower(id){ return state.species.powers.includes(id); },
+  canLeave(){ return (state.vehicles||[]).some(v=>v.systemCapable); },
 
   /* ---- assemble a new life from the generated (and now named) pieces ---- */
   begin(){
@@ -1163,10 +1183,63 @@ const UI = {
         <button id="actExplore" class="primary">&#9968; Explore</button>
         <button id="actMarket">&#9879; Market</button>
         <button id="actRest">&#9789; Rest</button>
-        <button id="actChar">&#9670; Self</button>
+        <button id="actDepart">&#9992; Spaceport</button>
       </div>
     </div>
     ${this.logCard()}`;
+  },
+
+  /* ---------- SPACEPORT (buy a ship, take off, chart your system) ---------- */
+  screen_depart(){
+    const w=state.world, canLeave=Game.canLeave();
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>&#9992; ${w.name} Spaceport</h2>
+      ${!canLeave?`<p class="small">You are <b class="red">grounded</b>. Your ${state.vehicles[0]?state.vehicles[0].clsName:"craft"}
+        is built for dirt and air — it can't reach the other worlds around your star. You need a
+        <b>system-capable ship</b>.</p>`
+       :!state.system?`<p class="small green">Your ship is fueled and spaceworthy. Take off and chart your home system?</p>`
+       :`<p class="small green">System charted — ${state.system.size} worlds orbit your star. Open the Codex to pick a destination.</p>`}
+    </div>
+    ${!canLeave?`<div class="card"><h3>Shipyard</h3>
+      ${SHIPYARD.map(s=>`<div class="card" style="margin:8px 0;padding:10px">
+        <div class="row between"><b>${s.name}</b>
+          <button data-ship="${s.id}" ${state.credits<s.price?"disabled":""}>${s.price}c</button></div>
+        <p class="small dim" style="margin:4px 0">${s.blurb}</p>
+        <span class="pill g">STR ${s.power.star}</span><span class="pill b">FLT ${s.power.flight}</span>
+      </div>`).join("")}
+      <p class="small dim">Credits: <b class="gold">${state.credits}</b> — explore and trade to earn the fare.</p>
+    </div>`:""}
+    ${canLeave&&!state.system?`<div class="card"><button id="takeoff" class="primary full center">&#9650; Take off &amp; chart your system</button></div>`:""}
+    ${state.system?`<div class="card"><button id="toCodex" class="primary full center">&#9776; Open Codex</button></div>`:""}
+    `;
+  },
+
+  /* ---------- CODEX (everything you've discovered) ---------- */
+  screen_codex(){
+    const races=Object.values(state.codex&&state.codex.races||{});
+    const sys=state.system;
+    return `
+    ${this.statHeader()}
+    <div class="card">
+      <h2>&#9776; Codex</h2>
+      <p class="small dim">Galaxy <b class="gold">${state.galaxyName}</b> — everything you discover, recorded.</p>
+    </div>
+    <div class="card sheet">
+      <h3>Planetary system</h3>
+      ${!sys?`<p class="small dim">Unknown. Buy a ship at the Spaceport and take off to chart it.</p>`
+      :`<p class="small dim">${sys.size} world${sys.size>1?"s":""} orbit your home star.</p>
+        ${sys.planets.map((p,i)=> p.discovered
+          ? krow(`${p.isHome?"&#9737; ":""}${p.world.name}`, `${cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':""}`)
+          : krow(`<span class="dim">Unexplored world ${i+1}</span>`, `<span class="dim">&#128274; locked</span>`)
+        ).join("")}`}
+    </div>
+    <div class="card sheet">
+      <h3>Races discovered <span class="dim small">&middot; ${races.length}</span></h3>
+      ${races.length?races.map(r=>krow(r.name, `${r.archeName} <span style="color:${RARITY.byId(r.tier).color}">${RARITY.byId(r.tier).name}</span>`)).join("")
+        :`<p class="small dim">None yet — travel to other worlds and meet their people.</p>`}
+    </div>`;
   },
 
   /* ---------- COMBAT ---------- */
@@ -1378,11 +1451,16 @@ const UI = {
     if(screen==="hub"){
       $("#actExplore").onclick=()=>startEncounter();
       $("#actMarket").onclick=()=>UI.render("market");
-      $("#actChar").onclick=()=>UI.render("char");
+      $("#actDepart").onclick=()=>UI.render("depart");
       $("#actRest").onclick=()=>{
         if(advanceTime(rnd(5,12))) return;            // resting passes a week or two
         state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
         Game.logMsg("You make camp and rest. HP and energy restored.","sys"); Game.save(); UI.render("hub"); UI.flashLog(); };
+    }
+    if(screen==="depart"){
+      app.querySelectorAll("[data-ship]").forEach(b=> b.onclick=()=>buyShip(b.dataset.ship));
+      const tk=$("#takeoff"); if(tk) tk.onclick=()=>departFirstFlight();
+      const tc=$("#toCodex"); if(tc) tc.onclick=()=>UI.render("codex");
     }
     if(screen==="combat"){
       app.querySelectorAll("[data-atk]").forEach(b=> b.onclick=()=>playerAttack(b.dataset.atk));
@@ -1476,6 +1554,32 @@ function sellItem(id){ if(!state.inv[id]) return;
   Game.logMsg(`Sold ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save(); UI.render("bag"); }
 function buyItem(id){ const p=Game.buyPrice(id); if(state.credits<p){ toast("Not enough credits"); return; }
   state.credits-=p; Game.addItem(id,1); Game.logMsg(`Bought ${DATA.items[id].name} for ${p}c.`,"sys"); Game.save(); UI.render("market"); }
+
+/* ---- leaving the planet: buy a ship, then chart your system on first takeoff ---- */
+function worldSummary(w){ return { name:w.name, biome:w.biome, biomeName:w.biomeName, tier:w.tier,
+  tech:w.tech, wealth:w.wealth, danger:w.danger, pop:w.pop, popName:w.popName }; }
+function buyShip(id){
+  const s=SHIPYARD.find(x=>x.id===id); if(!s) return;
+  if(state.credits<s.price){ toast("Not enough credits"); return; }
+  state.credits-=s.price;
+  state.vehicles.push({ kind:"vehicle", name:s.clsName, tier:"common", cls:s.cls, clsName:s.clsName,
+    axes:s.axes, power:{...s.power}, systemCapable:true });
+  Game.logMsg(`You buy a ${s.name} for ${s.price}c. The sky is no longer a ceiling.`,"good");
+  Game.save(); UI.render("depart");
+}
+function departFirstFlight(){
+  if(advanceTime(rnd(8,20))) return;
+  const size=rollSystemSize();
+  const planets=[];
+  for(let i=0;i<size;i++) planets.push({ index:i, discovered:i===0, isHome:i===0,
+    world:i===0?worldSummary(state.world):null });
+  state.system={ size, homeIndex:0, planets };
+  state.grounded=false;
+  state.achievements.first_flight=true; state.achievements.system_charted=true;
+  Game.logMsg(`You break atmosphere for the first time. Your home star holds ${size} world${size>1?"s":""}.`,"hit");
+  toast("Achievement: First Flight!");
+  Game.save(); UI.render("codex"); UI.flashLog();
+}
 
 function exportSave(){ Game.save();
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
