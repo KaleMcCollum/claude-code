@@ -61,6 +61,11 @@ All ship movement lives in **Crew → Ships / Fleets** (not the Shipyard).
 - To move a single ship, use the **Ships** tab — if it's in a fleet, that takes you to the fleet.
 - The **Star Map** plots your local cluster as a text grid; the Codex's **Planets & systems** tab shows your system, its charted worlds, and known systems with distances.
 
+## The galaxy Map (bottom tab)
+A dedicated **Map** tab shows the whole galaxy on its flat plane, with the **core marked at (0,0)** and your distance from it called out.
+- **Zoom in/out**, pan with the arrows, snap to **Center on me**, or zoom all the way to **Whole galaxy** (see the rim and where you sit in it).
+- **Fog of war:** you only see systems you've **charted**, plus **sensor contacts** within **50 ly** of your charted systems. Everything beyond your known frontier stays hidden until you explore toward it.
+
 ## Next up
 - Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).
 - Procedurally generated creatures & weapons.

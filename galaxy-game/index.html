@@ -118,6 +118,8 @@
   pre.map{background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:8px;
     font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.82rem; line-height:1.05;
     letter-spacing:2px; color:var(--dim); overflow-x:auto; white-space:pre; text-align:center;}
+  svg.gmap{display:block; width:100%; max-width:340px; margin:8px auto; aspect-ratio:1/1;
+    background:radial-gradient(circle at 50% 50%, #0d1322, #070a11); border:1px solid var(--line); border-radius:10px;}
   .hidden{display:none;}
   .flash{animation:flash .5s;}
   @keyframes flash{0%{background:#1a2233;}100%{background:var(--panel);}}
@@ -146,6 +148,7 @@
   <button data-screen="hub"><span class="ico">&#9737;</span>World</button>
   <button data-screen="char"><span class="ico">&#9670;</span>Self</button>
   <button data-screen="codex"><span class="ico">&#9776;</span>Codex</button>
+  <button data-screen="map"><span class="ico">&#128506;</span>Map</button>
   <button data-screen="bag"><span class="ico">&#9783;</span>Items</button>
   <button data-screen="crew"><span class="ico">&#128101;</span>Crew</button>
   <button data-screen="save"><span class="ico">&#8635;</span>Save</button>
@@ -596,6 +599,17 @@ function jumpRange(v){ v=v||Game.ship(); return (v && v.range==="interstellar") 
 function atHere(v){ return !!(v && (v.sysId??0)===(state.sysId??0) && v.slot===state.atSlot); }
 /* the system the player is currently in */
 function curSys(){ return state.galaxy ? state.galaxy.systems[state.sysId??0] : state.system; }
+/* distance of a system from the galactic core (0,0) */
+function distFromCore(sys){ return Math.hypot(sys.x, sys.y); }
+/* ---- map visibility (fog of war) ----
+   You can see a system on the galaxy map only if you've charted it, or if it lies within
+   MAP_SIGHT light-years of one of your charted systems (a sensor contact). */
+const MAP_SIGHT=50;
+function nearestDiscoveredDist(sys){ let best=Infinity;
+  (state.galaxy?state.galaxy.systems:[]).forEach(s=>{ if(s.discovered) best=Math.min(best, Math.hypot(s.x-sys.x, s.y-sys.y)); });
+  return best; }
+function systemVisible(sys){ return sys.discovered || nearestDiscoveredDist(sys)<=MAP_SIGHT; }
+function visibleSystems(){ return state.galaxy ? state.galaxy.systems.filter(systemVisible) : []; }
 /* Ship rarity scales a hull's size/power. Common is the smallest; rarer hulls are much
    bigger — an Epic Cargo Hauler dwarfs a Common one. */
 const SHIP_RARITY_MULT=[1, 1.3, 1.7, 2.4, 3.2, 4.5, 6, 8];
@@ -1625,6 +1639,60 @@ const UI = {
       <p class="small dim" style="margin-top:4px">@ you &middot; H home &middot; * charted &middot; . uncharted</p>`;
   },
 
+  /* ---------- GALAXY MAP (zoomable, fog-of-war) ---------- */
+  screen_map(){
+    if(!state.galaxy) return `${this.statHeader()}
+      <div class="card center"><h2>&#128506; Galaxy Map</h2>
+        <p class="small dim">The galaxy is uncharted until you take off. Buy a ship and leave your homeworld (Crew &rarr; Ships) to map the stars.</p></div>`;
+    const cur=curSys(), core=Math.round(distFromCore(cur));
+    if(!mapView) this.mapCenterMe();
+    const vis=visibleSystems(), charted=vis.filter(s=>s.discovered).length;
+    return `${this.statHeader()}
+    <div class="card"><div class="row between"><h2>&#128506; Galaxy Map</h2>
+      <span class="tag">${core} ly from core</span></div>
+      <p class="small dim">You are in <b class="blue">${cur.name}</b> at <b>(${Math.round(cur.x)}, ${Math.round(cur.y)})</b> &middot; ${charted} system${charted!==1?"s":""} charted, ${vis.length-charted} sensor contact${(vis.length-charted)!==1?"s":""} in range.</p>
+      ${this.mapSvg()}
+      <div class="row" style="margin-top:8px;justify-content:center;gap:6px">
+        <button class="small" id="mapZin">&#10133; Zoom in</button>
+        <button class="small" id="mapZout">&#10134; Zoom out</button>
+        <button class="small ghost" id="mapMe">&#9673; Center on me</button>
+        <button class="small ghost" id="mapAll">&#9737; Whole galaxy</button>
+      </div>
+      <div class="row" style="margin-top:6px;justify-content:center;gap:6px">
+        <button class="small ghost" id="mapU">&#9650;</button>
+        <button class="small ghost" id="mapD">&#9660;</button>
+        <button class="small ghost" id="mapL">&#9664;</button>
+        <button class="small ghost" id="mapR">&#9654;</button>
+      </div>
+      <p class="small dim center" style="margin-top:6px">&#9737; core &middot; &#9678; you &middot; &#9679; charted &middot; &#8728; sensor contact</p>
+    </div>`;
+  },
+  /* build the SVG for the current mapView window */
+  mapSvg(){
+    const SIZE=300, v=mapView, half=v.span/2;
+    const L=v.cx-half, T=v.cy+half;                 // top-left in ly (+y is up)
+    const sx=x=>(x-L)/v.span*SIZE, sy=y=>(T-y)/v.span*SIZE;
+    const inView=(px,py,m)=>px>=-m&&px<=SIZE+m&&py>=-m&&py<=SIZE+m;
+    let els="";
+    // galaxy rim + core (centred on 0,0)
+    const cR=GALAXY.radius/v.span*SIZE, cx0=sx(0), cy0=sy(0);
+    els+=`<circle cx="${cx0.toFixed(1)}" cy="${cy0.toFixed(1)}" r="${cR.toFixed(1)}" fill="none" stroke="#26314a" stroke-dasharray="3 4"/>`;
+    if(inView(cx0,cy0,40)) els+=`<text x="${cx0.toFixed(1)}" y="${(cy0+4).toFixed(1)}" fill="#caa84a" font-size="13" text-anchor="middle">&#9737;</text>
+      <text x="${cx0.toFixed(1)}" y="${(cy0-9).toFixed(1)}" fill="#7d8aa5" font-size="7" text-anchor="middle">CORE</text>`;
+    // systems (only those you can see), labels only when zoomed in enough
+    const showLabels=v.span<=46;
+    visibleSystems().forEach(s=>{ const px=sx(s.x), py=sy(s.y); if(!inView(px,py,8)) return;
+      const here=s.id===state.sysId;
+      if(here){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.5" fill="none" stroke="#5aa9ff" stroke-width="1.5"/>
+        <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2" fill="#5aa9ff"/>`; }
+      else if(s.discovered){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.6" fill="#cfe0ff"/>`; }
+      else { els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.2" fill="none" stroke="#5b6b8a" stroke-width="1"/>`; }
+      if(showLabels && (s.discovered||here)) els+=`<text x="${px.toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${here?'#5aa9ff':'#9fb0cc'}" font-size="7" text-anchor="middle">${here?"You":s.name}</text>`;
+    });
+    return `<svg viewBox="0 0 ${SIZE} ${SIZE}" class="gmap" preserveAspectRatio="xMidYMid meet">${els}</svg>`;
+  },
+  mapCenterMe(){ const c=curSys(); mapView={ cx:c.x, cy:c.y, span:36 }; },
+
   /* ---------- MEET A PERSON (on-planet) ---------- */
   screen_meet(){
     const m=meeting; if(!m) return this.screen_hub();
@@ -2275,6 +2343,18 @@ const UI = {
         moveGroupTo(travelCtx.ids, sid, slot, "crew"); });
       $("#tvBack").onclick=()=>{ travelCtx=null; UI.render("crew"); };
     }
+    if(screen==="map" && state.galaxy){
+      const clampSpan=s=>Math.max(6, Math.min(GALAXY.radius*2.4, s)), step=()=>mapView.span*0.28;
+      const z=(f)=>{ mapView.span=clampSpan(mapView.span*f); UI.render("map"); };
+      const zi=$("#mapZin"); if(zi) zi.onclick=()=>z(0.6);
+      const zo=$("#mapZout"); if(zo) zo.onclick=()=>z(1.6);
+      const me=$("#mapMe"); if(me) me.onclick=()=>{ this.mapCenterMe(); UI.render("map"); };
+      const all=$("#mapAll"); if(all) all.onclick=()=>{ mapView={ cx:0, cy:0, span:GALAXY.radius*2.2 }; UI.render("map"); };
+      const mu=$("#mapU"); if(mu) mu.onclick=()=>{ mapView.cy+=step(); UI.render("map"); };
+      const md=$("#mapD"); if(md) md.onclick=()=>{ mapView.cy-=step(); UI.render("map"); };
+      const ml=$("#mapL"); if(ml) ml.onclick=()=>{ mapView.cx-=step(); UI.render("map"); };
+      const mr=$("#mapR"); if(mr) mr.onclick=()=>{ mapView.cx+=step(); UI.render("map"); };
+    }
     if(screen==="codex"){
       app.querySelectorAll("[data-cx]").forEach(b=> b.onclick=()=>UI.render("cx_"+b.dataset.cx));
       app.querySelectorAll("[data-goto]").forEach(b=> b.onclick=()=>UI.render(b.dataset.goto));
@@ -2719,6 +2799,7 @@ function hireCrew(i){
 function idleHires(){ return (state.crew||[]).filter(c=>!c.shipId); }
 let seatPick=null, crewTab="crewmates", viewingShip=null;   // Crew-tab UI state
 let travelCtx=null;   // {ids:[shipId], title} — what the Travel screen is moving
+let mapView=null;     // {cx,cy,span} — galaxy-map viewport in light-years
 /* open the Travel screen for a set of ships */
 function openTravel(ids, title){ travelCtx={ ids:ids.slice(), title }; UI.render("travel"); }
 /* move one ship; if it's in a fleet, that whole fleet moves (jump to its fleet view) */
@@ -2907,7 +2988,7 @@ function departFirstFlight(){
   const galaxy={ name:state.galaxyName,
     systems:[home].concat(makeNeighborSystems(sp.x, sp.y, 1)) };
   state.galaxy=galaxy; state.sysId=0; state.system=home; state.atSlot=0;
-  state.grounded=false;
+  state.grounded=false; mapView=null;
   state.achievements.first_flight=true; state.achievements.system_charted=true;
   const dist=Math.round(Math.hypot(sp.x,sp.y)), region=cf>0.66?"deep in the crowded core":cf>0.33?"in the galaxy's middle reaches":"out on the sparse rim";
   Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, lies ${region} — ${dist} ly from the core — and holds ${size} world${size>1?"s":""}, with ${galaxy.systems.length-1} other systems glinting nearby.`,"hit");
