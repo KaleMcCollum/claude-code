@@ -79,6 +79,7 @@
   .pill.v{color:var(--violet); border-color:#3a2a57;}
   input[type=text]{width:100%; font-family:inherit; font-size:1rem; padding:11px;
     background:#070a11; color:var(--ink); border:1px solid var(--line); border-radius:10px;}
+  button.rnd{flex:0 0 auto; padding:11px 13px; font-size:1.1rem; line-height:1;}
   .dim{color:var(--dim);} .gold{color:var(--gold);} .green{color:var(--green);}
   .red{color:var(--red);} .blue{color:var(--blue);} .violet{color:var(--violet);}
   .bar{height:9px; background:#070a11; border:1px solid var(--line); border-radius:99px; overflow:hidden; margin:3px 0 8px;}
@@ -665,7 +666,7 @@ const DATA = {
 };
 
 /* ============================================================ STATE ==== */
-const SAVE_KEY = "eots_save_v3"; // bumped: characters now carry genetics, biology & age
+const SAVE_KEY = "eots_save_v4"; // bumped: save is now a galaxy (Codex/achievements persist across lives)
 let state=null, combat=null, creating={};
 
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show");
@@ -706,8 +707,14 @@ const Game = {
     if(sp.powers.includes("hardy")) maxHp=Math.round(maxHp*1.25);
     const maxEnergy=30+Math.round(a.attunement.value*1.5);
 
+    // galaxy-level data persists across lives in the same galaxy (Codex, achievements)
+    const sameGalaxy = state && state.galaxyName===creating.galaxy;
+    const codex = sameGalaxy ? state.codex : { races:{}, worlds:[] };
+    const achievements = sameGalaxy ? state.achievements : {};
+
     state={
-      v:2, created:Date.now(), updated:Date.now(),
+      v:4, created:Date.now(), updated:Date.now(),
+      galaxyName:creating.galaxy, codex, achievements,
       name:creating.name, species:sp, world, vehicles:[veh],
       level:1, xp:0, xpNext:50, stats,
       maxHp, hp:maxHp, maxEnergy, energy:maxEnergy,
@@ -716,6 +723,8 @@ const Game = {
       // you begin as a YOUNG CHILD and grow toward your potential as time flows
       ageStart:Math.max(2, Math.round(sp.maturity.value*LIFE.startFraction)),
       daysElapsed:0, dead:false, deathCause:null, lastStage:null,
+      // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
+      grounded:true, system:null,
       stimReady:false, log:[],
     };
     state.lastStage=Game.stage();
@@ -1014,7 +1023,7 @@ const UI = {
       you get to <b>name</b> them.</p>
       <div class="divider"></div>
       ${cont?`<button class="primary full center" id="btnContinue">&#9654; Continue Journey</button>`:""}
-      <button class="full center ${cont?'ghost':'primary'}" id="btnNew">&#10022; Roll a New Life</button>
+      <button class="full center ${cont?'ghost':'primary'}" id="btnNew">&#10022; New Galaxy</button>
       ${cont?`<button class="full center ghost small" id="btnWipe">Delete saved game</button>`:""}
     </div>
     <div class="card small dim">
@@ -1024,17 +1033,29 @@ const UI = {
     </div>`;
   },
 
-  /* ---------- CREATION (name -> reveal species -> reveal world -> reveal ship) ---------- */
+  /* ---------- CREATION (galaxy -> you -> race -> world -> ship) ---------- */
   screen_create(){
-    const s=creating.step||1;
-    if(s===1) return `
+    const s=creating.step??1;
+    if(s===0) return `
       <div class="card">
-        <h2>What is your name?</h2>
-        <p class="dim small">This much is yours to decide.</p>
-        <input type="text" id="nameInput" maxlength="20" placeholder="e.g. Kael Voss" value="${creating.name||""}">
+        <h2>Name your galaxy</h2>
+        <p class="dim small">This save is a whole galaxy — the long journey that outlives any one
+        character. Name it, or roll the dice.</p>
+        ${nameField("galInput","e.g. Orion's Veil","galaxy",creating.galaxy)}
         <div class="divider"></div>
         <div class="row between">
           <button class="ghost" id="backTitle">&larr; Back</button>
+          <button class="primary" id="toName">Begin &rarr;</button>
+        </div>
+      </div>`;
+    if(s===1) return `
+      <div class="card">
+        <h2>What is your name?</h2>
+        <p class="dim small"><span class="dim">Galaxy:</span> <b class="gold">${creating.galaxy}</b></p>
+        ${nameField("nameInput","e.g. Kael Voss","person",creating.name)}
+        <div class="divider"></div>
+        <div class="row between">
+          <button class="ghost" id="backGalaxy">&larr; Back</button>
           <button class="primary" id="rollSpecies">Roll my origin &rarr;</button>
         </div>
       </div>`;
@@ -1045,14 +1066,14 @@ const UI = {
       <div class="card sheet">
         <h3>Origin</h3>
         ${krow("Body-plan", sp.archeName)}
-        ${krow("Species rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
+        ${krow("Race rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
         ${krow("Population", humanizeCount(sp.population))}
         ${krow("Genome", `<span style="color:${pctColor(sp.genome.avgPct)}">${sp.genome.grade}</span> &middot; ${ordinal(sp.genome.avgPct)} pct`)}
       </div>
       ${speciesSheet(sp)}
       <div class="card reveal">
-        <p class="small">Name your people:</p>
-        <input type="text" id="spNameInput" maxlength="22" placeholder="Name your species" value="${sp.name||""}">
+        <p class="small">Name your race:</p>
+        ${nameField("spNameInput","Name your race","race",sp.name)}
         <div class="row between" style="margin-top:10px">
           <button class="ghost" id="backStep1">&larr; Back</button>
           <button class="primary" id="rollWorld">Name &amp; continue &rarr;</button>
@@ -1072,7 +1093,7 @@ const UI = {
         <div class="statline"><span>Danger</span><span class="${w.danger>=7?'red':w.danger>=4?'gold':'green'}">${DANGER_LABELS[w.danger]} <span class="dim">(${w.danger}/10)</span></span></div>
         <div class="divider"></div>
         <p class="small">What will you call this world?</p>
-        <input type="text" id="wNameInput" maxlength="22" placeholder="Name your world" value="${w.name||""}">
+        ${nameField("wNameInput","Name your world","world",w.name)}
         <div class="row between" style="margin-top:10px">
           <button class="ghost" id="backStep2">&larr; Back</button>
           <button class="primary" id="rollShip">Name &amp; continue &rarr;</button>
@@ -1090,7 +1111,7 @@ const UI = {
         <p class="small dim" style="margin-top:6px">Power is measured in ${UNITS.power.unitLong} (${UNITS.power.unit}).</p>
         <div class="divider"></div>
         <p class="small">Every good pilot names their ship.</p>
-        <input type="text" id="vNameInput" maxlength="22" placeholder="Name your craft" value="${v.name||""}">
+        ${nameField("vNameInput","Name your craft","ship",v.name)}
         <div class="row between" style="margin-top:10px">
           <button class="ghost" id="backStep3">&larr; Back</button>
           <button class="primary" id="toReview">Name &amp; review &rarr;</button>
@@ -1185,8 +1206,8 @@ const UI = {
     <div class="card sheet">
       <h3>Identity</h3>
       ${krow("Name", state.name)}
-      ${krow("People", `${sp.name} <span class="dim">(${sp.archeName})</span>`)}
-      ${krow("Species rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)} &middot; ${humanizeCount(sp.population)} alive`)}
+      ${krow("Race", `${sp.name} <span class="dim">(${sp.archeName})</span>`)}
+      ${krow("Race rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)} &middot; ${humanizeCount(sp.population)} alive`)}
       ${krow("Life stage", `${cap(Game.stage())} <span class="${Game.maturation()<1?'blue':'green'}">${Math.round(Game.maturation()*100)}% grown</span>`)}
       ${krow("Age", `${Math.floor(Game.age())} yr${Game.age()>=Game.twilight()?' <span class="red">(twilight)</span>':''}`)}
     </div>
@@ -1297,6 +1318,7 @@ const UI = {
     ${this.statHeader()}
     <div class="card">
       <h2>&#8635; Save &amp; Data</h2>
+      <p class="small"><span class="dim">Galaxy:</span> <b class="gold">${state.galaxyName||"—"}</b></p>
       <p class="small dim">Autosaves to this browser after every action. Last saved: ${d.toLocaleString()}.</p>
       <div class="divider"></div>
       <button class="full center" id="btnExport">&#8681; Export save file</button>
@@ -1345,12 +1367,13 @@ const UI = {
     [...$("#nav").children].forEach(b=> b.onclick=()=>{ if(combat&&!combat.over&&b.dataset.screen!=="bag"){toast("Finish the encounter first");return;} UI.render(b.dataset.screen); });
 
     if(screen==="title"){
-      const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:1}; UI.render("create"); };
+      const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:0}; UI.render("create"); };
       const c=$("#btnContinue"); if(c) c.onclick=()=>{ Game.load(); UI.render(state.dead?"epilogue":"hub"); };
-      const w=$("#btnWipe"); if(w) w.onclick=()=>{ if(confirm("Delete your saved game?")){Game.wipe(); UI.render("title");} };
+      const w=$("#btnWipe"); if(w) w.onclick=()=>{ if(confirm("Delete your saved galaxy?")){Game.wipe(); UI.render("title");} };
     }
     if(screen==="create") this.bindCreate();
-    if(screen==="epilogue"){ $("#btnNewLife").onclick=()=>{ Game.wipe(); creating={step:1}; UI.render("create"); }; }
+    // start a new life within the SAME galaxy — keep the galaxy name, Codex & achievements
+    if(screen==="epilogue"){ $("#btnNewLife").onclick=()=>{ creating={step:1, galaxy:state.galaxyName}; UI.render("create"); }; }
 
     if(screen==="hub"){
       $("#actExplore").onclick=()=>startEncounter();
@@ -1393,9 +1416,16 @@ const UI = {
   },
 
   bindCreate(){
-    const s=creating.step||1;
-    if(s===1){
+    const s=creating.step??1;
+    // 🎲 Randomize buttons: fill the target input with a procedural name
+    app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
+    if(s===0){
       $("#backTitle").onclick=()=>UI.render("title");
+      $("#toName").onclick=()=>{ let v=$("#galInput").value.trim()||genName("galaxy");
+        creating.galaxy=v; creating.step=1; UI.render("create"); };
+    }
+    if(s===1){
+      $("#backGalaxy").onclick=()=>{ creating.step=0; UI.render("create"); };
       $("#rollSpecies").onclick=()=>{ const v=$("#nameInput").value.trim();
         if(!v){ toast("Enter a name"); return; } creating.name=v;
         creating.species=Gen.species(); creating.step=2; UI.render("create"); };
@@ -1403,7 +1433,7 @@ const UI = {
     if(s===2){
       $("#backStep1").onclick=()=>{ creating.step=1; UI.render("create"); };
       $("#rollWorld").onclick=()=>{ const v=$("#spNameInput").value.trim();
-        if(!v){ toast("Name your species"); return; } creating.species.name=v;
+        if(!v){ toast("Name your race"); return; } creating.species.name=v;
         if(!creating.world) creating.world=Gen.world(); creating.step=3; UI.render("create"); };
     }
     if(s===3){
@@ -1461,6 +1491,30 @@ function importSave(e){ const f=e.target.files[0]; if(!f) return; const r=new Fi
 function article(w){ return /^[aeiou]/i.test(w)?"an":"a"; }
 function ordinal(n){ const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
 function powerLine(v){ return v.axes.map(a=>`${UNITS.power[a].abbr} ${commas(v.power[a])}`).join(" / ")+" "+UNITS.power.unit; }
+
+/* ---------- procedural names (for the 🎲 Randomize buttons) ---------- */
+const NAMEBANK={
+  on:["ka","ve","sho","tri","lo","ma","ze","qu","ar","en","ix","tha","rho","sy","vor","el","nu","dra","phi","os","yl","ten","cas","mir","sol","vex","bro","gan","hel","ja","kor","lum","ny","or","pra","ski"],
+  mid:["ra","li","no","sa","te","mi","va","ce","do","ny","za","ko","lu","be","ri","fa","mo","de","su","ta"],
+  end:["n","s","r","x","l","th","k","ne","ra","os","is","um","ar","en","ix","on","al","yr","ius","ah","eth"],
+};
+function nameWord(min,max){ const r=a=>a[Math.floor(Math.random()*a.length)];
+  const n=rnd(min,max); let w=r(NAMEBANK.on);
+  for(let i=1;i<n;i++) w += (i<n-1 ? r(NAMEBANK.mid) : r(NAMEBANK.end));
+  return cap(w);
+}
+function genName(kind){
+  if(kind==="person") return nameWord(2,3)+" "+nameWord(2,3);
+  if(kind==="galaxy") return nameWord(2,3)+(chance(0.5)?" "+pick(["Expanse","Reach","Cluster","Spiral","Drift","Veil","Sprawl","Verge","Deep"]):"");
+  return nameWord(2,3); // world, race, ship
+}
+/* a text input paired with a Randomize button */
+function nameField(id, placeholder, kind, val){
+  return `<div class="row" style="gap:6px">
+    <input type="text" id="${id}" maxlength="22" placeholder="${placeholder}" value="${val||""}" style="flex:1">
+    <button class="rnd" data-rnd="${kind}" data-for="${id}" title="Randomize">&#127922;</button>
+  </div>`;
+}
 
 /* ---- compact STAT SHEET rows (easy to scan & compare across people) ---- */
 // one numeric trait: label | value (species range) | percentile
