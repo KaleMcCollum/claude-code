@@ -462,8 +462,9 @@ const SETTLEMENTS = [
     desc:"your home colony — a working spaceport among your own kind" },
 ];
 const settleDef=id=>SETTLEMENTS.find(s=>s.id===id)||null;
-function settleAmen(w){ if(!w||w.occupied===false) return [];
-  const s=settleDef(w.settle); return s?s.amen:["tavern","depot","market","broker","shipyard","talk"]; }
+/* a world is inhabited iff it has a settlement — the single source of truth for "has a town" */
+function isInhabited(w){ return !!(w && w.occupied!==false && settleDef(w.settle)); }
+function settleAmen(w){ return isInhabited(w) ? settleDef(w.settle).amen : []; }
 function settleHasShipyard(w){ return settleAmen(w).includes("shipyard"); }
 /* choose a settlement for a freshly-charted inhabited world (gated by its tech/wealth) */
 function pickSettlement(world, sysId){
@@ -478,7 +479,7 @@ function greeterCareer(w){ return settleHasShipyard(w)?"shipwright":(GREETER_CIV
 
 const TECH_LABELS  = ["Stone-age","Pre-industrial","Industrial","Atomic","Information-age","Spacefaring","Interstellar","Advanced","Hyper-advanced","Transcendent"];
 const WEALTH_LABELS= ["Destitute","Impoverished","Poor","Modest","Comfortable","Prosperous","Wealthy","Opulent","Lavish","Gilded"];
-const DANGER_LABELS= ["","Tranquil","Calm","Mild","Unsettled","Rough","Dangerous","Hostile","Deadly","Lethal","Hellish"];
+const DANGER_LABELS= ["","Tranquil","Calm","Mild","Restless","Rough","Dangerous","Hostile","Deadly","Lethal","Hellish"];
 
 /* Inborn temperament — categorical (not better/worse, just different). Each gives a
    small mechanical flavor. Rolled at birth, fixed for life. */
@@ -1044,7 +1045,7 @@ const FOES=[
 /* How built-up a world is (0 wild .. 1 dense city) — decides whether wandering turns up
    beasts (wild worlds) or bad people (cities), or nothing at all (dead worlds). */
 const SETTLE_CIV={ capital:1.0, trade:0.85, industrial:0.7, scrap:0.55, colony:0.5, mining:0.45, agri:0.4, frontier:0.25 };
-function worldCivility(w){ if(!w||w.occupied===false) return 0;
+function worldCivility(w){ if(!isInhabited(w)) return 0;
   let c=SETTLE_CIV[w.settle]; if(c==null) c=0.5;
   if(w.biome==="urban") c=Math.max(c,0.9);
   return c; }
@@ -1101,6 +1102,13 @@ const Game = {
     const eq=state.equipped||{};
     if(!("chest" in eq)) state.equipped={ weapon:eq.weapon||null, head:eq.head||null,
       chest:eq.chest||eq.armor||null, legs:eq.legs||null, feet:eq.feet||null, back:eq.back||eq.relic||null };
+    // pre-settlement saves: inhabited worlds had no settlement type — give them one so they
+    // keep their town services (and so "inhabited" and "has a market" stay consistent)
+    const fixSettle=w=>{ if(w && w.occupied && !settleDef(w.settle)){
+      w.settle = (w.tech>=6&&w.wealth>=6)?"trade":(w.tech>=4?"industrial":(w.tech>=2?"trade":"frontier")); } };
+    fixSettle(state.world);
+    (state.galaxy?state.galaxy.systems:[]).forEach(s=>(s.planets||[]).forEach(p=>{ if(p&&p.world) fixSettle(p.world); }));
+    (state.codex&&state.codex.worlds||[]).forEach(fixSettle);
   },
   wipe(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} state=null; },
 
@@ -1667,7 +1675,7 @@ const UI = {
     <div class="card">
       <h3>Around ${w.name}</h3>
       ${(()=>{ const sd=settleDef(w.settle), amen=settleAmen(w);
-        const note = w.occupied===false
+        const note = !isInhabited(w)
           ? `<p class="small dim">This world is uninhabited — no settlement, no shipyard, no trade. Just the wilds. (Move ships and travel from the <b>Crew</b> tab.)</p>`
           : (sd?`<p class="small dim"><b class="gold">${sd.name}</b> — ${sd.desc}.</p>`:"");
         return `${note}
@@ -2045,7 +2053,7 @@ const UI = {
         <p class="small dim">${sys.size} world${sys.size>1?"s":""} &middot; ${sys.planets.filter(p=>p.discovered).length} charted. <span class="dim">Tap a charted world to study it.</span></p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
           if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}<button class="small ghost" data-world="${sys.id}:${i}">${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
-               <span class="kv">${p.occupied&&settleDef(p.world.settle)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':!p.occupied?' <span class="dim">(empty)</span>':''}</span></div>`;
+               <span class="kv">${isInhabited(p.world)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':!isInhabited(p.world)?' <span class="dim">(empty)</span>':''}</span></div>`;
           return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
                <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`}
     </div>
@@ -2070,14 +2078,14 @@ const UI = {
     ${this.rarityBannerInline(w.tier, `${cap(w.biomeName)} world`)}
     <div class="card sheet"><h3>Survey</h3>
       ${krow("Biome", cap(w.biomeName))}
-      ${krow("Settlement", w.occupied===false?'<span class="dim">Uninhabited</span>':(settleDef(w.settle)?settleDef(w.settle).name:"Inhabited"))}
+      ${krow("Settlement", isInhabited(w)?settleDef(w.settle).name:'<span class="dim">Uninhabited</span>')}
       ${krow("Rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
       ${w.tech!=null?krow("Tech level", TECH_LABELS[w.tech]):""}
       ${w.wealth!=null?krow("Wealth", WEALTH_LABELS[w.wealth]):""}
       ${w.danger!=null?krow("Danger", `${w.danger}/9`):""}
       ${w.popName?krow("Population", w.popName):""}
     </div>
-    ${w.occupied!==false&&settleDef(w.settle)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
+    ${isInhabited(w)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
     <div class="card"><button class="ghost full center" id="backWorlds">&larr; Back to planets &amp; systems</button></div>`;
   },
   screen_cx_obj(){
@@ -2103,13 +2111,13 @@ const UI = {
       <div class="card sheet">
         <h2>${cap(article(w.biomeName))} <span class="blue">${w.biomeName}</span></h2>
         <p class="small dim">${worldDesc(w)}</p>
-        ${krow("Settlement", w.occupied?(settleDef(w.settle)?`<b class="gold">${settleDef(w.settle).name}</b>`:"Inhabited"):'<span class="dim">Uninhabited</span>')}
+        ${krow("Settlement", isInhabited(w)?`<b class="gold">${settleDef(w.settle).name}</b>`:'<span class="dim">Uninhabited</span>')}
         ${krow("Population", cap(w.popName))}
         ${krow("Technology", TECH_LABELS[w.tech])}
         ${krow("Wealth", WEALTH_LABELS[w.wealth])}
         ${krow("Danger", `<span class="${w.danger>=7?'red':w.danger>=4?'gold':'green'}">${DANGER_LABELS[w.danger]}</span>`)}
       </div>
-      ${w.occupied&&settleDef(w.settle)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
+      ${isInhabited(w)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
       <div class="card">
         <p class="small">Name this world:</p>
         ${nameField("arrWorld","Name this world","world",w.name)}
