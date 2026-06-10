@@ -780,7 +780,8 @@ const Game = {
 
     // galaxy-level data persists across lives in the same galaxy (Codex, achievements)
     const sameGalaxy = state && state.galaxyName===creating.galaxy;
-    const codex = sameGalaxy ? state.codex : { races:{}, worlds:[] };
+    const codex = sameGalaxy ? state.codex : { races:{}, worlds:[], people:[], creatures:{} };
+    if(!codex.people) codex.people=[]; if(!codex.creatures) codex.creatures={};
     const achievements = sameGalaxy ? state.achievements : {};
 
     state={
@@ -928,6 +929,9 @@ function startEncounter(){
   let peace=clamp(0.2+w.peaceMod,0.05,0.4);
   if(chance(peace)) return peacefulEvent(w);
   const cid=pick(w.creatures), tpl=DATA.creatures[cid];
+  if(!state.codex.creatures) state.codex.creatures={};
+  const seen=state.codex.creatures[cid]||(state.codex.creatures[cid]={name:tpl.name, blurb:tpl.blurb, count:0, where:w.name});
+  seen.count++;
   const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06;
   combat={ cid, name:tpl.name, blurb:tpl.blurb,
     maxHp:Math.round(tpl.hp*scale), hp:Math.round(tpl.hp*scale),
@@ -1051,7 +1055,8 @@ const UI = {
     this.current=screen;
     const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive"||screen==="meet";
     $("#nav").classList.toggle("hidden", noNav);
-    [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===screen));
+    const navScreen = screen.indexOf("cx_")===0?"codex":screen;
+    [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===navScreen));
     app.innerHTML=(this["screen_"+screen]||(()=> "<p>?</p>")).call(this);
     this.bind(screen); window.scrollTo(0,0);
   },
@@ -1327,38 +1332,99 @@ const UI = {
   },
 
   /* ---------- CODEX (everything you've discovered) ---------- */
+  /* ---------- CODEX (menu of records) ---------- */
+  codexBack(){ return `<div class="card"><button class="ghost full center" id="cxBack">&larr; Back to Codex</button></div>`; },
   screen_codex(){
-    const races=Object.values(state.codex&&state.codex.races||{});
-    const sys=state.system;
+    const cx=state.codex||{};
+    const races=Object.values(cx.races||{}), people=cx.people||[],
+          wild=Object.values(cx.creatures||{}), worlds=cx.worlds||[];
     const done=OBJECTIVES.filter(o=>state.achievements[o.id]).length;
     return `
     ${this.statHeader()}
+    <div class="card"><h2>&#9776; Codex</h2>
+      <p class="small dim">Galaxy <b class="gold">${state.galaxyName}</b> — everything you discover, recorded.</p></div>
     <div class="card">
-      <h2>&#9776; Codex</h2>
-      <p class="small dim">Galaxy <b class="gold">${state.galaxyName}</b> — everything you discover, recorded.</p>
+      <button class="full" data-cx="people">&#128483; People you've met <span class="dim">&middot; ${people.length}</span></button>
+      <button class="full" data-cx="races">&#9670; Races <span class="dim">&middot; ${races.length}</span></button>
+      <button class="full" data-cx="wildlife">&#128062; Wildlife species <span class="dim">&middot; ${wild.length}</span></button>
+      <button class="full" data-cx="worlds">&#9737; Planets &amp; systems <span class="dim">&middot; ${worlds.length}</span></button>
+      <button class="full" data-cx="obj">&#9733; Objectives <span class="dim">&middot; ${done}/${OBJECTIVES.length}</span></button>
+    </div>`;
+  },
+  screen_cx_people(){
+    const people=state.codex.people||[];
+    return `
+    ${this.statHeader()}
+    <div class="card sheet"><h2>&#128483; People met <span class="dim small">&middot; ${people.length}</span></h2>
+      ${people.length?people.slice().reverse().map((p,ri)=>{ const i=people.length-1-ri;
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-person="${i}">${p.name}</button></span>
+          <span class="kv">${p.raceName} <span class="dim">&middot; ${p.where}</span></span></div>`; }).join("")
+        :`<p class="small dim">No one yet — talk to strangers and visit taverns.</p>`}
     </div>
-    <div class="card sheet">
-      <h3>Planetary system</h3>
-      ${!sys?`<p class="small dim">Unknown. Buy a ship at the Spaceport and take off to chart it.</p>`
+    ${this.codexBack()}`;
+  },
+  screen_cx_person(){
+    const p=(state.codex.people||[])[viewingPerson]; if(!p) return this.screen_cx_people();
+    return `
+    ${this.statHeader()}
+    <div class="card"><h2>${p.name}</h2>
+      <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; met at ${p.where}</p></div>
+    ${genomeBanner(p.genome)}
+    ${speciesSheet(p)}
+    <div class="card"><button class="ghost full center" id="backPeople">&larr; Back to people</button></div>`;
+  },
+  screen_cx_races(){
+    const races=Object.values(state.codex.races||{}).sort((a,b)=>RARITY.index(a.tier)-RARITY.index(b.tier));
+    return `
+    ${this.statHeader()}
+    <div class="card sheet"><h2>&#9670; Races <span class="dim small">&middot; ${races.length}</span></h2>
+      ${races.map(r=>`<div class="krow"><span class="lbl">${r.id==="self"?"&#9670; ":""}${r.name} <span class="dim small">(${r.archeName})</span></span>
+        <span class="kv"><span style="color:${RARITY.byId(r.tier).color}">${RARITY.byId(r.tier).name}</span>
+          <span class="dim">&middot; ${r.id==="self"?"your kind":(r.met||0)+" met"}</span></span></div>`).join("")}
+    </div>
+    ${this.codexBack()}`;
+  },
+  screen_cx_wildlife(){
+    const wild=Object.values(state.codex.creatures||{});
+    return `
+    ${this.statHeader()}
+    <div class="card sheet"><h2>&#128062; Wildlife <span class="dim small">&middot; ${wild.length}</span></h2>
+      ${wild.length?wild.map(c=>`<div class="krow"><span class="lbl">${c.name}</span>
+        <span class="kv dim">${c.count} seen &middot; first on ${c.where}</span></div>`).join("")
+        :`<p class="small dim">None — wander the wilds to find creatures.</p>`}
+    </div>
+    ${this.codexBack()}`;
+  },
+  screen_cx_worlds(){
+    const sys=state.system, worlds=state.codex.worlds||[];
+    return `
+    ${this.statHeader()}
+    <div class="card sheet"><h2>&#9737; Planets &amp; systems</h2>
+      <h3 style="margin-top:8px">Your home system</h3>
+      ${!sys?`<p class="small dim">Unknown. Buy a ship at the Shipyard and take off to chart it.</p>`
       :`<p class="small dim">${sys.size} world${sys.size>1?"s":""} orbit your home star &middot; ${sys.planets.filter(p=>p.discovered).length} charted.</p>
         ${sys.planets.map((p,i)=> p.discovered
           ? `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name}</span>
                <span class="kv">${cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':p.occupied?'':' <span class="dim">(empty)</span>'}</span></div>`
           : `<div class="krow"><span class="lbl dim">Unexplored world ${i+1}</span>
-               <span class="kv"><button class="small" data-travel="${i}">&#9992; Travel</button></span></div>`
-        ).join("")}`}
+               <span class="kv"><button class="small" data-travel="${i}">&#9992; Travel</button></span></div>`).join("")}`}
     </div>
-    <div class="card sheet">
-      <h3>Races discovered <span class="dim small">&middot; ${races.length}</span></h3>
-      ${races.map(r=>`<div class="krow"><span class="lbl">${r.id==="self"?"&#9670; ":""}${r.name}</span>
-        <span class="kv">${r.archeName} <span style="color:${RARITY.byId(r.tier).color}">${RARITY.byId(r.tier).name}</span></span></div>`).join("")}
+    <div class="card sheet"><h3>Worlds logged <span class="dim small">&middot; ${worlds.length}</span></h3>
+      ${worlds.map(w=>`<div class="krow"><span class="lbl">${w.name}</span>
+        <span class="kv">${cap(w.biomeName)} <span style="color:${RARITY.byId(w.tier).color}">${RARITY.byId(w.tier).name}</span></span></div>`).join("")}
     </div>
-    <div class="card sheet">
-      <h3>Objectives <span class="dim small">&middot; ${done}/${OBJECTIVES.length}</span></h3>
+    ${this.codexBack()}`;
+  },
+  screen_cx_obj(){
+    const done=OBJECTIVES.filter(o=>state.achievements[o.id]).length;
+    return `
+    ${this.statHeader()}
+    <div class="card sheet"><h2>&#9733; Objectives <span class="dim small">&middot; ${done}/${OBJECTIVES.length}</span></h2>
       ${OBJECTIVES.map(o=>{ const d=!!state.achievements[o.id];
         return `<div class="krow"><span class="lbl">${d?'<span class="green">&#10003;</span>':'<span class="dim">&#9675;</span>'} ${o.label}</span>
           <span class="kv">${d?'<span class="green small">done</span>':''}</span></div>`; }).join("")}
-    </div>`;
+    </div>
+    ${this.codexBack()}`;
   },
 
   /* ---------- ARRIVAL (fly to a world: name it, meet its people, identify their race) ---------- */
@@ -1650,6 +1716,12 @@ const UI = {
       $("#syBack").onclick=()=>UI.render("hub");
     }
     if(screen==="codex"){
+      app.querySelectorAll("[data-cx]").forEach(b=> b.onclick=()=>UI.render("cx_"+b.dataset.cx));
+    }
+    if(screen.indexOf("cx_")===0){
+      const bk=$("#cxBack"); if(bk) bk.onclick=()=>UI.render("codex");
+      const bp=$("#backPeople"); if(bp) bp.onclick=()=>UI.render("cx_people");
+      app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ viewingPerson=+b.dataset.person; UI.render("cx_person"); });
       app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
     }
     if(screen==="arrive") this.bindArrive();
@@ -1830,6 +1902,7 @@ function finishArrival(){
     occupied:a.occupied, raceId:a.draw?a.draw.id:null };
   state.codex.worlds.push(worldSummary(a.world));
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
+  if(a.occupied) recordMeeting(a.person, a.draw.race, a.world.name);
   Game.logMsg(`You chart ${a.world.name}${a.occupied?` and meet the ${a.draw.race.name}`:" — uninhabited"}.`,"sys");
   checkObjectives();
   arriving=null; Game.save(); UI.render("codex"); UI.flashLog();
@@ -1854,6 +1927,7 @@ function finishMeeting(){
   const m=meeting;
   if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
   m.person.raceName=m.draw.race.name;
+  recordMeeting(m.person, m.draw.race, state.world.name);
   Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
   checkObjectives();
   const back=m.back; meeting=null; Game.save(); UI.render(back); UI.flashLog();
@@ -1864,6 +1938,19 @@ function sellShip(i){
   const v=state.vehicles[i], p=shipSell(v);
   state.vehicles.splice(i,1); state.credits+=p;
   Game.logMsg(`You sell the ${v.name} for ${p}c.`,"sys"); Game.save(); UI.render("shipyard");
+}
+
+/* record an individual you've met (compact snapshot) + bump their race's tally */
+let viewingPerson=null;
+function recordMeeting(person, race, where){
+  if(!state.codex.people) state.codex.people=[];
+  const p=JSON.parse(JSON.stringify(person));
+  ["height","mass","maturity","lifespan"].forEach(k=>{ if(p[k]) delete p[k].g; });
+  ATTR_KEYS.forEach(k=>{ if(p.attrs[k]) delete p.attrs[k].g; });
+  Object.keys(p.bio).forEach(k=>{ if(p.bio[k]) delete p.bio[k].g; });
+  p.where=where; p.day=state.daysElapsed; p.raceId=race.id; p.raceName=race.name;
+  state.codex.people.push(p);
+  race.met=(race.met||0)+1;
 }
 function buyShip(id){
   const s=SHIPYARD.find(x=>x.id===id); if(!s) return;
