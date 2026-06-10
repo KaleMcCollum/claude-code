@@ -431,8 +431,9 @@ const CAREERS = [
   { id:"merchant", name:"Merchant", weight:12 },
   { id:"miner",    name:"Miner",    weight:10 },
   { id:"pilot",    name:"Pilot",    weight:10 },
-  { id:"mechanic", name:"Mechanic", weight:8 },
+  { id:"mechanic", name:"Mechanic", weight:9 },
   { id:"mercenary",name:"Mercenary",weight:8 },
+  { id:"gunner",   name:"Gunner",   weight:6 },
   { id:"medic",    name:"Medic",    weight:6 },
   { id:"hunter",   name:"Hunter",   weight:6 },
   { id:"scholar",  name:"Scholar",  weight:4 },
@@ -440,6 +441,15 @@ const CAREERS = [
   { id:"wanted",   name:"Wanted",   weight:3 },   // a fugitive with a bounty on their head
   { id:"shipwright",name:"Shipwright",weight:0 }, // weight 0: only the local yarder gets it
 ];
+/* Which careers you can hire as crew, their fee, and what they do aboard a ship.
+   (Pilots fly; the rest are seated now and gain mechanical roles as the game grows.) */
+const HIRE_ROLES={
+  pilot:    { fee:400, role:"flies the ship — needed for it to follow you" },
+  mechanic: { fee:300, role:"keeps the ship running (larger ships will need several)" },
+  mercenary:{ fee:350, role:"hired muscle — fights for you (combat coming soon)" },
+  gunner:   { fee:350, role:"mans the guns (ship combat coming soon)" },
+  medic:    { fee:450, role:"tends the crew (healing coming soon)" },
+};
 const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
 /* Generic things people say when you greet them. */
 const HELLOS = [
@@ -1585,11 +1595,12 @@ const UI = {
        : p.hired?`<p class="small green">In your crew${crewShip?`, piloting the <b>${crewShip.name}</b>`:` — idle, awaiting a ship (assign from your Fleet)`}.</p>`
        : here?`<div class="row">
             <button id="sayHi">Say hi</button>
-            ${p.career==="pilot"?`<button id="hire" class="primary">Hire as pilot &middot; 400c</button>`:""}
+            ${HIRE_ROLES[p.career]?`<button id="hire" class="primary">Hire as ${careerName(p.career)} &middot; ${HIRE_ROLES[p.career].fee}c</button>`:""}
             ${p.career==="wanted"?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
             ${p.career==="shipwright"?`<button id="buyOldShip" class="primary">Buy their old ship &middot; ${commas(YARDER_SHIP.price)}c</button>`:""}
-            ${p.career!=="pilot"&&p.career!=="wanted"&&p.career!=="shipwright"?`<span class="small dim">${careerName(p.career)} — no work for them yet.</span>`:""}
+            ${!HIRE_ROLES[p.career]&&p.career!=="wanted"&&p.career!=="shipwright"?`<span class="small dim">${careerName(p.career)} — can't hire as crew.</span>`:""}
           </div>
+          ${HIRE_ROLES[p.career]?`<p class="small dim" style="margin-top:6px">${cap(careerName(p.career))}: ${HIRE_ROLES[p.career].role}.</p>`:""}
           ${p.career==="shipwright"?`<p class="small dim" style="margin-top:6px">${YARDER_SHIP.name}: in-system only, cargo ${YARDER_SHIP.cargo}, room for you alone — but it'll get you off-world.</p>`:""}
           ${convo&&convo.idx===viewingPerson?`<p class="small" style="margin-top:8px"><b>${p.name.split(" ")[0]}:</b> "${convo.text}"</p>`:""}`
        : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${p.career==="wanted"?"hunt":"speak with"} them.</p>`}
@@ -2061,7 +2072,7 @@ const UI = {
       app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ convo=null; viewingPerson=+b.dataset.person; UI.render("cx_person"); });
       app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>{ viewingRace=b.dataset.race; UI.render("cx_race"); });
       const sh=$("#sayHi"); if(sh) sh.onclick=()=>sayHi(viewingPerson);
-      const hr=$("#hire"); if(hr) hr.onclick=()=>hirePilot(viewingPerson);
+      const hr=$("#hire"); if(hr) hr.onclick=()=>hireCrew(viewingPerson);
       const at=$("#attack"); if(at) at.onclick=()=>startDuel(viewingPerson);
       const bo=$("#buyOldShip"); if(bo) bo.onclick=()=>buyYarderShip();
       app.querySelectorAll("[data-unassign]").forEach(b=> b.onclick=()=>unassignCrew(+b.dataset.unassign));
@@ -2397,19 +2408,20 @@ function sayHi(i){
   convo={ idx:i, text:pick(HELLOS) };
   UI.render("cx_person");
 }
-function hirePilot(i){
+function hireCrew(i){
   const p=(state.codex.people||[])[i]; if(!p) return;
   if(p.hired){ toast("Already in your crew"); return; }
-  if(p.career!=="pilot"){ toast("Only Pilots can be hired (for now)"); return; }
-  const fee=400;
-  if(state.credits<fee){ toast("Hiring costs "+fee+"c"); return; }
-  state.credits-=fee; state.crew=state.crew||[];
+  const r=HIRE_ROLES[p.career];
+  if(!r){ toast("You can't hire "+careerName(p.career)+"s as crew"); return; }
+  if(state.credits<r.fee){ toast("Hiring costs "+r.fee+"c"); return; }
+  state.credits-=r.fee; state.crew=state.crew||[];
   const member={ name:p.name, raceName:p.raceName, career:p.career, personIdx:i, shipId:null, seat:null };
-  // if a spare spaceworthy ship is docked with you and needs a pilot, put them on it now
-  const ship=(state.vehicles||[]).find(v=>v.slot===state.atSlot && v.id!==state.activeShip && spaceworthy(v) && !Game.pilotOf(v));
-  if(ship){ member.shipId=ship.id; member.seat=0; }
+  // pilots auto-take a free spaceworthy ship docked with you; other roles start idle
+  let ship=null;
+  if(p.career==="pilot"){ ship=(state.vehicles||[]).find(v=>v.slot===state.atSlot && v.id!==state.activeShip && spaceworthy(v) && !Game.pilotOf(v));
+    if(ship){ member.shipId=ship.id; member.seat=0; } }
   state.crew.push(member); p.hired=true;
-  Game.logMsg(`You hire ${p.name} as a pilot${ship?`, assigned to the ${ship.name}`:" — assign them a ship from your Fleet"}.`,"good");
+  Game.logMsg(`You hire ${p.name}, ${careerName(p.career)}${ship?`, assigned to the ${ship.name}`:" — seat them on a ship from the Crew tab"}.`,"good");
   toast("Hired "+p.name);
   Game.save(); UI.render("cx_person");
 }
