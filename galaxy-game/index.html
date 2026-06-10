@@ -2095,13 +2095,15 @@ const UI = {
     <div class="card"><button class="ghost full center" id="backWorlds">&larr; Back to planets &amp; systems</button></div>`;
   },
   screen_cx_obj(){
-    const done=OBJECTIVES.filter(o=>state.achievements[o.id]).length;
+    const doneList=OBJECTIVES.filter(o=>state.achievements[o.id]), done=doneList.length;
+    const earned=doneList.reduce((s,o)=>s+objReward(o),0);
     return `
     ${this.statHeader()}
     <div class="card sheet"><h2>&#9733; Objectives <span class="dim small">&middot; ${done}/${OBJECTIVES.length}</span></h2>
+      <p class="small dim">Each milestone pays a credit bounty when you reach it. Earned so far: <b class="gold">${commas(earned)}c</b>.</p>
       ${OBJECTIVES.map(o=>{ const d=!!state.achievements[o.id];
         return `<div class="krow"><span class="lbl">${d?'<span class="green">&#10003;</span>':'<span class="dim">&#9675;</span>'} ${o.label}</span>
-          <span class="kv">${d?'<span class="green small">done</span>':''}</span></div>`; }).join("")}
+          <span class="kv">${d?'<span class="green small">+'+commas(objReward(o))+'c claimed</span>':'<span class="gold small">+'+commas(objReward(o))+'c</span>'}</span></div>`; }).join("")}
     </div>
     ${this.codexBack()}`;
   },
@@ -2758,26 +2760,34 @@ function buyItem(id){ const p=Game.buyPrice(id); if(state.credits<p){ toast("Not
 
 /* ============================================================ OBJECTIVES */
 const OBJECTIVES=[
-  { id:"first_flight", label:"Take your first flight off-world" },
-  { id:"discover_world", label:"Discover a new world", test:s=>s.codex.worlds.length>=2 },
-  { id:"worlds_5", label:"Discover 5 worlds", test:s=>s.codex.worlds.length>=5 },
-  { id:"meet_race", label:"Meet a race other than your own", test:s=>Object.keys(s.codex.races).length>=2 },
-  { id:"races_5", label:"Document 5 races", test:s=>Object.keys(s.codex.races).length>=5 },
-  { id:"giant", label:"Meet a giant people (avg ≥ 8 ft)", test:s=>codexRaces(s).some(r=>r.ranges.height.mean>=243.8) },
-  { id:"tiny", label:"Meet a tiny people (avg ≤ 3½ ft)", test:s=>codexRaces(s).some(r=>r.ranges.height.mean<=106.7) },
-  { id:"flier", label:"Meet a people who can fly", test:s=>codexRaces(s).some(r=>r.powers.includes("flight")) },
-  { id:"rareworld", label:"Find a Legendary-or-rarer world", test:s=>s.codex.worlds.some(w=>RARITY.index(w.tier)>=4) },
-  { id:"hostile", label:"Set foot on a hostile world (danger ≥ 8)", test:s=>s.codex.worlds.some(w=>w.danger>=8) },
+  { id:"first_flight", label:"Take your first flight off-world", reward:150 },
+  { id:"discover_world", label:"Discover a new world", reward:100, test:s=>s.codex.worlds.length>=2 },
+  { id:"worlds_5", label:"Discover 5 worlds", reward:200, test:s=>s.codex.worlds.length>=5 },
+  { id:"meet_race", label:"Meet a race other than your own", reward:100, test:s=>Object.keys(s.codex.races).length>=2 },
+  { id:"races_5", label:"Document 5 races", reward:200, test:s=>Object.keys(s.codex.races).length>=5 },
+  { id:"giant", label:"Meet a giant people (avg ≥ 8 ft)", reward:250, test:s=>codexRaces(s).some(r=>r.ranges.height.mean>=243.8) },
+  { id:"tiny", label:"Meet a tiny people (avg ≤ 3½ ft)", reward:250, test:s=>codexRaces(s).some(r=>r.ranges.height.mean<=106.7) },
+  { id:"flier", label:"Meet a people who can fly", reward:300, test:s=>codexRaces(s).some(r=>r.powers.includes("flight")) },
+  { id:"rareworld", label:"Find a Legendary-or-rarer world", reward:300, test:s=>s.codex.worlds.some(w=>RARITY.index(w.tier)>=4) },
+  { id:"hostile", label:"Set foot on a hostile world (danger ≥ 8)", reward:200, test:s=>s.codex.worlds.some(w=>w.danger>=8) },
 ];
 function codexRaces(s){ return Object.values(s.codex.races); }
+const objReward=o=>o&&o.reward!=null?o.reward:100;
+/* mark an objective complete (once per galaxy) and pay out its credit bounty */
+function awardObjective(id){
+  if(!state.achievements) state.achievements={};
+  if(state.achievements[id]) return false;
+  state.achievements[id]=true;
+  const o=OBJECTIVES.find(x=>x.id===id), reward=objReward(o);
+  if(reward>0) state.credits+=reward;
+  Game.logMsg(`★ Objective complete: ${o?o.label:id}. +${commas(reward)}c`,"good");
+  toast(`★ ${o?o.label:id}  +${commas(reward)}c`);
+  return true;
+}
 function checkObjectives(){
   if(!state.achievements) state.achievements={};
   for(const o of OBJECTIVES){
-    if(!state.achievements[o.id] && o.test && o.test(state)){
-      state.achievements[o.id]=true;
-      Game.logMsg(`Objective complete: ${o.label}.`,"good");
-      toast("★ "+o.label);
-    }
+    if(!state.achievements[o.id] && o.test && o.test(state)) awardObjective(o.id);
   }
 }
 
@@ -3222,10 +3232,9 @@ function departFirstFlight(){
     systems:[home].concat(makeNeighborSystems(sp.x, sp.y, 1)) };
   state.galaxy=galaxy; state.sysId=0; state.system=home; state.atSlot=0;
   state.grounded=false; mapView=null;
-  state.achievements.first_flight=true; state.achievements.system_charted=true;
   const dist=Math.round(Math.hypot(sp.x,sp.y)), region=cf>0.66?"deep in the crowded core":cf>0.33?"in the galaxy's middle reaches":"out on the sparse rim";
   Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, lies ${region} — ${dist} ly from the core — and holds ${size} world${size>1?"s":""}, with ${galaxy.systems.length-1} other systems glinting nearby.`,"hit");
-  toast("Achievement: First Flight!");
+  awardObjective("first_flight");
   Game.save(); UI.render("codex"); UI.flashLog();
 }
 
