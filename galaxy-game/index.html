@@ -1504,8 +1504,10 @@ function loseEncounter(){
   state.hp=Math.max(1,Math.round(Game.effMaxHp()*0.3));
   Game.logMsg(`You black out, ${lost} credits lighter.`,"bad");
   // knocked out -> carried back to your home world. Your ship stays where it was docked.
-  if(state.galaxy && (state.sysId!==0 || state.atSlot!==0)){
+  if(state.galaxy && (adrift() || state.sysId!==0 || state.atSlot!==0)){
     const stranded=Game.ship();
+    if(adrift()){ playerGroupIds().forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v){ v.sysId=0; v.slot=0; } });
+      state.voidPos=null; }       // limp out of deep space back home
     state.sysId=0; state.atSlot=0; state.system=state.galaxy.systems[0];
     state.world=state.system.planets[0].world;
     const here=Game.shipsHere();
@@ -1910,10 +1912,11 @@ const UI = {
     ${m.resolved?`<div class="card"><p class="small">${m.msg}</p>
       <button class="primary full center" id="voidGo">Hyperdrive on</button></div>`
     :`<div class="card"><div class="grid">
-      ${m.id==="derelict"?`<button id="voidSalvage" class="primary">&#9874; Salvage</button>`:`<button id="voidHail">&#128483; Hail them</button>`}
+      ${m.id==="derelict"?`<button id="voidSalvage" class="primary">&#9874; Salvage</button>`
+        :`<button id="voidContact" class="primary">&#128483; Contact</button>
+      <button class="ghost" disabled>&#9876; Attack <span class="small dim">(ship combat soon)</span></button>`}
       <button id="voidEvade" class="ghost">&#127756; Evade</button>
-      <button class="ghost" disabled>&#9876; Attack <span class="small dim">(ship combat soon)</span></button>
-      </div></div>`}
+      </div>${m.id==="derelict"?"":`<p class="small dim" style="margin-top:6px">Contact them to meet who commands this ${m.ships>1?"fleet":"ship"} — name them and record their kind.</p>`}</div>`}
     ${this.logCard()}`;
   },
   /* ---------- GALAXY MAP (zoomable, fog-of-war) ---------- */
@@ -2002,7 +2005,7 @@ const UI = {
         ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
           :`<p class="small gold">Their kind is new to your Codex.</p>`}
         <p class="small dim">Career: ${careerName(person.career)} &middot; worth <span class="gold">${commas(person.credits||0)}c</span>.${isHostile(person)?` <span class="red">${THREAT_LABEL[person.hostile]} — ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</span>`:""}</p>
-        ${isHostile(person)&&forceDesc(person.force)?`<p class="small red">Commands ${forceDesc(person.force)}.</p>`:""}
+        ${person.force&&forceDesc(person.force)?`<p class="small ${isHostile(person)?'red':'blue'}">Commands ${forceDesc(person.force)}${m.fleet?` under <b class="violet">${m.fleet.faction}</b> colors`:""}.</p>`:""}
       </div>
       ${originCard(person)}
       ${speciesSheet(person)}
@@ -2628,7 +2631,7 @@ const UI = {
     }
     if(screen==="voidmeet"){
       const s=$("#voidSalvage"); if(s) s.onclick=()=>voidSalvage();
-      const h=$("#voidHail"); if(h) h.onclick=()=>voidHail();
+      const c=$("#voidContact"); if(c) c.onclick=()=>voidContact();
       const e=$("#voidEvade"); if(e) e.onclick=()=>voidEvade();
       const g=$("#voidGo"); if(g) g.onclick=()=>voidLeave();
     }
@@ -3055,14 +3058,25 @@ function voidSalvage(){
   m.resolved=true; m.msg=`You strip the hulk for ${commas(cr)}c in salvage.`;
   Game.gainXp(8); Game.save(); UI.render("voidmeet");
 }
-function voidHail(){
-  const m=voidMeet; if(!m||m.resolved) return;
-  m.resolved=true;
-  if(m.threat>=2){ m.msg=`They answer with weapons fire across your bow — no words, only a warning. Best you move on.`; }
-  else { m.msg=pick(["They trade you a rumor: a rich world lies coreward, they say.",
-    "They wave you through with a friendly beacon.","They haven't seen another soul in weeks out here.",
-    "They offer a nav-tip and part ways."]); Game.gainXp(5); }
-  Game.save(); UI.render("voidmeet");
+/* which career commands each kind of void fleet */
+const VOID_CAREER={ cargo:"merchant", transport:"merchant", trader:"merchant", patrol:"mercenary",
+  mercs:"mercenary", pirates:"pirate", warfleet:"warlord", armada:"warlord" };
+/* Contact: open a channel and meet whoever commands the ship/fleet — name them, learn their
+   race (like meeting a stranger), and see the force they command. */
+function voidContact(){
+  const m=voidMeet; if(!m) return;
+  const draw=drawRace(), person=Gen.person(draw.race);
+  const career=VOID_CAREER[m.id]||"merchant", cc=careerById(career);
+  person.career=career;
+  // their command becomes their "force"; bigger fleets, deeper pockets
+  person.force={ ships:m.ships, shipName:"ship", crew:rnd(m.ships*3, Math.max(m.ships*12,6)),
+    fleet:m.ships>=4, controls:false };
+  person.credits=Math.round(rollWealth(cc)*(1+m.ships*0.15));
+  delete person.bounty; delete person.hostile;
+  if(cc.hostile){ person.hostile=cc.hostile; person.bounty=rollBounty(cc, draw.race.tier); }
+  meeting={ draw, person, intro:`You open a channel to the ${m.name}, flying ${m.faction} colors.`,
+    back:"hub", step:1, where:"deep space", fleet:m };
+  voidMeet=null; UI.render("meet");
 }
 function voidEvade(){
   const m=voidMeet; if(!m) return;
@@ -3095,7 +3109,7 @@ function finishMeeting(){
   const m=meeting;
   if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
   m.person.raceName=m.draw.race.name;
-  recordMeeting(m.person, m.draw.race, state.world.name);
+  recordMeeting(m.person, m.draw.race, m.where || (state.world?state.world.name:"deep space"));
   Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
   checkObjectives();
   const back=m.back; meeting=null; Game.save(); UI.render(back); UI.flashLog();
@@ -3353,7 +3367,7 @@ function meetAttack(){
   const m=meeting;
   if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
   m.person.raceName=m.draw.race.name;
-  recordMeeting(m.person, m.draw.race, state.world.name);
+  recordMeeting(m.person, m.draw.race, m.where || (state.world?state.world.name:"deep space"));
   checkObjectives();
   const idx=state.codex.people.length-1; meeting=null;
   startDuel(idx);
