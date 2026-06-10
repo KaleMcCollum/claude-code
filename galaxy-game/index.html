@@ -551,15 +551,30 @@ const SHIP_CLASSES = [
 ];
 const RANGE_LABEL={ surface:"Planet-bound", system:"In-system", interstellar:"Interstellar" };
 const spaceworthy=v=> !!(v && v.range && v.range!=="surface");   // can leave the planet?
+/* Ship rarity scales a hull's size/power. Common is the smallest; rarer hulls are much
+   bigger — an Epic Cargo Hauler dwarfs a Common one. */
+const SHIP_RARITY_MULT=[1, 1.3, 1.7, 2.4, 3.2, 4.5, 6, 8];
+/* Rarer hulls only turn up at higher-tech worlds (and are still rare even there). */
+function rollShipTier(tech){
+  const maxIdx=clamp(Math.floor(tech*0.9), 0, RARITY.tiers.length-1);
+  const allowed=RARITY.tiers.slice(0, maxIdx+1);
+  const total=allowed.reduce((s,t)=>s+t.weight,0); let r=Math.random()*total;
+  for(const t of allowed){ if((r-=t.weight)<0) return t; }
+  return allowed[0];
+}
 /* A planet's shipyard stock, shaped by its tech & wealth (cached per planet). */
 function genShipStock(w){
   const avail=SHIP_CLASSES.filter(c=>w.tech>=c.minTech);
   if(!avail.length) return [];
   const count=clamp(Math.round((w.tech+w.wealth)/3)+rnd(-1,1), 0, 8);
   const stock=[];
-  for(let i=0;i<count;i++){ const c=weightedPick(avail), vf=rndF(0.85,1.15);
-    stock.push({ cls:c.id, name:c.name, range:c.range, cargo:Math.round(c.cargo*vf), crew:c.crew,
-      bays:c.bays, power:{...c.power}, price:Math.round(c.price*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) }); }
+  for(let i=0;i<count;i++){
+    const c=weightedPick(avail), t=rollShipTier(w.tech), m=SHIP_RARITY_MULT[RARITY.index(t.id)], vf=rndF(0.9,1.12);
+    const power={}; Object.keys(c.power).forEach(a=>power[a]=Math.round(c.power[a]*m));
+    stock.push({ cls:c.id, name:c.name, tier:t.id, range:c.range,
+      cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
+      power, price:Math.round(c.price*m*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) });
+  }
   return stock;
 }
 function shipStockAt(){ state.shipStock=state.shipStock||{};
@@ -1440,7 +1455,7 @@ const UI = {
       <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — stock reflects this world's industry.</p></div>
     <div class="card"><h3>Ships for sale</h3>
       ${stock.length?stock.map((o,i)=>`<div class="card" style="margin:8px 0;padding:10px">
-        <div class="row between"><b>${o.name}</b>
+        <div class="row between"><b>${o.name} <span class="small" style="color:${RARITY.byId(o.tier).color}">${RARITY.byId(o.tier).name}</span></b>
           <button data-ship="${i}" ${state.credits<o.price?"disabled":""}>${commas(o.price)}c</button></div>
         <p class="small dim" style="margin:4px 0">${RANGE_LABEL[o.range]} &middot; cargo ${o.cargo} &middot; crew ${o.crew}${o.bays?` &middot; ${o.bays} ship bay${o.bays>1?"s":""}`:""}</p>
       </div>`).join("")
@@ -2387,7 +2402,7 @@ function buyShip(i){
   const stock=shipStockAt(), o=stock[i]; if(!o) return;
   if(state.credits<o.price){ toast("Not enough credits"); return; }
   state.credits-=o.price;
-  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:"common", cls:o.cls, clsName:o.name,
+  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name,
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
     bays:o.bays, value:o.price, cargo:{}, slot:state.atSlot };
   state.vehicles.push(ship);
