@@ -46,7 +46,14 @@ Galaxy constants (tunable, in `GALAXY`): ~**10,000** distinct sapient peoples, ~
 - `Gen` — procedural generators (return `name:null` for the player to christen)
 - `DATA` — hand-authored creatures, items, skills (procedural versions are the next system)
 
+## The galaxy & interstellar travel
+The save is a whole **galaxy** of star systems laid out on a flat 2D plane (light-years).
+- **Only systems have coordinates** — planets don't. Travel *within* a system is free; you fly to any world from the Shipyard.
+- Crossing *between* systems needs an **interstellar hyperdrive**. Reach scales with the ship's **Star Power** (~1 ly per 120 SHp), so a base Star Clipper jumps ~8 ly, a Frigate ~11 ly, a Capital Ship ~27 ly — and rarer hulls reach farther.
+- The **Star Map** (in any Shipyard) plots every system as a digestible text grid and lists them nearest-first with their distance and whether your current ship can make the jump.
+- The Codex's **Planets & systems** tab shows the system you're in, its charted worlds (tap any to study it), and every system you've charted with its distance from you.
+
 ## Next up
 - Name-on-discovery for creatures, guns, and flora as you explore (same rarity engine).
 - Procedurally generated creatures & weapons.
-- Travel between multiple named worlds; a galaxy map.
+- Ship-to-ship and fleet combat (gunners, mercenaries, carrier bays).
