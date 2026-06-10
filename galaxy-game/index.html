@@ -1482,12 +1482,12 @@ const UI = {
     <div class="card sheet"><h2>&#9737; Planets &amp; systems</h2>
       <h3 style="margin-top:8px">Your home system</h3>
       ${!sys?`<p class="small dim">Unknown. Buy a ship at the Shipyard and take off to chart it.</p>`
-      :`<p class="small dim">${sys.size} world${sys.size>1?"s":""} orbit your home star &middot; ${sys.planets.filter(p=>p.discovered).length} charted.</p>
+      :`<p class="small dim">${sys.size} world${sys.size>1?"s":""} orbit your home star &middot; ${sys.planets.filter(p=>p.discovered).length} charted. <span class="dim">Fly to worlds from the Shipyard.</span></p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
-          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name} ${here?'<span class="green small">&#9679;</span>':''}</span>
+          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name} ${here?'<span class="green small">&#9679; here</span>':''}</span>
                <span class="kv">${cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':p.occupied?'':' <span class="dim">(empty)</span>'}</span></div>`;
-          return `<div class="krow"><span class="lbl dim">Unexplored world ${i+1}</span>
-               <span class="kv"><button class="small" data-travel="${i}">&#10022; Explore</button></span></div>`; }).join("")}`}
+          return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
+               <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`}
     </div>
     <div class="card sheet"><h3>Worlds logged <span class="dim small">&middot; ${worlds.length}</span></h3>
       ${worlds.map(w=>`<div class="krow"><span class="lbl">${w.name}</span>
@@ -1813,7 +1813,6 @@ const UI = {
       const bk=$("#cxBack"); if(bk) bk.onclick=()=>UI.render("codex");
       const bp=$("#backPeople"); if(bp) bp.onclick=()=>UI.render("cx_people");
       app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ viewingPerson=+b.dataset.person; UI.render("cx_person"); });
-      app.querySelectorAll("[data-travel]").forEach(b=> b.onclick=()=>travelTo(+b.dataset.travel));
     }
     if(screen==="arrive") this.bindArrive();
     if(screen==="meet") this.bindMeet();
