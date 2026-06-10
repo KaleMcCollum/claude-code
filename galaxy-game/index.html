@@ -115,6 +115,8 @@
   .small{font-size:.8rem;}
   .divider{height:1px; background:var(--line); margin:12px 0;}
   .tag{font-size:.72rem; padding:2px 7px; border-radius:6px; background:var(--panel2); color:var(--dim);}
+  .compass{display:grid; grid-template-columns:repeat(3,1fr); grid-template-areas:". n ." "w . e" ". s ."; gap:6px; max-width:240px; margin:8px auto;}
+  .compass button{padding:10px 0;} .compass .cn{grid-area:n;} .compass .cs{grid-area:s;} .compass .cw{grid-area:w;} .compass .ce{grid-area:e;}
   svg.gmap{display:block; width:100%; max-width:340px; margin:8px auto; aspect-ratio:1/1;
     background:radial-gradient(circle at 50% 50%, #0d1322, #070a11); border:1px solid var(--line); border-radius:10px;}
   .hidden{display:none;}
@@ -1859,11 +1861,9 @@ const UI = {
             :`<span class="dim small">${!inRange?"out of range":"need to be aboard"}</span>`}</span></div>`; }).join("")}
     </div>`:`<div class="card"><p class="small dim">This group can only travel within its own system. A fleet can jump between stars only if every ship aboard is interstellar-class.</p></div>`}
     ${jumpable&&playerIn&&beyond.length?`<div class="card sheet"><h3>&#127756; Hyperdrive into open space</h3>
-      <p class="small dim">Out of reach by a single jump? Hyperdrive into the void toward a distant star — you'll cover ${caps.jump.toFixed(1)} ly and drift between the stars (and may cross paths with other ships).</p>
-      ${beyond.slice(0,8).map(o=>`<div class="krow"><span class="lbl">${o.sys.discovered?o.sys.name:'<span class="dim">distant star</span>'} <span class="dim small">&middot; ${o.d.toFixed(1)} ly</span></span>
-        <span class="kv"><button class="small" data-voidhop="${o.sys.id}">&#127756; Hyperdrive toward</button></span></div>`).join("")}
-      <button class="ghost full center" data-voidhop="rand" style="margin-top:6px">&#10022; Drift into open space (random heading)</button>
-    </div>`:""}
+      <p class="small dim">Out of reach by a single jump? Burn into the void in a direction and drift between the stars — keep going to bring distant systems into range (you may cross paths with other ships).</p>
+      ${beyond.slice(0,6).map(o=>`<div class="krow"><span class="lbl">${o.sys.discovered?o.sys.name:'<span class="dim">distant star</span>'} <span class="dim small">&middot; ${o.d.toFixed(1)} ly ${compassBearing(o.sys.x-osys.x, o.sys.y-osys.y)}</span></span></div>`).join("")}
+    </div>${this.voidCompass(caps.jump)}`:""}
     <div class="card"><button id="tvBack" class="ghost full center">&larr; Back</button></div>`;
   },
   /* ---------- DEEP SPACE (adrift between the stars) ---------- */
@@ -1878,13 +1878,23 @@ const UI = {
       Your hyperdrive reaches <b class="gold">${reach.toFixed(1)} ly</b> per jump.</p>
       ${this.mapSvg({cx:pos.x, cy:pos.y, span:Math.max(reach*2.6, 26)}, {originXY:pos, reach})}
     </div>
+    ${this.voidCompass(reach)}
     <div class="card sheet"><h3>Nearby stars</h3>
-      ${near.map(({s,d})=>{ const inRange=d<=reach+1e-6;
-        return `<div class="krow"><span class="lbl">${s.discovered?s.name:'<span class="dim">unknown star</span>'} <span class="dim small">&middot; ${d.toFixed(1)} ly</span></span>
-          <span class="kv">${inRange?`<button class="small" data-jumpsys="${s.id}">&#9650; Jump in</button>`
-            :`<button class="small ghost" data-voidhop="${s.id}">&#127756; Hyperdrive toward</button>`}</span></div>`; }).join("")}
-      <button class="ghost full center" data-voidhop="rand" style="margin-top:6px">&#10022; Hyperdrive on (random heading)</button>
+      ${near.map(({s,d})=>{ const inRange=d<=reach+1e-6, bearing=compassBearing(s.x-pos.x, s.y-pos.y);
+        return `<div class="krow"><span class="lbl">${s.discovered?s.name:'<span class="dim">unknown star</span>'} <span class="dim small">&middot; ${d.toFixed(1)} ly ${s.id===state.sysId?"":bearing}</span></span>
+          <span class="kv">${inRange?`<button class="small" data-jumpsys="${s.id}">&#9650; Jump in</button>`:'<span class="dim small">out of range</span>'}</span></div>`; }).join("")}
     </div>`;
+  },
+  /* the N/E/S/W hyperdrive pad — burn one jump (reach ly) in a straight direction */
+  voidCompass(reach){
+    return `<div class="card center"><h3>Hyperdrive heading</h3>
+      <p class="small dim">Burn one jump &mdash; <b class="gold">${reach.toFixed(1)} ly</b> &mdash; in a direction. Bring a star into range, then Jump in.</p>
+      <div class="compass">
+        <button class="cn" data-voiddir="n">&#9650;<br>N</button>
+        <button class="cw" data-voiddir="w">&#9664; W</button>
+        <button class="ce" data-voiddir="e">E &#9654;</button>
+        <button class="cs" data-voiddir="s">S<br>&#9660;</button>
+      </div></div>`;
   },
   /* ---------- DEEP-SPACE SHIP ENCOUNTER ---------- */
   screen_voidmeet(){
@@ -2597,7 +2607,7 @@ const UI = {
     if(screen==="epilogue"){ $("#btnNewLife").onclick=()=>{ creating={step:1, galaxy:state.galaxyName}; UI.render("create"); }; }
 
     if(screen==="hub" && adrift()){           // deep-space navigation
-      app.querySelectorAll("[data-voidhop]").forEach(b=> b.onclick=()=>voidHop(b.dataset.voidhop==="rand"?null:+b.dataset.voidhop));
+      app.querySelectorAll("[data-voiddir]").forEach(b=> b.onclick=()=>voidHop(b.dataset.voiddir));
       app.querySelectorAll("[data-jumpsys]").forEach(b=> b.onclick=()=>{ const sid=+b.dataset.jumpsys, sys=state.galaxy.systems[sid];
         if(!sys.planets) sys.planets=buildSystemPlanets(sys.size);
         let slot=sys.planets.findIndex(p=>p&&p.discovered); if(slot<0) slot=0;
@@ -2658,7 +2668,7 @@ const UI = {
         if(!sys.planets) sys.planets=buildSystemPlanets(sys.size);
         let slot=sys.planets.findIndex(p=>p&&p.discovered); if(slot<0) slot=0;
         moveGroupTo(travelCtx.ids, sid, slot, "crew"); });
-      app.querySelectorAll("[data-voidhop]").forEach(b=> b.onclick=()=>voidHop(b.dataset.voidhop==="rand"?null:+b.dataset.voidhop));
+      app.querySelectorAll("[data-voiddir]").forEach(b=> b.onclick=()=>voidHop(b.dataset.voiddir));
       $("#tvBack").onclick=()=>{ travelCtx=null; UI.render("crew"); };
     }
     if(screen==="map" && state.galaxy){
@@ -3014,27 +3024,23 @@ function enterVoid(ids, np){
   (state.vehicles||[]).forEach(v=>{ if(set.has(v.id)){ v.sysId=-1; v.slot=0; } });
   if(set.has(state.activeShip)){ state.sysId=-1; state.atSlot=0; state.system=null; state.world=null; state.voidPos=np; }
 }
-/* hyperdrive one jump's distance toward a target system (or a random heading if sid==null).
-   If the target is already within reach, just drop in there instead. */
-function voidHop(sid){
+/* hyperdrive one jump's distance in a cardinal direction (n/e/s/w). If a star is in range
+   afterward, you can Jump in to it from the Deep Space view. */
+const VOID_DIRS={ n:{d:[0,1], name:"north"}, e:{d:[1,0], name:"east"}, s:{d:[0,-1], name:"south"}, w:{d:[-1,0], name:"west"} };
+function voidHop(dir){
   const ids=playerGroupIds(), caps=groupCaps(ids);
   if(caps.tier!=="interstellar"){ toast("You need an interstellar hyperdrive for that"); return; }
   if(groupBlockers(ids).length){ toast("Your ships need more crew to fly"); return; }
-  const reach=caps.jump, cur=groupXY(ids);
-  let tgt;
-  if(sid!=null){ const ts=state.galaxy.systems[sid]; tgt={x:ts.x,y:ts.y};
-    if(pointDist(cur,tgt)<=reach+1e-6){                     // close enough — arrive at the star
-      let slot=(ts.planets||[]).findIndex(p=>p&&p.discovered); if(slot<0) slot=0;
-      return moveGroupTo(ids, sid, slot, "hub");
-    }
-  } else { const ang=Math.random()*Math.PI*2; tgt={x:cur.x+Math.cos(ang)*100, y:cur.y+Math.sin(ang)*100}; }
+  const D=VOID_DIRS[dir]||VOID_DIRS.e, reach=caps.jump, cur=groupXY(ids);
   if(advanceTime()) return;                                 // a hop is one action
-  const d=pointDist(cur,tgt), ux=(tgt.x-cur.x)/d, uy=(tgt.y-cur.y)/d;
-  enterVoid(ids, { x:+(cur.x+ux*reach).toFixed(2), y:+(cur.y+uy*reach).toFixed(2) });
-  Game.logMsg(`Your hyperdrive carries you ${reach.toFixed(1)} ly into open space.`,"sys");
+  enterVoid(ids, { x:+(cur.x+D.d[0]*reach).toFixed(2), y:+(cur.y+D.d[1]*reach).toFixed(2) });
+  Game.logMsg(`Your hyperdrive carries you ${reach.toFixed(1)} ly ${D.name} into open space.`,"sys");
   if(voidEncounter()){ Game.save(); UI.flashLog(); return; }   // crossed paths with someone
   Game.save(); UI.render("hub"); UI.flashLog();
 }
+/* a rough compass bearing from a vector (which way a star lies) */
+function compassBearing(dx,dy){ const dirs=["E","NE","N","NW","W","SW","S","SE"];
+  let a=Math.atan2(dy,dx); if(a<0) a+=Math.PI*2; return dirs[Math.round(a/(Math.PI/4))%8]; }
 /* a chance, on each deep-space hop, to run into other ships */
 function voidEncounter(){
   if(!chance(0.5)) return false;
