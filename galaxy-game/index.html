@@ -87,6 +87,18 @@
   .xpfill{background:linear-gradient(90deg,#5fd0ff,#b98cff);}
   .enfill{background:linear-gradient(90deg,#6ee7a0,#5fd0ff);}
   .statline{display:flex; justify-content:space-between; font-size:.9rem; padding:2px 0;}
+  /* compact stat-sheet rows */
+  .sheet .srow{display:grid; grid-template-columns:1fr auto 28px; gap:10px; align-items:baseline;
+    padding:4px 0; border-bottom:1px solid var(--line); font-size:.86rem;}
+  .sheet .srow:last-of-type{border-bottom:none;}
+  .sheet .srow .lbl{color:var(--dim);}
+  .sheet .srow .v{text-align:right; color:var(--ink); font-weight:600; white-space:nowrap;}
+  .sheet .srow .v .rg{color:var(--dim); font-weight:400; font-size:.72rem;}
+  .sheet .srow .pc{text-align:right; font-variant-numeric:tabular-nums; font-size:.8rem; font-weight:600;}
+  .sheet .krow{display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:baseline;
+    padding:4px 0; border-bottom:1px solid var(--line); font-size:.86rem;}
+  .sheet .krow:last-of-type{border-bottom:none;}
+  .sheet .krow .lbl{color:var(--dim);} .sheet .krow .kv{text-align:right;}
   .log{background:#070a11; border:1px solid var(--line); border-radius:10px; padding:10px;
     height:160px; overflow-y:auto; font-size:.86rem;}
   .log p{margin:0 0 5px;}
@@ -1021,37 +1033,18 @@ const UI = {
       </div>`;
 
     if(s===2){ const sp=creating.species; const t=RARITY.byId(sp.tier); return `
-      ${this.rarityBanner(sp.tier, `${humanizeCount(sp.population)} of them live in the galaxy`)}
-      <div class="card reveal">
-        <h2>Fate made you ${article(sp.archeName)} <span class="violet">${sp.archeName}</span></h2>
-        <p class="small dim">${cap(sp.flavor)}.</p>
-        <p class="small"><span class="dim">To be born one of so</span>
-          <b style="color:${t.color}">${RARITY.odds(t)}</b>
-          <span class="dim">a people — population about</span> <b>${humanizeCount(sp.population)}</b>
-          <span class="dim">of the galaxy's ~${humanizeCount(GALAXY.totalSapients)} souls.</span></p>
-      </div>
+      ${this.rarityBanner(sp.tier, `${humanizeCount(sp.population)} alive of ~${humanizeCount(GALAXY.totalSapients)}`)}
       ${genomeBanner(sp.genome)}
-      <div class="card reveal">
-        <h3>Body &amp; lifespan <span class="dim small">(fixed for life)</span></h3>
-        <div class="statline"><span>Build</span><span class="gold">${cap(sp.build)}</span></div>
-        ${traitBlock("Adult height", sp.height, cmToFt, cmToFt(HUMAN.height))}
-        ${traitBlock("Adult mass",   sp.mass,   kgToLb, kgToLb(HUMAN.mass))}
-        ${traitBlock("Age of maturity", sp.maturity, yrsFmt, yrsFmt(HUMAN.maturity))}
-        ${traitBlock("Natural lifespan", sp.lifespan, yrsFmt, yrsFmt(HUMAN.lifespan))}
-        <p class="small dim" style="margin-top:6px">A long lifespan is a long campaign — more years to rise before age claims you.</p>
+      <div class="card sheet">
+        <h3>Origin</h3>
+        ${krow("Body-plan", sp.archeName)}
+        ${krow("Species rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
+        ${krow("Population", humanizeCount(sp.population))}
+        ${krow("Genome", `<span style="color:${pctColor(sp.genome.avgPct)}">${sp.genome.grade}</span> &middot; ${ordinal(sp.genome.avgPct)} pct`)}
       </div>
+      ${speciesSheet(sp)}
       <div class="card reveal">
-        <h3>Attributes <span class="dim small">(10 = human average)</span></h3>
-        ${ATTR_KEYS.map(k=>traitBlock(ATTR_LABEL[k], sp.attrs[k], v=>v, HUMAN.attr)).join("")}
-      </div>
-      ${bioCards(sp)}
-      <div class="card reveal">
-        <h3>Innate powers</h3>
-        ${sp.powers.length?sp.powers.map(p=>`<p class="small"><b class="blue">${POWERS[p].name}</b> — ${POWERS[p].desc}</p>`).join("")
-          :`<p class="small dim">None — an ordinary people, gifts earned not given.</p>`}
-      </div>
-      <div class="card reveal">
-        <p class="small">Now — what are your people <b>called</b>?</p>
+        <p class="small">Name your people:</p>
         <input type="text" id="spNameInput" maxlength="22" placeholder="Name your species" value="${sp.name||""}">
         <div class="row between" style="margin-top:10px">
           <button class="ghost" id="backStep1">&larr; Back</button>
@@ -1181,51 +1174,28 @@ const UI = {
     const sp=state.species, t=RARITY.byId(sp.tier);
     return `
     ${this.statHeader()}
-    ${this.rarityBannerInline(sp.tier, `${humanizeCount(sp.population)} of your kind in the galaxy`)}
-    <div class="card">
-      <h2>${state.name}</h2>
-      <p><span class="dim">People:</span> <b class="violet">${sp.name}</b>
-        <span class="small dim">(${sp.archeName})</span></p>
-      <p class="small dim">${cap(sp.flavor)}.</p>
-      <p class="small"><span class="dim">Born</span> <b style="color:${t.color}">${RARITY.odds(t)}</b>
-        <span class="dim">rare a people.</span></p>
-    </div>
     ${genomeBanner(sp.genome)}
-    <div class="card">
-      <h3>Body &amp; lifespan <span class="dim small">(genetic, fixed)</span></h3>
-      <div class="statline"><span>Life stage</span><span class="gold">${cap(Game.stage())} <span class="${Game.maturation()<1?'blue':'green'} small">(${Math.round(Game.maturation()*100)}% grown)</span></span></div>
-      <div class="statline"><span>Current age</span><span class="gold">${Math.floor(Game.age())} yr${Game.age()>=Game.twilight()?' <span class="red small">(twilight)</span>':''}</span></div>
-      <div class="statline"><span>Build (adult)</span><span class="gold">${cap(sp.build)}</span></div>
-      ${traitBlock("Adult height", sp.height, cmToFt, cmToFt(HUMAN.height))}
-      ${traitBlock("Adult mass",   sp.mass,   kgToLb, kgToLb(HUMAN.mass))}
-      ${traitBlock("Age of maturity", sp.maturity, yrsFmt, yrsFmt(HUMAN.maturity))}
-      ${traitBlock("Natural lifespan", sp.lifespan, yrsFmt, yrsFmt(HUMAN.lifespan))}
+    <div class="card sheet">
+      <h3>Identity</h3>
+      ${krow("Name", state.name)}
+      ${krow("People", `${sp.name} <span class="dim">(${sp.archeName})</span>`)}
+      ${krow("Species rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)} &middot; ${humanizeCount(sp.population)} alive`)}
+      ${krow("Life stage", `${cap(Game.stage())} <span class="${Game.maturation()<1?'blue':'green'}">${Math.round(Game.maturation()*100)}% grown</span>`)}
+      ${krow("Age", `${Math.floor(Game.age())} yr${Game.age()>=Game.twilight()?' <span class="red">(twilight)</span>':''}`)}
     </div>
-    <div class="card">
-      <h3>Attributes <span class="dim small">(10 = human avg)</span></h3>
-      ${ATTR_KEYS.map(k=>traitBlock(ATTR_LABEL[k], sp.attrs[k], v=>v, HUMAN.attr)).join("")}
+    ${speciesSheet(sp)}
+    <div class="card sheet">
+      <h3>Trained combat stats <span class="dim small">&middot; genetics × growth × gear</span></h3>
+      ${["might","agility","force","tech","charm"].map(k=>krow(cap(k), Game.effStat(k))).join("")}
     </div>
-    ${bioCards(sp)}
-    <div class="card">
-      <h3>Trained combat stats <span class="dim small">(grow with levels)</span></h3>
-      ${["might","agility","force","tech","charm"].map(k=>{
-        const base=state.stats[k], eff=Game.effStat(k), b=eff-base;
-        return `<div class="statline"><span>${cap(k)}</span><span>${eff}${b?` <span class="green small">(+${b} gear)</span>`:""}</span></div>`;
-      }).join("")}
-    </div>
-    <div class="card">
-      <h3>Innate powers</h3>
-      ${sp.powers.length?sp.powers.map(p=>`<p class="small"><b class="blue">${POWERS[p].name}</b> — ${POWERS[p].desc}</p>`).join("")
-        :`<p class="small dim">None — an ordinary people.</p>`}
-    </div>
-    <div class="card">
+    <div class="card sheet">
       <h3>Skills</h3>
-      ${state.skills.map(s=>`<p class="small"><b class="blue">${s}</b> — ${DATA.skills[s].blurb}</p>`).join("")}
+      ${state.skills.map(s=>krow(s, `<span class="dim">${DATA.skills[s].blurb}</span>`)).join("")}
     </div>
-    <div class="card">
+    <div class="card sheet">
       <h3>Equipment</h3>
       ${["weapon","armor","relic"].map(slot=>{ const id=state.equipped[slot];
-        return `<div class="statline"><span class="dim">${cap(slot)}</span><span>${id?DATA.items[id].name:"<span class='dim'>— empty —</span>"}</span></div>`; }).join("")}
+        return krow(cap(slot), id?DATA.items[id].name:'<span class="dim">— empty —</span>'); }).join("")}
     </div>`;
   },
 
@@ -1485,51 +1455,58 @@ function article(w){ return /^[aeiou]/i.test(w)?"an":"a"; }
 function ordinal(n){ const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
 function powerLine(v){ return v.axes.map(a=>`${UNITS.power[a].abbr} ${commas(v.power[a])}`).join(" / ")+" "+UNITS.power.unit; }
 
-/* Render one genetic trait: your value, your species' range, the human anchor,
-   and where you landed within your own kind. Used in the reveal and Self screen. */
-function traitBlock(label, t, fmt, humanRef){
-  return `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
-    <div class="row between"><span>${label}</span><span class="gold">${fmt(t.value)}</span></div>
-    <div class="small dim">your kind ${fmt(t.min)}&ndash;${fmt(t.max)} &middot; avg ${fmt(t.mean)}${humanRef!=null?` &middot; human ~${humanRef}`:""}</div>
-    <div class="small" style="color:${pctColor(t.pct)}">${ordinal(t.pct)} percentile of your species &mdash; ${pctLabel(t.pct)}</div>
-  </div>`;
+/* ---- compact STAT SHEET rows (easy to scan & compare across people) ---- */
+// one numeric trait: label | value (species range) | percentile
+function trow(label, t, fmt){
+  return `<div class="srow"><span class="lbl">${label}</span>`+
+    `<span class="v">${fmt(t.value)} <span class="rg">${fmt(t.min)}&ndash;${fmt(t.max)}</span></span>`+
+    `<span class="pc" style="color:${pctColor(t.pct)}">${t.pct}</span></div>`;
 }
-/* Biology, nature & heritage cards, shared by the species reveal and Self screen. */
-function bioCards(sp){
+// one label : value line (categorical traits)
+function krow(label, val){
+  return `<div class="krow"><span class="lbl">${label}</span><span class="kv">${val}</span></div>`;
+}
+
+/* The whole species as a compact stat sheet — shared by the reveal and Self screen
+   so any two people read the same way and line up for comparison. */
+function speciesSheet(sp){
   const tmp=TEMPERAMENTS.find(t=>t.id===sp.temperament);
   const cir=CIRCADIAN.find(c=>c.id===sp.detail.circadian);
-  const diet=DIETS[sp.detail.diet];
   const nb=BIOMES.find(b=>b.id===sp.detail.nativeBiome);
-  const senses=sp.detail.senses;
   return `
-  <div class="card reveal">
-    <h3>Biology <span class="dim small">(10 = human avg, fixed)</span></h3>
-    ${traitBlock("Metabolism", sp.bio.metabolism, v=>v, HUMAN.attr)}
-    ${traitBlock("Perception", sp.bio.perception, v=>v, HUMAN.attr)}
-    ${traitBlock("Resilience", sp.bio.resilience, v=>v, HUMAN.attr)}
-    ${traitBlock("Recovery",   sp.bio.recovery,   v=>v, HUMAN.attr)}
-    ${traitBlock("Fertility",  sp.bio.fertility,  v=>v, HUMAN.attr)}
-    <p class="small dim" style="margin-top:6px">Metabolism speeds energy; Perception sharpens crits &amp; ambush;
-    Resilience blunts harm; Recovery heals you over time; Fertility shapes how populous your kind is.</p>
+  <div class="card sheet">
+    <h3>Physical <span class="dim small">&middot; you / your&nbsp;kind / %ile &middot; human anchor below</span></h3>
+    ${trow("Height", sp.height, cmToFt)}
+    ${trow("Mass", sp.mass, kgToLb)}
+    ${trow("Maturity", sp.maturity, x=>Math.round(x)+"yr")}
+    ${trow("Lifespan", sp.lifespan, x=>Math.round(x)+"yr")}
+    ${krow("Build", cap(sp.build))}
+    <p class="small dim" style="margin-top:4px">human ~ ${cmToFt(HUMAN.height)}, ${kgToLb(HUMAN.mass)}, ${HUMAN.maturity}yr, ${HUMAN.lifespan}yr</p>
   </div>
-  <div class="card reveal">
-    <h3>Inborn nature</h3>
-    <div class="statline"><span>Temperament</span><span class="gold">${tmp.name}</span></div>
-    <p class="small dim">${cap(tmp.desc)}.</p>
+  <div class="card sheet">
+    <h3>Attributes <span class="dim small">&middot; 10 = human average</span></h3>
+    ${ATTR_KEYS.map(k=>trow(ATTR_LABEL[k], sp.attrs[k], v=>v)).join("")}
   </div>
-  <div class="card reveal">
-    <h3>Heritage</h3>
-    <div class="statline"><span>Diet</span><span class="gold">${diet.name}</span></div>
-    <p class="small dim">${cap(diet.desc)}.</p>
-    <div class="statline"><span>Rhythm</span><span class="gold">${cir.name}</span></div>
-    <p class="small dim">${cap(cir.desc)}.</p>
-    <div class="statline"><span>Locomotion</span><span>${cap(sp.detail.locomotion)}</span></div>
-    <div class="statline"><span>Biochemistry</span><span>${cap(sp.detail.biochem)}</span></div>
-    <div class="statline"><span>Communication</span><span>${cap(sp.detail.communication)}</span></div>
-    <div class="statline"><span>Reproduction</span><span class="small">${sp.reproduction}</span></div>
-    <div class="statline"><span>Ancestral biome</span><span>${cap(nb.name)}</span></div>
-    ${senses.length?`<div class="divider"></div><p class="small"><span class="dim">Heightened senses:</span> ${senses.map(s=>`<span class="pill b">${s}</span>`).join("")}</p>`
-      :`<p class="small dim">No senses beyond the ordinary.</p>`}
+  <div class="card sheet">
+    <h3>Biology <span class="dim small">&middot; 10 = human average</span></h3>
+    ${["metabolism","perception","resilience","recovery","fertility"].map(k=>trow(cap(k), sp.bio[k], v=>v)).join("")}
+  </div>
+  <div class="card sheet">
+    <h3>Heritage &amp; nature</h3>
+    ${krow("Temperament", tmp.name)}
+    ${krow("Diet", DIETS[sp.detail.diet].name)}
+    ${krow("Rhythm", cir.name)}
+    ${krow("Locomotion", cap(sp.detail.locomotion))}
+    ${krow("Biochemistry", cap(sp.detail.biochem))}
+    ${krow("Communication", cap(sp.detail.communication))}
+    ${krow("Reproduction", sp.reproduction)}
+    ${krow("Ancestral biome", cap(nb.name))}
+    ${krow("Special senses", sp.detail.senses.length?sp.detail.senses.join(", "):"ordinary")}
+  </div>
+  <div class="card sheet">
+    <h3>Innate powers</h3>
+    ${sp.powers.length?sp.powers.map(p=>krow(POWERS[p].name, `<span class="dim">${POWERS[p].desc}</span>`)).join("")
+      :`<p class="small dim">None.</p>`}
   </div>`;
 }
 
