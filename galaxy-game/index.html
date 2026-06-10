@@ -424,6 +424,29 @@ const TEMPERAMENTS = [
   { id:"stalwart",   name:"Stalwart",   weight:14, desc:"hardy spirit — extra grit in a long life", eff:{frailtyResist:0.5} },
 ];
 
+/* A person's CAREER (individual, not racial). Pilots can be hired to fly your ships. */
+const CAREERS = [
+  { id:"laborer",  name:"Laborer",  weight:18 },
+  { id:"farmer",   name:"Farmer",   weight:14 },
+  { id:"merchant", name:"Merchant", weight:12 },
+  { id:"miner",    name:"Miner",    weight:10 },
+  { id:"pilot",    name:"Pilot",    weight:10 },
+  { id:"mechanic", name:"Mechanic", weight:8 },
+  { id:"mercenary",name:"Mercenary",weight:8 },
+  { id:"medic",    name:"Medic",    weight:6 },
+  { id:"hunter",   name:"Hunter",   weight:6 },
+  { id:"scholar",  name:"Scholar",  weight:4 },
+  { id:"smuggler", name:"Smuggler", weight:4 },
+];
+const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
+/* Generic things people say when you greet them. */
+const HELLOS = [
+  "Clear skies, traveler.","Hah — you again. What is it?","Well met. Mind the storms out east.",
+  "Credits talk; everything else is noise.","I keep to myself, mostly.","You look like trouble. I like that.",
+  "Safe travels out there.","Not much happens here. Suits me fine.","Buy low, sell high — that's the whole of it.",
+  "If you're looking for work, I'm not the one to ask.","Long way from anywhere, this place.",
+];
+
 /* Build is DERIVED from height + mass (a BMI-like read), pure flavor. */
 function buildLabel(heightCm, massKg){
   const m=heightCm/100, bmi=massKg/(m*m);
@@ -681,7 +704,7 @@ const Gen = {
     const avgPct=clamp(Math.round(normCdf(qg.reduce((s,x)=>s+x,0)/qg.length)*100),1,99);
     return { kind:"species", name:null, raceName:race.name, tier:race.tier, arche:race.arche,
              archeName:race.archeName, flavor:race.flavor, sig:race.sig, population:race.population,
-             height, mass, maturity, lifespan, attrs, bio,
+             height, mass, maturity, lifespan, attrs, bio, career:weightedPick(CAREERS).id,
              temperament:weightedPick(TEMPERAMENTS).id, build:buildLabel(height.value,mass.value),
              detail:race.detail, reproduction:race.reproduction, powers:race.powers,
              genome:{ avgPct, grade:gradeLabel(avgPct) } };
@@ -1432,6 +1455,7 @@ const UI = {
         <h2>${person.name||"A stranger"}</h2>
         ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
           :`<p class="small gold">Their kind is new to your Codex.</p>`}
+        <p class="small dim">Career: ${careerName(person.career)}.</p>
       </div>
       ${originCard(person)}
       ${speciesSheet(person)}
@@ -1477,10 +1501,23 @@ const UI = {
   },
   screen_cx_person(){
     const p=(state.codex.people||[])[viewingPerson]; if(!p) return this.screen_cx_people();
+    const here = state.atSlot===p.slot;
+    const crewShip = p.hired ? (state.vehicles||[]).find(v=>v.id===p.shipId) : null;
     return `
     <div class="card"><h2>${p.name}</h2>
-      <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; met at ${p.where}.</p>
+      <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; ${careerName(p.career)} &middot; met at ${p.where}.</p>
       ${p.raceId?`<button class="small ghost" data-race="${p.raceId}" style="margin-top:8px">View ${p.raceName} race &rarr;</button>`:""}
+    </div>
+    <div class="card">
+      <h3>Speak with ${p.name.split(" ")[0]}</h3>
+      ${p.hired?`<p class="small green">In your crew, piloting the <b>${crewShip?crewShip.name:"—"}</b>. They follow you between worlds.</p>`
+       : here?`<div class="row">
+            <button id="sayHi">Say hi</button>
+            ${p.career==="pilot"?`<button id="hire" class="primary">Hire as pilot &middot; 400c</button>`
+              :`<span class="small dim">Career: ${careerName(p.career)} — not a pilot, can't crew a ship.</span>`}
+          </div>
+          ${convo&&convo.idx===viewingPerson?`<p class="small" style="margin-top:8px"><b>${p.name.split(" ")[0]}:</b> "${convo.text}"</p>`:""}`
+       : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to speak with them.</p>`}
     </div>
     ${originCard(p)}
     ${speciesSheet(p)}
@@ -1596,6 +1633,7 @@ const UI = {
         <h2>${person.name||"A stranger"}</h2>
         ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
           :`<p class="small gold">Their kind is new to your Codex.</p>`}
+        <p class="small dim">Career: ${careerName(person.career)}.</p>
       </div>
       ${originCard(person)}
       ${speciesSheet(person)}
@@ -1703,6 +1741,7 @@ const UI = {
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
         <p class="small dim">${v.clsName}${v.systemCapable?"":" · surface only"}</p>
         ${krow("Docked at", `<b class="blue">${shipLocationName(v.slot)}</b>${here?' <span class="green small">(here)</span>':''}`)}
+        ${krow("Pilot", active?'<span class="green">you</span>':v.pilot?`${v.pilot.name} <span class="dim small">(hired)</span>`:'<span class="dim">none (won&#39;t follow)</span>')}
         ${krow("Cargo", `${used}/${v.hold}${used?` &middot; ${Object.entries(v.cargo).map(([id,n])=>n+"× "+COMMODITIES.find(c=>c.id===id).name).join(", ")}`:""}`)}
         ${v.axes.map(a=>krow(UNITS.power[a].label, UNITS.fmtPower(v.power[a]))).join("")}
         <div class="row" style="margin-top:8px">
@@ -1867,10 +1906,12 @@ const UI = {
     }
     if(screen.indexOf("cx_")===0){
       const bk=$("#cxBack"); if(bk) bk.onclick=()=>UI.render("codex");
-      const bp=$("#backPeople"); if(bp) bp.onclick=()=>UI.render("cx_people");
+      const bp=$("#backPeople"); if(bp) bp.onclick=()=>{ convo=null; UI.render("cx_people"); };
       const br=$("#backRaces"); if(br) br.onclick=()=>UI.render("cx_races");
-      app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ viewingPerson=+b.dataset.person; UI.render("cx_person"); });
+      app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ convo=null; viewingPerson=+b.dataset.person; UI.render("cx_person"); });
       app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>{ viewingRace=b.dataset.race; UI.render("cx_race"); });
+      const sh=$("#sayHi"); if(sh) sh.onclick=()=>sayHi(viewingPerson);
+      const hr=$("#hire"); if(hr) hr.onclick=()=>hirePilot(viewingPerson);
     }
     if(screen==="arrive") this.bindArrive();
     if(screen==="meet") this.bindMeet();
@@ -2038,7 +2079,8 @@ function travelTo(slot){
   const p=state.system.planets[slot];
   if(advanceTime(rnd(10,30))) return;            // the crossing takes weeks
   if(p.discovered){                              // already charted — just fly there
-    Game.ship().slot=slot; state.world=p.world; state.atSlot=slot;
+    const old=state.atSlot; Game.ship().slot=slot; moveFollowers(old,slot);
+    state.world=p.world; state.atSlot=slot;
     Game.logMsg(`You set course for ${p.world.name} and touch down.`,"sys");
     Game.save(); UI.render("hub"); UI.flashLog(); return;
   }
@@ -2056,7 +2098,8 @@ function finishArrival(){
   const ws=worldSummary(a.world); ws.reported=false; state.codex.worlds.push(ws);
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
   if(a.occupied) recordMeeting(a.person, a.draw.race, a.world.name);
-  Game.ship().slot=slot; state.world=a.world; state.atSlot=slot;   // you (and your ship) are now here
+  const old=state.atSlot; Game.ship().slot=slot; moveFollowers(old,slot);   // you + crewed ships arrive
+  state.world=a.world; state.atSlot=slot;
   Game.logMsg(`You chart ${a.world.name}${a.occupied?` and meet the ${a.draw.race.name}`:" — uninhabited"}.`,"sys");
   checkObjectives();
   arriving=null; Game.save(); UI.render("hub"); UI.flashLog();
@@ -2166,9 +2209,36 @@ function recordMeeting(person, race, where){
   ["height","mass","maturity","lifespan"].forEach(k=>{ if(p[k]) delete p[k].g; });
   ATTR_KEYS.forEach(k=>{ if(p.attrs[k]) delete p.attrs[k].g; });
   Object.keys(p.bio).forEach(k=>{ if(p.bio[k]) delete p.bio[k].g; });
-  p.where=where; p.day=state.daysElapsed; p.raceId=race.id; p.raceName=race.name;
+  p.where=where; p.slot=state.atSlot; p.day=state.daysElapsed; p.raceId=race.id; p.raceName=race.name;
   state.codex.people.push(p);
   race.met=(race.met||0)+1;
+}
+
+/* talk to / hire people you've met — only when you're at the planet you met them on */
+let convo=null;   // {idx, text} transient greeting shown on the person page
+function sayHi(i){
+  const p=(state.codex.people||[])[i]; if(!p) return;
+  convo={ idx:i, text:pick(HELLOS) };
+  UI.render("cx_person");
+}
+function hirePilot(i){
+  const p=(state.codex.people||[])[i]; if(!p) return;
+  if(p.hired){ toast("Already in your crew"); return; }
+  if(p.career!=="pilot"){ toast("Only Pilots can be hired to fly your ships"); return; }
+  // need a spare ship docked here that you aren't flying and that has no pilot
+  const ship=(state.vehicles||[]).find(v=>v.slot===state.atSlot && v.id!==state.activeShip && v.systemCapable && !v.pilot);
+  if(!ship){ toast("No spare ship here for them to fly"); return; }
+  const fee=400;
+  if(state.credits<fee){ toast("Hiring costs "+fee+"c"); return; }
+  state.credits-=fee; ship.pilot={ name:p.name, raceName:p.raceName };
+  p.hired=true; p.shipId=ship.id;
+  Game.logMsg(`You hire ${p.name} to pilot the ${ship.name}. They'll follow you between worlds.`,"good");
+  toast("Hired "+p.name);
+  Game.save(); UI.render("cx_person");
+}
+/* when you fly, pilot-crewed ships at your old dock follow you to the new one */
+function moveFollowers(oldSlot, newSlot){
+  (state.vehicles||[]).forEach(v=>{ if(v.slot===oldSlot && v.pilot && v.id!==state.activeShip) v.slot=newSlot; });
 }
 function buyShip(id){
   const s=SHIPYARD.find(x=>x.id===id); if(!s) return;
