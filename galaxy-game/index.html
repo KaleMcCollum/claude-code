@@ -2124,25 +2124,29 @@ const UI = {
     ${this.codexBack()}`;
   },
   screen_cx_worlds(){
-    const g=state.galaxy, sys=curSys(), worlds=state.codex.worlds||[];
-    // known systems (the one you're in + any you've charted), nearest first
-    const known = g ? g.systems.filter(s=>s.discovered).map(s=>({ s, d:s.id===state.sysId?0:sysDist(state.sysId,s.id) }))
+    const g=state.galaxy, sys=curSys(), worlds=state.codex.worlds||[], pos=playerXY();
+    // known systems (the one you're in + any you've charted), nearest first — distance from
+    // your current system OR your deep-space drift point
+    const known = g ? g.systems.filter(s=>s.discovered).map(s=>({ s, d:s.id===state.sysId?0:pointDist(pos,{x:s.x,y:s.y}) }))
       .sort((a,b)=>a.d-b.d) : [];
     return `
     ${this.statHeader()}
     <div class="card sheet"><h2>&#9737; Planets &amp; systems</h2>
-      ${!sys?`<p class="small dim">Unknown. Buy a ship at the Shipyard and take off to chart your home system — then the wider galaxy opens up.</p>`
-      :`<h3 style="margin-top:8px">${sys.name} <span class="dim small">&middot; current system</span></h3>
+      ${sys?`<h3 style="margin-top:8px">${sys.name} <span class="dim small">&middot; current system</span></h3>
         <p class="small dim">${sys.size} world${sys.size>1?"s":""} &middot; ${sys.planets.filter(p=>p.discovered).length} charted. <span class="dim">Tap a charted world to study it.</span></p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
           if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}<button class="small ghost" data-world="${sys.id}:${i}">${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
                <span class="kv">${isInhabited(p.world)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':!isInhabited(p.world)?' <span class="dim">(empty)</span>':''}</span></div>`;
           return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
-               <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`}
+               <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`
+      : adrift()?`<h3 style="margin-top:8px">&#127756; Deep space</h3>
+        <p class="small dim">Adrift between the stars at <b>(${Math.round(pos.x)}, ${Math.round(pos.y)})</b>, ${Math.round(Math.hypot(pos.x,pos.y))} ly from the core. Navigate from the <b>World</b> tab.</p>`
+      : `<p class="small dim">Unknown. Buy a ship at the Shipyard and take off to chart your home system — then the wider galaxy opens up.</p>`}
     </div>
     ${g&&g.systems.length>1?`<div class="card sheet"><h3>Known systems <span class="dim small">&middot; ${known.length} charted / ${g.systems.length} in range of sensors</span></h3>
-      ${known.map(({s,d})=>`<div class="krow"><span class="lbl">${s.id===state.sysId?'&#9737; ':''}${s.name}${s.id===state.sysId?' <span class="green small">&#9679; here</span>':''}</span>
-        <span class="kv">${s.id===state.sysId?'<span class="dim">current</span>':`${d.toFixed(1)} ly`} <span class="dim small">&middot; ${(s.planets||[]).filter(p=>p.discovered).length}/${s.size} charted</span></span></div>`).join("")}
+      ${known.map(({s,d})=>{ const cur=!adrift()&&s.id===state.sysId;
+        return `<div class="krow"><span class="lbl">${cur?'&#9737; ':''}${s.name}${cur?' <span class="green small">&#9679; here</span>':''}</span>
+        <span class="kv">${cur?'<span class="dim">current</span>':`${d.toFixed(1)} ly`} <span class="dim small">&middot; ${(s.planets||[]).filter(p=>p.discovered).length}/${s.size} charted</span></span></div>`; }).join("")}
       <p class="small dim" style="margin-top:6px">Open <b>Travel</b> from the Crew tab to fly or jump between systems.</p>
     </div>`:""}
     <div class="card sheet"><h3>Worlds logged <span class="dim small">&middot; ${worlds.length}</span></h3>
