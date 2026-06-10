@@ -744,6 +744,16 @@ function shipStockAt(){ state.shipStock=state.shipStock||{};
   if(!state.shipStock[key]) state.shipStock[key]=genShipStock(state.world);
   return state.shipStock[key]; }
 
+/* A market's stock for the year: staple supplies are always carried; the gear on offer is a
+   rotating selection (wealthier worlds carry more), refreshed when a year passes. */
+function genMarketStock(w){
+  const eligible=Object.keys(DATA.items).filter(id=>{ const it=DATA.items[id]; return it.kind!=="trade" && it.minTech<=w.tech; });
+  const staples=eligible.filter(id=>DATA.items[id].kind==="consumable");
+  const gear=eligible.filter(id=>DATA.items[id].kind!=="consumable").sort(()=>Math.random()-0.5);
+  const take=clamp(Math.round(gear.length*(0.4+w.wealth*0.06)), Math.min(3,gear.length), gear.length);
+  return staples.concat(gear.slice(0,take));
+}
+
 /* Planetary-system size: how many worlds orbit your home star. Avg ~5, rarely alone,
    rarely crowded. Rolled the first time you leave your planet. */
 const SYSTEM_SIZE = [
@@ -1253,9 +1263,10 @@ const Game = {
     return Math.max(1,Math.round(p)); },
   sellPrice(id){ let p=DATA.items[id].value*0.55*(1+state.world.wealth*0.02);
     if(Game.hasPower("mercantile")) p*=1.15; return Math.max(1,Math.round(p)); },
-  marketStock(){ const w=state.world;
-    return Object.keys(DATA.items).filter(id=>{ const it=DATA.items[id];
-      if(it.kind==="trade") return false; return it.minTech<=w.tech; }); },
+  marketStock(){ state.marketStock=state.marketStock||{};
+    const key=(state.sysId??0)+":"+state.atSlot;
+    if(!state.marketStock[key]) state.marketStock[key]=genMarketStock(state.world);
+    return state.marketStock[key]; },
 
   gainXp(n){ n=Math.round(n*Game.tempEff("xpMult",1)); state.xp+=n; let lv=false;
     while(state.xp>=state.xpNext){ state.xp-=state.xpNext; state.level++; lv=true;
@@ -1291,7 +1302,12 @@ function advanceTime(n){
   // yearly upkeep: bill wages + maintenance for each year (ACTIONS_PER_YEAR actions) elapsed
   const yrs=Math.floor(state.actions/ACTIONS_PER_YEAR);
   if(state.lastBillYear==null) state.lastBillYear=yrs;
+  const prevYr=state.lastBillYear;
   while(state.lastBillYear<yrs){ chargeUpkeep(); state.lastBillYear++; }
+  if(yrs>prevYr){                       // a year turned over: markets & shipyards refresh stock
+    state.shipStock={}; state.marketStock={};
+    Game.logMsg(`A year turns over — markets and shipyards across the galaxy refresh their stock.`,"sys");
+  }
   const a=Game.age(), l=Game.lifespan();
   if(a>=l){
     const over=a-l, p=clamp(0.04+over*0.05, 0.04, 0.6);
@@ -1762,7 +1778,7 @@ const UI = {
     return `
     ${this.statHeader()}
     <div class="card"><h2>&#128736; ${w.name} Shipyard</h2>
-      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — stock reflects this world's industry.</p></div>
+      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — stock reflects this world's industry, and turns over each year.</p></div>
     <div class="card"><h3>Ships for sale</h3>
       ${stock.length?stock.map((o,i)=>`<div class="card" style="margin:8px 0;padding:10px">
         <div class="row between"><b>${o.name} <span class="small" style="color:${RARITY.byId(o.tier).color}">${RARITY.byId(o.tier).name}</span></b>
@@ -2422,7 +2438,7 @@ const UI = {
     <div class="card">
       <h2>&#9879; ${w.name} Outfitter</h2>
       <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]}. Weapons, armor and field gear —
-        stock reflects this world's tech. Credits: <b class="gold">${state.credits}</b></p>
+        stock turns over each year. Credits: <b class="gold">${state.credits}</b></p>
     </div>
     <div class="card">
       ${stock.length===0?`<p class="dim small">This world is too primitive to sell much of anything.</p>`:""}
