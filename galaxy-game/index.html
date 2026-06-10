@@ -550,6 +550,9 @@ const SHIP_CLASSES = [
   { id:"capital", name:"Capital Ship",   range:"interstellar", cargo:420, crew:40, bays:5, price:320000, minTech:8, weight:2,  power:{flight:420,star:3200} },
 ];
 const RANGE_LABEL={ surface:"Planet-bound", system:"In-system", interstellar:"Interstellar" };
+/* The dockmaster's clunker — always available to buy off the Yarder so you're never
+   truly stranded. Barely spaceworthy: tiny hold, room for you alone. */
+const YARDER_SHIP={ name:"Rust-Bucket Shuttle", range:"system", cargo:3, crew:1, bays:0, price:1800, power:{flight:110, star:150} };
 const spaceworthy=v=> !!(v && v.range && v.range!=="surface");   // can leave the planet?
 /* Ship rarity scales a hull's size/power. Common is the smallest; rarer hulls are much
    bigger — an Epic Cargo Hauler dwarfs a Common one. */
@@ -1578,8 +1581,10 @@ const UI = {
             <button id="sayHi">Say hi</button>
             ${p.career==="pilot"?`<button id="hire" class="primary">Hire as pilot &middot; 400c</button>`:""}
             ${p.career==="wanted"?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
-            ${p.career!=="pilot"&&p.career!=="wanted"?`<span class="small dim">${careerName(p.career)} — no work for them yet.</span>`:""}
+            ${p.career==="shipwright"?`<button id="buyOldShip" class="primary">Buy their old ship &middot; ${commas(YARDER_SHIP.price)}c</button>`:""}
+            ${p.career!=="pilot"&&p.career!=="wanted"&&p.career!=="shipwright"?`<span class="small dim">${careerName(p.career)} — no work for them yet.</span>`:""}
           </div>
+          ${p.career==="shipwright"?`<p class="small dim" style="margin-top:6px">${YARDER_SHIP.name}: in-system only, cargo ${YARDER_SHIP.cargo}, room for you alone — but it'll get you off-world.</p>`:""}
           ${convo&&convo.idx===viewingPerson?`<p class="small" style="margin-top:8px"><b>${p.name.split(" ")[0]}:</b> "${convo.text}"</p>`:""}`
        : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${p.career==="wanted"?"hunt":"speak with"} them.</p>`}
     </div>
@@ -2011,6 +2016,7 @@ const UI = {
       const sh=$("#sayHi"); if(sh) sh.onclick=()=>sayHi(viewingPerson);
       const hr=$("#hire"); if(hr) hr.onclick=()=>hirePilot(viewingPerson);
       const at=$("#attack"); if(at) at.onclick=()=>startDuel(viewingPerson);
+      const bo=$("#buyOldShip"); if(bo) bo.onclick=()=>buyYarderShip();
       app.querySelectorAll("[data-unassign]").forEach(b=> b.onclick=()=>unassignCrew(+b.dataset.unassign));
       app.querySelectorAll("[data-dismiss]").forEach(b=> b.onclick=()=>dismissCrew(+b.dataset.dismiss));
     }
@@ -2406,6 +2412,18 @@ function talkToYarder(){
   Game.logMsg(`The dockmaster, ${person.name}, runs this yard.`,"sys");
   viewingPerson=state.codex.people.length-1;
   Game.save(); UI.render("cx_person");
+}
+function buyYarderShip(){
+  const o=YARDER_SHIP;
+  if(state.credits<o.price){ toast("That costs "+commas(o.price)+"c"); return; }
+  state.credits-=o.price;
+  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:"common", cls:"junker", clsName:o.name,
+    range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
+    bays:o.bays, value:o.price, cargo:{}, slot:state.atSlot };
+  state.vehicles.push(ship);
+  if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;
+  Game.logMsg(`The dockmaster sells you their old ${o.name} for ${commas(o.price)}c — barely spaceworthy, but it flies.`,"good");
+  toast("Bought "+o.name); Game.save(); UI.render("cx_person");
 }
 function meetAttack(){
   const m=meeting;
