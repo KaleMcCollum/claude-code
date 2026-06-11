@@ -896,9 +896,11 @@ const commodityById=id=>COMMODITIES.find(c=>c.id===id);
 const isGeneralMarket=w=>w&&(w.settle==="capital"||w.settle==="trade");   // hubs deal in everything
 const produces=(w,c)=>!!(w&&c.produce.includes(w.settle));
 const demands =(w,c)=>!!(w&&c.demand.includes(w.settle));
-/* basic supplies every inhabited depot keeps in stock, so there's always something to trade */
+/* basic supplies — only thin outposts (Frontier) and the home Colony keep a small general
+   stock of these, so their depots aren't dead. Producer worlds stay specialized. */
 const STAPLE_IDS=["fuel","grain","ore"];
 const isStaple=c=>STAPLE_IDS.includes(c.id);
+const isBasicDepot=w=>w&&(w.settle==="frontier"||w.settle==="colony");
 /* one local price per world (produce = cheap, demand = dear); buy at it, sell a touch under */
 function commodityFactor(w,c){
   let f = produces(w,c) ? 0.6 : demands(w,c) ? 1.65 : 1.05;
@@ -907,9 +909,9 @@ function commodityFactor(w,c){
 }
 function commodityBuy(w,c){ return Math.max(1, Math.round(c.base*commodityFactor(w,c))); }
 function commoditySell(w,c){ return Math.max(1, Math.round(c.base*commodityFactor(w,c)*0.82)); }  // depot's cut
-// every inhabited depot trades its produce (+ hubs deal in all) + basic staples
-function canBuyHere(w,c){ return isInhabited(w) && (produces(w,c) || isGeneralMarket(w) || isStaple(c)); }
-function canSellHere(w,c){ return isInhabited(w) && (demands(w,c) || isGeneralMarket(w) || isStaple(c)); }
+// depots trade their produce/demand (+ hubs deal in all); frontiers/colonies also keep staples
+function canBuyHere(w,c){ return isInhabited(w) && (produces(w,c) || isGeneralMarket(w) || (isBasicDepot(w)&&isStaple(c))); }
+function canSellHere(w,c){ return isInhabited(w) && (demands(w,c) || isGeneralMarket(w) || (isBasicDepot(w)&&isStaple(c))); }
 function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
 // cargo lives on each ship; bulk goods fill more of the hold than light ones
 function shipUsed(v){ const cg=v.cargo||{}; let s=0; for(const id in cg){ const c=commodityById(id); s+=cg[id]*(c?c.bulk:1); } return s; }
