@@ -1894,18 +1894,27 @@ const UI = {
       ${(state.bounties||[]).length?`<button class="full primary" id="tRedeem">&#9878; Redeem bounties (${state.bounties.length}) &middot; +${commas(state.bounties.reduce((s,b)=>s+b.value,0))}c</button>`:""}
       <button class="full ghost" id="tDrink">Buy a round &middot; 10c (rest your bones)</button>
     </div>
-    ${(()=>{ const u=unreportedInfo();
-      const bits=[u.systems.length&&`${u.systems.length} system${u.systems.length>1?"s":""}`,
-                  u.worlds.length&&`${u.worlds.length} world${u.worlds.length>1?"s":""}`,
-                  u.races.length&&`${u.races.length} race${u.races.length>1?"s":""}`,
-                  u.creatures.length&&`${u.creatures.length} creature${u.creatures.length>1?"s":""}`].filter(Boolean);
-      return `<div class="card"><h3>&#128225; Sell information</h3>
-        <p class="small dim">The bartender pays for fresh charts and tales — new star systems, worlds, peoples and beasts you've logged.</p>
-        ${u.total>0?`<p class="small">Unsold: ${bits.join(", ")}.</p>
-          <button class="full primary" id="tInfo">Sell all to the bartender &middot; +${commas(u.total)}c</button>`
-          :`<p class="small dim">Nothing new to sell. Go chart a system or meet a new people.</p>`}
-      </div>`; })()}
     <div class="card"><button id="tBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+
+  /* ---------- THE BARTENDER (rumors + buys your information) ---------- */
+  screen_bartender(){
+    const w=state.world, u=unreportedInfo();
+    const bits=[u.systems.length&&`${u.systems.length} system${u.systems.length>1?"s":""}`,
+                u.worlds.length&&`${u.worlds.length} world${u.worlds.length>1?"s":""}`,
+                u.races.length&&`${u.races.length} race${u.races.length>1?"s":""}`,
+                u.creatures.length&&`${u.creatures.length} creature${u.creatures.length>1?"s":""}`].filter(Boolean);
+    return `
+    ${this.statHeader()}
+    <div class="card"><h2>&#127867; The Bartender</h2>
+      <p class="small dim">"You look like you've been places. Tell you what — I'll pay good credits for word of anywhere new you've charted, any peoples or beasts you've come across. Charts, tales, gossip. What've you got?"</p></div>
+    <div class="card"><h3>&#128225; Sell information</h3>
+      ${u.total>0?`<p class="small">You can tell of: ${bits.join(", ")}.</p>
+        <button class="full primary" id="bSell">Sell it all &middot; +${commas(u.total)}c</button>`
+        :`<p class="small dim">"Nothing new from you today. Come back when you've seen more of the galaxy."</p>`}
+    </div>
+    <div class="card"><button id="bRumor" class="full center">&#128172; Ask for a rumor</button></div>
+    <div class="card"><button id="bBack" class="ghost full center">&larr; Back to the tavern</button></div>`;
   },
 
   /* ---------- INFORMATION BROKER (sell your discoveries) ---------- */
@@ -2923,14 +2932,18 @@ const UI = {
     }
     if(screen==="tavern"){
       $("#tPatron").onclick=()=>startMeeting("A patron at a corner table waves you over.","tavern");
-      $("#tBartender").onclick=()=>{ Game.logMsg("The bartender leans in — "+pick(RUMORS),"sys"); toast("You hear a rumor"); Game.save(); UI.render("tavern"); UI.flashLog(); };
-      const ti=$("#tInfo"); if(ti) ti.onclick=()=>sellInformation();
+      $("#tBartender").onclick=()=>UI.render("bartender");
       $("#tBounty").onclick=()=>{ toast("No bounties posted right now"); Game.logMsg("No bounties on the board today. (Bounty contracts coming soon.)","sys"); };
       const rd=$("#tRedeem"); if(rd) rd.onclick=()=>redeemBounties();
       $("#tDrink").onclick=()=>{ if(state.credits<10){ toast("Not enough credits"); return; }
         state.credits-=10; state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.25));
         state.energy=Game.effMaxEnergy(); Game.logMsg("You buy a round and rest a while. Energy restored, wounds eased.","good"); Game.save(); UI.render("tavern"); UI.flashLog(); };
       $("#tBack").onclick=()=>UI.render("hub");
+    }
+    if(screen==="bartender"){
+      const bs=$("#bSell"); if(bs) bs.onclick=()=>sellInformation();
+      $("#bRumor").onclick=()=>{ Game.logMsg("The bartender leans in — "+pick(RUMORS),"sys"); toast("You hear a rumor"); Game.save(); UI.flashLog(); };
+      $("#bBack").onclick=()=>UI.render("tavern");
     }
     if(screen==="broker"){
       const sb=$("#sellInfo"); if(sb) sb.onclick=()=>sellInformation();
@@ -3608,7 +3621,7 @@ function sellInformation(){
   const n=u.races.length+u.worlds.length+u.creatures.length+u.systems.length;
   Game.logMsg(`The bartender slides you ${commas(u.total)}c for word of ${n} new find${n>1?"s":""}.`,"good");
   toast("+"+commas(u.total)+"c");
-  Game.save(); UI.render(UI.current==="broker"?"broker":"tavern");
+  Game.save(); UI.render(["bartender","broker","tavern"].includes(UI.current)?UI.current:"bartender");
 }
 
 /* record an individual you've met (compact snapshot) + bump their race's tally */
