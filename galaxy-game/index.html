@@ -55,8 +55,11 @@
     radial-gradient(1px 1px at 55% 12%, #fff7 0, transparent),
     radial-gradient(1px 1px at 12% 70%, #fff6 0, transparent),
     var(--bg);}
-  header{padding:16px 0 8px; text-align:center;}
+  header{padding:14px 4px 8px; text-align:center;}
   header .sub{color:var(--dim); font-size:.8rem; letter-spacing:2px; text-transform:uppercase;}
+  header .topbar{display:flex; justify-content:space-between; align-items:baseline; gap:8px; text-align:left;}
+  header .topbar .nm{font-weight:700; font-size:1.05rem;}
+  header .topbar .sm{font-size:.78rem; color:var(--dim);}
   .card{background:var(--panel); border:1px solid var(--line); border-radius:12px;
     padding:14px; margin:0 0 12px;}
   .row{display:flex; gap:8px; flex-wrap:wrap;}
@@ -136,8 +139,7 @@
 </head>
 <body>
 <div class="stars"></div>
-<header>
-  <h1>EDGE OF THE OUTER STARS</h1>
+<header id="topbar">
   <div class="sub">A galaxy text RPG</div>
 </header>
 
@@ -1684,6 +1686,7 @@ const UI = {
     $("#nav").classList.toggle("hidden", noNav);
     const navScreen = screen.indexOf("cx_")===0?"codex":screen;
     [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===navScreen));
+    $("#topbar").innerHTML = this.topBar(screen);
     app.innerHTML=(this["screen_"+screen]||(()=> "<p>?</p>")).call(this);
     this.bind(screen);
     window.scrollTo(0, keepY);
@@ -1877,8 +1880,7 @@ const UI = {
         <button id="vWilds" class="primary">${worldCivility(w)>=0.7?"&#127961; ":"&#127807; "}${exploreLabel(w)}</button>
         <button id="vRest">&#9789; Rest</button>
       </div>`; })()}
-    </div>
-    ${this.logCard()}`;
+    </div>`;
   },
 
   /* ---------- TAVERN ---------- */
@@ -2295,12 +2297,14 @@ const UI = {
     <div class="card"><h2>&#9776; Codex</h2>
       <p class="small dim">Galaxy <b class="gold">${state.galaxyName}</b> — everything you discover, recorded.</p></div>
     <div class="card">
+      <button class="full" data-goto="char">&#9670; Self <span class="dim">&middot; ${state.name}</span></button>
       <button class="full" data-cx="people">&#128483; People you've met <span class="dim">&middot; ${people.length}</span></button>
       <button class="full" data-cx="races">&#9670; Races <span class="dim">&middot; ${races.length}</span></button>
       <button class="full" data-cx="wildlife">&#128062; Wildlife species <span class="dim">&middot; ${wild.length}</span></button>
       <button class="full" data-cx="worlds">&#9737; Planets &amp; systems <span class="dim">&middot; ${worlds.length}</span></button>
       <button class="full" data-cx="obj">&#9733; Objectives <span class="dim">&middot; ${done}/${OBJECTIVES.length}</span></button>
-    </div>`;
+    </div>
+    ${this.logCard()}`;
   },
   screen_cx_people(){
     const people=state.codex.people||[];
@@ -2869,14 +2873,21 @@ const UI = {
     return `<div class="rarity-banner" style="border-color:${t.color}">
       <div class="rn" style="color:${t.color}">${t.name.toUpperCase()}</div>
       <div class="odds">${RARITY.odds(t)} &middot; ${sub||""}</div></div>`; },
+  /* the fixed bar at the very top of the screen — your character at a glance */
+  topBar(screen){
+    if(!state || screen==="title" || screen==="create") return `<div class="sub">Edge of the Outer Stars</div>`;
+    const age=Math.floor(Game.age()), grown=Math.round(Game.maturation()*100);
+    return `<div class="topbar">
+      <span class="nm gold">${state.name}</span>
+      <span class="sm">Lv ${state.level} &middot; ${cap(Game.stage())}${grown<100?` ${grown}%`:''} &middot; Age ${age} &middot; <span class="gold">${commas(state.credits)}c</span></span>
+    </div>`;
+  },
   statHeader(){
     const hpMax=Game.effMaxHp(), enMax=Game.effMaxEnergy();
     const age=Math.floor(Game.age()), life=Math.round(Game.lifespan());
     const grown=Math.round(Game.maturation()*100);
     return `
     <div class="card">
-      <div class="row between"><b>${state.name}</b>
-        <span class="small dim">Lv ${state.level} &middot; <span class="gold">${state.credits}c</span></span></div>
       <div class="row between"><span class="small dim">Age ${age} <span class="dim">of ~${life} yr</span> &middot; <span class="${grown<100?'blue':'green'}">${cap(Game.stage())}${grown<100?` ${grown}% grown`:''}</span></span>
         <span class="small dim">${cap(state.species.build)} ${state.species.archeName}</span></div>
       <div class="statline"><span class="small">HP</span><span class="small">${Math.max(0,state.hp)} / ${hpMax}</span></div>

@@ -99,6 +99,7 @@ Every inhabited world has a **Depot**, and **prices follow what the world makes 
 - Each fills a different amount of **cargo bulk** — a Ship Chassis takes **10 slots**, Grain just **1** — so a 100-slot hold is 10 chassis *or* 100 grain. Bulky cheap goods (ore) earn thin per-slot margins; compact high-value goods (luxuries, medicine) pay best per slot.
 - A world's **settlement type** decides what it **produces** (cheap to buy) and **demands** (pays a premium). A mining world sells ore cheap but won't deal you a chassis at all; haul that ore to an **industrial** world that craves it, then run finished goods on to a **capital**. Capitals and trade hubs are general markets that deal in everything at a spread — there's no single-world arbitrage, so profit comes from **buying where it's produced and selling where it's demanded**.
 - The depot pools the holds of every ship docked with you, so a fleet trades together.
+- **Automated trade runs:** a fleet you're *not* aboard can be sent to haul goods on its own — pick a charted, inhabited destination and the fleet shuttles the most profitable commodity back and forth, banking net profit every few actions while you go do other things. Its ships are busy until you call the run off, and crew salaries still apply.
 
 ## Ships: hulls, weapons & combat
 Every ship now has **combat stats** and a **role**, and ship classes specialize:
