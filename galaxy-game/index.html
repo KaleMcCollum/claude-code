@@ -955,6 +955,31 @@ function vehicleFromOffer(o){
     maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, hyper:o.hyper||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
     slotSizes:(o.slotSizes||[]).slice(), guns:new Array((o.pilotGuns||0)+(o.gunnerGuns||0)).fill(null) };
 }
+/* ---- Carriers: ships with bays stow fighter-class craft, which then ride along inside ---- */
+function shipCat(v){ return (shipClass(v&&v.cls)||{}).cat || null; }
+function isCarried(v){ return !!(v&&v.carrier); }
+function carriedShips(carrierId){ return (state.vehicles||[]).filter(v=>v.carrier===carrierId); }
+function baysFree(v){ return Math.max(0, (v.bays||0) - carriedShips(v.id).length); }
+/* a craft small enough to be carried: a fighter you're not currently flying */
+function canBeCarried(v){ return !!v && !v.carrier && shipCat(v)==="fighter" && v.id!==state.activeShip; }
+/* fold a fighter into a carrier's hangar (both docked where you stand) */
+function stowFighter(fid, cid){
+  const f=(state.vehicles||[]).find(v=>v.id===fid), c=(state.vehicles||[]).find(v=>v.id===cid);
+  if(!f||!c) return;
+  if(!atHere(c) || !atHere(f)){ toast("Both ships must be docked where you are"); return; }
+  if(baysFree(c)<=0){ toast(`${c.name}'s bays are full`); return; }
+  if(!canBeCarried(f)){ toast("Only fighters can be carried — and not the one you're flying"); return; }
+  if(f.fleetId){ const fl=fleetById(f.fleetId); if(fl) fl.shipIds=fl.shipIds.filter(x=>x!==fid); f.fleetId=null; }
+  f.carrier=cid;
+  Game.logMsg(`${f.name} is stowed in the ${c.name}'s hangar.`,"sys"); Game.save(); UI.render(UI.current||"crew");
+}
+/* deploy a fighter back out of its carrier, to wherever the carrier now sits */
+function launchFighter(fid){
+  const f=(state.vehicles||[]).find(v=>v.id===fid); if(!f||!f.carrier) return;
+  const c=(state.vehicles||[]).find(v=>v.id===f.carrier);
+  f.carrier=null; if(c){ f.sysId=c.sysId; f.slot=c.slot; }
+  Game.logMsg(`${f.name} launches from the hangar.`,"sys"); Game.save(); UI.render(UI.current||"crew");
+}
 /* Odds an owner accepts your offer, by how it compares to the ship's worth. People are loath to
    sell: a fair (at-worth) offer is a long shot; overpaying tempts them; lowballs almost never land
    — but the rare fool takes a steal. */
@@ -1036,7 +1061,7 @@ function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
 function shipUsed(v){ const cg=v.cargo||{}; let s=0; for(const id in cg){ const c=commodityById(id); s+=cg[id]*(c?c.bulk:1); } return s; }
 function cargoUsed(){ const s=Game.ship(); return s?shipUsed(s):0; }
 function cargoMax(){ const s=Game.ship(); return s?(s.hold||0):0; }
-function poolShips(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)); }  // every ship docked right here, not away trading
+function poolShips(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)&&!v.carrier); }  // every ship docked right here, not away trading or stowed
 function poolUsed(){ return poolShips().reduce((s,v)=>s+shipUsed(v),0); }
 function poolMax(){ return poolShips().reduce((s,v)=>s+(v.hold||0),0); }
 function poolHave(id){ return poolShips().reduce((s,v)=>s+(v.cargo[id]||0),0); }
@@ -1398,7 +1423,7 @@ const Game = {
   // a ship is operational (flyable) only with enough pilots + mechanics for its class
   operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0) && Game.aboard(v,"laborer") >= (v.reqLabor??0); },
   canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && atHere(s) && Game.operational(s)); },
-  shipsHere(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)); },
+  shipsHere(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)&&!v.carrier); },
 
   /* ---- assemble a new life from the generated (and now named) pieces ---- */
   begin(){
@@ -2787,6 +2812,20 @@ const UI = {
         :`<p class="small dim">No crewmates yet. Meet a Pilot out in the galaxy and hire them from their Codex page.</p>`}
     </div>`;
   },
+  /* a carrier's hangar: the fighters stowed inside, plus a picker to stow more (when docked) */
+  hangarCard(v, here){
+    const held=carriedShips(v.id), free=baysFree(v);
+    const dock=here?(state.vehicles||[]).filter(f=>atHere(f)&&canBeCarried(f)):[];
+    return `<div class="card sheet"><h3>&#128640; Hangar bays <span class="dim small">&middot; ${held.length}/${v.bays} full</span></h3>
+      ${held.length?held.map(f=>`<div class="krow"><span class="lbl">${f.name} <span class="dim small">&middot; ${f.clsName||shipCatName("fighter")}</span></span>
+        <span class="kv">${here?`<button class="small" data-launch="${f.id}">Launch</button>`:'<span class="dim small">stowed</span>'}</span></div>`).join("")
+        :`<p class="small dim">No fighters stowed.</p>`}
+      ${free>0?(here?(dock.length?`<p class="small dim" style="margin-top:8px">Stow a fighter docked here (${free} bay${free>1?"s":""} free):</p>
+        ${dock.map(f=>`<div class="krow"><span class="lbl">${f.name} <span class="dim small">&middot; ${f.clsName||"fighter"}</span></span><span class="kv"><button class="small ghost" data-stow="${v.id}:${f.id}">Stow</button></span></div>`).join("")}`
+        :`<p class="small dim" style="margin-top:8px">No free fighters docked here to stow. Fly or buy a fighter to this dock first.</p>`)
+        :`<p class="small dim" style="margin-top:8px">Travel to this carrier to load or launch fighters.</p>`):""}
+      <p class="small dim" style="margin-top:6px">Stowed fighters ride along wherever the carrier goes and don't need their own crew until you launch them.</p></div>`;
+  },
   shipsView(){
     const ships=state.vehicles||[];
     if(viewingShip){
@@ -2830,16 +2869,18 @@ const UI = {
       </div>
       <div class="card sheet"><h3>Crew seats <span class="dim small">&middot; ${layout.length} stations${berths?` + ${berths} berths`:""}</span></h3>${seats}
         <p class="small dim" style="margin-top:6px">The Captain seat is yours. A ship flies only with its pilots and mechanics aboard, and each Gunner mans one weapon mount. Crew aboard travel with the ship.</p></div>
+      ${v.bays>0?this.hangarCard(v, here):""}
       <div class="card"><div class="row">
         ${!active&&here?`<button class="small" data-selship="${v.id}">Pilot this</button>`:""}
         <button class="small ghost" data-renship="${v.id}">Rename</button>
         <button class="ghost" id="shipsBack">&larr; All ships</button>
       </div></div>`;
     }
-    return `<div class="card sheet"><h3>Your ships <span class="dim small">&middot; ${ships.length}</span></h3>
+    const shown=ships.filter(v=>!v.carrier);   // stowed fighters live in their carrier's hangar
+    return `<div class="card sheet"><h3>Your ships <span class="dim small">&middot; ${shown.length}</span></h3>
       <p class="small dim">Select a ship to manage its crew, fleet, and travel.</p>
-      ${ships.map(v=>{ const active=v.id===state.activeShip, here=atHere(v), n=Game.shipCrew(v).length, fleet=fleetOf(v);
-        return `<div class="krow"><span class="lbl"><button class="small ghost" data-selshipview="${v.id}">${active?'&#9654; ':''}${v.name}</button>${fleet?` <span class="dim small">&middot; ${fleet.name}</span>`:''}</span>
+      ${shown.map(v=>{ const active=v.id===state.activeShip, here=atHere(v), n=Game.shipCrew(v).length, fleet=fleetOf(v), hold=carriedShips(v.id).length;
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-selshipview="${v.id}">${active?'&#9654; ':''}${v.name}</button>${fleet?` <span class="dim small">&middot; ${fleet.name}</span>`:''}${hold?` <span class="violet small">&middot; &#128640;${hold}</span>`:''}</span>
           <span class="kv">${RANGE_LABEL[v.range]} <span class="dim">&middot; ${shipLocationName(v)}${here?' (here)':''} &middot; crew ${(active?1:0)+n}/${v.crewMax||1}</span></span></div>`; }).join("")}
     </div>`;
   },
@@ -2911,7 +2952,7 @@ const UI = {
       const f=fleetById(viewingFleet); if(!f){ viewingFleet=null; return this.fleetsView(); }
       const caps=groupCaps(f.shipIds), fsys=state.galaxy.systems[fleetSys(f)];
       const withYou=fleetSys(f)===state.sysId;
-      const addable=(state.vehicles||[]).filter(v=>!v.fleetId && (v.sysId??0)===fleetSys(f));
+      const addable=(state.vehicles||[]).filter(v=>!v.fleetId && !v.carrier && (v.sysId??0)===fleetSys(f));
       return `<div class="card">
         <div class="row between"><h2 class="gold">${f.name}</h2><span class="tag">${f.shipIds.length} ship${f.shipIds.length>1?"s":""}</span></div>
         <p class="small dim">In <b class="blue">${fsys?fsys.name:"?"}</b> system${withYou?' <span class="green small">(with you)</span>':''} &middot; ${RANGE_LABEL[caps.tier]}${caps.tier==="interstellar"?` &middot; reach <b class="gold">${caps.jump.toFixed(1)} ly</b>`:""}</p>
@@ -3237,6 +3278,8 @@ const UI = {
       app.querySelectorAll("[data-crewtab]").forEach(b=> b.onclick=()=>{ crewTab=b.dataset.crewtab; viewingShip=null; UI.render("crew"); });
       app.querySelectorAll("[data-selshipview]").forEach(b=> b.onclick=()=>{ viewingShip=b.dataset.selshipview; UI.render("crew"); });
       const sb=$("#shipsBack"); if(sb) sb.onclick=()=>{ viewingShip=null; UI.render("crew"); };
+      app.querySelectorAll("[data-launch]").forEach(b=> b.onclick=()=>launchFighter(b.dataset.launch));
+      app.querySelectorAll("[data-stow]").forEach(b=> b.onclick=()=>{ const [cid,fid]=b.dataset.stow.split(":"); stowFighter(fid,cid); });
       app.querySelectorAll("[data-seat]").forEach(b=> b.onclick=()=>{ const [sid,n]=b.dataset.seat.split(":"); seatPick={shipId:sid, seat:+n}; UI.render("crew"); });
       app.querySelectorAll("[data-seatpax]").forEach(b=> b.onclick=()=>{ const v=(state.vehicles||[]).find(x=>x.id===b.dataset.seatpax); const n=v?nextFreeBerth(v):-1;
         if(n>=0){ seatPick={shipId:b.dataset.seatpax, seat:n}; UI.render("crew"); } else toast("No free berth"); });
@@ -3470,7 +3513,7 @@ function groupBlockers(ids){ return shipsByIds(ids).filter(v=>!Game.operational(
 /* drop a set of ships (and, if your ship is among them, you) onto a charted world */
 function relocateGroup(ids, destSys, destSlot){
   const set=new Set(ids);
-  (state.vehicles||[]).forEach(v=>{ if(set.has(v.id)){ v.sysId=destSys; v.slot=destSlot; } });
+  (state.vehicles||[]).forEach(v=>{ if(set.has(v.id)||(v.carrier&&set.has(v.carrier))){ v.sysId=destSys; v.slot=destSlot; } });   // carried fighters ride along
   const sys=state.galaxy.systems[destSys]; sys.discovered=true;
   if(set.has(state.activeShip)){ state.sysId=destSys; state.atSlot=destSlot; state.system=sys;
     state.world=sys.planets[destSlot].world; state.voidPos=null; }   // arriving at a star ends the drift
@@ -3764,6 +3807,7 @@ function buyPersonShip(person, amount, onDone){
 function sellShip(id){
   if(state.vehicles.length<=1){ toast("That's your only craft"); return; }
   if(id===state.activeShip){ toast("Pilot another ship first"); return; }
+  if(carriedShips(id).length){ toast("Launch its fighters from the hangar first"); return; }
   const i=state.vehicles.findIndex(v=>v.id===id); if(i<0) return;
   const v=state.vehicles[i], p=shipSell(v);
   state.vehicles.splice(i,1); state.credits+=p;
@@ -3996,11 +4040,11 @@ function fleetOf(v){ return v&&v.fleetId?fleetById(v.fleetId):null; }
 /* a fleet's system (its ships'); fleets never straddle systems */
 function fleetSys(f){ const s=shipsByIds(f.shipIds)[0]; return s?(s.sysId??0):null; }
 function fleetShipsHereWithYou(){ // ships in your current system, free to add to a new fleet
-  return (state.vehicles||[]).filter(v=>(v.sysId??0)===state.sysId && !v.fleetId); }
+  return (state.vehicles||[]).filter(v=>(v.sysId??0)===state.sysId && !v.fleetId && !v.carrier); }
 /* create a fleet from ships in your current system (you must be in that system) */
 function createFleet(name, shipIds){
   shipIds=(shipIds||[]).filter(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id);
-    return v && (v.sysId??0)===state.sysId && !v.fleetId; });
+    return v && (v.sysId??0)===state.sysId && !v.fleetId && !v.carrier; });
   if(!shipIds.length){ toast("Add at least one ship in this system"); return; }
   const f={ id:newVfid(), name:(name||"Fleet").slice(0,24), shipIds };
   state.fleets=state.fleets||[]; state.fleets.push(f);
