@@ -55,11 +55,14 @@
     radial-gradient(1px 1px at 55% 12%, #fff7 0, transparent),
     radial-gradient(1px 1px at 12% 70%, #fff6 0, transparent),
     var(--bg);}
-  header{padding:14px 4px 8px; text-align:center;}
+  header{padding:12px 6px 6px; text-align:center;}
   header .sub{color:var(--dim); font-size:.8rem; letter-spacing:2px; text-transform:uppercase;}
-  header .topbar{display:flex; justify-content:space-between; align-items:baseline; gap:8px; text-align:left;}
-  header .topbar .nm{font-weight:700; font-size:1.05rem;}
-  header .topbar .sm{font-size:.78rem; color:var(--dim);}
+  header .topbar{display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:left;}
+  header .topbar .nm{font-weight:700; font-size:1.02rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  header .topbar .meta{display:flex; align-items:center; gap:8px; font-size:.76rem; color:var(--dim); white-space:nowrap;}
+  header .topbar .meta .lv{color:var(--gold); border:1px solid #4a3f22; border-radius:99px; padding:1px 7px; font-size:.7rem; font-weight:600;}
+  header .topbar .meta .cr{color:var(--gold); font-weight:600; font-variant-numeric:tabular-nums;}
+  header .topbar .meta .sep{opacity:.4;}
   .card{background:var(--panel); border:1px solid var(--line); border-radius:12px;
     padding:14px; margin:0 0 12px;}
   /* a tap-to-expand dropdown that folds away a block of detail cards */
@@ -103,6 +106,14 @@
   .xpfill{background:linear-gradient(90deg,#5fd0ff,#b98cff);}
   .enfill{background:linear-gradient(90deg,#6ee7a0,#5fd0ff);}
   .statline{display:flex; justify-content:space-between; font-size:.9rem; padding:2px 0;}
+  /* condensed vitals panel — one label · bar · value row per stat */
+  .vitals{padding:11px 13px;}
+  .vitals .vhead{display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:9px;}
+  .vitals .vrow{display:grid; grid-template-columns:24px 1fr auto; gap:9px; align-items:center; margin:5px 0;}
+  .vitals .vrow .vlbl{font-size:.66rem; letter-spacing:.6px; color:var(--dim); text-transform:uppercase;}
+  .vitals .vrow .bar{margin:0; height:7px;}
+  .vitals .vrow .vval{font-size:.76rem; color:var(--ink); font-variant-numeric:tabular-nums; min-width:62px; text-align:right;}
+  .vitals .vrow .vval.low{color:var(--red);}
   /* compact stat-sheet rows */
   .sheet .srow{display:grid; grid-template-columns:1fr auto 28px; gap:10px; align-items:baseline;
     padding:4px 0; border-bottom:1px solid var(--line); font-size:.86rem;}
@@ -2263,21 +2274,11 @@ const UI = {
   /* ---------- MEET A PERSON (on-planet) ---------- */
   screen_meet(){
     const m=meeting; if(!m) return this.screen_hub();
-    if(m.step===1) return `
-      <div class="card">
-        <h2>A stranger</h2>
-        <p class="small dim">${m.intro}</p>
-        <p class="small">Name this person:</p>
-        ${nameField("meetPerson","Name this person","person",m.person.name)}
-        <div class="row between" style="margin-top:10px">
-          <button class="ghost" id="meetCancel">&larr; Walk away</button>
-          <button class="primary" id="meetStep1">Introduce yourself &rarr;</button>
-        </div>
-      </div>`;
     const person=m.person, known=!m.draw.isNew, race=m.draw.race;
     return `
       <div class="card">
         <h2>${person.name||"A stranger"}</h2>
+        <p class="small dim">${m.intro}</p>
         <p class="small dim">${careerName(person.career)} &middot; ${known?`<b class="violet">${race.name}</b>`:`<span class="gold">a people new to your Codex</span>`} &middot; worth <span class="gold">${commas(person.credits||0)}c</span>.</p>
         ${isHostile(person)?`<p class="small red">${THREAT_LABEL[person.hostile]} — bounty ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</p>`:""}
         ${person.force&&forceDesc(person.force)?`<p class="small ${isHostile(person)?'red':'blue'}">Commands ${forceDesc(person.force)}${m.fleet?` under <b class="violet">${m.fleet.faction}</b> colors`:""}.</p>`:""}
@@ -2946,23 +2947,28 @@ const UI = {
     const age=Math.floor(Game.age()), grown=Math.round(Game.maturation()*100);
     return `<div class="topbar">
       <span class="nm gold">${state.name}</span>
-      <span class="sm">Lv ${state.level} &middot; ${cap(Game.stage())}${grown<100?` ${grown}%`:''} &middot; Age ${age} &middot; <span class="gold">${commas(state.credits)}c</span></span>
+      <span class="meta">
+        <span class="lv">Lv ${state.level}</span>
+        <span>${cap(Game.stage())}${grown<100?` ${grown}%`:''}</span>
+        <span class="sep">&middot;</span><span>Age ${age}</span>
+        <span class="sep">&middot;</span><span class="cr">${commas(state.credits)}c</span>
+      </span>
     </div>`;
   },
   statHeader(){
     const hpMax=Game.effMaxHp(), enMax=Game.effMaxEnergy();
     const age=Math.floor(Game.age()), life=Math.round(Game.lifespan());
     const grown=Math.round(Game.maturation()*100);
+    const low=hpMax>0 && state.hp/hpMax<=0.3;
     return `
-    <div class="card">
-      <div class="row between"><span class="small dim">Age ${age} <span class="dim">of ~${life} yr</span> &middot; <span class="${grown<100?'blue':'green'}">${cap(Game.stage())}${grown<100?` ${grown}% grown`:''}</span></span>
-        <span class="small dim">${cap(state.species.build)} ${state.species.archeName}</span></div>
-      <div class="statline"><span class="small">HP</span><span class="small">${Math.max(0,state.hp)} / ${hpMax}</span></div>
-      <div class="bar"><i class="hpfill" style="width:${Math.max(0,state.hp/hpMax*100)}%"></i></div>
-      <div class="statline"><span class="small">Energy</span><span class="small">${state.energy} / ${enMax}</span></div>
-      <div class="bar"><i class="enfill" style="width:${state.energy/enMax*100}%"></i></div>
-      <div class="statline"><span class="small">XP</span><span class="small">${state.xp} / ${state.xpNext}</span></div>
-      <div class="bar"><i class="xpfill" style="width:${state.xp/state.xpNext*100}%"></i></div>
+    <div class="card vitals">
+      <div class="vhead">
+        <span class="small"><span class="${grown<100?'blue':'green'}">${cap(Game.stage())}</span>${grown<100?` <span class="dim">${grown}% grown</span>`:''} <span class="dim">&middot; Age ${age} of ~${life}</span></span>
+        <span class="small dim">${cap(state.species.build)} ${state.species.archeName}</span>
+      </div>
+      <div class="vrow"><span class="vlbl">HP</span><div class="bar"><i class="hpfill" style="width:${Math.max(0,state.hp/hpMax*100)}%"></i></div><span class="vval${low?' low':''}">${Math.max(0,state.hp)} / ${hpMax}</span></div>
+      <div class="vrow"><span class="vlbl">EN</span><div class="bar"><i class="enfill" style="width:${state.energy/enMax*100}%"></i></div><span class="vval">${state.energy} / ${enMax}</span></div>
+      <div class="vrow"><span class="vlbl">XP</span><div class="bar"><i class="xpfill" style="width:${state.xp/state.xpNext*100}%"></i></div><span class="vval">${state.xp} / ${state.xpNext}</span></div>
     </div>`;
   },
   logCard(){ const items=state.log.slice(-30).reverse();
@@ -3245,17 +3251,12 @@ const UI = {
   bindMeet(){
     const m=meeting; if(!m) return;
     app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
-    if(m.step===1){
-      $("#meetCancel").onclick=()=>{ meeting=null; UI.render(m.back); };
-      $("#meetStep1").onclick=()=>{ m.person.name=$("#meetPerson").value.trim()||genName("person"); m.step=2; UI.render("meet"); };
-    } else {
-      const readRace=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } };
-      $("#meetFinish").onclick=()=>{ readRace(); finishMeeting(); };
-      const mj=$("#meetJob"); if(mj) mj.onclick=()=>askForJob(m.person, ()=>UI.render("meet"));
-      const mh=$("#meetHire"); if(mh) mh.onclick=()=>{ readRace(); hireFromMeeting(); };
-      const mm=$("#meetMore"); if(mm) mm.onclick=()=>{ personExpand=!personExpand; UI.render("meet"); };
-      const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ readRace(); meetAttack(); };
-    }
+    const readRace=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } };
+    $("#meetFinish").onclick=()=>{ readRace(); finishMeeting(); };
+    const mj=$("#meetJob"); if(mj) mj.onclick=()=>askForJob(m.person, ()=>UI.render("meet"));
+    const mh=$("#meetHire"); if(mh) mh.onclick=()=>{ readRace(); hireFromMeeting(); };
+    const mm=$("#meetMore"); if(mm) mm.onclick=()=>{ personExpand=!personExpand; UI.render("meet"); };
+    const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ readRace(); meetAttack(); };
   },
 };
 
@@ -3600,8 +3601,9 @@ const RUMORS=[
   "they whisper of a desolate world where no one lives at all.",
 ];
 function startMeeting(intro, back){
-  const draw=drawRace();
-  meeting={ draw, person:Gen.person(draw.race), intro, back:back||"hub", step:1 };
+  const draw=drawRace(), person=Gen.person(draw.race);
+  if(!person.name) person.name=genName("person");   // no upfront naming step — they already have a name
+  meeting={ draw, person, intro, back:back||"hub", step:2 };
   personExpand=false;
   UI.render("meet");
 }
