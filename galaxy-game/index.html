@@ -719,10 +719,12 @@ const WEAPONS=[
   { id:"heavygun",  name:"Heavy Cannon",   atk:1500,  size:1, price:14000,  minTech:6 },
   { id:"plasma",    name:"Plasma Battery", atk:4000,  size:2, price:42000,  minTech:7 },
   { id:"siege",     name:"Siege Lance",    atk:10000, size:2, price:160000, minTech:8 },
+  { id:"massdriver",name:"Mass Driver",    atk:25000, size:3, price:420000, minTech:9 },
+  { id:"annihilator",name:"Annihilator Beam",atk:55000,size:3,price:950000, minTech:9 },
 ];
 const weaponById=id=>WEAPONS.find(w=>w.id===id);
 const weaponSize=id=>{ const w=weaponById(id); return w?(w.size||0):0; };
-const SLOT_SIZES=["Light","Medium","Heavy"];
+const SLOT_SIZES=["Light","Medium","Heavy","Super Heavy"];
 /* Hull plating tiers — multiply a ship's base HP. Rarer ships roll better plating. */
 const ARMOR=[ {name:"Unplated",mult:1.0}, {name:"Light Plating",mult:1.4}, {name:"Combat Plating",mult:2.0},
   {name:"Heavy Plating",mult:3.0}, {name:"Exotic Plating",mult:4.5} ];
@@ -785,15 +787,17 @@ function rollArmor(tierId){ const ti=RARITY.index(tierId), maxA=clamp(Math.round
 function rollHyper(c, tierId){ if(c.range!=="interstellar") return 0;
   const ti=RARITY.index(tierId), maxH=clamp(Math.round(ti/1.6),0,4);
   let h=0; for(let k=0;k<maxH;k++) if(chance(0.4)) h++; return Math.min(h,4); }
-/* roll the SIZE of one hardpoint (0 light, 1 medium, 2 heavy). Pilot mounts cap at medium — a
-   captain can't solo a heavy gun. Gunner mounts lean heavier with the hull's combat grade and
-   rarity, so a frigate might roll mostly heavy mounts (a real warship) or mostly light (a
-   lightly-armed troop carrier). */
+/* roll the SIZE of one hardpoint (0 light, 1 medium, 2 heavy, 3 super-heavy). Sizes lean heavier
+   with the hull's combat grade and rarity, so a frigate might come mostly-heavy (a real warship)
+   or mostly-light (a lightly-armed carrier). Super-heavy mounts only appear on warships and are
+   rare — a really good frigate might get one; two is extremely uncommon. Pilot mounts (captain-
+   run) usually run light/medium but can, on a lucky hull, carry the heaviest guns. */
 function rollSlotSize(mount, grade, ti){
-  if(mount==="pilot") return chance(clamp(0.25+grade*0.12+ti*0.05, 0, 0.85)) ? 1 : 0;
-  const w=[ Math.max(4, 42-grade*11-ti*3), 26+grade*5, Math.max(2, grade*13+ti*6) ];  // light/med/heavy weights
-  const tot=w[0]+w[1]+w[2]; let r=Math.random()*tot;
-  for(let i=0;i<3;i++){ if((r-=w[i])<0) return i; } return 0;
+  let w;
+  if(mount==="pilot")  w=[ Math.max(6, 34-ti*2), 34+grade*4, grade*5+ti*4,      grade>=2?Math.round(ti*0.9):0 ];
+  else                 w=[ Math.max(4, 42-grade*11-ti*3), 26+grade*5, Math.max(2,grade*13+ti*6), grade>=2?Math.round(1+ti*1.5):0 ];
+  const tot=w[0]+w[1]+w[2]+w[3]; let r=Math.random()*tot;
+  for(let i=0;i<4;i++){ if((r-=w[i])<0) return i; } return 0;
 }
 /* combat stats for a freshly generated hull of a class + rarity tier */
 const HP_SCALE=3;   // hulls are tough relative to weapon attack, so battles last several salvos
@@ -817,7 +821,7 @@ function applyShipStats(ship, c, tierId){
   return ship;
 }
 /* count a ship's hardpoints by size for display, e.g. {light:2, medium:1, heavy:3} */
-function slotBreakdown(sizes){ const b=[0,0,0]; (sizes||[]).forEach(s=>b[s]++);
+function slotBreakdown(sizes){ const b=[0,0,0,0]; (sizes||[]).forEach(s=>b[s]++);
   return b.map((n,i)=>n?`${n} ${SLOT_SIZES[i].toLowerCase()}`:"").filter(Boolean).join(" / ")||"none"; }
 /* a ship's battle attack: pilot mounts fire under the captain; each gunner mount needs a gunner */
 function shipAttack(v){
