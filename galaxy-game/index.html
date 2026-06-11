@@ -2278,21 +2278,24 @@ const UI = {
     return `
       <div class="card">
         <h2>${person.name||"A stranger"}</h2>
-        ${known?`<p class="small green">You recognize their kind — <b class="violet">${race.name}</b>, already in your Codex.</p>`
-          :`<p class="small gold">Their kind is new to your Codex.</p>`}
-        <p class="small dim">Career: ${careerName(person.career)} &middot; worth <span class="gold">${commas(person.credits||0)}c</span>.${isHostile(person)?` <span class="red">${THREAT_LABEL[person.hostile]} — ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</span>`:""}</p>
+        <p class="small dim">${careerName(person.career)} &middot; ${known?`<b class="violet">${race.name}</b>`:`<span class="gold">a people new to your Codex</span>`} &middot; worth <span class="gold">${commas(person.credits||0)}c</span>.</p>
+        ${isHostile(person)?`<p class="small red">${THREAT_LABEL[person.hostile]} — bounty ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</p>`:""}
         ${person.force&&forceDesc(person.force)?`<p class="small ${isHostile(person)?'red':'blue'}">Commands ${forceDesc(person.force)}${m.fleet?` under <b class="violet">${m.fleet.faction}</b> colors`:""}.</p>`:""}
       </div>
-      ${originCard(person)}
-      ${speciesSheet(person)}
       <div class="card">
-        ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
-          :`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}`}
-        <button class="primary full center" id="meetFinish" style="margin-top:8px">Record &amp; part ways</button>
-        ${jobOf(person.career)&&!person.askedJob&&!isHostile(person)?`<button class="full center" id="meetJob" style="margin-top:6px">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(person.career).chance*100)}% &middot; ${commas(jobOf(person.career).pay)}c/yr)</span></button>`:""}
-        ${person.askedJob?`<p class="small dim center" style="margin-top:6px">${state.job&&state.job.career===person.career?"You took the job.":"They had no work for you."}</p>`:""}
-        ${isHostile(person)?`<button class="full center" id="meetAttack" style="margin-top:6px">&#9876; Attack &amp; claim the bounty</button>`:""}
-      </div>`;
+        ${!known?`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}<div style="height:8px"></div>`:""}
+        <div class="row">
+          ${jobOf(person.career)&&!person.askedJob&&!isHostile(person)?`<button id="meetJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(person.career).chance*100)}% &middot; ${commas(jobOf(person.career).pay)}c/yr)</span></button>`:""}
+          ${HIRE_ROLES[person.career]&&!isHostile(person)?`<button id="meetHire" class="primary">Offer a job &middot; ${careerName(person.career)} &middot; ${commas(HIRE_ROLES[person.career].fee)}c</button>`:""}
+          ${isHostile(person)?`<button id="meetAttack" class="primary">&#9876; Attack &amp; claim the bounty</button>`:""}
+          <button id="meetMore" class="ghost">${personExpand?"Show less":"Learn more"}</button>
+          <button id="meetFinish" class="ghost">Leave conversation</button>
+        </div>
+        ${person.askedJob?`<p class="small dim" style="margin-top:6px">${state.job&&state.job.career===person.career?"You took the job.":"They had no work for you."}</p>`:""}
+        ${HIRE_ROLES[person.career]&&!isHostile(person)?`<p class="small dim" style="margin-top:6px">${cap(careerName(person.career))}: ${HIRE_ROLES[person.career].role}.</p>`:""}
+        <p class="small dim" style="margin-top:6px">Leaving the conversation records ${person.name.split(" ")[0]} in your Codex.</p>
+      </div>
+      ${personExpand?`${originCard(person)}${speciesSheet(person)}`:""}`;
   },
 
   /* ---------- CODEX (everything you've discovered) ---------- */
@@ -3246,9 +3249,12 @@ const UI = {
       $("#meetCancel").onclick=()=>{ meeting=null; UI.render(m.back); };
       $("#meetStep1").onclick=()=>{ m.person.name=$("#meetPerson").value.trim()||genName("person"); m.step=2; UI.render("meet"); };
     } else {
-      $("#meetFinish").onclick=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } finishMeeting(); };
+      const readRace=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } };
+      $("#meetFinish").onclick=()=>{ readRace(); finishMeeting(); };
       const mj=$("#meetJob"); if(mj) mj.onclick=()=>askForJob(m.person, ()=>UI.render("meet"));
-      const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } meetAttack(); };
+      const mh=$("#meetHire"); if(mh) mh.onclick=()=>{ readRace(); hireFromMeeting(); };
+      const mm=$("#meetMore"); if(mm) mm.onclick=()=>{ personExpand=!personExpand; UI.render("meet"); };
+      const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ readRace(); meetAttack(); };
     }
   },
 };
@@ -3596,7 +3602,23 @@ const RUMORS=[
 function startMeeting(intro, back){
   const draw=drawRace();
   meeting={ draw, person:Gen.person(draw.race), intro, back:back||"hub", step:1 };
+  personExpand=false;
   UI.render("meet");
+}
+/* offer the stranger a job on the spot: record them into your Codex, then hire them in */
+function hireFromMeeting(){
+  const m=meeting; if(!m) return;
+  const r=HIRE_ROLES[m.person.career];
+  if(!r){ toast("You can't hire "+careerName(m.person.career)+"s"); return; }
+  if(state.credits<r.fee){ toast("Hiring costs "+commas(r.fee)+"c"); return; }
+  if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
+  m.person.raceName=m.draw.race.name;
+  recordMeeting(m.person, m.draw.race, m.where || (state.world?state.world.name:"deep space"));
+  Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
+  checkObjectives();
+  const idx=state.codex.people.length-1;
+  viewingPerson=idx; personExpand=false; meeting=null;
+  hireCrew(idx);   // deducts the fee, brings them aboard, and shows their crew page
 }
 function finishMeeting(){
   const m=meeting;
