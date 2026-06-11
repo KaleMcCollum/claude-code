@@ -755,6 +755,11 @@ const SHIP_RARITY_MULT=[1, 1.3, 1.7, 2.4, 3.2, 4.5, 6, 8];
 /* roll hull plating (0..4). Common hulls are unplated; only rarer ships can mount heavy/exotic. */
 function rollArmor(tierId){ const ti=RARITY.index(tierId), maxA=clamp(Math.round(ti/1.4),0,4);
   let a=0; for(let k=0;k<maxA;k++) if(chance(0.45)) a++; return Math.min(a,4); }
+/* roll a fitted hyperdrive tier (0..4) — only interstellar hulls, and the better tiers are a
+   rare prize on legendary ships. */
+function rollHyper(c, tierId){ if(c.range!=="interstellar") return 0;
+  const ti=RARITY.index(tierId), maxH=clamp(Math.round(ti/1.6),0,4);
+  let h=0; for(let k=0;k<maxH;k++) if(chance(0.4)) h++; return Math.min(h,4); }
 /* combat stats for a freshly generated hull of a class + rarity tier */
 const HP_SCALE=3;   // hulls are tough relative to weapon attack, so battles last several salvos
 function shipStatsFor(c, tierId){
@@ -763,12 +768,12 @@ function shipStatsFor(c, tierId){
   // rarer hulls gain hardpoints; even normally-unarmed hulls can turn up rarely with a gun or two
   const pilotGuns = c.pilotGuns + ((c.pilotGuns+c.gunnerGuns===0 && ti>=4) ? Math.min(2, ti-3) : 0);
   const gunnerGuns = c.gunnerGuns + (c.gunnerGuns>0 ? Math.floor(ti/2) : 0);
-  return { maxHp, armor, pilotGuns, gunnerGuns };
+  return { maxHp, armor, pilotGuns, gunnerGuns, hyper:rollHyper(c, tierId) };
 }
 /* write combat fields onto a ship object (empty hardpoints) */
 function applyShipStats(ship, c, tierId){
   const s=shipStatsFor(c, tierId);
-  ship.maxHp=s.maxHp; ship.hp=s.maxHp; ship.armor=s.armor;
+  ship.maxHp=s.maxHp; ship.hp=s.maxHp; ship.armor=s.armor; ship.hyper=s.hyper;
   ship.pilotGuns=s.pilotGuns; ship.gunnerGuns=s.gunnerGuns;
   ship.guns=new Array(s.pilotGuns+s.gunnerGuns).fill(null);
   return ship;
@@ -809,8 +814,8 @@ function genShipStock(w){
     stock.push({ cls:c.id, name:c.name, role:c.role, tier:t.id, range:c.range,
       cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
       reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun,
-      maxHp:cs.maxHp, armor:cs.armor, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns,
-      power, price:Math.round((c.price + cs.armor*c.price*0.25)*m*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) });
+      maxHp:cs.maxHp, armor:cs.armor, hyper:cs.hyper, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns,
+      power, price:Math.round((c.price + cs.armor*c.price*0.25 + cs.hyper*c.price*0.2)*m*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) });
   }
   return stock;
 }
@@ -1900,7 +1905,7 @@ const UI = {
         <div class="row between"><b>${o.name} <span class="small" style="color:${RARITY.byId(o.tier).color}">${RARITY.byId(o.tier).name}</span></b>
           <button data-ship="${i}" ${state.credits<o.price?"disabled":""}>${commas(o.price)}c</button></div>
         <p class="small dim" style="margin:4px 0">${o.role||RANGE_LABEL[o.range]} &middot; ${RANGE_LABEL[o.range]} &middot; cargo ${o.cargo} &middot; crew ${o.crew}</p>
-        <p class="small dim" style="margin:2px 0">&#10084; ${commas(o.maxHp)} HP${o.armor?` &middot; ${ARMOR[o.armor].name}`:""} &middot; ${(o.pilotGuns||0)+(o.gunnerGuns||0)} hardpoint${(o.pilotGuns||0)+(o.gunnerGuns||0)!==1?"s":""}${o.bays?` &middot; ${o.bays} bay${o.bays>1?"s":""}`:""}</p>
+        <p class="small dim" style="margin:2px 0">&#10084; ${commas(o.maxHp)} HP${o.armor?` &middot; <span class="gold">${ARMOR[o.armor].name}</span>`:""}${o.hyper?` &middot; <span class="gold">${HYPERDRIVE[o.hyper].name} drive</span>`:""} &middot; ${(o.pilotGuns||0)+(o.gunnerGuns||0)} hardpoint${(o.pilotGuns||0)+(o.gunnerGuns||0)!==1?"s":""}${o.bays?` &middot; ${o.bays} bay${o.bays>1?"s":""}`:""}</p>
       </div>`).join("")
         :`<p class="small dim">No ships for sale here — this world hasn't the industry for it. Try a more developed world.</p>`}
     </div>
@@ -3728,7 +3733,7 @@ function buyShip(i){
   const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name, role:o.role,
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
     bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
-    maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
+    maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, hyper:o.hyper||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
     guns:new Array((o.pilotGuns||0)+(o.gunnerGuns||0)).fill(null) };
   state.vehicles.push(ship);
   if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;  // auto-pilot if it frees you to leave
