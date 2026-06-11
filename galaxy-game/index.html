@@ -2196,8 +2196,9 @@ const UI = {
   /* ---------- SHIP-TO-SHIP BATTLE ---------- */
   screen_shipbattle(){
     const c=shipCombat; if(!c) return this.screen_hub();
-    const mine=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(Boolean);
-    const myHp=mine.reduce((s,v)=>s+Math.max(0,v.hp),0), myMax=mine.reduce((s,v)=>s+v.maxHp,0), myAtk=fleetAttack(c.my);
+    const line=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(Boolean);
+    const mine=(c.main||c.my).map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(Boolean);   // the main line (wing shown on its own)
+    const myHp=line.reduce((s,v)=>s+Math.max(0,v.hp),0), myMax=line.reduce((s,v)=>s+v.maxHp,0), myAtk=fleetAttack(c.my);
     return `
     ${this.statHeader()}
     <div class="card"><div class="row between"><h2 class="red">${c.name}</h2><span class="tag">${c.ships} ship${c.ships>1?"s":""}</span></div>
@@ -2208,15 +2209,18 @@ const UI = {
     <div class="card"><h3>Your fleet</h3>
       <div class="statline"><span>Fleet hull</span><span>${commas(myHp)} / ${commas(myMax)}</span></div>
       <div class="bar"><i class="hpfill" style="width:${myMax?Math.max(0,myHp/myMax*100):0}%"></i></div>
-      <p class="small dim">Your guns: <span class="gold">${commas(myAtk)}</span>/salvo across ${mine.length} ship${mine.length!==1?"s":""}</p>
-      ${mine.map(v=>`<div class="krow"><span class="lbl">${v.name} <span class="dim small">&middot; ${v.clsName}</span></span>
+      <p class="small dim">Your guns: <span class="gold">${commas(myAtk)}</span>/salvo across ${line.length} ship${line.length!==1?"s":""}</p>
+      ${mine.map(v=>`<div class="krow"><span class="lbl">${(v.bays>0?'&#128640; ':'')}${v.name} <span class="dim small">&middot; ${v.clsName}</span></span>
         <span class="kv ${v.hp<=0?'red':''}">${v.hp<=0?'crippled':commas(v.hp)+' HP'} &middot; &#9876; ${commas(shipAttack(v))}</span></div>`).join("")}
+      ${c.wing&&c.wing.length?`<p class="small dim" style="margin-top:6px">&#9992; Fighter wing &middot; ${c.wingOut?'<span class="violet">launched</span>':'<span class="dim">in the bays</span>'} &middot; ${c.wing.length} fighter${c.wing.length>1?"s":""}</p>
+        ${c.wingOut?c.wing.map(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v?`<div class="krow"><span class="lbl violet small">&#9992; ${v.name}</span><span class="kv ${v.hp<=0?'red':''}">${v.hp<=0?'down':commas(v.hp)+' HP'} &middot; &#9876; ${commas(shipAttack(v))}</span></div>`:""; }).join(""):""}`:""}
     </div>
     ${c.log&&c.log.length?`<div class="card"><p class="small">${c.log.join("<br>")}</p></div>`:""}
     ${c.over?`<div class="card"><p class="small ${c.win?'green':'red'}">${c.msg}</p>
       <button class="primary full center" id="sbDone">${c.win?"Collect &amp; carry on":"Limp away"}</button></div>`
     :`<div class="card"><div class="grid">
       <button id="sbFire" class="primary">&#9876; Fire salvo</button>
+      ${c.wing&&c.wing.length?`<button id="sbWing" class="${c.wingOut?'ghost':''}">${c.wingOut?'&#9992; Recall wing':'&#9992; Launch wing'}</button>`:""}
       <button id="sbRetreat" class="ghost">&#127756; Retreat</button>
       </div></div>`}
     ${this.logCard()}`;
@@ -3164,6 +3168,7 @@ const UI = {
     }
     if(screen==="shipbattle"){
       const f=$("#sbFire"); if(f) f.onclick=()=>shipFire();
+      const wb=$("#sbWing"); if(wb) wb.onclick=()=>toggleWing();
       const r=$("#sbRetreat"); if(r) r.onclick=()=>shipRetreat();
       const d=$("#sbDone"); if(d) d.onclick=()=>shipBattleDone();
     }
@@ -3660,17 +3665,31 @@ function voidLeave(){ voidMeet=null; UI.render("hub"); UI.flashLog(); }
    Your fleet's guns vs theirs. Each round both sides fire: you deal your fleet's total attack
    to the enemy pool; they focus-fire your ships one at a time. Repair disabled hulls later. */
 function myBattleShips(){ return shipsByIds(playerGroupIds()).filter(v=>Game.operational(v)); }
+/* crewed fighters waiting in the bays of carriers that are in this battle group */
+function carrierWing(carrierIds){ const set=new Set(carrierIds);
+  return (state.vehicles||[]).filter(v=>v.carrier && set.has(v.carrier) && (v.hp>0) && Game.operational(v)); }
 function fleetAttack(ids){ return ids.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0).reduce((s,v)=>s+shipAttack(v),0); }
+/* the ships currently in the fight: your main line, plus the fighter wing if it's launched */
+function battleLine(){ const c=shipCombat; if(!c) return []; return c.main.concat(c.wingOut?c.wing:[]); }
+/* one tap to commit the whole wing — or pull it back into the bays where it's safe (but idle) */
+function toggleWing(){ const c=shipCombat; if(!c||c.over||!c.wing.length) return;
+  c.wingOut=!c.wingOut; c.my=battleLine();
+  c.log=[c.wingOut?"Your fighter wing screams out of the launch bays!":"Your fighters break off and dock back in the bays."];
+  Game.save(); UI.render("shipbattle"); }
 function startShipBattle(){
   const m=voidMeet; if(!m) return;
   const mine=myBattleShips();
   if(!mine.length){ toast("No crewed ship to fight with"); return; }
-  if(mine.reduce((s,v)=>s+shipAttack(v),0)<=0){ toast("Your ships have no working guns — mount weapons at a shipyard"); return; }
+  const wing=carrierWing(mine.map(v=>v.id));
+  const all=mine.concat(wing);
+  if(all.reduce((s,v)=>s+shipAttack(v),0)<=0){ toast("Your ships have no working guns — mount weapons at a shipyard"); return; }
   const t=m.threat, n=m.ships;
   const eMax=Math.round(n * 700*(1+t*1.1) * rndF(0.9,1.1));
   shipCombat={ name:m.name, faction:m.faction, ships:n, threat:t,
     eMaxHp:eMax, eHp:eMax, eAtk:Math.round(n * 45*(1+t*1.1)),
-    my:mine.map(v=>v.id), loot:Math.round(n*900*(1+t*1.4)), over:false, win:false, round:0, log:[] };
+    main:mine.map(v=>v.id), wing:wing.map(v=>v.id), wingOut:true, my:all.map(v=>v.id),
+    loot:Math.round(n*900*(1+t*1.4)), over:false, win:false, round:0,
+    log: wing.length?[`Your carrier${mine.filter(v=>v.bays>0).length>1?"s":""} launch ${wing.length} fighter${wing.length>1?"s":""} to join the battle.`]:[] };
   voidMeet=null; Game.logMsg(`You bring your guns to bear on the ${m.name}.`,"hit"); UI.render("shipbattle");
 }
 function shipFire(){
