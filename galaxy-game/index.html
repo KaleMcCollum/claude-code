@@ -2822,19 +2822,26 @@ const UI = {
     ${tab==="crewmates"?this.crewmatesView():tab==="fleets"?this.fleetsView():this.shipsView()}`;
   },
   crewmatesView(){
-    const crew=state.crew||[];
-    return `<div class="card sheet"><h3>Your crewmates <span class="dim small">&middot; ${crew.length}</span></h3>
-      ${crew.length?crew.map((c,ci)=>{ const sh=c.shipId?(state.vehicles||[]).find(v=>v.id===c.shipId):null;
-        return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
-          <div class="row between"><span>${c.name} <span class="dim small">&middot; ${careerName(c.career)} &middot; ${commas(careerSalary(c.career))}c/yr</span></span>
-            <span class="small ${sh?'green':'dim'}">${sh?`aboard ${sh.name} (seat ${(c.seat||0)+1})`:"idle"}</span></div>
-          <div class="row" style="margin-top:4px">
-            <button class="small ghost" disabled>Assign a job (soon)</button>
-            ${sh?`<button class="small ghost" data-unseat="${ci}">Unassign</button>`:""}
-            <button class="small ghost" data-dismiss="${ci}">Dismiss</button>
-          </div></div>`; }).join("")
-        :`<p class="small dim">No crewmates yet. Meet a Pilot out in the galaxy and hire them from their Codex page.</p>`}
-    </div>`;
+    const crew=state.crew||[], wages=annualWages();
+    const order=["pilot","mechanic","gunner","laborer","medic","mercenary"];
+    const plural=s=>/y$/.test(s)?s.slice(0,-1)+"ies":s+"s";
+    const sorted=crew.map((c,ci)=>({c,ci})).sort((a,b)=>{ const oa=order.indexOf(a.c.career), ob=order.indexOf(b.c.career);
+      return ((oa<0?99:oa)-(ob<0?99:ob)) || a.c.name.localeCompare(b.c.name); });
+    let lastRole=null;
+    const rows=sorted.map(({c,ci})=>{ const sh=c.shipId?(state.vehicles||[]).find(v=>v.id===c.shipId):null;
+      const head=(c.career!==lastRole?(lastRole=c.career, `<div class="shipcat">${plural(careerName(c.career))}</div>`):"");
+      return head+`<div class="shipcard">
+        <div class="top"><span class="nm">${c.name}</span><span class="tag">${careerName(c.career)}</span></div>
+        <div class="chips">
+          ${sh?`<span class="chip g">&#9863; ${sh.name} &middot; seat ${(c.seat||0)+1}</span>`:'<span class="chip">idle &middot; travels with you</span>'}
+          <span class="chip gold">${commas(careerSalary(c.career))}c/yr</span>
+        </div>
+        <div class="row" style="margin-top:8px">
+          ${sh?`<button class="small ghost" data-unseat="${ci}">Unassign</button>`:""}
+          <button class="small ghost" data-dismiss="${ci}">Dismiss</button>
+        </div></div>`; }).join("");
+    return `<div class="card"><div class="row between"><h3>Your crewmates <span class="dim small">&middot; ${crew.length}</span></h3>${crew.length?`<span class="small gold">${commas(wages)}c/yr</span>`:""}</div>
+      ${crew.length?rows:'<p class="small dim">No crewmates yet. Meet a Pilot out in the galaxy and hire them from their Codex page.</p>'}</div>`;
   },
   /* a carrier's hangar: the fighters stowed inside, plus a picker to stow more (when docked) */
   hangarCard(v, here){
@@ -3014,11 +3021,16 @@ const UI = {
       </div>
       <div class="card"><button class="ghost full center" id="fleetBack">&larr; All fleets</button></div>`;
     }
-    return `<div class="card sheet"><h3>Your fleets <span class="dim small">&middot; ${fleets.length}</span></h3>
+    return `<div class="card"><h3>Your fleets <span class="dim small">&middot; ${fleets.length}</span></h3>
       <p class="small dim">Group ships to move them together. A fleet jumps between systems only if every ship is interstellar-class, and is limited by its weakest ship's range.</p>
-      ${fleets.length?fleets.map(f=>{ const caps=groupCaps(f.shipIds), fs=state.galaxy.systems[fleetSys(f)];
-        return `<div class="krow"><span class="lbl"><button class="small ghost" data-fleetview="${f.id}">${f.name}</button> <span class="dim small">&middot; ${f.shipIds.length} ship${f.shipIds.length>1?"s":""}</span>${f.trade?' <span class="gold small">&#128666; trading</span>':''}</span>
-          <span class="kv">${RANGE_LABEL[caps.tier]} <span class="dim">&middot; ${fs?fs.name:"?"}</span></span></div>`; }).join("")
+      ${fleets.length?fleets.map(f=>{ const caps=groupCaps(f.shipIds), fs=state.galaxy.systems[fleetSys(f)], withYou=fleetSys(f)===state.sysId, crewed=fleetAllCrewed(f);
+        return `<button class="shipcard" data-fleetview="${f.id}">
+          <div class="top"><span class="nm">${f.name}</span><span class="tag">${f.shipIds.length} ship${f.shipIds.length!==1?"s":""}</span></div>
+          <div class="sub">${RANGE_LABEL[caps.tier]}${caps.tier==="interstellar"?` &middot; <span class="gold">${caps.jump.toFixed(1)} ly</span>`:""} &middot; ${fs?fs.name:"?"}</div>
+          <div class="chips">
+            ${withYou?'<span class="chip g">&#9679; with you</span>':""}
+            ${f.trade?'<span class="chip gold">&#128666; trading</span>':crewed?'<span class="chip g">ready</span>':'<span class="chip r">needs crew</span>'}
+          </div></button>`; }).join("")
         :`<p class="small dim">No fleets yet.</p>`}
     </div>
     <div class="card"><button class="primary full center" id="fleetNew" ${state.galaxy?"":"disabled"}>+ Create a fleet</button>
