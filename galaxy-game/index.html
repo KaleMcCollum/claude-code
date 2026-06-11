@@ -566,6 +566,29 @@ const HIRE_ROLES={
   medic:    { fee:2800, salary:4500, role:"tends the crew (healing coming soon)" },
 };
 const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
+/* Jobs you can ASK a person for when you meet them. chance = odds they take you on (rarer
+   work is harder to land); pay = the yearly salary you then earn. Hostile careers aren't here
+   — you don't ask an outlaw for a day job. */
+const JOBS={
+  laborer:  { chance:0.85, pay:600 },
+  farmer:   { chance:0.70, pay:900 },
+  factory:  { chance:0.70, pay:850 },
+  dockhand: { chance:0.65, pay:1000 },
+  courier:  { chance:0.55, pay:1500 },
+  miner:    { chance:0.55, pay:1700 },
+  rancher:  { chance:0.50, pay:2100 },
+  merchant: { chance:0.45, pay:3600 },
+  hunter:   { chance:0.34, pay:2700 },
+  mechanic: { chance:0.40, pay:3300 },
+  pilot:    { chance:0.38, pay:4200 },
+  gunner:   { chance:0.30, pay:3900 },
+  mercenary:{ chance:0.30, pay:4400 },
+  medic:    { chance:0.26, pay:5200 },
+  scholar:  { chance:0.22, pay:5800 },
+  smuggler: { chance:0.16, pay:9500 },
+  shipwright:{ chance:0.10, pay:14000 },
+};
+const jobOf=career=>JOBS[career]||null;
 /* Yearly upkeep: spaceworthy ships cost ~30% of value/yr; surface craft are cheap to keep. */
 function shipMaint(v){ let m=(v.value||0)*(spaceworthy(v)?0.3:0.05);
   m += (v.guns||[]).reduce((s,g)=>s+(g?weaponById(g).price*0.18:0),0);   // armed ships cost more to keep
@@ -1294,7 +1317,7 @@ const Game = {
       actions:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
-      activeShip:veh.id, bounties:[], crew:[], lastBillYear:0,
+      activeShip:veh.id, bounties:[], crew:[], lastBillYear:0, job:null,
       stimReady:false, log:[],
     };
     veh.slot=0; veh.sysId=0;      // your inherited craft is docked on your homeworld
@@ -2195,6 +2218,8 @@ const UI = {
         ${known?`<p class="small dim">They are ${article(race.name)} <b class="violet">${race.name}</b>.</p>`
           :`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}`}
         <button class="primary full center" id="meetFinish" style="margin-top:8px">Record &amp; part ways</button>
+        ${jobOf(person.career)&&!person.askedJob&&!isHostile(person)?`<button class="full center" id="meetJob" style="margin-top:6px">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(person.career).chance*100)}% &middot; ${commas(jobOf(person.career).pay)}c/yr)</span></button>`:""}
+        ${person.askedJob?`<p class="small dim center" style="margin-top:6px">${state.job&&state.job.career===person.career?"You took the job.":"They had no work for you."}</p>`:""}
         ${isHostile(person)?`<button class="full center" id="meetAttack" style="margin-top:6px">&#9876; Attack &amp; claim the bounty</button>`:""}
       </div>`;
   },
@@ -2252,11 +2277,13 @@ const UI = {
        : p.hired?`<p class="small green">In your crew${crewShip?`, piloting the <b>${crewShip.name}</b>`:` — idle, awaiting a ship (assign from your Fleet)`}.</p>`
        : here?`<div class="row">
             <button id="sayHi">Say hi</button>
+            ${jobOf(p.career)&&!p.askedJob&&!isHostile(p)?`<button id="askJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(p.career).chance*100)}% &middot; ${commas(jobOf(p.career).pay)}c/yr)</span></button>`:""}
             ${HIRE_ROLES[p.career]?`<button id="hire" class="primary">Hire as ${careerName(p.career)} &middot; ${HIRE_ROLES[p.career].fee}c</button>`:""}
             ${isHostile(p)?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
             ${p.career==="shipwright"?`<button id="buyOldShip" class="primary">Buy their old ship &middot; ${commas(YARDER_SHIP.price)}c</button>`:""}
             ${!HIRE_ROLES[p.career]&&!isHostile(p)&&p.career!=="shipwright"?`<span class="small dim">${careerName(p.career)} — can't hire as crew.</span>`:""}
           </div>
+          ${p.askedJob&&!p.hired?`<p class="small dim" style="margin-top:6px">${state.job&&state.job.career===p.career&&state.job.who===p.name?"You work for them now.":"They had no work for you."}</p>`:""}
           ${isHostile(p)&&p.hostile>=3?`<p class="small red" style="margin-top:6px">A figure this powerful is guarded — taking them on alone is desperate work. (Fleet vs. fleet combat is coming.)</p>`:""}
           ${HIRE_ROLES[p.career]?`<p class="small dim" style="margin-top:6px">${cap(careerName(p.career))}: ${HIRE_ROLES[p.career].role}.</p>`:""}
           ${p.career==="shipwright"?`<p class="small dim" style="margin-top:6px">${YARDER_SHIP.name}: in-system only, cargo ${YARDER_SHIP.cargo}, room for you alone — but it'll get you off-world.</p>`:""}
@@ -2493,6 +2520,7 @@ const UI = {
       ${krow("Race rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)} &middot; ${humanizeCount(sp.population)} alive`)}
       ${krow("Life stage", `${cap(Game.stage())} <span class="${Game.maturation()<1?'blue':'green'}">${Math.round(Game.maturation()*100)}% grown</span>`)}
       ${krow("Age", `${Math.floor(Game.age())} yr${Game.age()>=Game.twilight()?' <span class="red">(twilight)</span>':''}`)}
+      ${krow("Work", state.job?`${cap(careerName(state.job.career))} <span class="gold">+${commas(state.job.pay)}c/yr</span> <button class="small ghost" id="quitJob">Quit</button>`:'<span class="dim">Unemployed — ask people you meet for work</span>')}
     </div>
     ${speciesSheet(sp)}
     <div class="card sheet">
@@ -2783,6 +2811,7 @@ const UI = {
     [...$("#nav").children].forEach(b=> b.onclick=()=>{ if(combat&&!combat.over&&b.dataset.screen!=="bag"){toast("Finish the encounter first");return;} UI.render(b.dataset.screen); });
     // 🎲 randomize buttons work on every screen that hosts a nameField
     app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
+    const qj=$("#quitJob"); if(qj) qj.onclick=()=>quitJob();
 
     if(screen==="title"){
       const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:0}; UI.render("create"); };
@@ -2903,6 +2932,7 @@ const UI = {
       const bw=$("#backWorlds"); if(bw) bw.onclick=()=>UI.render("cx_worlds");
       const sh=$("#sayHi"); if(sh) sh.onclick=()=>sayHi(viewingPerson);
       const hr=$("#hire"); if(hr) hr.onclick=()=>hireCrew(viewingPerson);
+      const aj=$("#askJob"); if(aj) aj.onclick=()=>{ const p=(state.codex.people||[])[viewingPerson]; if(p) askForJob(p, ()=>UI.render("cx_person")); };
       const at=$("#attack"); if(at) at.onclick=()=>startDuel(viewingPerson);
       const bo=$("#buyOldShip"); if(bo) bo.onclick=()=>buyYarderShip();
       app.querySelectorAll("[data-unassign]").forEach(b=> b.onclick=()=>unassignCrew(+b.dataset.unassign));
@@ -3038,6 +3068,7 @@ const UI = {
       $("#meetStep1").onclick=()=>{ m.person.name=$("#meetPerson").value.trim()||genName("person"); m.step=2; UI.render("meet"); };
     } else {
       $("#meetFinish").onclick=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } finishMeeting(); };
+      const mj=$("#meetJob"); if(mj) mj.onclick=()=>askForJob(m.person, ()=>UI.render("meet"));
       const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ if(m.draw.isNew){ m.draw.race.name=$("#meetRace").value.trim()||genName("race"); } meetAttack(); };
     }
   },
@@ -3536,6 +3567,24 @@ function sayHi(i){
   convo={ idx:i, text:pick(HELLOS) };
   UI.render("cx_person");
 }
+/* ask a person for work — a chance to be hired into their career for a yearly salary.
+   You can only ask each person once; rarer trades are harder to land. */
+function askForJob(p, rerender){
+  const j=jobOf(p.career);
+  if(!j){ toast("They've no work to offer"); return; }
+  p.askedJob=true;
+  if(chance(j.chance)){
+    state.job={ career:p.career, pay:j.pay, where:p.where||(state.world?state.world.name:"the stars"), who:p.name };
+    Game.logMsg(`${p.name} takes you on as ${article(careerName(p.career))} ${careerName(p.career)} — ${commas(j.pay)}c a year. Paid each year.`,"good");
+    toast(`Hired! +${commas(j.pay)}c/yr`);
+  } else {
+    Game.logMsg(`${p.name} hasn't any work for you right now.`,"sys");
+    toast("Turned down");
+  }
+  Game.save(); if(rerender) rerender();
+}
+function quitJob(){ if(!state.job) return; const c=careerName(state.job.career);
+  state.job=null; Game.logMsg(`You leave your work as ${article(c)} ${c}.`,"sys"); Game.save(); UI.render(UI.current); }
 function hireCrew(i){
   const p=(state.codex.people||[])[i]; if(!p) return;
   if(p.hired){ toast("Already in your crew"); return; }
@@ -3700,6 +3749,8 @@ function meetAttack(){
 }
 /* charged once per year of play: crew wages + ship maintenance */
 function chargeUpkeep(){
+  if(state.job){ state.credits+=state.job.pay;   // your yearly salary comes in first
+    Game.logMsg(`Salary from your work as ${careerName(state.job.career)}: +${commas(state.job.pay)}c.`,"good"); }
   const wages=annualWages(), maint=annualMaint(), bill=wages+maint;
   if(bill<=0) return;
   if(state.credits>=bill){ state.credits-=bill;
