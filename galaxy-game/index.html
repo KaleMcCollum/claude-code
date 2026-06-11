@@ -95,6 +95,21 @@
   .pill.g{color:var(--gold); border-color:#4a3f22;}
   .pill.b{color:var(--blue); border-color:#234a57;}
   .pill.v{color:var(--violet); border-color:#3a2a57;}
+  /* grouped ship list — a tappable card per ship with status chips */
+  .shipcat{margin:14px 0 4px; font-size:.72rem; letter-spacing:.7px; text-transform:uppercase; color:var(--gold);}
+  .shipcat:first-child{margin-top:2px;}
+  .shipcard{display:block; width:100%; text-align:left; background:var(--panel2); border:1px solid var(--line);
+    border-radius:11px; padding:10px 12px; margin:6px 0; transition:.12s;}
+  .shipcard:active{transform:scale(.99);} .shipcard:hover{border-color:var(--blue);}
+  .shipcard.on{border-color:var(--gold); background:#19212f;}
+  .shipcard .top{display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .shipcard .nm{font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .shipcard .sub{font-size:.75rem; color:var(--dim); margin-top:2px;}
+  .shipcard .chips{margin-top:7px; display:flex; flex-wrap:wrap; gap:4px;}
+  .chip{font-size:.69rem; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--dim); background:var(--panel); white-space:nowrap;}
+  .chip.g{color:var(--green); border-color:#2c4a38;} .chip.r{color:var(--red); border-color:#5a2b2b;}
+  .chip.b{color:var(--blue); border-color:#234a57;} .chip.v{color:var(--violet); border-color:#3a2a57;}
+  .chip.gold{color:var(--gold); border-color:#4a3f22;}
   input[type=text],input[type=number]{width:100%; font-family:inherit; font-size:1rem; padding:11px;
     background:#070a11; color:var(--ink); border:1px solid var(--line); border-radius:10px;}
   button.rnd{flex:0 0 auto; padding:11px 13px; font-size:1.1rem; line-height:1;}
@@ -2886,11 +2901,26 @@ const UI = {
       </div></div>`;
     }
     const shown=ships.filter(v=>!v.carrier);   // stowed fighters live in their carrier's hangar
-    return `<div class="card sheet"><h3>Your ships <span class="dim small">&middot; ${shown.length}</span></h3>
-      <p class="small dim">Select a ship to manage its crew, fleet, and travel.</p>
-      ${shown.map(v=>{ const active=v.id===state.activeShip, here=atHere(v), n=Game.shipCrew(v).length, fleet=fleetOf(v), hold=carriedShips(v.id).length;
-        return `<div class="krow"><span class="lbl"><button class="small ghost" data-selshipview="${v.id}">${active?'&#9654; ':''}${v.name}</button>${fleet?` <span class="dim small">&middot; ${fleet.name}</span>`:''}${hold?` <span class="violet small">&middot; &#128640;${hold}</span>`:''}</span>
-          <span class="kv">${RANGE_LABEL[v.range]} <span class="dim">&middot; ${shipLocationName(v)}${here?' (here)':''} &middot; crew ${(active?1:0)+n}/${v.crewMax||1}</span></span></div>`; }).join("")}
+    const order=SHIP_CATS.map(c=>c.id);
+    const sorted=shown.slice().sort((a,b)=>{ const ca=order.indexOf(shipCat(a)), cb=order.indexOf(shipCat(b));
+      return ((ca<0?99:ca)-(cb<0?99:cb)) || ((shipClass(a.cls)||{}).size||0)-((shipClass(b.cls)||{}).size||0) || a.name.localeCompare(b.name); });
+    let lastCat=null;
+    const rows=sorted.map(v=>{ const active=v.id===state.activeShip, here=atHere(v), op=Game.operational(v),
+        crew=(active?1:0)+Game.shipCrew(v).length, cmax=v.crewMax||1, fleet=fleetOf(v), hold=carriedShips(v.id).length, busy=shipBusy(v),
+        cat=shipCat(v), head=(cat!==lastCat?(lastCat=cat, `<div class="shipcat">${cat?shipCatName(cat):"Other craft"}</div>`):"");
+      return head+`<button class="shipcard${active?' on':''}" data-selshipview="${v.id}">
+        <div class="top"><span class="nm">${active?'&#9654; ':''}${v.name}</span>
+          <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
+        <div class="sub">${v.clsName||v.role||"Ship"} &middot; ${v.range==="interstellar"?`<span class="gold">${jumpRange(v).toFixed(1)} ly</span>`:RANGE_LABEL[v.range]} &middot; ${shipLocationName(v)}</div>
+        <div class="chips">
+          ${here?'<span class="chip g">&#9679; here</span>':""}
+          <span class="chip${op?'':' r'}">${op?`crew ${crew}/${cmax}`:"needs crew"}</span>
+          ${fleet?`<span class="chip b">&#9863; ${fleet.name}</span>`:""}
+          ${hold?`<span class="chip v">&#128640; ${hold}</span>`:""}
+          ${busy?'<span class="chip gold">&#128666; trading</span>':""}
+        </div></button>`; }).join("");
+    return `<div class="card"><div class="row between"><h3>Your ships <span class="dim small">&middot; ${shown.length}</span></h3>${state.activeShip?'<span class="small dim">&#9654; piloting</span>':""}</div>
+      ${shown.length?rows:'<p class="small dim">No ships yet. Buy one at a shipyard or off a trader you meet.</p>'}
     </div>`;
   },
   /* ---------- FLEETS (named ship groups you can move together) ---------- */
