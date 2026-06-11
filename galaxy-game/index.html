@@ -4523,7 +4523,9 @@ function worldDesc(w){
 }
 
 /* ============================================================ BOOT ===== */
-UI.render("title");
+// opening with #play jumps straight into a saved game (used by share/demo links)
+if(location.hash==="#play" && Game.hasSave() && Game.load()){ UI.render(state.dead?"epilogue":"hub"); }
+else UI.render("title");
 </script>
 </body>
 </html>
