@@ -95,7 +95,7 @@
   .pill.g{color:var(--gold); border-color:#4a3f22;}
   .pill.b{color:var(--blue); border-color:#234a57;}
   .pill.v{color:var(--violet); border-color:#3a2a57;}
-  input[type=text]{width:100%; font-family:inherit; font-size:1rem; padding:11px;
+  input[type=text],input[type=number]{width:100%; font-family:inherit; font-size:1rem; padding:11px;
     background:#070a11; color:var(--ink); border:1px solid var(--line); border-radius:10px;}
   button.rnd{flex:0 0 auto; padding:11px 13px; font-size:1.1rem; line-height:1;}
   .dim{color:var(--dim);} .gold{color:var(--gold);} .green{color:var(--green);}
@@ -893,6 +893,52 @@ function shipStockAt(){ state.shipStock=state.shipStock||{};
   if(!state.shipStock[key]) state.shipStock[key]=genShipStock(state.world);
   return state.shipStock[key]; }
 
+/* Build one ship "offer" (the pre-vehicle blueprint shipyards and ship-owners use) from a
+   hull class at a given rarity tier, with an appraised price. */
+function shipOfferFrom(c, tierId, priceFactor){
+  const m=SHIP_RARITY_MULT[RARITY.index(tierId)], vf=rndF(0.9,1.12);
+  const power={}; Object.keys(c.power).forEach(a=>power[a]=Math.round(c.power[a]*m));
+  const cs=shipStatsFor(c, tierId);
+  const price=Math.round((c.price + cs.armor*c.price*0.25 + cs.hyper*c.price*0.2 + cs.slotSizes.reduce((s,z)=>s+z*c.price*0.06,0))*m*(priceFactor||1)*rndF(0.95,1.08));
+  return { cls:c.id, name:c.name, role:c.role, tier:tierId, range:c.range,
+    cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
+    reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun,
+    maxHp:cs.maxHp, armor:cs.armor, hyper:cs.hyper, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns, slotSizes:cs.slotSizes,
+    power, price };
+}
+/* Some people you meet own a personal ship — ordinary civilians, pilots, mechanics, traders.
+   What they own is bounded by their wealth, so most own modest hulls and only the rich fly
+   gunships. Returns an offer blueprint (with an appraised price = its worth), or null. */
+function rollPersonShip(credits){
+  if(!chance(0.24)) return null;
+  const budget=Math.max(2500, credits*1.5);
+  const avail=SHIP_CLASSES.filter(c=>c.price<=budget);
+  if(!avail.length) return null;
+  // weight toward the cheaper, commoner hulls
+  const weighted=avail.map(c=>({c, w:1/Math.pow(c.price,0.55)}));
+  const tot=weighted.reduce((s,x)=>s+x.w,0); let r=Math.random()*tot, hull=weighted[0].c;
+  for(const x of weighted){ if((r-=x.w)<0){ hull=x.c; break; } }
+  const t=rollShipTier(6);   // mostly common, the odd better-spec hull
+  return shipOfferFrom(hull, t.id, 1.0);
+}
+/* Turn an offer blueprint into a real owned vehicle (docked where you stand). */
+function vehicleFromOffer(o){
+  return { kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name, role:o.role,
+    range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
+    bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
+    maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, hyper:o.hyper||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
+    slotSizes:(o.slotSizes||[]).slice(), guns:new Array((o.pilotGuns||0)+(o.gunnerGuns||0)).fill(null) };
+}
+/* Odds an owner accepts your offer, by how it compares to the ship's worth. People are loath to
+   sell: a fair (at-worth) offer is a long shot; overpaying tempts them; lowballs almost never land
+   — but the rare fool takes a steal. */
+function shipBuyChance(offer, worth){
+  if(!(worth>0) || offer<=0) return 0;
+  const r=offer/worth;
+  return r>=1 ? Math.min(0.97, 0.12+(r-1)*0.85)
+              : Math.max(0.01, 0.12*Math.pow(r,4));
+}
+
 /* A market's stock for the year: staple supplies are always carried; the gear on offer is a
    rotating selection (wealthier worlds carry more), refreshed when a year passes. */
 function genMarketStock(w){
@@ -1106,6 +1152,7 @@ const Gen = {
              genome:{ avgPct, grade:gradeLabel(avgPct) } };
     if(cc.hostile){ out.hostile=cc.hostile; out.bounty=rollBounty(cc, race.tier);
       const f=rollForce(cc); if(f) out.force=f; }
+    else { const sh=rollPersonShip(out.credits); if(sh) out.ship=sh; }   // ordinary folk may own a ship
     return out;
   },
 };
@@ -2296,6 +2343,7 @@ const UI = {
         ${HIRE_ROLES[person.career]&&!isHostile(person)?`<p class="small dim" style="margin-top:6px">${cap(careerName(person.career))}: ${HIRE_ROLES[person.career].role}.</p>`:""}
         <p class="small dim" style="margin-top:6px">Leaving the conversation records ${person.name.split(" ")[0]} in your Codex.</p>
       </div>
+      ${!isHostile(person)?this.shipDealCard(person):""}
       ${personExpand?`${originCard(person)}${speciesSheet(person)}`:""}`;
   },
 
@@ -2392,6 +2440,7 @@ const UI = {
        : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${isHostile(p)?"hunt":"speak with"} them.</p>
           <button id="learnMore" class="ghost" style="margin-top:8px">${personExpand?"Show less":"Learn more"}</button>`}
     </div>
+    ${talkable&&p.ship?this.shipDealCard(p):""}
     ${personExpand?`${p.raceId?`<div class="card"><button class="small ghost" data-race="${p.raceId}">View ${p.raceName} race &rarr;</button></div>`:""}
       ${originCard(p)}
       ${speciesSheet(p)}`:""}
@@ -2971,6 +3020,22 @@ const UI = {
       <div class="vrow"><span class="vlbl">XP</span><div class="bar"><i class="xpfill" style="width:${state.xp/state.xpNext*100}%"></i></div><span class="vval">${state.xp} / ${state.xpNext}</span></div>
     </div>`;
   },
+  /* a person's personal ship + an offer box to buy it (haggle by naming your own price) */
+  shipDealCard(person){
+    const o=person&&person.ship; if(!o) return "";
+    const guns=(o.pilotGuns||0)+(o.gunnerGuns||0);
+    const spec=`${RANGE_LABEL[o.range]} &middot; ${cap(o.tier)} &middot; cargo ${o.cargo}${guns?` &middot; ${guns} gun${guns>1?"s":""}`:""}`;
+    return `<div class="card">
+      <h3>&#128640; Their ship</h3>
+      <p class="small"><b>${o.name}</b> <span class="dim small">&middot; ${spec}</span></p>
+      <p class="small dim">Appraised worth <b class="gold">${commas(o.price)}c</b>. People are loath to sell — overpay to tempt them, or lowball and pray. The shipyard will buy it off you for about ${commas(Math.round(o.price*0.6))}c.</p>
+      <div class="row" style="margin-top:6px">
+        <input type="number" id="shipOfferAmt" inputmode="numeric" min="1" value="${o.price}" style="flex:1">
+        <button class="primary" id="shipOfferBtn">Offer</button>
+      </div>
+      ${shipDealMsg?`<p class="small dim" style="margin-top:6px">${shipDealMsg}</p>`:""}
+    </div>`;
+  },
   logCard(){ const items=state.log.slice(-30).reverse();
     return `<div class="card"><h3>Log</h3><div class="log" id="logBox">${items.map(l=>`<p class="${l.c}">${l.t}</p>`).join("")}</div></div>`; },
   flashLog(){ const el=$("#logBox"); if(el){ el.scrollTop=0; el.parentElement.classList.add("flash");
@@ -3100,8 +3165,9 @@ const UI = {
       const bp=$("#backPeople"); if(bp) bp.onclick=()=>{ convo=null; personExpand=false; UI.render(bp.dataset.back||"cx_people"); };
       const lc=$("#leaveConvo"); if(lc) lc.onclick=()=>{ const p=(state.codex.people||[])[viewingPerson]; convo=null; personExpand=false; UI.render(p&&p.hired?"cx_crew":"cx_people"); };
       const lm=$("#learnMore"); if(lm) lm.onclick=()=>{ personExpand=!personExpand; UI.render("cx_person"); };
+      const so=$("#shipOfferBtn"); if(so) so.onclick=()=>{ const p=(state.codex.people||[])[viewingPerson]; buyPersonShip(p, +($("#shipOfferAmt").value), ()=>UI.render("cx_person")); };
       const br=$("#backRaces"); if(br) br.onclick=()=>UI.render("cx_races");
-      app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ convo=null; personExpand=false; viewingPerson=+b.dataset.person; UI.render("cx_person"); });
+      app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ convo=null; personExpand=false; shipDealMsg=null; viewingPerson=+b.dataset.person; UI.render("cx_person"); });
       app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>{ viewingRace=b.dataset.race; UI.render("cx_race"); });
       app.querySelectorAll("[data-world]").forEach(b=> b.onclick=()=>{ const [si,pi]=b.dataset.world.split(":").map(Number);
         const p=state.galaxy.systems[si].planets[pi]; if(p&&p.world){ viewingWorld=Object.assign({sysName:state.galaxy.systems[si].name}, p.world); UI.render("cx_world"); } });
@@ -3257,6 +3323,7 @@ const UI = {
     const mh=$("#meetHire"); if(mh) mh.onclick=()=>{ readRace(); hireFromMeeting(); };
     const mm=$("#meetMore"); if(mm) mm.onclick=()=>{ personExpand=!personExpand; UI.render("meet"); };
     const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ readRace(); meetAttack(); };
+    const so=$("#shipOfferBtn"); if(so) so.onclick=()=>buyPersonShip(m.person, +($("#shipOfferAmt").value), ()=>UI.render("meet"));
   },
 };
 
@@ -3604,7 +3671,7 @@ function startMeeting(intro, back){
   const draw=drawRace(), person=Gen.person(draw.race);
   if(!person.name) person.name=genName("person");   // no upfront naming step — they already have a name
   meeting={ draw, person, intro, back:back||"hub", step:2 };
-  personExpand=false;
+  personExpand=false; shipDealMsg=null;
   UI.render("meet");
 }
 /* offer the stranger a job on the spot: record them into your Codex, then hire them in */
@@ -3631,7 +3698,32 @@ function finishMeeting(){
   checkObjectives();
   const back=m.back; meeting=null; Game.save(); UI.render(back); UI.flashLog();
 }
-function shipSell(v){ return Math.round((v.value||(spaceworthy(v)?3000:600))*0.5); }
+/* The shipyard buys used hulls at a fair fraction of their worth — enough that a ship snapped up
+   cheap off a private owner can be flipped here for a profit. */
+function shipSell(v){ return Math.round((v.value||(spaceworthy(v)?3000:600))*0.6); }
+/* transient note shown on the meet / person screen after a buy-ship offer */
+let shipDealMsg=null;
+/* offer to buy a person's ship for `amount`; they may refuse, accept, or (rarely) take a steal */
+function buyPersonShip(person, amount, onDone){
+  const o=person&&person.ship; if(!o) return;
+  amount=Math.max(0, Math.round(amount||0));
+  if(amount<=0){ toast("Name a price"); return; }
+  if(state.credits<amount){ toast("You don't have "+commas(amount)+"c"); return; }
+  if(chance(shipBuyChance(amount, o.price))){
+    state.credits-=amount;
+    const ship=vehicleFromOffer(o);
+    state.vehicles.push(ship);
+    if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;   // your first ride off-world
+    person.ship=null;
+    const steal=amount<o.price*0.85;
+    Game.logMsg(`${person.name} sells you ${article(o.name)} ${o.name} (worth ~${commas(o.price)}c) for ${commas(amount)}c${steal?" — a steal":""}.`,"good");
+    toast("Bought "+o.name+"!"); shipDealMsg=null;
+  } else {
+    shipDealMsg=`${person.name.split(" ")[0]} turns down your ${commas(amount)}c offer for the ${o.name}.`;
+    Game.logMsg(shipDealMsg,"sys"); toast("They refused");
+  }
+  Game.save(); if(onDone) onDone();
+}
 function sellShip(id){
   if(state.vehicles.length<=1){ toast("That's your only craft"); return; }
   if(id===state.activeShip){ toast("Pilot another ship first"); return; }
@@ -4074,11 +4166,7 @@ function buyShip(i){
   const stock=shipStockAt(), o=stock[i]; if(!o) return;
   if(state.credits<o.price){ toast("Not enough credits"); return; }
   state.credits-=o.price;
-  const ship={ kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name, role:o.role,
-    range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
-    bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
-    maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, hyper:o.hyper||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
-    slotSizes:(o.slotSizes||[]).slice(), guns:new Array((o.pilotGuns||0)+(o.gunnerGuns||0)).fill(null) };
+  const ship=vehicleFromOffer(o);
   state.vehicles.push(ship);
   if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id;  // auto-pilot if it frees you to leave
   stock.splice(i,1);
