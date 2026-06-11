@@ -940,7 +940,7 @@ function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
 function shipUsed(v){ const cg=v.cargo||{}; let s=0; for(const id in cg){ const c=commodityById(id); s+=cg[id]*(c?c.bulk:1); } return s; }
 function cargoUsed(){ const s=Game.ship(); return s?shipUsed(s):0; }
 function cargoMax(){ const s=Game.ship(); return s?(s.hold||0):0; }
-function poolShips(){ return (state.vehicles||[]).filter(atHere); }  // every ship docked right here with you
+function poolShips(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)); }  // every ship docked right here, not away trading
 function poolUsed(){ return poolShips().reduce((s,v)=>s+shipUsed(v),0); }
 function poolMax(){ return poolShips().reduce((s,v)=>s+(v.hold||0),0); }
 function poolHave(id){ return poolShips().reduce((s,v)=>s+(v.cargo[id]||0),0); }
@@ -1300,7 +1300,7 @@ const Game = {
   // a ship is operational (flyable) only with enough pilots + mechanics for its class
   operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0); },
   canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && atHere(s) && Game.operational(s)); },
-  shipsHere(){ return (state.vehicles||[]).filter(atHere); },
+  shipsHere(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)); },
 
   /* ---- assemble a new life from the generated (and now named) pieces ---- */
   begin(){
@@ -1452,6 +1452,7 @@ const Game = {
 function advanceTime(n){
   n=n||1;
   state.actions=(state.actions||0)+n;
+  tickTrades(n);                          // automated trade fleets bank their profit as time passes
   // natural healing between actions — faster for high Recovery, doubled at home
   if(state.hp < Game.effMaxHp()){
     const heal=Math.round(n*Game.bio("recovery")*0.3*(Game.atHome()?2:1));
@@ -2749,6 +2750,25 @@ const UI = {
         ${shipsByIds(f.shipIds).map(v=>`<div class="krow"><span class="lbl">${v.id===state.activeShip?'&#9654; ':''}${v.name} <span class="dim small">&middot; ${RANGE_LABEL[v.range]}${!Game.operational(v)?' <span class="red">no crew</span>':''}</span></span>
           <span class="kv"><button class="small ghost" data-fleetremove="${f.id}:${v.id}">Remove</button></span></div>`).join("")}
       </div>
+      ${(()=>{ const aboard=f.shipIds.includes(state.activeShip), loc=fleetLoc(f), A=worldAt(loc.sysId,loc.slot), cap=fleetCargoCap(f);
+        if(f.trade){ const B=worldAt(f.trade.toSys,f.trade.toSlot);
+          return `<div class="card"><h3>&#128666; Trade run</h3>
+            <p class="small">Hauling between <b>${A?A.name:"?"}</b> and <b>${B?B.name:"?"}</b> &mdash; <span class="gold">+${commas(f.trade.perTrip)}c</span> every ${f.trade.every} actions. Earned so far: <b class="gold">${commas(f.trade.earned||0)}c</b>.</p>
+            <p class="small dim">Its ships are out on the route until you call them back. Crew salaries and upkeep still apply.</p>
+            <button class="full center" data-fleetuntrade="${f.id}">Call off the trade run</button></div>`; }
+        if(aboard) return `<div class="card"><h3>&#128666; Trade run</h3><p class="small dim">You're flying with this fleet — automate a fleet you're <i>not</i> aboard.</p></div>`;
+        if(!fleetAllCrewed(f)) return `<div class="card"><h3>&#128666; Trade run</h3><p class="small dim">Every ship needs its full crew before the fleet can run a route on its own.</p></div>`;
+        if(!isInhabited(A)||cap<=0) return `<div class="card"><h3>&#128666; Trade run</h3><p class="small dim">Dock the fleet at an inhabited world with cargo space to set up a trade run.</p></div>`;
+        const inter=groupCaps(f.shipIds).tier==="interstellar";
+        const dests=chartedInhabitedWorlds().filter(d=>!(d.sysId===loc.sysId&&d.slot===loc.slot) && (d.sysId===loc.sysId||inter))
+          .map(d=>({d, rp:routeProfit(A,d.world,cap), every:tripActions(f,d.sysId)}))
+          .filter(x=>x.rp.perTrip>0).sort((a,b)=>(b.rp.perTrip/b.every)-(a.rp.perTrip/a.every)).slice(0,8);
+        return `<div class="card sheet"><h3>&#128666; Automated trade run</h3>
+          <p class="small dim">Send this fleet to haul goods on a loop while you do other things. From <b>${A.name}</b> &middot; ${cap} cargo slots.</p>
+          ${dests.length?dests.map(x=>`<div class="krow"><span class="lbl">${x.d.world.name} <span class="dim small">&middot; ${x.d.sysName}</span></span>
+            <span class="kv"><span class="gold small">+${commas(x.rp.perTrip)}c</span> <span class="dim small">/ ${x.every}a</span> <button class="small" data-fleettrade="${f.id}:${x.d.sysId}:${x.d.slot}">Start</button></span></div>`).join("")
+            :`<p class="small dim">No profitable routes from here yet — chart more worlds with depots within reach.</p>`}
+        </div>`; })()}
       <div class="card sheet"><h3>Add a ship <span class="dim small">&middot; must be in ${fsys?fsys.name:"the fleet's"} system</span></h3>
         ${addable.length?addable.map(v=>`<div class="krow"><span class="lbl">${v.name} <span class="dim small">&middot; ${RANGE_LABEL[v.range]}</span></span>
           <span class="kv"><button class="small" data-fleetadd="${f.id}:${v.id}">Add</button></span></div>`).join("")
@@ -2759,7 +2779,7 @@ const UI = {
     return `<div class="card sheet"><h3>Your fleets <span class="dim small">&middot; ${fleets.length}</span></h3>
       <p class="small dim">Group ships to move them together. A fleet jumps between systems only if every ship is interstellar-class, and is limited by its weakest ship's range.</p>
       ${fleets.length?fleets.map(f=>{ const caps=groupCaps(f.shipIds), fs=state.galaxy.systems[fleetSys(f)];
-        return `<div class="krow"><span class="lbl"><button class="small ghost" data-fleetview="${f.id}">${f.name}</button> <span class="dim small">&middot; ${f.shipIds.length} ship${f.shipIds.length>1?"s":""}</span></span>
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-fleetview="${f.id}">${f.name}</button> <span class="dim small">&middot; ${f.shipIds.length} ship${f.shipIds.length>1?"s":""}</span>${f.trade?' <span class="gold small">&#128666; trading</span>':''}</span>
           <span class="kv">${RANGE_LABEL[caps.tier]} <span class="dim">&middot; ${fs?fs.name:"?"}</span></span></div>`; }).join("")
         :`<p class="small dim">No fleets yet.</p>`}
     </div>
@@ -3050,6 +3070,8 @@ const UI = {
       app.querySelectorAll("[data-fleetmove]").forEach(b=> b.onclick=()=>moveFleet(b.dataset.fleetmove));
       app.querySelectorAll("[data-fleetrename]").forEach(b=> b.onclick=()=>renameFleet(b.dataset.fleetrename));
       app.querySelectorAll("[data-fleetdisband]").forEach(b=> b.onclick=()=>disbandFleet(b.dataset.fleetdisband));
+      app.querySelectorAll("[data-fleettrade]").forEach(b=> b.onclick=()=>{ const [fid,s,p]=b.dataset.fleettrade.split(":"); setFleetTrade(fid, +s, +p); });
+      app.querySelectorAll("[data-fleetuntrade]").forEach(b=> b.onclick=()=>clearFleetTrade(b.dataset.fleetuntrade));
       app.querySelectorAll("[data-fleetremove]").forEach(b=> b.onclick=()=>{ const [fid,sid]=b.dataset.fleetremove.split(":"); removeFromFleet(fid,sid); });
       app.querySelectorAll("[data-fleetadd]").forEach(b=> b.onclick=()=>{ const [fid,sid]=b.dataset.fleetadd.split(":"); addToFleet(fid,sid); });
     }
@@ -3543,6 +3565,7 @@ function sellCommodity(id, all){
 /* select which ship you're piloting — only if it's docked where you are */
 function selectShip(id){
   const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  if(shipBusy(v)){ toast("That ship is away on a trade run"); return; }
   if(!atHere(v)){ toast("That ship is docked elsewhere"); return; }
   state.activeShip=id; toast(`Now piloting ${v.name}`); Game.save(); UI.render(UI.current);
 }
@@ -3691,6 +3714,7 @@ function moveShip(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) r
   openTravel([id], `Move ${v.name}`); }
 /* move a fleet (from its fleet view) */
 function moveFleet(fid){ const f=fleetById(fid); if(!f||!f.shipIds.length){ toast("Empty fleet"); return; }
+  if(f.trade){ toast("Call it off its trade run first"); return; }
   openTravel(f.shipIds, `Move ${f.name}`); }
 function seatOccupant(shipId, seat){ return (state.crew||[]).find(c=>c.shipId===shipId && c.seat===seat); }
 /* the labeled crew seats of a ship: captain, pilots, mechanics, then one per gunner mount.
@@ -3749,6 +3773,7 @@ function createFleet(name, shipIds){
 /* add a ship to an existing fleet — the ship must be in the fleet's system (you needn't be) */
 function addToFleet(fid, shipId){
   const f=fleetById(fid), v=(state.vehicles||[]).find(x=>x.id===shipId); if(!f||!v) return;
+  if(f.trade){ toast("Call the fleet off its trade run first"); return; }
   if(v.fleetId){ toast("Ship is already in a fleet"); return; }
   if((v.sysId??0)!==fleetSys(f)){ toast("Ship must be in the fleet's system"); return; }
   f.shipIds.push(shipId); v.fleetId=fid;
@@ -3757,6 +3782,7 @@ function addToFleet(fid, shipId){
 /* remove a ship from a fleet (allowed from anywhere) */
 function removeFromFleet(fid, shipId){
   const f=fleetById(fid), v=(state.vehicles||[]).find(x=>x.id===shipId); if(!f) return;
+  if(f.trade){ toast("Call the fleet off its trade run first"); return; }
   f.shipIds=f.shipIds.filter(id=>id!==shipId); if(v) v.fleetId=null;
   if(!f.shipIds.length){ disbandFleet(fid, true); return; }
   Game.save(); UI.render("crew");
@@ -3764,6 +3790,7 @@ function removeFromFleet(fid, shipId){
 /* disband a fleet — you must be with it (in its system), unless it's already empty */
 function disbandFleet(fid, silent){
   const f=fleetById(fid); if(!f) return;
+  if(!silent && f.trade){ toast("Call the fleet off its trade run first"); return; }
   if(!silent && f.shipIds.length && fleetSys(f)!==state.sysId){ toast("You must be with the fleet to disband it"); return; }
   f.shipIds.forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v) v.fleetId=null; });
   state.fleets=(state.fleets||[]).filter(x=>x.id!==fid);
@@ -3773,6 +3800,62 @@ function disbandFleet(fid, silent){
 }
 function renameFleet(fid){ const f=fleetById(fid); if(!f) return;
   const nn=prompt("Rename fleet:", f.name); if(nn){ f.name=nn.slice(0,24); Game.save(); UI.render("crew"); } }
+
+/* ---- automated trade runs: send a fleet (without you) to haul goods on a loop ---- */
+function shipBusy(v){ const f=fleetOf(v); return !!(f&&f.trade); }   // away on a trade route
+function fleetCargoCap(f){ return shipsByIds(f.shipIds).reduce((s,v)=>s+(v.hold||0),0); }
+function fleetLoc(f){ const v=shipsByIds(f.shipIds)[0]; return v?{sysId:v.sysId??0, slot:v.slot||0}:{sysId:state.sysId,slot:state.atSlot}; }
+function worldAt(sysId, slot){ const sys=state.galaxy&&state.galaxy.systems[sysId]; const p=sys&&sys.planets&&sys.planets[slot]; return p?p.world:null; }
+function fleetAllCrewed(f){ const s=shipsByIds(f.shipIds); return s.length>0 && s.every(v=>Game.operational(v)); }
+/* best single leg: buy a good at A, sell at B, filling `cap` cargo slots */
+function bestTradeLeg(A, B, cap){ if(!A||!B) return null; let best=null;
+  for(const c of COMMODITIES){ if(!canBuyHere(A,c)||!canSellHere(B,c)) continue;
+    const margin=commoditySell(B,c)-commodityBuy(A,c); if(margin<=0) continue;
+    const qty=Math.floor(cap/c.bulk); if(qty<=0) continue; const profit=margin*qty;
+    if(!best||profit>best.profit) best={cid:c.id, name:c.name, profit}; }
+  return best; }
+/* round-trip profit between A and B (haul one good out, another back) */
+function routeProfit(A, B, cap){ const out=bestTradeLeg(A,B,cap), back=bestTradeLeg(B,A,cap);
+  return { out, back, perTrip:(out?out.profit:0)+(back?back.profit:0) }; }
+/* actions one round trip takes (distance / jump range both ways, plus load/unload) */
+function tripActions(f, toSys){ const loc=fleetLoc(f), caps=groupCaps(f.shipIds);
+  if(toSys===loc.sysId) return 6;                       // an in-system shuttle
+  const dist=sysDist(loc.sysId, toSys), reach=Math.max(caps.jump, 1);
+  return Math.max(8, Math.ceil(dist/reach)*2 + 4); }
+/* every charted, inhabited world (has a depot) — possible trade endpoints */
+function chartedInhabitedWorlds(){ const out=[];
+  (state.galaxy?state.galaxy.systems:[]).forEach(sys=>{ if(!sys.discovered) return;
+    (sys.planets||[]).forEach((p,slot)=>{ if(p&&p.discovered&&p.world&&isInhabited(p.world)) out.push({sysId:sys.id, slot, world:p.world, sysName:sys.name}); }); });
+  return out; }
+function setFleetTrade(fid, toSys, toSlot){
+  const f=fleetById(fid); if(!f) return;
+  if(f.shipIds.includes(state.activeShip)){ toast("You can't send the fleet you're flying with"); return; }
+  if(!fleetAllCrewed(f)){ toast("Every ship needs its crew to run a route"); return; }
+  const loc=fleetLoc(f), A=worldAt(loc.sysId, loc.slot), B=worldAt(toSys, toSlot), caps=groupCaps(f.shipIds);
+  if(!isInhabited(A)){ toast("Dock the fleet at an inhabited world first"); return; }
+  if(!isInhabited(B)){ toast("Destination needs an inhabited depot"); return; }
+  if(toSys!==loc.sysId && caps.tier!=="interstellar"){ toast("That route needs an interstellar fleet"); return; }
+  const cap=fleetCargoCap(f); if(cap<=0){ toast("This fleet has no cargo hold"); return; }
+  const rp=routeProfit(A,B,cap); if(rp.perTrip<=0){ toast("No profitable trade on that route"); return; }
+  const every=tripActions(f, toSys);
+  f.trade={ toSys, toSlot, fromSys:loc.sysId, fromSlot:loc.slot, perTrip:rp.perTrip, every, cooldown:every, earned:0 };
+  Game.logMsg(`${f.name} sets out on an automated trade run between ${A.name} and ${B.name} — about ${commas(rp.perTrip)}c every ${every} actions.`,"good");
+  Game.save(); UI.render("crew");
+}
+function clearFleetTrade(fid){ const f=fleetById(fid); if(!f||!f.trade) return;
+  Game.logMsg(`${f.name} comes off its trade run (earned ${commas(f.trade.earned||0)}c in all).`,"sys");
+  f.trade=null; Game.save(); UI.render("crew"); }
+/* called from advanceTime — advance each trading fleet's loop and bank its profit */
+function tickTrades(n){
+  (state.fleets||[]).forEach(f=>{ if(!f.trade) return;
+    if(!fleetAllCrewed(f)) return;                       // a fleet that loses its crew just idles
+    f.trade.cooldown-=n;
+    let runs=0;
+    while(f.trade.cooldown<=0 && runs<50){ state.credits+=f.trade.perTrip; f.trade.earned=(f.trade.earned||0)+f.trade.perTrip;
+      f.trade.cooldown+=f.trade.every; runs++; }
+    if(runs>0) Game.logMsg(`Trade fleet ${f.name} banks ${runs>1?runs+" runs":"a run"}: +${commas(f.trade.perTrip*runs)}c.`,"good");
+  });
+}
 
 /* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
 function startDuel(i){
