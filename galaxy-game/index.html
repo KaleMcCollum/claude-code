@@ -585,6 +585,7 @@ function shipwrightWorth(tech){ return Math.round(72000*(1+(tech||0)*0.9+(tech||
 const HIRE_ROLES={
   pilot:    { fee:2500, salary:5000, role:"flies the ship — needed for it to follow you" },
   mechanic: { fee:2000, salary:3500, role:"keeps the ship running (larger ships need several)" },
+  laborer:  { fee:800,  salary:1500, role:"works the holds — big freighters can't run without a labor gang" },
   mercenary:{ fee:2200, salary:4000, role:"hired muscle — fights for you (combat coming soon)" },
   gunner:   { fee:2200, salary:4000, role:"mans the guns (ship combat coming soon)" },
   medic:    { fee:2800, salary:4500, role:"tends the crew (healing coming soon)" },
@@ -614,8 +615,13 @@ const JOBS={
 };
 const jobOf=career=>JOBS[career]||null;
 /* Yearly upkeep: spaceworthy ships cost ~30% of value/yr; surface craft are cheap to keep. */
-function shipMaint(v){ let m=(v.value||0)*(spaceworthy(v)?0.3:0.05);
-  m += (v.guns||[]).reduce((s,g)=>s+(g?weaponById(g).price*0.18:0),0);   // armed ships cost more to keep
+/* Annual ship maintenance as a share of the hull's worth, by family. Warships bleed money just
+   sitting idle (an army you must fund); freighters run leaner so trade profit can outpace upkeep. */
+const MAINT_RATE={ utility:0.05, freight:0.10, fighter:0.14, gunship:0.16, warship:0.20 };
+function shipMaint(v){ if(!spaceworthy(v)) return Math.round((v.value||0)*0.04);
+  const cat=(shipClass(v.cls)||{}).cat, rate=MAINT_RATE[cat]!=null?MAINT_RATE[cat]:0.12;
+  let m=(v.value||0)*rate;
+  m += (v.guns||[]).reduce((s,g)=>s+(g?weaponById(g).price*0.18:0),0);   // mounted guns add to the bill
   return Math.round(m); }
 /* what it costs to fully repair a ship's hull right now */
 function repairCost(v){ const miss=(v.maxHp||0)-(v.hp||0); return miss<=0?0:Math.round(miss*3*(1+(state.world?state.world.wealth:4)*0.03)); }
@@ -718,19 +724,45 @@ const VEHICLE_CLASSES = [
   { id:"interceptor", name:"Interceptor",  weight:4,  axes:["flight","star"],    base:{flight:300,star:680} },
 ];
 
-/* Ship classes — each specializes. role = what it's for; baseHp = hull before armor/rarity;
-   pilotGuns = hardpoints the captain/pilot mans alone (cheap firepower); gunnerGuns = heavy
-   mounts that each need a gunner aboard. A gunship is captain-run and lethal for its price;
-   a frigate hits harder but needs a full gun crew. minTech gates a world's shipyard stock. */
+/* Ship classes — each specializes. cat = which family it belongs to (drives shipyard grouping);
+   size = its capability rank 1-9, which gates where it's sold (a poor world's yard caps out low,
+   only a Capital builds capital ships & mega-freighters). role = what it's for; baseHp = hull
+   before armor/rarity; pilotGuns = hardpoints the captain/pilot mans alone (cheap firepower);
+   gunnerGuns = heavy mounts that each need a gunner aboard. reqPilots/reqMech/reqLabor must be
+   crewed for the ship to fly at all; reqGun only limits how many guns can fire. minTech gates a
+   world's shipyard stock; bays = small craft (fighters) it can carry. */
+const SHIP_CATS=[
+  { id:"utility", name:"Personal & Utility" },
+  { id:"freight", name:"Cargo & Freight" },
+  { id:"fighter", name:"Fighters" },
+  { id:"gunship", name:"Gunships" },
+  { id:"warship", name:"Warships" },
+];
+const shipCatName=id=>{ const c=SHIP_CATS.find(x=>x.id===id); return c?c.name:"Ships"; };
 const SHIP_CLASSES = [
-  { id:"speeder", name:"Speeder",        role:"Surface runabout", range:"surface",      cargo:4,   crew:1,  bays:0, baseHp:50,   pilotGuns:0, gunnerGuns:0, price:600,    minTech:0, weight:22, power:{ground:120,flight:70},  reqPilots:1, reqMech:0, reqGun:0 },
-  { id:"crawler", name:"Ground Hauler",  role:"Surface cargo",    range:"surface",      cargo:26,  crew:1,  bays:0, baseHp:80,   pilotGuns:0, gunnerGuns:0, price:1600,   minTech:1, weight:12, power:{ground:260},            reqPilots:1, reqMech:0, reqGun:0 },
-  { id:"shuttle", name:"System Shuttle", role:"Passenger ferry",  range:"system",       cargo:30,  crew:2,  bays:0, baseHp:130,  pilotGuns:0, gunnerGuns:0, price:3000,   minTech:3, weight:14, power:{flight:200,star:300},   reqPilots:1, reqMech:0, reqGun:0 },
-  { id:"hauler",  name:"Cargo Hauler",   role:"Bulk freight",     range:"system",       cargo:150, crew:3,  bays:0, baseHp:240,  pilotGuns:1, gunnerGuns:0, grade:0, price:9000,   minTech:4, weight:10, power:{flight:160,star:280},   reqPilots:1, reqMech:1, reqGun:0 },
-  { id:"clipper", name:"Star Clipper",   role:"Courier",          range:"interstellar", cargo:45,  crew:4,  bays:0, baseHp:300,  pilotGuns:1, gunnerGuns:0, grade:0, price:24000,  minTech:6, weight:8,  power:{flight:340,star:950},   reqPilots:2, reqMech:1, reqGun:0 },
-  { id:"corvette",name:"Corvette",       role:"Gunship",          range:"interstellar", cargo:120, crew:8,  bays:0, baseHp:480,  pilotGuns:2, gunnerGuns:2, grade:2, price:48000,  minTech:6, weight:6,  power:{flight:360,star:1150},  reqPilots:2, reqMech:1, reqGun:1 },
-  { id:"frigate", name:"Frigate",        role:"Warship",          range:"interstellar", cargo:90,  crew:12, bays:1, baseHp:850,  pilotGuns:2, gunnerGuns:6, grade:2, price:75000,  minTech:7, weight:5,  power:{flight:280,star:1300},  reqPilots:3, reqMech:2, reqGun:2 },
-  { id:"capital", name:"Capital Ship",   role:"Capital warship",  range:"interstellar", cargo:420, crew:40, bays:5, baseHp:2800, pilotGuns:2, gunnerGuns:10,grade:3, price:320000, minTech:8, weight:2,  power:{flight:420,star:3200},  reqPilots:4, reqMech:5, reqGun:6 },
+  // —— personal & utility ——
+  { id:"speeder",  name:"Speeder",         cat:"utility", size:1, role:"Surface runabout",  range:"surface",      cargo:4,    crew:1,  bays:0, baseHp:50,   pilotGuns:0, gunnerGuns:0, price:600,     minTech:0, weight:22, power:{ground:120,flight:70},  reqPilots:1, reqMech:0, reqGun:0, reqLabor:0 },
+  { id:"shuttle",  name:"System Shuttle",  cat:"utility", size:2, role:"Passenger ferry",   range:"system",       cargo:30,   crew:6,  bays:0, baseHp:130,  pilotGuns:0, gunnerGuns:0, price:6000,    minTech:3, weight:12, power:{flight:200,star:300},   reqPilots:1, reqMech:0, reqGun:0, reqLabor:0 },
+  // —— cargo & freight ——
+  { id:"mule",     name:"Planet Mule",     cat:"freight", size:2, role:"Surface cargo",     range:"surface",      cargo:60,   crew:2,  bays:0, baseHp:90,   pilotGuns:0, gunnerGuns:0, price:9000,    minTech:1, weight:14, power:{ground:240},            reqPilots:1, reqMech:0, reqGun:0, reqLabor:0 },
+  { id:"crawler",  name:"Ground Freighter",cat:"freight", size:2, role:"Heavy surface cargo",range:"surface",     cargo:120,  crew:3,  bays:0, baseHp:130,  pilotGuns:0, gunnerGuns:0, price:18000,   minTech:2, weight:8,  power:{ground:320},            reqPilots:1, reqMech:1, reqGun:0, reqLabor:0 },
+  { id:"hauler",   name:"Cargo Hauler",    cat:"freight", size:3, role:"In-system freight", range:"system",       cargo:160,  crew:4,  bays:0, baseHp:240,  pilotGuns:1, gunnerGuns:0, grade:0, price:55000,   minTech:4, weight:10, power:{flight:160,star:280},   reqPilots:1, reqMech:1, reqGun:0, reqLabor:0 },
+  { id:"sysfreighter",name:"System Freighter",cat:"freight",size:4,role:"Bulk in-system",   range:"system",       cargo:240,  crew:6,  bays:0, baseHp:360,  pilotGuns:1, gunnerGuns:0, grade:0, price:110000,  minTech:5, weight:6,  power:{flight:170,star:300},   reqPilots:1, reqMech:1, reqGun:0, reqLabor:1 },
+  { id:"clipper",  name:"Star Clipper",    cat:"freight", size:4, role:"Interstellar courier",range:"interstellar",cargo:45,   crew:4,  bays:0, baseHp:300,  pilotGuns:1, gunnerGuns:0, grade:0, price:90000,   minTech:6, weight:5,  power:{flight:340,star:950},   reqPilots:2, reqMech:1, reqGun:0, reqLabor:0 },
+  { id:"starfreighter",name:"Star Freighter",cat:"freight",size:5,role:"Interstellar freight",range:"interstellar",cargo:500, crew:8,  bays:0, baseHp:520,  pilotGuns:1, gunnerGuns:0, grade:0, price:230000,  minTech:6, weight:5,  power:{flight:300,star:1100},  reqPilots:2, reqMech:2, reqGun:0, reqLabor:1 },
+  { id:"bulkfreighter",name:"Bulk Freighter",cat:"freight",size:7,role:"Long-haul bulk",    range:"interstellar", cargo:4000, crew:16, bays:1, baseHp:1100, pilotGuns:1, gunnerGuns:0, grade:0, price:650000,  minTech:7, weight:2,  power:{flight:240,star:2400},  reqPilots:2, reqMech:3, reqGun:0, reqLabor:3 },
+  { id:"megafreighter",name:"Mega-Freighter",cat:"freight",size:9,role:"Trade-federation hauler",range:"interstellar",cargo:16000,crew:60,bays:2,baseHp:3200,pilotGuns:2, gunnerGuns:0, grade:0, price:1600000, minTech:8, weight:0.6,power:{flight:300,star:6000},  reqPilots:3, reqMech:5, reqGun:0, reqLabor:4 },
+  // —— fighters (small, agile; some carried aboard warships) ——
+  { id:"starfighter",name:"Starfighter",   cat:"fighter", size:3, role:"Dogfighter",        range:"system",       cargo:4,    crew:2,  bays:0, baseHp:150,  pilotGuns:1, gunnerGuns:1, grade:1, price:22000,   minTech:5, weight:7,  power:{flight:280,star:420},   reqPilots:1, reqMech:0, reqGun:1, reqLabor:0 },
+  { id:"interceptor",name:"Interceptor",   cat:"fighter", size:4, role:"Fast interceptor",  range:"interstellar", cargo:4,    crew:2,  bays:0, baseHp:200,  pilotGuns:2, gunnerGuns:0, grade:1, price:42000,   minTech:6, weight:5,  power:{flight:340,star:820},   reqPilots:1, reqMech:0, reqGun:0, reqLabor:0 },
+  { id:"heavyfighter",name:"Heavy Fighter", cat:"fighter", size:5, role:"Strike fighter",    range:"interstellar", cargo:8,    crew:3,  bays:0, baseHp:300,  pilotGuns:1, gunnerGuns:2, grade:2, price:78000,   minTech:6, weight:4,  power:{flight:300,star:880},   reqPilots:1, reqMech:1, reqGun:2, reqLabor:0 },
+  // —— gunships (captain-run firepower, tougher than fighters) ——
+  { id:"gunship",  name:"Gunship",         cat:"gunship", size:5, role:"Patrol gunship",    range:"interstellar", cargo:30,   crew:5,  bays:0, baseHp:480,  pilotGuns:2, gunnerGuns:1, grade:2, price:70000,   minTech:6, weight:4,  power:{flight:330,star:1000},  reqPilots:1, reqMech:1, reqGun:1, reqLabor:0 },
+  { id:"corvette", name:"Corvette",        cat:"gunship", size:6, role:"Light warship",     range:"interstellar", cargo:120,  crew:10, bays:1, baseHp:700,  pilotGuns:2, gunnerGuns:2, grade:2, price:130000,  minTech:6, weight:3,  power:{flight:360,star:1150},  reqPilots:2, reqMech:1, reqGun:2, reqLabor:0 },
+  // —— warships (heavy gun crews; carry fighters) ——
+  { id:"frigate",  name:"Frigate",         cat:"warship", size:7, role:"Warship",           range:"interstellar", cargo:90,   crew:16, bays:2, baseHp:1200, pilotGuns:2, gunnerGuns:6, grade:3, price:260000,  minTech:7, weight:2,  power:{flight:280,star:1300},  reqPilots:3, reqMech:2, reqGun:6, reqLabor:0 },
+  { id:"destroyer",name:"Destroyer",       cat:"warship", size:8, role:"Heavy warship",     range:"interstellar", cargo:120,  crew:30, bays:4, baseHp:2200, pilotGuns:2, gunnerGuns:10,grade:3, price:700000,  minTech:8, weight:1,  power:{flight:300,star:1800},  reqPilots:3, reqMech:4, reqGun:10,reqLabor:1 },
+  { id:"capital",  name:"Capital Ship",    cat:"warship", size:9, role:"Capital warship",   range:"interstellar", cargo:420,  crew:70, bays:10,baseHp:4200, pilotGuns:2, gunnerGuns:16,grade:4, price:2000000, minTech:8, weight:0.6,power:{flight:420,star:3200},  reqPilots:4, reqMech:6, reqGun:16,reqLabor:2 },
 ];
 const SHIP_CLASS_IDX=id=>SHIP_CLASSES.findIndex(c=>c.id===id);
 const shipClass=id=>SHIP_CLASSES.find(c=>c.id===id);
@@ -871,20 +903,14 @@ function rollShipTier(tech){
    scrap yard sells junkers, while only a Capital City deals in capital ships. */
 function genShipStock(w){
   const sd=settleDef(w.settle);
-  const cap = sd && sd.shipMax ? SHIP_CLASS_IDX(sd.shipMax) : SHIP_CLASSES.length-1;  // legacy worlds: no cap
-  const avail=SHIP_CLASSES.filter((c,i)=>w.tech>=c.minTech && i<=cap);
+  const capSize = sd && sd.shipMax ? (shipClass(sd.shipMax)?shipClass(sd.shipMax).size:99) : 99;  // biggest class this yard builds
+  const avail=SHIP_CLASSES.filter(c=>w.tech>=c.minTech && (c.size||1)<=capSize);
   if(!avail.length) return [];
   const count=clamp(Math.round((w.tech+w.wealth)/3)+rnd(-1,1), 0, 8);
   const stock=[];
   for(let i=0;i<count;i++){
-    const c=weightedPick(avail), t=rollShipTier(w.tech), m=SHIP_RARITY_MULT[RARITY.index(t.id)], vf=rndF(0.9,1.12);
-    const power={}; Object.keys(c.power).forEach(a=>power[a]=Math.round(c.power[a]*m));
-    const cs=shipStatsFor(c, t.id);
-    stock.push({ cls:c.id, name:c.name, role:c.role, tier:t.id, range:c.range,
-      cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
-      reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun,
-      maxHp:cs.maxHp, armor:cs.armor, hyper:cs.hyper, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns, slotSizes:cs.slotSizes,
-      power, price:Math.round((c.price + cs.armor*c.price*0.25 + cs.hyper*c.price*0.2 + cs.slotSizes.reduce((s,z)=>s+z*c.price*0.06,0))*m*(1.35-w.wealth*0.04)*rndF(0.92,1.1)) });
+    const c=weightedPick(avail), t=rollShipTier(w.tech);
+    stock.push(shipOfferFrom(c, t.id, (1.35-w.wealth*0.04)*rndF(0.92,1.1)));
   }
   return stock;
 }
@@ -900,9 +926,9 @@ function shipOfferFrom(c, tierId, priceFactor){
   const power={}; Object.keys(c.power).forEach(a=>power[a]=Math.round(c.power[a]*m));
   const cs=shipStatsFor(c, tierId);
   const price=Math.round((c.price + cs.armor*c.price*0.25 + cs.hyper*c.price*0.2 + cs.slotSizes.reduce((s,z)=>s+z*c.price*0.06,0))*m*(priceFactor||1)*rndF(0.95,1.08));
-  return { cls:c.id, name:c.name, role:c.role, tier:tierId, range:c.range,
+  return { cls:c.id, name:c.name, role:c.role, cat:c.cat, size:c.size, tier:tierId, range:c.range,
     cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
-    reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun,
+    reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun, reqLabor:c.reqLabor||0,
     maxHp:cs.maxHp, armor:cs.armor, hyper:cs.hyper, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns, slotSizes:cs.slotSizes,
     power, price };
 }
@@ -925,7 +951,7 @@ function rollPersonShip(credits){
 function vehicleFromOffer(o){
   return { kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name, role:o.role,
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
-    bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
+    bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, reqLabor:o.reqLabor||0, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
     maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, hyper:o.hyper||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
     slotSizes:(o.slotSizes||[]).slice(), guns:new Array((o.pilotGuns||0)+(o.gunnerGuns||0)).fill(null) };
 }
@@ -1338,6 +1364,7 @@ const Game = {
       v.cargo[CARGO_RENAME[k]]=(v.cargo[CARGO_RENAME[k]]||0)+v.cargo[k]; delete v.cargo[k]; } } });
     // backfill ship combat stats (HP, armor, weapon hardpoints) for pre-combat saves
     (state.vehicles||[]).forEach(v=>{ const c=shipClass(v.cls);
+      if(v.reqLabor==null) v.reqLabor=c?(c.reqLabor||0):0;
       if(v.pilotGuns==null){ v.pilotGuns=c?c.pilotGuns:0; v.gunnerGuns=c?c.gunnerGuns:0; }
       if(!v.guns) v.guns=new Array((v.pilotGuns||0)+(v.gunnerGuns||0)).fill(null);
       if(v.armor==null) v.armor=0;
@@ -1369,7 +1396,7 @@ const Game = {
   // pilots aboard, counting YOU on the ship you personally fly
   pilots(v){ return Game.aboard(v,"pilot") + (v.id===state.activeShip?1:0); },
   // a ship is operational (flyable) only with enough pilots + mechanics for its class
-  operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0); },
+  operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0) && Game.aboard(v,"laborer") >= (v.reqLabor??0); },
   canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && atHere(s) && Game.operational(s)); },
   shipsHere(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)); },
 
@@ -2050,14 +2077,24 @@ const UI = {
     ${this.statHeader()}
     <div class="card"><h2>&#128736; ${w.name} Shipyard</h2>
       <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — stock reflects this world's industry, and turns over each year.</p></div>
-    <div class="card"><h3>Ships for sale</h3>
-      ${stock.length?stock.map((o,i)=>`<div class="card" style="margin:8px 0;padding:10px">
-        <div class="row between"><b>${o.name} <span class="small" style="color:${RARITY.byId(o.tier).color}">${RARITY.byId(o.tier).name}</span></b>
-          <button data-ship="${i}" ${state.credits<o.price?"disabled":""}>${commas(o.price)}c</button></div>
-        <p class="small dim" style="margin:4px 0">${o.role||RANGE_LABEL[o.range]} &middot; ${RANGE_LABEL[o.range]} &middot; cargo ${o.cargo} &middot; crew ${o.crew}</p>
-        <p class="small dim" style="margin:2px 0">&#10084; ${commas(o.maxHp)} HP${o.armor?` &middot; <span class="gold">${ARMOR[o.armor].name}</span>`:""}${o.hyper?` &middot; <span class="gold">${HYPERDRIVE[o.hyper].name} drive</span>`:""}${(o.slotSizes&&o.slotSizes.length)?` &middot; mounts: ${slotBreakdown(o.slotSizes)}`:""}${o.bays?` &middot; ${o.bays} bay${o.bays>1?"s":""}`:""}</p>
-      </div>`).join("")
-        :`<p class="small dim">No ships for sale here — this world hasn't the industry for it. Try a more developed world.</p>`}
+    <div class="card"><h3>Ships for sale <span class="dim small">&middot; ${stock.length}</span></h3>
+      ${stock.length?(()=>{ let lastCat=null;
+        const ordered=stock.map((o,i)=>({o,i})).sort((a,b)=>{
+          const ca=SHIP_CATS.findIndex(x=>x.id===a.o.cat), cb=SHIP_CATS.findIndex(x=>x.id===b.o.cat);
+          return ca!==cb ? ca-cb : (a.o.size||0)-(b.o.size||0) || a.o.price-b.o.price; });
+        return ordered.map(({o,i})=>{
+          const head = o.cat!==lastCat ? (lastCat=o.cat, `<h4 class="gold" style="margin:12px 0 2px">${shipCatName(o.cat)}</h4>`) : "";
+          const req=[`${o.reqPilots} pilot${o.reqPilots>1?"s":""}`]
+            .concat(o.reqMech?[`${o.reqMech} mech`]:[], o.reqLabor?[`${o.reqLabor} labor`]:[], o.gunnerGuns?[`${o.gunnerGuns} gunner${o.gunnerGuns>1?"s":""}`]:[]).join(" &middot; ");
+          return `${head}<div class="card" style="margin:6px 0;padding:10px">
+            <div class="row between"><b>${o.name} <span class="small" style="color:${RARITY.byId(o.tier).color}">${RARITY.byId(o.tier).name}</span></b>
+              <button data-ship="${i}" ${state.credits<o.price?"disabled":""}>${commas(o.price)}c</button></div>
+            <p class="small dim" style="margin:4px 0">${RANGE_LABEL[o.range]} &middot; cargo ${commas(o.cargo)} &middot; crew up to ${o.crew}</p>
+            <p class="small dim" style="margin:2px 0">&#128101; needs ${req}</p>
+            <p class="small dim" style="margin:2px 0">&#10084; ${commas(o.maxHp)} HP${o.armor?` &middot; <span class="gold">${ARMOR[o.armor].name}</span>`:""}${o.hyper?` &middot; <span class="gold">${HYPERDRIVE[o.hyper].name} drive</span>`:""}${(o.slotSizes&&o.slotSizes.length)?` &middot; mounts: ${slotBreakdown(o.slotSizes)}`:""}${o.bays?` &middot; carries ${o.bays} fighter${o.bays>1?"s":""}`:""}</p>
+          </div>`; }).join("");
+        })()
+        :`<p class="small dim">No ships for sale here — this world hasn't the industry for it. Try a wealthier, higher-tech world.</p>`}
     </div>
     <div class="card"><h3>Ships docked here</h3>
       ${Game.shipsHere().map(v=>{ const active=v.id===state.activeShip, used=shipUsed(v), atk=shipAttack(v);
@@ -3920,11 +3957,12 @@ function seatOccupant(shipId, seat){ return (state.crew||[]).find(c=>c.shipId===
 /* the labeled crew seats of a ship: captain, pilots, mechanics, then one per gunner mount.
    A gunner mount with a weapon installed is a sized Gunner station; an empty mount is just an
    open seat anyone can take (no gun to man yet). */
-const SEAT_LABEL={captain:"Captain", pilot:"Pilot", mechanic:"Mechanic", gunner:"Gunner", passenger:"Passenger", open:"Open seat"};
-const SEAT_COLOR={captain:"gold", pilot:"green", mechanic:"blue", gunner:"violet", passenger:"dim", open:"dim"};
-function shipSeats(v){ const out=[], p=v.reqPilots||1, m=v.reqMech||0, pg=v.pilotGuns||0, gg=v.gunnerGuns||0;
+const SEAT_LABEL={captain:"Captain", pilot:"Pilot", mechanic:"Mechanic", laborer:"Laborer", gunner:"Gunner", passenger:"Passenger", open:"Open seat"};
+const SEAT_COLOR={captain:"gold", pilot:"green", mechanic:"blue", laborer:"ink", gunner:"violet", passenger:"dim", open:"dim"};
+function shipSeats(v){ const out=[], p=v.reqPilots||1, m=v.reqMech||0, l=v.reqLabor||0, pg=v.pilotGuns||0, gg=v.gunnerGuns||0;
   for(let i=0;i<p;i++) out.push({role:i===0?"captain":"pilot"});
   for(let i=0;i<m;i++) out.push({role:"mechanic"});
+  for(let i=0;i<l;i++) out.push({role:"laborer"});
   for(let j=0;j<gg;j++){ const hp=pg+j, wid=(v.guns||[])[hp], size=(v.slotSizes||[])[hp]||0;
     out.push({ role: wid?"gunner":"open", size, hp }); }
   return out; }
