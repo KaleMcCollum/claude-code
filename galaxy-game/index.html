@@ -438,10 +438,10 @@ const POPULATIONS = [
    weight 0 = never rolled (the homeworld colony / fallbacks). */
 const SETTLEMENTS = [
   { id:"capital",   name:"Capital City",      weight:1.1, minTech:6, minWealth:6, shipMax:"capital",
-    amen:["tavern","depot","market","broker","shipyard","talk"],
+    amen:["tavern","depot","market","shipyard","talk"],
     desc:"a gleaming capital — seat of power, every trade open, and a shipyard that sells corvettes, freighters and capital ships" },
   { id:"trade",     name:"Trade Hub",         weight:6,  minTech:3, shipMax:"corvette",
-    amen:["tavern","depot","market","broker","shipyard","talk"],
+    amen:["tavern","depot","market","shipyard","talk"],
     desc:"a bustling trade hub where every cargo changes hands" },
   { id:"industrial",name:"Industrial World",  weight:6,  minTech:4, shipMax:"frigate",
     amen:["depot","market","shipyard","talk"],
@@ -1078,6 +1078,7 @@ const WORLD_VALUE=[30,90,300,900,3000,12000,50000,200000];
 const CREATURE_VALUE=40;
 function raceValue(tier){ return RACE_VALUE[RARITY.index(tier)]; }
 function worldValue(tier){ return WORLD_VALUE[RARITY.index(tier)]; }
+function systemValue(s){ return 120 + (s.size||1)*40; }   // word of a newly-charted star system
 /* Draw the race you meet — population-weighted by tier, recognized if already known. */
 function drawRace(){
   const tier=RARITY.roll(), ti=RARITY.index(tier.id);
@@ -1211,6 +1212,7 @@ const Game = {
     }
     // keep the live pointer in sync with the saved galaxy
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
+    if(state.galaxy && state.galaxy.systems[0]) state.galaxy.systems[0].reported=true;   // you always knew home
     (state.vehicles||[]).forEach(v=>{ if(v.sysId==null) v.sysId=0; if(v.fleetId===undefined) v.fleetId=null; });
     if(state.actions==null) state.actions=Math.round((state.daysElapsed||0)/15);   // old day-based saves -> actions
     if(state.lastBillYear==null) state.lastBillYear=Math.floor((state.actions||0)/ACTIONS_PER_YEAR);
@@ -1860,6 +1862,17 @@ const UI = {
       ${(state.bounties||[]).length?`<button class="full primary" id="tRedeem">&#9878; Redeem bounties (${state.bounties.length}) &middot; +${commas(state.bounties.reduce((s,b)=>s+b.value,0))}c</button>`:""}
       <button class="full ghost" id="tDrink">Buy a round &middot; 10c (rest your bones)</button>
     </div>
+    ${(()=>{ const u=unreportedInfo();
+      const bits=[u.systems.length&&`${u.systems.length} system${u.systems.length>1?"s":""}`,
+                  u.worlds.length&&`${u.worlds.length} world${u.worlds.length>1?"s":""}`,
+                  u.races.length&&`${u.races.length} race${u.races.length>1?"s":""}`,
+                  u.creatures.length&&`${u.creatures.length} creature${u.creatures.length>1?"s":""}`].filter(Boolean);
+      return `<div class="card"><h3>&#128225; Sell information</h3>
+        <p class="small dim">The bartender pays for fresh charts and tales — new star systems, worlds, peoples and beasts you've logged.</p>
+        ${u.total>0?`<p class="small">Unsold: ${bits.join(", ")}.</p>
+          <button class="full primary" id="tInfo">Sell all to the bartender &middot; +${commas(u.total)}c</button>`
+          :`<p class="small dim">Nothing new to sell. Go chart a system or meet a new people.</p>`}
+      </div>`; })()}
     <div class="card"><button id="tBack" class="ghost full center">&larr; Back outside</button></div>`;
   },
 
@@ -2867,6 +2880,7 @@ const UI = {
     if(screen==="tavern"){
       $("#tPatron").onclick=()=>startMeeting("A patron at a corner table waves you over.","tavern");
       $("#tBartender").onclick=()=>{ Game.logMsg("The bartender leans in — "+pick(RUMORS),"sys"); toast("You hear a rumor"); Game.save(); UI.render("tavern"); UI.flashLog(); };
+      const ti=$("#tInfo"); if(ti) ti.onclick=()=>sellInformation();
       $("#tBounty").onclick=()=>{ toast("No bounties posted right now"); Game.logMsg("No bounties on the board today. (Bounty contracts coming soon.)","sys"); };
       const rd=$("#tRedeem"); if(rd) rd.onclick=()=>redeemBounties();
       $("#tDrink").onclick=()=>{ if(state.credits<10){ toast("Not enough credits"); return; }
@@ -3531,20 +3545,23 @@ function unreportedInfo(){
   const races=Object.values(cx.races||{}).filter(r=>r.id!=="self" && !r.reported);
   const worlds=(cx.worlds||[]).filter(w=>!w.reported);
   const creatures=Object.values(cx.creatures||{}).filter(c=>!c.reported);
+  const systems=state.galaxy ? state.galaxy.systems.filter(s=>s.discovered && !s.reported) : [];
   const total=races.reduce((s,r)=>s+raceValue(r.tier),0)
     +worlds.reduce((s,w)=>s+worldValue(w.tier),0)
+    +systems.reduce((s,sy)=>s+systemValue(sy),0)
     +creatures.length*CREATURE_VALUE;
-  return { races, worlds, creatures, total };
+  return { races, worlds, creatures, systems, total };
 }
 function sellInformation(){
   const u=unreportedInfo();
   if(u.total<=0){ toast("Nothing new to report"); return; }
-  u.races.forEach(r=>r.reported=true); u.worlds.forEach(w=>w.reported=true); u.creatures.forEach(c=>c.reported=true);
+  u.races.forEach(r=>r.reported=true); u.worlds.forEach(w=>w.reported=true);
+  u.creatures.forEach(c=>c.reported=true); u.systems.forEach(s=>s.reported=true);
   state.credits+=u.total;
-  const n=u.races.length+u.worlds.length+u.creatures.length;
-  Game.logMsg(`You sell information on ${n} new find${n>1?"s":""} for ${u.total}c.`,"good");
-  toast("+"+u.total+"c");
-  Game.save(); UI.render("broker");
+  const n=u.races.length+u.worlds.length+u.creatures.length+u.systems.length;
+  Game.logMsg(`The bartender slides you ${commas(u.total)}c for word of ${n} new find${n>1?"s":""}.`,"good");
+  toast("+"+commas(u.total)+"c");
+  Game.save(); UI.render(UI.current==="broker"?"broker":"tavern");
 }
 
 /* record an individual you've met (compact snapshot) + bump their race's tally */
@@ -3799,7 +3816,7 @@ function departFirstFlight(){
   const size=rollSystemSize(cf), planets=[];
   for(let i=0;i<size;i++) planets.push({ index:i, discovered:i===0, isHome:i===0,
     occupied:i===0, world:i===0?state.world:null });
-  const home={ id:0, name:genName("system"), x:sp.x, y:sp.y, size, discovered:true, planets };
+  const home={ id:0, name:genName("system"), x:sp.x, y:sp.y, size, discovered:true, reported:true, planets };
   // scatter the rest of the galaxy on the flat 2D plane around the home star
   const galaxy={ name:state.galaxyName,
     systems:[home].concat(makeNeighborSystems(sp.x, sp.y, 1)) };
