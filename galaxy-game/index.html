@@ -541,6 +541,7 @@ const TEMPERAMENTS = [
    a threat level (1-4: attackable, carries a bounty); arms sets the ships/crew they command. */
 const CAREERS = [
   // —— civilians (what you almost always meet) ——
+  { id:"drifter",  name:"Drifter",         weight:16, wealth:[10,500] },
   { id:"laborer",  name:"Laborer",         weight:18, wealth:[80,1200] },
   { id:"farmer",   name:"Farmer",          weight:14, wealth:[150,2500] },
   { id:"factory",  name:"Factory Worker",  weight:12, wealth:[120,1800] },
@@ -600,11 +601,17 @@ function shipwrightWorth(tech){ return Math.round(72000*(1+(tech||0)*0.9+(tech||
 const HIRE_ROLES={
   pilot:    { fee:2500, salary:5000, role:"flies the ship — needed for it to follow you" },
   mechanic: { fee:2000, salary:3500, role:"keeps the ship running (larger ships need several)" },
+  drifter:  { fee:500,  salary:1000, role:"an out-of-work drifter glad of any berth — works a ship's holds" },
   laborer:  { fee:800,  salary:1500, role:"works the holds — big freighters can't run without a labor gang" },
+  dockhand: { fee:700,  salary:1300, role:"dock worker — handy crewing a cargo hold" },
+  factory:  { fee:700,  salary:1300, role:"factory hand — works a ship's holds" },
   mercenary:{ fee:2200, salary:4000, role:"hired muscle — fights for you (combat coming soon)" },
   gunner:   { fee:2200, salary:4000, role:"mans the guns (ship combat coming soon)" },
   medic:    { fee:2800, salary:4500, role:"tends the crew (healing coming soon)" },
 };
+/* careers that can fill a ship's LABOR seats (grunt work in the holds) */
+const LABOR_CAREERS=["drifter","laborer","dockhand","factory"];
+const isLaborCareer=c=>LABOR_CAREERS.includes(c);
 const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
 /* Jobs you can ASK a person for when you meet them. chance = odds they take you on (rarer
    work is harder to land); pay = the yearly salary you then earn. Hostile careers aren't here
@@ -948,18 +955,22 @@ function shipOfferFrom(c, tierId, priceFactor){
     power, price };
 }
 /* Some people you meet own a personal ship — ordinary civilians, pilots, mechanics, traders.
-   What they own is bounded by their wealth, so most own modest hulls and only the rich fly
-   gunships. Returns an offer blueprint (with an appraised price = its worth), or null. */
+   We roll the ship's RANGE first (independent of where you are or how rich they are), so a fair
+   share of owners can leave the planet, and a smaller share can leave the system — you're never
+   truly stranded on a backwater. Wealth only nudges WHICH hull within that band. */
+const SHIP_OWN_RATE=0.26;            // chance a (non-hostile) person owns a personal ship
+const SHIP_RANGE_BANDS=[ {range:"surface",p:0.60}, {range:"system",p:0.28}, {range:"interstellar",p:0.12} ];
 function rollPersonShip(credits){
-  if(!chance(0.24)) return null;
-  const budget=Math.max(2500, credits*1.5);
-  const avail=SHIP_CLASSES.filter(c=>c.price<=budget);
-  if(!avail.length) return null;
-  // weight toward the cheaper, commoner hulls
-  const weighted=avail.map(c=>({c, w:1/Math.pow(c.price,0.55)}));
-  const tot=weighted.reduce((s,x)=>s+x.w,0); let r=Math.random()*tot, hull=weighted[0].c;
-  for(const x of weighted){ if((r-=x.w)<0){ hull=x.c; break; } }
-  const t=rollShipTier(6);   // mostly common, the odd better-spec hull
+  if(!chance(SHIP_OWN_RATE)) return null;
+  let r=Math.random(), band="surface";
+  for(const b of SHIP_RANGE_BANDS){ if((r-=b.p)<0){ band=b.range; break; } }
+  let avail=SHIP_CLASSES.filter(c=>c.range===band);
+  if(!avail.length) avail=SHIP_CLASSES.filter(c=>c.range==="surface");
+  const pull=clamp((credits||0)/250000,0,1), exp=0.5-pull*0.34;   // richer owners skew to pricier hulls in the band
+  const weighted=avail.map(c=>({c, w:1/Math.pow(c.price,exp)}));
+  const tot=weighted.reduce((s,x)=>s+x.w,0); let x=Math.random()*tot, hull=weighted[0].c;
+  for(const it of weighted){ if((x-=it.w)<0){ hull=it.c; break; } }
+  const t=rollShipTier(5);   // mostly common, the odd better-spec hull
   return shipOfferFrom(hull, t.id, 1.0);
 }
 /* Turn an offer blueprint into a real owned vehicle (docked where you stand). */
@@ -1438,7 +1449,8 @@ const Game = {
   // pilots aboard, counting YOU on the ship you personally fly
   pilots(v){ return Game.aboard(v,"pilot") + (v.id===state.activeShip?1:0); },
   // a ship is operational (flyable) only with enough pilots + mechanics for its class
-  operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0) && Game.aboard(v,"laborer") >= (v.reqLabor??0); },
+  laborers(v){ return v?(state.crew||[]).filter(c=>c.shipId===v.id && isLaborCareer(c.career)).length:0; },
+  operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0) && Game.laborers(v) >= (v.reqLabor??0); },
   canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && atHere(s) && Game.operational(s)); },
   shipsHere(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)&&!v.carrier); },
 
@@ -2890,7 +2902,7 @@ const UI = {
         ${(v.guns||[]).length?krow("Hardpoints", slotBreakdown(v.slotSizes)):""}
         ${krow("Fleet", fleet?`<b class="blue">${fleet.name}</b>`:'<span class="dim">Independent</span>')}
         ${krow("Crew needed", `${v.reqPilots||1} pilot${(v.reqPilots||1)>1?"s":""}${v.reqMech?`, ${v.reqMech} mechanic${v.reqMech>1?"s":""}`:""}${(v.gunnerGuns||0)?` <span class="dim">(${v.gunnerGuns} gunner mounts)</span>`:""}`)}
-        ${krow("Aboard", `${Game.pilots(v)} pilot${Game.pilots(v)!==1?"s":""}${active?' <span class="dim small">(incl. you)</span>':''}, ${Game.aboard(v,"mechanic")} mechanic${Game.aboard(v,"mechanic")!==1?"s":""}`)}
+        ${krow("Aboard", `${Game.pilots(v)} pilot${Game.pilots(v)!==1?"s":""}${active?' <span class="dim small">(incl. you)</span>':''}, ${Game.aboard(v,"mechanic")} mechanic${Game.aboard(v,"mechanic")!==1?"s":""}${(v.reqLabor||0)?`, ${Game.laborers(v)} labor`:""}`)}
         ${krow("Operational", Game.operational(v)?'<span class="green">Yes — ready to fly</span>':'<span class="red">No — needs more crew</span>')}
         ${krow("Range", v.range==="interstellar"?`<span class="gold">${jumpRange(v).toFixed(1)} ly hyperdrive</span>`:RANGE_LABEL[v.range])}
         ${krow("Maintenance", `${commas(shipMaint(v))}c/yr`)}
