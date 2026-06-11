@@ -2609,9 +2609,10 @@ const UI = {
     const ships=state.vehicles||[];
     if(seatPick){                                   // choosing who fills a seat
       const v=ships.find(x=>x.id===seatPick.shipId), idle=idleHires();
+      const seat=v?(shipSeats(v)[seatPick.seat]||{role:"passenger"}):{role:"crew"}, role=seat.role;
       return `${this.statHeader()}
-      <div class="card"><h2>Assign &middot; ${v?v.name:"ship"} Seat ${seatPick.seat+1}</h2>
-        <p class="small dim">Idle crewmates travel with you, so any of them can take this seat.</p>
+      <div class="card"><h2>Assign &middot; <span class="${SEAT_COLOR[role]||'dim'}">${seatLabel(seat)}</span> &middot; ${v?v.name:"ship"}</h2>
+        <p class="small dim">${role==="gunner"?"A gunner mans this weapon mount in a fight. ":role==="pilot"||role==="captain"?"Pilots fly the ship. ":role==="mechanic"?"Mechanics keep it running. ":role==="open"?"An empty mount — anyone can ride here until you install a gun. ":""}Idle crewmates travel with you, so any of them can take this seat.</p>
         ${idle.length?idle.map(c=>`<button class="full" data-putcrew="${state.crew.indexOf(c)}">${c.name} <span class="dim small">&middot; ${careerName(c.career)}</span></button>`).join("")
           :`<p class="small dim">No idle crewmates. Hire Pilots from people you've met.</p>`}
         <div class="divider"></div><button class="ghost full center" id="seatCancel">Cancel</button>
@@ -2646,13 +2647,20 @@ const UI = {
     if(viewingShip){
       const v=ships.find(x=>x.id===viewingShip); if(!v){ viewingShip=null; return this.shipsView(); }
       const active=v.id===state.activeShip, here=atHere(v), cmax=v.crewMax||1;
+      const layout=shipSeats(v), berths=passengerBerths(v);
       let seats="";
-      for(let n=0;n<cmax;n++){
-        if(active && n===0){ seats+=`<div class="krow"><span class="lbl">Seat ${n+1}</span><span class="kv green">You (pilot)</span></div>`; continue; }
+      layout.forEach((seat,n)=>{ const lbl=`<span class="${SEAT_COLOR[seat.role]}">${seatLabel(seat)}</span>`;
+        if(active && n===0){ seats+=`<div class="krow"><span class="lbl">${lbl}</span><span class="kv green">You</span></div>`; return; }
         const occ=seatOccupant(v.id,n);
         seats+= occ
-          ? `<div class="krow"><span class="lbl">Seat ${n+1}</span><span class="kv">${occ.name} <span class="dim small">${careerName(occ.career)}</span> <button class="small ghost" data-unseat="${state.crew.indexOf(occ)}">Remove</button></span></div>`
-          : `<div class="krow"><span class="lbl">Seat ${n+1}</span><span class="kv">${here?`<button class="small" data-seat="${v.id}:${n}">Assign</button>`:'<span class="dim">empty</span>'}</span></div>`;
+          ? `<div class="krow"><span class="lbl">${lbl}</span><span class="kv">${occ.name} <span class="dim small">${careerName(occ.career)}</span> <button class="small ghost" data-unseat="${state.crew.indexOf(occ)}">Remove</button></span></div>`
+          : `<div class="krow"><span class="lbl">${lbl}</span><span class="kv">${here?`<button class="small" data-seat="${v.id}:${n}">Assign</button>`:'<span class="dim">empty</span>'}</span></div>`;
+      });
+      // passenger berths (capacity beyond the working crew)
+      const pax=(state.crew||[]).filter(c=>c.shipId===v.id && c.seat>=layout.length);
+      if(berths>0){
+        seats+=`<div class="krow"><span class="lbl"><span class="dim">Passengers</span></span><span class="kv">${pax.length}/${berths} berth${berths!==1?"s":""}${here&&pax.length<berths?` <button class="small" data-seatpax="${v.id}">Board</button>`:""}</span></div>`;
+        seats+=pax.map(c=>`<div class="krow"><span class="lbl dim small">&middot; passenger</span><span class="kv">${c.name} <span class="dim small">${careerName(c.career)}</span> <button class="small ghost" data-unseat="${state.crew.indexOf(c)}">Remove</button></span></div>`).join("");
       }
       const fleet=fleetOf(v), grounded=state.grounded && active && spaceworthy(v);
       const canMove=!grounded && (v.range!=="surface") && Game.operational(v);
@@ -2675,8 +2683,8 @@ const UI = {
         </div>
         ${!here?`<p class="small dim">You're not docked with this ship — travel to it to assign crew or pilot it.</p>`:""}
       </div>
-      <div class="card sheet"><h3>Seats <span class="dim small">&middot; ${cmax}</span></h3>${seats}
-        <p class="small dim" style="margin-top:6px">Crew aboard a ship travel with it. A ship needs its full pilot/mechanic crew to fly.</p></div>
+      <div class="card sheet"><h3>Crew seats <span class="dim small">&middot; ${layout.length} stations${berths?` + ${berths} berths`:""}</span></h3>${seats}
+        <p class="small dim" style="margin-top:6px">The Captain seat is yours. A ship flies only with its pilots and mechanics aboard, and each Gunner mans one weapon mount. Crew aboard travel with the ship.</p></div>
       <div class="card"><div class="row">
         ${!active&&here?`<button class="small" data-selship="${v.id}">Pilot this</button>`:""}
         <button class="small ghost" data-renship="${v.id}">Rename</button>
@@ -3004,6 +3012,8 @@ const UI = {
       app.querySelectorAll("[data-selshipview]").forEach(b=> b.onclick=()=>{ viewingShip=b.dataset.selshipview; UI.render("crew"); });
       const sb=$("#shipsBack"); if(sb) sb.onclick=()=>{ viewingShip=null; UI.render("crew"); };
       app.querySelectorAll("[data-seat]").forEach(b=> b.onclick=()=>{ const [sid,n]=b.dataset.seat.split(":"); seatPick={shipId:sid, seat:+n}; UI.render("crew"); });
+      app.querySelectorAll("[data-seatpax]").forEach(b=> b.onclick=()=>{ const v=(state.vehicles||[]).find(x=>x.id===b.dataset.seatpax); const n=v?nextFreeBerth(v):-1;
+        if(n>=0){ seatPick={shipId:b.dataset.seatpax, seat:n}; UI.render("crew"); } else toast("No free berth"); });
       app.querySelectorAll("[data-putcrew]").forEach(b=> b.onclick=()=>assignToSeat(+b.dataset.putcrew, seatPick.shipId, seatPick.seat));
       const sc=$("#seatCancel"); if(sc) sc.onclick=()=>{ seatPick=null; UI.render("crew"); };
       app.querySelectorAll("[data-unseat]").forEach(b=> b.onclick=()=>unassignCrew(+b.dataset.unseat));
@@ -3666,6 +3676,24 @@ function moveShip(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) r
 function moveFleet(fid){ const f=fleetById(fid); if(!f||!f.shipIds.length){ toast("Empty fleet"); return; }
   openTravel(f.shipIds, `Move ${f.name}`); }
 function seatOccupant(shipId, seat){ return (state.crew||[]).find(c=>c.shipId===shipId && c.seat===seat); }
+/* the labeled crew seats of a ship: captain, pilots, mechanics, then one per gunner mount.
+   A gunner mount with a weapon installed is a sized Gunner station; an empty mount is just an
+   open seat anyone can take (no gun to man yet). */
+const SEAT_LABEL={captain:"Captain", pilot:"Pilot", mechanic:"Mechanic", gunner:"Gunner", passenger:"Passenger", open:"Open seat"};
+const SEAT_COLOR={captain:"gold", pilot:"green", mechanic:"blue", gunner:"violet", passenger:"dim", open:"dim"};
+function shipSeats(v){ const out=[], p=v.reqPilots||1, m=v.reqMech||0, pg=v.pilotGuns||0, gg=v.gunnerGuns||0;
+  for(let i=0;i<p;i++) out.push({role:i===0?"captain":"pilot"});
+  for(let i=0;i<m;i++) out.push({role:"mechanic"});
+  for(let j=0;j<gg;j++){ const hp=pg+j, wid=(v.guns||[])[hp], size=(v.slotSizes||[])[hp]||0;
+    out.push({ role: wid?"gunner":"open", size, hp }); }
+  return out; }
+function seatLabel(seat){
+  if(seat.role==="gunner") return `Gunner &middot; ${SLOT_SIZES[seat.size||0]}`;
+  if(seat.role==="open") return `Open seat <span class="dim small">(${SLOT_SIZES[seat.size||0]} mount)</span>`;
+  return SEAT_LABEL[seat.role]; }
+function passengerBerths(v){ return Math.max(0, (v.crewMax||1) - shipSeats(v).length); }
+function nextFreeBerth(v){ const f=shipSeats(v).length, cap=Math.max(v.crewMax||1, f);
+  for(let i=f;i<cap;i++){ if(!seatOccupant(v.id,i)) return i; } return -1; }
 /* assign a hire to a specific seat on a ship docked where you are */
 function assignToSeat(ci, shipId, seat){
   const c=state.crew[ci], v=(state.vehicles||[]).find(x=>x.id===shipId); if(!c||!v) return;
