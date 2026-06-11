@@ -2302,6 +2302,7 @@ const UI = {
     const cx=state.codex||{};
     const races=Object.values(cx.races||{}), people=cx.people||[],
           wild=Object.values(cx.creatures||{}), worlds=cx.worlds||[];
+    const crew=people.filter(p=>p.hired&&!p.captured), strangers=people.filter(p=>!p.hired);
     const done=OBJECTIVES.filter(o=>state.achievements[o.id]).length;
     return `
     ${this.statHeader()}
@@ -2309,7 +2310,8 @@ const UI = {
       <p class="small dim">Galaxy <b class="gold">${state.galaxyName}</b> — everything you discover, recorded.</p></div>
     <div class="card">
       <button class="full" data-goto="char">&#9670; Self <span class="dim">&middot; ${state.name}</span></button>
-      <button class="full" data-cx="people">&#128483; People you've met <span class="dim">&middot; ${people.length}</span></button>
+      <button class="full" data-cx="crew">&#128101; Crew <span class="dim">&middot; ${crew.length}</span></button>
+      <button class="full" data-cx="people">&#128483; Strangers <span class="dim">&middot; ${strangers.length}</span></button>
       <button class="full" data-cx="races">&#9670; Races <span class="dim">&middot; ${races.length}</span></button>
       <button class="full" data-cx="wildlife">&#128062; Wildlife species <span class="dim">&middot; ${wild.length}</span></button>
       <button class="full" data-cx="worlds">&#9737; Planets &amp; systems <span class="dim">&middot; ${worlds.length}</span></button>
@@ -2317,16 +2319,35 @@ const UI = {
     </div>
     ${this.logCard()}`;
   },
+  /* people you've met who don't work for you — neutral acquaintances (and any you've crossed) */
   screen_cx_people(){
     const people=state.codex.people||[];
+    const idx=people.map((p,i)=>i).filter(i=>!people[i].hired);   // strangers = not in your crew
     return `
     ${this.statHeader()}
-    <div class="card sheet"><h2>&#128483; People met <span class="dim small">&middot; ${people.length}</span></h2>
-      ${people.length?people.slice().reverse().map((p,ri)=>{ const i=people.length-1-ri;
+    <div class="card sheet"><h2>&#128483; Strangers <span class="dim small">&middot; ${idx.length}</span></h2>
+      <p class="small dim">People you've met but have no ties to. Those who join your crew move to the Crew page.</p>
+      ${idx.length?idx.slice().reverse().map(i=>{ const p=people[i];
         const cr = isHostile(p)&&!p.captured ? `<span class="red">${careerName(p.career)}</span>` : careerName(p.career);
         return `<div class="krow"><span class="lbl"><button class="small ghost" data-person="${i}">${p.name}</button> <span class="dim small">&middot; ${cr}</span></span>
           <span class="kv">${p.raceName} <span class="dim">&middot; ${p.where}</span></span></div>`; }).join("")
         :`<p class="small dim">No one yet — talk to strangers and visit taverns.</p>`}
+    </div>
+    ${this.codexBack()}`;
+  },
+  /* the people who work for you, drawn from those you've hired into your crew */
+  screen_cx_crew(){
+    const people=state.codex.people||[];
+    const idx=people.map((p,i)=>i).filter(i=>people[i].hired&&!people[i].captured);
+    return `
+    ${this.statHeader()}
+    <div class="card sheet"><h2>&#128101; Crew <span class="dim small">&middot; ${idx.length}</span></h2>
+      <p class="small dim">People who work for you. Hire strangers you meet to bring them aboard.</p>
+      ${idx.length?idx.slice().reverse().map(i=>{ const p=people[i];
+        const member=(state.crew||[]).find(c=>c.personIdx===i), ship=member&&member.shipId?(state.vehicles||[]).find(v=>v.id===member.shipId):null;
+        return `<div class="krow"><span class="lbl"><button class="small ghost" data-person="${i}">${p.name}</button> <span class="dim small">&middot; ${careerName(p.career)}</span></span>
+          <span class="kv">${ship?`<span class="green">${ship.name}</span>`:'<span class="dim">idle</span>'}</span></div>`; }).join("")
+        :`<p class="small dim">No crew yet — hire someone you meet to bring them aboard.</p>`}
     </div>
     ${this.codexBack()}`;
   },
@@ -2335,11 +2356,12 @@ const UI = {
     const here = state.atSlot===p.slot;
     const member = p.hired ? (state.crew||[]).find(c=>c.personIdx===viewingPerson) : null;
     const crewShip = member && member.shipId ? (state.vehicles||[]).find(v=>v.id===member.shipId) : null;
+    const talkable = here && !p.hired && !p.captured;   // standing in front of a stranger you can deal with
+    const backTo = p.hired ? "cx_crew" : "cx_people";
     return `
     <div class="card"><h2>${p.name}</h2>
-      <p class="small dim">${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; ${careerName(p.career)} &middot; met at ${p.where}.</p>
-      <p class="small">Holdings: <b class="gold">${commas(p.credits||0)}c</b>${p.force&&forceDesc(p.force)?` <span class="dim">&middot; commands ${forceDesc(p.force)}</span>`:""}</p>
-      ${p.raceId?`<button class="small ghost" data-race="${p.raceId}" style="margin-top:8px">View ${p.raceName} race &rarr;</button>`:""}
+      <p class="small dim">${careerName(p.career)} &middot; ${article(p.raceName)} <b class="violet">${p.raceName}</b> &middot; met at ${p.where}.</p>
+      <p class="small">Worth <b class="gold">${commas(p.credits||0)}c</b>${p.force&&forceDesc(p.force)?` <span class="dim">&middot; commands ${forceDesc(p.force)}</span>`:""}</p>
     </div>
     ${isHostile(p)&&!p.captured?`<div class="rarity-banner" style="border-color:#ff6b6b">
       <div class="rn" style="color:#ff6b6b">${THREAT_LABEL[p.hostile]||"WANTED"}</div>
@@ -2349,26 +2371,27 @@ const UI = {
       ${p.captured?`<p class="small">Bounty claimed — you ${p.captureAlive?"restrained":"killed"} them.</p>`
        : p.hired?`<p class="small green">In your crew${crewShip?`, piloting the <b>${crewShip.name}</b>`:` — idle, awaiting a ship (assign from your Fleet)`}.</p>`
        : here?`<div class="row">
-            <button id="sayHi">Say hi</button>
             ${jobOf(p.career)&&!p.askedJob&&!isHostile(p)?`<button id="askJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(p.career).chance*100)}% &middot; ${commas(jobOf(p.career).pay)}c/yr)</span></button>`:""}
-            ${HIRE_ROLES[p.career]?`<button id="hire" class="primary">Hire as ${careerName(p.career)} &middot; ${HIRE_ROLES[p.career].fee}c</button>`:""}
+            ${HIRE_ROLES[p.career]?`<button id="hire" class="primary">Offer a job &middot; ${careerName(p.career)} &middot; ${HIRE_ROLES[p.career].fee}c</button>`:""}
             ${isHostile(p)?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
             ${p.career==="shipwright"?`<button id="buyOldShip" class="primary">Buy their old ship &middot; ${commas(YARDER_SHIP.price)}c</button>`:""}
-            ${!HIRE_ROLES[p.career]&&!isHostile(p)&&p.career!=="shipwright"?`<span class="small dim">${careerName(p.career)} — can't hire as crew.</span>`:""}
+            <button id="sayHi" class="ghost">Say hi</button>
+            <button id="learnMore" class="ghost">${personExpand?"Show less":"Learn more"}</button>
+            <button id="leaveConvo" class="ghost">Leave conversation</button>
           </div>
+          ${!HIRE_ROLES[p.career]&&!isHostile(p)&&p.career!=="shipwright"?`<p class="small dim" style="margin-top:6px">${cap(careerName(p.career))} — can't hire as crew.</p>`:""}
           ${p.askedJob&&!p.hired?`<p class="small dim" style="margin-top:6px">${state.job&&state.job.career===p.career&&state.job.who===p.name?"You work for them now.":"They had no work for you."}</p>`:""}
           ${isHostile(p)&&p.hostile>=3?`<p class="small red" style="margin-top:6px">A figure this powerful is guarded — taking them on alone is desperate work. (Fleet vs. fleet combat is coming.)</p>`:""}
           ${HIRE_ROLES[p.career]?`<p class="small dim" style="margin-top:6px">${cap(careerName(p.career))}: ${HIRE_ROLES[p.career].role}.</p>`:""}
           ${p.career==="shipwright"?`<p class="small dim" style="margin-top:6px">${YARDER_SHIP.name}: in-system only, cargo ${YARDER_SHIP.cargo}, room for you alone — but it'll get you off-world.</p>`:""}
           ${convo&&convo.idx===viewingPerson?`<p class="small" style="margin-top:8px"><b>${p.name.split(" ")[0]}:</b> "${convo.text}"</p>`:""}`
-       : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${isHostile(p)?"hunt":"speak with"} them.</p>`}
+       : `<p class="small dim">You met them on <b>${p.where}</b>. Travel back there to ${isHostile(p)?"hunt":"speak with"} them.</p>
+          <button id="learnMore" class="ghost" style="margin-top:8px">${personExpand?"Show less":"Learn more"}</button>`}
     </div>
-    <details class="drop"><summary><span>&#9776; More about ${p.name.split(" ")[0]} &middot; <span class="dim small">origin &amp; biology</span></span><span class="chev">&#9654;</span></summary>
-      <div class="dropbody">
+    ${personExpand?`${p.raceId?`<div class="card"><button class="small ghost" data-race="${p.raceId}">View ${p.raceName} race &rarr;</button></div>`:""}
       ${originCard(p)}
-      ${speciesSheet(p)}
-      </div></details>
-    <div class="card"><button class="ghost full center" id="backPeople">&larr; Back to people</button></div>`;
+      ${speciesSheet(p)}`:""}
+    ${talkable?"":`<div class="card"><button class="ghost full center" id="backPeople" data-back="${backTo}">&larr; Back to ${p.hired?'crew':'strangers'}</button></div>`}`;
   },
   screen_cx_races(){
     const races=Object.values(state.codex.races||{}).sort((a,b)=>RARITY.index(a.tier)-RARITY.index(b.tier));
@@ -3065,9 +3088,11 @@ const UI = {
     }
     if(screen.indexOf("cx_")===0){
       const bk=$("#cxBack"); if(bk) bk.onclick=()=>UI.render("codex");
-      const bp=$("#backPeople"); if(bp) bp.onclick=()=>{ convo=null; UI.render("cx_people"); };
+      const bp=$("#backPeople"); if(bp) bp.onclick=()=>{ convo=null; personExpand=false; UI.render(bp.dataset.back||"cx_people"); };
+      const lc=$("#leaveConvo"); if(lc) lc.onclick=()=>{ const p=(state.codex.people||[])[viewingPerson]; convo=null; personExpand=false; UI.render(p&&p.hired?"cx_crew":"cx_people"); };
+      const lm=$("#learnMore"); if(lm) lm.onclick=()=>{ personExpand=!personExpand; UI.render("cx_person"); };
       const br=$("#backRaces"); if(br) br.onclick=()=>UI.render("cx_races");
-      app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ convo=null; viewingPerson=+b.dataset.person; UI.render("cx_person"); });
+      app.querySelectorAll("[data-person]").forEach(b=> b.onclick=()=>{ convo=null; personExpand=false; viewingPerson=+b.dataset.person; UI.render("cx_person"); });
       app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>{ viewingRace=b.dataset.race; UI.render("cx_race"); });
       app.querySelectorAll("[data-world]").forEach(b=> b.onclick=()=>{ const [si,pi]=b.dataset.world.split(":").map(Number);
         const p=state.galaxy.systems[si].planets[pi]; if(p&&p.world){ viewingWorld=Object.assign({sysName:state.galaxy.systems[si].name}, p.world); UI.render("cx_world"); } });
@@ -3707,7 +3732,7 @@ function sellInformation(){
 }
 
 /* record an individual you've met (compact snapshot) + bump their race's tally */
-let viewingPerson=null, viewingRace=null, viewingWorld=null;
+let viewingPerson=null, viewingRace=null, viewingWorld=null, personExpand=false;
 function recordMeeting(person, race, where){
   if(!state.codex.people) state.codex.people=[];
   const p=JSON.parse(JSON.stringify(person));
