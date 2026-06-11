@@ -911,7 +911,8 @@ function commodityBuy(w,c){ return Math.max(1, Math.round(c.base*commodityFactor
 function commoditySell(w,c){ return Math.max(1, Math.round(c.base*commodityFactor(w,c)*0.82)); }  // depot's cut
 // depots trade their produce/demand (+ hubs deal in all); frontiers/colonies also keep staples
 function canBuyHere(w,c){ return isInhabited(w) && (produces(w,c) || isGeneralMarket(w) || (isBasicDepot(w)&&isStaple(c))); }
-function canSellHere(w,c){ return isInhabited(w) && (demands(w,c) || isGeneralMarket(w) || (isBasicDepot(w)&&isStaple(c))); }
+// anything a depot sells you, it'll also buy back (at the discounted sell price); plus what it demands
+function canSellHere(w,c){ return canBuyHere(w,c) || (isInhabited(w) && demands(w,c)); }
 function newVid(){ return "s"+Math.random().toString(36).slice(2,9); }
 // cargo lives on each ship; bulk goods fill more of the hold than light ones
 function shipUsed(v){ const cg=v.cargo||{}; let s=0; for(const id in cg){ const c=commodityById(id); s+=cg[id]*(c?c.bulk:1); } return s; }
