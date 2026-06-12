@@ -2632,36 +2632,42 @@ const UI = {
         <div class="top"><span class="nm">${ch?s.name:'<span class="dim">Uncharted star</span>'}${isCap?' <span class="gold" title="capital system">&#9733;</span>':''}</span><span class="tag">${o.d.toFixed(1)} ly</span></div>
         <div class="sub">${ch?`${s.size} world${s.size>1?'s':''} &middot; ${charted} charted${isCap?' &middot; a capital system':''}`:`sensor contact &middot; ${s.size} world${s.size>1?'s':''}`}</div>
         ${gov?`<div class="chips"><span class="chip" style="color:${gov.color}">&#127963; ${gov.name}</span><span class="chip ${sCol[govStance(gov)]||''}">${govStance(gov)}</span></div>`:(ch?'<div class="chips"><span class="chip">unclaimed space</span></div>':'')}
-        <div class="row" style="margin-top:7px">${canGo?`<button class="small" data-jumpsys="${s.id}">&#9650; Jump in</button>`:`<span class="small dim">&#128274; ${!inRange?'out of range':'need to be aboard'}</span>`}</div></div>`; };
+        <div class="row" style="margin-top:7px">${canGo?`<button class="small" data-jumpsys="${s.id}">&#9650; Jump in</button>`:`<span class="small dim">&#128274; ${!inRange?'out of range':'need to be aboard'}</span>`}${ch?` <button class="small ghost" data-sysfav="${s.id}">${s.fav?'&#9733; Unpin':'&#9734; Favourite'}</button>`:''}</div></div>`; };
     const favs=[]; g.systems.forEach(s=>(s.planets||[]).forEach((p,slot)=>{ if(p&&p.discovered&&p.fav&&p.world) favs.push({s,slot,p,d:s.id===origin?0:sysDist(origin,s.id)}); }));
     favs.sort((a,b)=>a.d-b.d);
+    const favSystems=g.systems.filter(s=>s.fav&&s.id!==origin&&s.discovered).map(s=>({sys:s,d:sysDist(origin,s.id)})).sort((a,b)=>a.d-b.d);
     return `
     ${this.statHeader()}
     <div class="card"><div class="row between"><h2>&#9992; ${ctx.title||"Move"}</h2><span class="tag">${RANGE_LABEL[caps.tier]}</span></div>
       <div class="chips" style="margin-top:5px"><span class="chip b">&#128205; ${osys.name}</span>${jumpable?`<span class="chip gold">&#9889; ${caps.jump.toFixed(1)} ly reach</span>`:''}<span class="chip ${playerIn?'g':''}">${playerIn?'aboard':'remote group'}</span></div>
       ${blockers.length?`<p class="small red" style="margin-top:6px">Grounded: ${blockers.map(b=>b.name).join(", ")} ${blockers.length>1?"need":"needs"} more crew to fly.</p>`:""}
       ${caps.tier==="surface"?`<p class="small red" style="margin-top:6px">No ship in this group can leave the ground.</p>`:""}</div>
-    <div class="card"><div class="row" style="gap:6px">
-      <button class="${travelTab==='fav'?'sel':''}" data-traveltab="fav">&#9733; Favourites</button>
-      <button class="${travelTab==='all'?'sel':''}" data-traveltab="all">Planets</button>
-      <button class="${travelTab==='sys'?'sel':''}" data-traveltab="sys">&#10024; Systems</button></div></div>
-    ${travelTab==="fav"
-      ? (favs.length?`<div class="card sheet"><h3>&#9733; Favourite worlds <span class="dim small">&middot; quick travel</span></h3>${favs.map(f=>pcard(f.s,f.slot,f.p)).join("")}</div>`
-          :`<div class="card sheet"><h3>&#9733; Favourite worlds</h3><p class="small dim">No favourites yet — switch to <b>Planets</b> and tap <b>&#9734; Favourite</b> on a world to pin it here for quick travel.</p></div>`)
-    : travelTab==="sys"
-      ? `${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapSvg({cx:osys.x, cy:osys.y, span:Math.max(caps.jump*2.6, 26)}, {originId:origin, reach:caps.jump})}</div>
+    <div class="card">
+      <div class="row" style="gap:6px">
+        <button class="${travelTab==='planets'?'sel':''}" data-traveltab="planets">&#9737; Planets</button>
+        <button class="${travelTab==='systems'?'sel':''}" data-traveltab="systems">&#10024; Systems</button></div>
+      <div class="row" style="gap:6px;margin-top:6px">
+        <button class="small ${!travelFav?'sel':''}" data-travelfav="0">All</button>
+        <button class="small ${travelFav?'sel':''}" data-travelfav="1">&#9733; Favourites</button></div></div>
+    ${travelTab==="systems" ? (travelFav
+      ? (favSystems.length?`<div class="card sheet"><h3>&#9733; Favourite systems</h3>${favSystems.map(scard).join("")}</div>`
+          :`<div class="card sheet"><h3>&#9733; Favourite systems</h3><p class="small dim">No favourite systems yet — switch to <b>All</b> and tap <b>&#9734; Favourite</b> on a system to pin it here.</p></div>`)
+      : `${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapSvg({cx:osys.x, cy:osys.y, span:Math.max(caps.jump*2.6, 26)}, {originId:origin, reach:caps.jump})}</div>
         <div class="card sheet"><h3>Jump to another system <span class="dim small">&middot; within reach</span></h3>
           ${reach.length?reach.slice(0,16).map(scard).join("")+(reach.length>16?`<p class="small dim center" style="margin-top:4px">+${reach.length-16} more within reach — pan the map.</p>`:""):'<p class="small dim">No systems within a single jump. Drift through open space below to close the gap.</p>'}</div>`
         :`<div class="card"><p class="small dim">This group can only travel within its own system. A fleet jumps between stars only if every ship aboard is interstellar-class.</p></div>`}
         ${jumpable&&playerIn&&beyond.length?`<div class="card sheet"><h3>&#127756; Hyperdrive into open space</h3>
           <p class="small dim">Out of single-jump reach? Burn into the void and drift between the stars to bring distant systems into range (you may cross paths with other ships).</p>
           ${beyond.slice(0,5).map(o=>`<div class="krow"><span class="lbl">${o.sys.discovered?o.sys.name:'<span class="dim">distant star</span>'} <span class="dim small">&middot; ${o.d.toFixed(1)} ly ${compassBearing(o.sys.x-osys.x, o.sys.y-osys.y)}</span></span></div>`).join("")}
-        </div>${this.voidCompass(caps.jump)}`:""}`
+        </div>${this.voidCompass(caps.jump)}`:""}`)
+    : (travelFav
+      ? (favs.length?`<div class="card sheet"><h3>&#9733; Favourite worlds <span class="dim small">&middot; quick travel</span></h3>${favs.map(f=>pcard(f.s,f.slot,f.p)).join("")}</div>`
+          :`<div class="card sheet"><h3>&#9733; Favourite worlds</h3><p class="small dim">No favourites yet — switch to <b>All</b> and tap <b>&#9734; Favourite</b> on a world to pin it here for quick travel.</p></div>`)
       : `${inSys?`<div class="card sheet"><h3>Within ${osys.name}</h3>
         ${planets.map((p,i)=> (p&&p.discovered) ? pcard(osys,i,p)
           : `<div class="shipcard" style="opacity:.62"><div class="top"><span class="nm dim">Uncharted world ${i+1}</span><span class="tag">unexplored</span></div>
              <div class="row" style="margin-top:6px">${playerIn?`<button class="small" data-go="${origin}:${i}">&#10022; Explore</button>`:'<span class="small dim">&#128274; need to be aboard</span>'}</div></div>`).join("")}
-      </div>${jumpable?`<p class="small dim center">Looking to leave the system? Check the <b>&#10024; Systems</b> tab.</p>`:""}`:`<div class="card"><p class="small dim">This group can't leave the ground.</p></div>`}`}
+      </div>${jumpable?`<p class="small dim center">Looking to leave the system? Check the <b>&#10024; Systems</b> tab.</p>`:""}`:`<div class="card"><p class="small dim">This group can't leave the ground.</p></div>`}`)}
     <div class="card"><button id="tvBack" class="ghost full center">&larr; Back</button></div>`;
   },
   /* ---------- DEEP SPACE (adrift between the stars) ---------- */
@@ -3809,6 +3815,8 @@ const UI = {
     }
     if(screen==="travel"){
       app.querySelectorAll("[data-traveltab]").forEach(b=> b.onclick=()=>{ travelTab=b.dataset.traveltab; UI.render("travel"); });
+      app.querySelectorAll("[data-travelfav]").forEach(b=> b.onclick=()=>{ travelFav=b.dataset.travelfav==="1"; UI.render("travel"); });
+      app.querySelectorAll("[data-sysfav]").forEach(b=> b.onclick=()=>toggleSystemFav(b.dataset.sysfav));
       app.querySelectorAll("[data-fav]").forEach(b=> b.onclick=()=>togglePlanetFav(b.dataset.fav));
       app.querySelectorAll("[data-favgo]").forEach(b=> b.onclick=()=>{ const [s,p]=b.dataset.favgo.split(":").map(Number); moveGroupTo(travelCtx.ids, s, p, "crew"); });
       app.querySelectorAll("[data-go]").forEach(b=> b.onclick=()=>{ const [s,p]=b.dataset.go.split(":").map(Number); moveGroupTo(travelCtx.ids, s, p, "crew"); });
@@ -4962,7 +4970,7 @@ function sellInformation(){
 
 /* record an individual you've met (compact snapshot) + bump their race's tally */
 let viewingPerson=null, viewingRace=null, viewingWorld=null, personExpand=false;
-let travelTab="fav";   // travel screen: "fav" favourites (default) or "all"
+let travelTab="planets", travelFav=true;   // travel: top tab (planets|systems) + All/Favourites sub-filter
 function recordMeeting(person, race, where){
   if(!state.codex.people) state.codex.people=[];
   const p=JSON.parse(JSON.stringify(person));
@@ -5132,6 +5140,9 @@ function togglePlanetFav(ref){ const [si,pi]=ref.split(":").map(Number);
   if(!p||!p.world) return;
   p.fav=!p.fav;
   toast(p.fav?`&#9733; ${p.world.name} favourited`:`${p.world.name} unfavourited`); Game.save(); UI.render(UI.current);
+}
+function toggleSystemFav(sysId){ const s=state.galaxy&&state.galaxy.systems[+sysId]; if(!s) return;
+  s.fav=!s.fav; toast(s.fav?`&#9733; ${s.name} favourited`:`${s.name} unfavourited`); Game.save(); UI.render(UI.current);
 }
 function inhabPlanets(sysId){ const sys=state.galaxy&&state.galaxy.systems[sysId]; if(!sys||!sys.planets) return [];
   return sys.planets.map((p,slot)=>({slot,p})).filter(x=>x.p&&x.p.discovered&&isInhabited(x.p.world)).map(x=>({slot:x.slot, world:x.p.world})); }
