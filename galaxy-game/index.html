@@ -1363,6 +1363,11 @@ const DATA = {
     "Heavy Strike": { type:"attack", energy:6, blurb:"A crushing blow. Scales with Might.", scale:"might", mult:2.2 },
     "Steady Shot":  { type:"attack", energy:5, blurb:"A precise ranged hit. Scales with Agility.", scale:"agility", mult:2.0, acc:0.95 },
     "Current Bolt": { type:"attack", energy:7, blurb:"A lance of Current. Scales with Force.", scale:"force", mult:2.4 },
+    "Rend":         { type:"attack", energy:6, blurb:"A tearing strike that leaves the foe bleeding. Scales with Might.", scale:"might", mult:1.7, applies:"bleed", appliesTurns:3 },
+    "Concussive Blow":{ type:"attack", energy:7, blurb:"A stunning blow with a chance to daze. Scales with Might.", scale:"might", mult:1.6, applies:"daze", appliesChance:0.5 },
+    "Aimed Shot":   { type:"attack", energy:6, blurb:"Patient and precise — rarely misses, often crits. Scales with Agility.", scale:"agility", mult:1.9, acc:0.99, critBonus:0.25 },
+    "Flurry":       { type:"attack", energy:7, blurb:"A rapid three-hit combo. Scales with Agility.", scale:"agility", mult:0.85, hits:3, acc:0.9 },
+    "Current Nova": { type:"attack", energy:10, blurb:"A devastating burst of Current. Scales with Force.", scale:"force", mult:3.0 },
     "Current Sense":{ type:"passive", blurb:"Feel danger early: better flee odds." },
     "Mend":         { type:"heal", energy:6, blurb:"Mend wounds with the Current." },
     "Focus":        { type:"buff", energy:0, blurb:"Center yourself: recover energy and a little HP." },
@@ -1478,12 +1483,12 @@ function resolveItem(ref){ if(!ref) return null; if(DATA.items[ref]) return DATA
    (loot) and XP, never tamed. minDanger gates the rougher ones to dangerous worlds. */
 const FOES=[
   { id:"pickpocket", name:"Pickpocket",    hp:14, atk:4,  xp:9,  weight:10, loot:[10,60],   blurb:"A nimble cutpurse working the crowd." },
-  { id:"thief",      name:"Thief",         hp:20, atk:6,  xp:14, weight:9,  loot:[20,120],  blurb:"A back-alley thief sizing you up." },
+  { id:"thief",      name:"Thief",         hp:20, atk:6,  xp:14, weight:9,  loot:[20,120],  blurb:"A back-alley thief sizing you up.", traits:["evasive"] },
   { id:"mugger",     name:"Mugger",        hp:26, atk:8,  xp:18, weight:8,  loot:[30,180],  blurb:"A mugger with a blade and bad intentions." },
-  { id:"thug",       name:"Street Thug",   hp:34, atk:10, xp:24, weight:7,  loot:[40,240],  blurb:"A hulking thug blocking your way." },
+  { id:"thug",       name:"Street Thug",   hp:34, atk:10, xp:24, weight:7,  loot:[40,240],  blurb:"A hulking thug blocking your way.", traits:["brute"] },
   { id:"robber",     name:"Armed Robber",  hp:30, atk:12, xp:26, weight:6,  loot:[60,320],  blurb:"An armed robber demanding your credits." },
-  { id:"enforcer",   name:"Gang Enforcer", hp:48, atk:14, xp:38, weight:4,  loot:[120,600], blurb:"A syndicate enforcer, scarred and calm.", minDanger:5 },
-  { id:"raider",     name:"Raider",        hp:42, atk:16, xp:40, weight:5,  loot:[80,500],  blurb:"A lawless raider looking for a kill.", minDanger:5 },
+  { id:"enforcer",   name:"Gang Enforcer", hp:48, atk:14, xp:38, weight:4,  loot:[120,600], blurb:"A syndicate enforcer, scarred and calm.", minDanger:5, traits:["armored"] },
+  { id:"raider",     name:"Raider",        hp:42, atk:16, xp:40, weight:5,  loot:[80,500],  blurb:"A lawless raider looking for a kill.", minDanger:5, traits:["savage"] },
 ];
 /* How built-up a world is (0 wild .. 1 dense city) — decides whether wandering turns up
    beasts (wild worlds) or bad people (cities), or nothing at all (dead worlds). */
@@ -1527,6 +1532,7 @@ const Game = {
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
     if(!state.contracts) state.contracts=[];
     if(!state.gear) state.gear=[];
+    learnSkills(true);   // grant techniques an existing character already qualifies for
     // keep the live pointer in sync with the saved galaxy
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
     if(state.galaxy && state.galaxy.systems[0]) state.galaxy.systems[0].reported=true;   // you always knew home
@@ -1741,7 +1747,7 @@ const Game = {
       state.xpNext=Math.round(state.xpNext*1.4+20);
       state.maxHp+=12; state.maxEnergy+=5; state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
       const keys=["might","agility","force","tech","charm"]; state.stats[keys[state.level%keys.length]]++; }
-    if(lv) Game.logMsg(`You reached level ${state.level}!`,"good"); return lv; },
+    if(lv){ Game.logMsg(`You reached level ${state.level}!`,"good"); learnSkills(); } return lv; },
 
   logMsg(t,c=""){ state.log.push({t,c}); if(state.log.length>60) state.log=state.log.slice(-60); },
 };
@@ -1835,8 +1841,9 @@ function beastEncounter(w){
   combat={ cid, name:tpl.name, blurb:tpl.blurb,
     maxHp:Math.round(tpl.hp*scale), hp:Math.round(tpl.hp*scale),
     atk:Math.round(tpl.atk*scale), xp:Math.round(tpl.xp*scale),
-    tame:tpl.tame, over:false, stim:state.stimReady, surprised:false };
-  state.stimReady=false;
+    tame:tpl.tame, over:false, stim:state.stimReady, surprised:false,
+    traits: chance(0.45)?[pick(["savage","evasive","venomous"])]:[], dropTier:clamp(Math.round((w.danger-1)/2),0,3) };
+  initCombat(combat); state.stimReady=false;
   if(applyInitiative(tpl.name, `A wild ${tpl.name} appears! ${tpl.blurb}`)) return;
   Game.save(); UI.render("combat");
 }
@@ -1846,8 +1853,10 @@ function humanoidEncounter(w){
   const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06, hp=Math.round(f.hp*scale);
   combat={ foe:true, fid:f.id, name:f.name, blurb:f.blurb, maxHp:hp, hp,
     atk:Math.round(f.atk*scale), xp:Math.round(f.xp*scale), loot:f.loot,
-    over:false, stim:state.stimReady, surprised:false };
-  state.stimReady=false;
+    over:false, stim:state.stimReady, surprised:false,
+    traits:(f.traits||[]).slice().concat(w.danger>=6&&chance(0.3)?[pick(["armored","brute","venomous"])]:[]),
+    dropTier:clamp(Math.round((w.danger-1)/2),0,4) };
+  initCombat(combat); state.stimReady=false;
   if(applyInitiative(f.name, `${f.blurb}`)) return;
   Game.save(); UI.render("combat");
 }
@@ -1867,6 +1876,42 @@ function peacefulEvent(w){
   else { const xp=rnd(4,10); Game.gainXp(xp); Game.logMsg(`You study the ${w.biomeName}. +${xp} XP.`,"good"); }
   Game.save(); UI.render("hub"); UI.flashLog();
 }
+/* new techniques you master as you train the matching stat (and, for Current arts, are attuned) */
+const SKILL_UNLOCKS=[
+  { id:"Rend",            need:{might:10} },
+  { id:"Aimed Shot",      need:{agility:10} },
+  { id:"Concussive Blow", need:{might:16} },
+  { id:"Flurry",          need:{agility:16} },
+  { id:"Current Nova",    need:{force:13}, power:"current" },
+];
+function learnSkills(silent){
+  if(!state||!state.skills||!state.stats) return;
+  SKILL_UNLOCKS.forEach(u=>{ if(state.skills.includes(u.id)) return;
+    if(u.power && !Game.hasPower(u.power)) return;
+    if(!Object.entries(u.need).every(([k,v])=>(state.stats[k]||0)>=v)) return;
+    state.skills.push(u.id);
+    if(!silent) Game.logMsg(`You master a new technique: ${u.id}!`,"good"); });
+}
+/* enemy traits add behaviour & texture to a fight (no new defensive action needed from you) */
+const COMBAT_TRAITS={
+  armored:  { name:"Armored",  tag:"b", hint:"soaks part of your damage" },
+  evasive:  { name:"Evasive",  tag:"g", hint:"hard to land a clean hit on" },
+  brute:    { name:"Brute",    tag:"r", hint:"winds up devastating blows" },
+  venomous: { name:"Venomous", tag:"v", hint:"its hits can poison you" },
+  savage:   { name:"Savage",   tag:"gold", hint:"grows deadlier as it's hurt" },
+};
+/* set up the transient combat fields a fight needs from its traits */
+function initCombat(c){
+  c.traits=c.traits||[];
+  c.armorPct=c.traits.includes("armored")?0.3:0;
+  c.evade=c.traits.includes("evasive")?0.22:0;
+  c.eStatus={bleed:0,daze:0}; c.pStatus={poison:0}; c.winding=false;
+  return c;
+}
+/* drop loot gear from a beaten foe, by its toughness tier */
+function dropFoeGear(ch){ if(!combat||!chance(ch)) return null;
+  state.gear=state.gear||[]; const g=genGear(rollDropRarity(clamp(combat.dropTier||0,0,4)));
+  state.gear.push(g); Game.logMsg(`Looted: <b style="color:${rarityColor(g.rarity)}">${g.name}</b>!`,"good"); return g; }
 function playerAttack(name){
   if(!combat||combat.over) return;
   const sk=DATA.skills[name], cost=sk.energy||0;
@@ -1879,42 +1924,68 @@ function playerAttack(name){
   else if(sk.type==="buff"){ state.energy=Math.min(Game.effMaxEnergy(),state.energy+12);
     state.hp=Math.min(Game.effMaxHp(),state.hp+5); Game.logMsg(`You focus. +12 energy, +5 HP.`,"sys"); }
   else {
-    const acc=(sk.acc||0.85)+Game.effStat("agility")*0.01+Game.tempEff("acc",0);
-    if(!chance(acc)){ Game.logMsg(`Your ${name} misses!`,"bad"); }
-    else { let dmg=Game.effStat(sk.scale)*sk.mult+rnd(0,4);
-      // heavier bodies hit harder in melee (Might-scaled blows)
+    const hits=sk.hits||1; let total=0, landed=0, crit=false, evaded=false;
+    for(let h=0; h<hits; h++){
+      const acc=(sk.acc||0.85)+Game.effStat("agility")*0.01+Game.tempEff("acc",0);
+      if(!chance(acc)) continue;                                       // you miss
+      if(combat.evade && chance(combat.evade)){ evaded=true; continue; } // foe slips it
+      landed++;
+      let dmg=Game.effStat(sk.scale)*sk.mult+rnd(0,4);
       if(sk.scale==="might") dmg += (state.species.mass.value-HUMAN.mass)*0.03;
       dmg *= Game.tempEff("dmgDealtMult",1);
       if(combat.stim) dmg*=1.5;
-      // Perception + Night Sight + a Volatile streak sharpen critical hits
       const critChance=0.1+Game.effStat("agility")*0.005+(Game.bio("perception")-10)*0.008
-        +(Game.hasPower("nightsight")?0.1:0)+Game.tempEff("crit",0)+Game.circEff("crit",0);
-      const crit=chance(critChance); if(crit) dmg*=1.6;
-      let venom=""; if(Game.hasPower("venom")&&chance(0.25)){ dmg+=4; venom=" (+venom)"; }
-      dmg=Math.max(1,Math.round(dmg));
-      combat.hp-=dmg; Game.logMsg(`${name} hits ${combat.name} for ${dmg}${crit?" CRIT!":""}${venom}.`,"hit"); }
+        +(Game.hasPower("nightsight")?0.1:0)+(sk.critBonus||0)+Game.tempEff("crit",0)+Game.circEff("crit",0);
+      if(chance(critChance)){ dmg*=1.6; crit=true; }
+      if(Game.hasPower("venom")&&chance(0.25)) dmg+=4;
+      dmg *= (1-(combat.armorPct||0));                                  // armored foes soak part of it
+      dmg=Math.max(1,Math.round(dmg)); combat.hp-=dmg; total+=dmg;
+    }
+    if(!landed){ Game.logMsg(`Your ${name} ${evaded?"is slipped by "+combat.name:"misses"}!`,"bad"); }
+    else {
+      Game.logMsg(`${name} hits ${combat.name} for ${total}${crit?" CRIT!":""}${hits>1?` (${landed}/${hits} hits)`:""}.`,"hit");
+      if(sk.applies && (!sk.appliesChance || chance(sk.appliesChance))){
+        if(sk.applies==="bleed"){ combat.eStatus.bleed=Math.max(combat.eStatus.bleed, sk.appliesTurns||3);
+          combat.bleedDmg=Math.max(2,Math.round(Game.effStat(sk.scale)*0.5)); Game.logMsg(`${combat.name} is bleeding!`,"hit"); }
+        if(sk.applies==="daze"){ combat.eStatus.daze=Math.max(combat.eStatus.daze,1); Game.logMsg(`${combat.name} is dazed — it loses its next move!`,"good"); }
+      }
+    }
   }
   if(combat.hp<=0) return combat.person?winDuel():(combat.foe?winFoe():winEncounter());
   if(combat.surprised){ combat.surprised=false; Game.save(); UI.render("combat"); return; } // free hit, no retaliation
   enemyTurn();
 }
 function enemyTurn(){
-  let dmg=combat.atk+rnd(0,3);
+  // a dazed foe loses its turn
+  if(combat.eStatus && combat.eStatus.daze>0){ combat.eStatus.daze--; Game.logMsg(`${combat.name} is too dazed to act.`,"good"); return endRound(); }
+  // brutes telegraph a heavy blow one round, then unleash it the next
+  let mult=1;
+  if(combat.winding){ mult=2; combat.winding=false; }
+  else if((combat.traits||[]).includes("brute") && chance(0.32)){ combat.winding=true;
+    Game.logMsg(`&#9888; ${combat.name} winds up a crushing blow! (heal up or hit it fast)`,"gold"); return endRound(); }
+  // savage foes grow deadlier as they're hurt
+  let atk=combat.atk; if((combat.traits||[]).includes("savage") && combat.hp < combat.maxHp*0.5) atk=Math.round(combat.atk*1.4);
+  let dmg=atk*mult+rnd(0,3);
   if(Game.hasPower("armored")) dmg-=2;
-  // Resilience genetically toughens you against harm; temperament also shifts it
   const resist=clamp(1-(Game.bio("resilience")-10)*0.012, 0.7, 1.2)*Game.tempEff("dmgTakenMult",1);
-  dmg=Math.max(1,Math.round(dmg*resist)-Game.effDef());   // worn armor soaks a flat chunk
-  // dodge: agility helps; very heavy bodies dodge a little worse; flight & nimble gear help
+  dmg=Math.max(1,Math.round(dmg*resist)-Game.effDef());
   let dodge=Game.effStat("agility")*0.012-Math.max(0,(state.species.mass.value-HUMAN.mass))*0.0004+Game.gearMod("dodge");
   if(Game.hasPower("flight")) dodge+=0.12;
   if(chance(clamp(dodge,0,0.6))){ Game.logMsg(`You evade the ${combat.name}.`,"good"); }
-  else { state.hp-=dmg; Game.logMsg(`${combat.name} strikes you for ${dmg}.`,"bad"); }
-  // per-round biology: metabolism, Resolute/Tireless reserves, light-feeding diets
-  const en=Math.round((Game.bio("metabolism")-10)*0.2)+Game.tempEff("energyRegen",0)
-    +Game.circEff("energyRegen",0)+(Game.lightFeeder()?1:0);
+  else { state.hp-=dmg; Game.logMsg(`${combat.name} strikes you for ${dmg}${mult>1?" — a HEAVY blow!":""}.`,"bad");
+    if((combat.traits||[]).includes("venomous") && chance(0.4)){ combat.pStatus.poison=Math.max(combat.pStatus.poison,3);
+      combat.poisonDmg=Math.max(2,Math.round(combat.atk*0.22)); Game.logMsg(`You've been poisoned!`,"bad"); } }
+  endRound();
+}
+/* end of a combat round: biology regen, then damage-over-time ticks and death checks */
+function endRound(){
+  const en=Math.round((Game.bio("metabolism")-10)*0.2)+Game.tempEff("energyRegen",0)+Game.circEff("energyRegen",0)+(Game.lightFeeder()?1:0);
   if(en>0) state.energy=Math.min(Game.effMaxEnergy(),state.energy+en);
-  if(Game.hasPower("regen")){ state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.04)); }
+  if(Game.hasPower("regen")) state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.04));
   if(Game.hasPower("photosynth")) state.energy=Math.min(Game.effMaxEnergy(),state.energy+2);
+  if(combat.eStatus && combat.eStatus.bleed>0){ const d=combat.bleedDmg||3; combat.hp-=d; combat.eStatus.bleed--; Game.logMsg(`${combat.name} bleeds for ${d}.`,"hit"); }
+  if(combat.pStatus && combat.pStatus.poison>0){ const d=combat.poisonDmg||3; state.hp-=d; combat.pStatus.poison--; Game.logMsg(`Poison courses through you: -${d} HP.`,"bad"); }
+  if(combat.hp<=0) return combat.person?winDuel():(combat.foe?winFoe():winEncounter());
   if(state.hp<=0) return loseEncounter();
   Game.save(); UI.render("combat");
 }
@@ -1942,6 +2013,7 @@ function winEncounter(){
   Game.logMsg(`You defeat the ${combat.name}! +${combat.xp} XP, +${cr} credits.`,"good");
   if(chance(0.4)){ const id=pick(["scrap","pelt","ration"]); Game.addItem(id,1);
     Game.logMsg(`Loot: ${DATA.items[id].name}.`,"good"); }
+  dropFoeGear(0.06);   // wild things rarely carry gear, but trophies happen
   Game.save(); UI.render("hub"); UI.flashLog();
 }
 function winFoe(){
@@ -1950,6 +2022,7 @@ function winFoe(){
   Game.logMsg(`You put down the ${combat.name}! +${combat.xp} XP, +${cr} credits looted.`,"good");
   if(chance(0.25)){ const id=pick(["stim","medpack","ration","scrap"]); Game.addItem(id,1);
     Game.logMsg(`Pulled from them: ${DATA.items[id].name}.`,"good"); }
+  dropFoeGear(0.12 + (state.world.danger-1)*0.015);
   Game.save(); UI.render("hub"); UI.flashLog();
 }
 function loseEncounter(){
@@ -3008,20 +3081,27 @@ const UI = {
       </div>
     </div>
     ${this.logCard()}`;
+    const traits=(c.traits||[]).map(t=>COMBAT_TRAITS[t]).filter(Boolean);
+    const eStat=[]; if(c.eStatus){ if(c.eStatus.bleed>0) eStat.push(`<span class="chip r">&#129656; bleeding ${c.eStatus.bleed}</span>`); if(c.eStatus.daze>0) eStat.push(`<span class="chip gold">&#128171; dazed</span>`); }
+    const pStat=[]; if(c.pStatus && c.pStatus.poison>0) pStat.push(`<span class="chip v">&#9763; poisoned ${c.pStatus.poison}</span>`);
+    const fx=s=>{ const k=DATA.skills[s]; return k.applies==="bleed"?' <span class="r">&#129656;</span>':k.applies==="daze"?' <span class="gold">&#128171;</span>':k.hits>1?` <span class="dim">x${k.hits}</span>`:k.critBonus?' <span class="gold">&#10022;</span>':""; };
     return `
     ${this.statHeader()}
     <div class="card">
       <div class="row between"><h2 class="red">${c.name}</h2>
         <span class="small dim">${c.stim?'<span class="gold">stim primed</span>':''}</span></div>
       <p class="small dim">${c.blurb}</p>
+      ${traits.length?`<div class="chips" style="margin:4px 0">${traits.map(t=>`<span class="chip ${t.tag}" title="${t.hint}">${t.name}</span>`).join("")}${eStat.join("")}</div>`:(eStat.length?`<div class="chips" style="margin:4px 0">${eStat.join("")}</div>`:"")}
       <div class="statline"><span>HP</span><span>${Math.max(0,c.hp)} / ${c.maxHp}</span></div>
       <div class="bar"><i class="hpfill" style="width:${Math.max(0,c.hp/c.maxHp*100)}%"></i></div>
       <span class="pill">atk ${c.atk}</span>
+      ${c.winding?`<p class="small gold" style="margin-top:6px">&#9888; It's winding up a heavy blow — heal up or hit it fast!</p>`:""}
+      ${pStat.length?`<div class="chips" style="margin-top:6px">${pStat.join("")}</div>`:""}
     </div>
     <div class="card">
       <h3>Your move</h3>
       <div class="grid">
-        ${atk.map(s=>`<button data-atk="${s}">${s}<br><span class="small dim">${DATA.skills[s].energy||0} en</span></button>`).join("")}
+        ${atk.map(s=>`<button data-atk="${s}">${s}${fx(s)}<br><span class="small dim">${DATA.skills[s].energy||0} en</span></button>`).join("")}
         ${state.skills.includes("Mend")?`<button data-atk="Mend">Mend<br><span class="small dim">6 en</span></button>`:""}
         <button data-atk="Focus" class="ghost">Focus<br><span class="small dim">+energy</span></button>
         ${(c.person||c.foe)?"":`<button id="actTame">Tame</button>`}
@@ -4998,17 +5078,20 @@ function startDuel(i){
   // tougher targets fight with guards at their back — threat scales their HP and bite
   const tmul={1:1, 2:1.7, 3:2.8, 4:4.5}[p.hostile]||1;
   const maxHp=Math.round((p.attrs.endurance.value*5 + p.height.value*0.06)*tmul);
+  const dtraits={1:["evasive"],2:["savage"],3:["armored","savage"],4:["armored","brute","savage"]}[p.hostile]||[];
   combat={ person:true, personIdx:i, name:p.name,
     blurb:`A ${careerName(p.career).toLowerCase()} — ${commas(p.bounty.alive)}c alive.${forceDesc(p.force)?` Backed by ${forceDesc(p.force)}.`:""}`,
     maxHp, hp:maxHp, atk:Math.round((p.attrs.strength.value*0.8 + p.mass.value*0.02)*tmul),
-    xp:Math.round(maxHp*0.4), over:false, claim:false, stim:state.stimReady, surprised:false, bounty:p.bounty };
-  state.stimReady=false;
+    xp:Math.round(maxHp*0.4), over:false, claim:false, stim:state.stimReady, surprised:false, bounty:p.bounty,
+    traits:dtraits.slice(), dropTier:clamp(p.hostile,0,4) };
+  initCombat(combat); state.stimReady=false;
   Game.logMsg(`You move to apprehend ${p.name}.`,"hit");
   UI.render("combat");
 }
 function winDuel(){
   combat.over=true; combat.claim=true;
   Game.logMsg(`You overpower ${combat.name}.`,"good");
+  dropFoeGear(0.3);   // a wanted mark often carries something worth taking
   Game.save(); UI.render("combat");
 }
 function claimBounty(alive){
