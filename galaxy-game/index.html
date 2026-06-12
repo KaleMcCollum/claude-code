@@ -2307,34 +2307,33 @@ const UI = {
   /* ---------- SHIP-TO-SHIP BATTLE ---------- */
   screen_shipbattle(){
     const c=shipCombat; if(!c) return this.screen_hub();
-    const line=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(Boolean);
-    const mine=(c.main||c.my).map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(Boolean);   // the main line (wing shown on its own)
-    const myHp=line.reduce((s,v)=>s+Math.max(0,v.hp),0), myMax=line.reduce((s,v)=>s+v.maxHp,0), myAtk=fleetAttack(c.my);
+    const bar=(hp,max,cl)=>`<div class="bar" style="margin:2px 0 5px"><i class="${cl}" style="width:${max?clamp(hp/max*100,0,100):0}%"></i></div>`;
+    const enemyAlive=c.enemy.filter(e=>e.hp>0).length;
+    const myShips=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(Boolean);
+    const myAlive=myShips.filter(v=>v.hp>0).length;
+    const enemyRows=c.enemy.map((e,i)=>{ const dead=e.hp<=0, foc=c.target===i;
+      return `<button class="shipcard${foc?' on':''}" data-etarget="${i}" ${dead?"disabled":""} style="${dead?'opacity:.45':''}">
+        <div class="top"><span class="nm">${dead?'&#9760; ':''}${e.name}${foc?' <span class="gold small">&#127919; focus</span>':''}</span><span class="tag">&#9876; ${commas(e.attack)}</span></div>
+        ${e.maxShield?`<div class="sub">shield ${commas(Math.max(0,e.shield))} / ${commas(e.maxShield)}</div>${bar(e.shield,e.maxShield,'enfill')}`:""}
+        <div class="sub">hull ${commas(Math.max(0,e.hp))} / ${commas(e.maxHp)}</div>${bar(e.hp,e.maxHp,'hpfill')}</button>`; }).join("");
+    const myRows=myShips.map(v=>{ const ms=shipMaxShield(v), ev=shipEvasion(v), dead=v.hp<=0, wing=c.wing.includes(v.id);
+      return `<div class="shipcard" style="${dead?'opacity:.45':''}">
+        <div class="top"><span class="nm">${dead?'&#9760; ':wing?'&#9992; ':v.bays>0?'&#128640; ':''}${v.name}</span><span class="tag">&#9876; ${commas(shipPower(v))}</span></div>
+        ${ms?`<div class="sub">shield ${commas(Math.max(0,v.shield||0))} / ${commas(ms)}</div>${bar(v.shield||0,ms,'enfill')}`:""}
+        <div class="sub">hull ${commas(Math.max(0,v.hp))} / ${commas(v.maxHp)}${ev>0?` &middot; <span class="green">${Math.round(ev*100)}% evade</span>`:""}</div>${bar(v.hp,v.maxHp,'hpfill')}</div>`; }).join("");
     return `
-    ${this.statHeader()}
-    <div class="card"><div class="row between"><h2 class="red">${c.name}</h2><span class="tag">${c.ships} ship${c.ships>1?"s":""}</span></div>
-      <div class="statline"><span>Enemy hull</span><span>${commas(Math.max(0,c.eHp))} / ${commas(c.eMaxHp)}</span></div>
-      <div class="bar"><i class="hpfill" style="width:${Math.max(0,c.eHp/c.eMaxHp*100)}%"></i></div>
-      <p class="small dim">Their guns: <span class="red">${commas(c.eAtk)}</span>/salvo</p>
-    </div>
-    <div class="card"><h3>Your fleet</h3>
-      <div class="statline"><span>Fleet hull</span><span>${commas(myHp)} / ${commas(myMax)}</span></div>
-      <div class="bar"><i class="hpfill" style="width:${myMax?Math.max(0,myHp/myMax*100):0}%"></i></div>
-      <p class="small dim">Your guns: <span class="gold">${commas(myAtk)}</span>/salvo across ${line.length} ship${line.length!==1?"s":""}</p>
-      ${mine.map(v=>`<div class="krow"><span class="lbl">${(v.bays>0?'&#128640; ':'')}${v.name} <span class="dim small">&middot; ${v.clsName}</span></span>
-        <span class="kv ${v.hp<=0?'red':''}">${v.hp<=0?'crippled':commas(v.hp)+' HP'} &middot; &#9876; ${commas(shipAttack(v))}</span></div>`).join("")}
-      ${c.wing&&c.wing.length?`<p class="small dim" style="margin-top:6px">&#9992; Fighter wing &middot; ${c.wingOut?'<span class="violet">launched</span>':'<span class="dim">in the bays</span>'} &middot; ${c.wing.length} fighter${c.wing.length>1?"s":""}</p>
-        ${c.wingOut?c.wing.map(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v?`<div class="krow"><span class="lbl violet small">&#9992; ${v.name}</span><span class="kv ${v.hp<=0?'red':''}">${v.hp<=0?'down':commas(v.hp)+' HP'} &middot; &#9876; ${commas(shipAttack(v))}</span></div>`:""; }).join(""):""}`:""}
-    </div>
+    <div class="card"><div class="row between"><h2 class="red">${c.name}</h2><span class="tag">${enemyAlive}/${c.enemy.length} ship${c.enemy.length>1?"s":""}</span></div>
+      <p class="small dim">${c.over?"":`Tap an enemy to focus your fire${c.target!=null?"":" — otherwise your guns finish off the weakest"}. Fighters dodge; big ships tank behind shields.`}</p></div>
+    <div class="card sheet"><h3>Enemy fleet</h3>${enemyRows}</div>
+    <div class="card sheet"><h3>Your fleet <span class="dim small">&middot; ${myAlive}/${myShips.length}</span></h3>${myRows}</div>
     ${c.log&&c.log.length?`<div class="card"><p class="small">${c.log.join("<br>")}</p></div>`:""}
     ${c.over?`<div class="card"><p class="small ${c.win?'green':'red'}">${c.msg}</p>
-      <button class="primary full center" id="sbDone">${c.win?"Collect &amp; carry on":"Limp away"}</button></div>`
+      <button class="primary full center" id="sbDone">${c.win?"Collect &amp; carry on":(c.fled?"Jump clear":"Limp away")}</button></div>`
     :`<div class="card"><div class="grid">
       <button id="sbFire" class="primary">&#9876; Fire salvo</button>
       ${c.wing&&c.wing.length?`<button id="sbWing" class="${c.wingOut?'ghost':''}">${c.wingOut?'&#9992; Recall wing':'&#9992; Launch wing'}</button>`:""}
       <button id="sbRetreat" class="ghost">&#127756; Retreat</button>
-      </div></div>`}
-    ${this.logCard()}`;
+      </div><p class="small dim" style="margin-top:6px">Retreating lets the enemy fire one parting volley before you jump clear.</p></div>`}`;
   },
 
   /* ---------- TRAVEL / MOVE (a ship or a whole fleet) ---------- */
@@ -3310,6 +3309,8 @@ const UI = {
       const wb=$("#sbWing"); if(wb) wb.onclick=()=>toggleWing();
       const r=$("#sbRetreat"); if(r) r.onclick=()=>shipRetreat();
       const d=$("#sbDone"); if(d) d.onclick=()=>shipBattleDone();
+      app.querySelectorAll("[data-etarget]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.etarget;
+        shipCombat.target = shipCombat.target===i ? null : i; UI.render("shipbattle"); });
     }
     if(screen==="outfit"){
       const rp=$("#ofRepair"); if(rp) rp.onclick=()=>repairShip(outfitShip);
@@ -3750,7 +3751,7 @@ const ENEMY_POOLS={
 const ENEMY_PERMOUNT=[150,420,950,2100,4200];   // firepower per gun, by threat (mirrors WEAPON tiers)
 function genEnemyFleet(threat, n){
   const t=clamp(threat,0,4), pool=ENEMY_POOLS[t]||ENEMY_POOLS[1];
-  const tierId=RARITY.tiers[clamp(Math.round(t*1.3),0,RARITY.tiers.length-1)].id;
+  const tierId=RARITY.tiers[clamp(Math.round(t*0.7),0,RARITY.tiers.length-1)].id;   // mostly common; tougher fleets a notch rarer
   const ships=[];
   for(let i=0;i<n;i++){
     const cls=shipClass(pick(pool)); if(!cls) continue;
@@ -3853,76 +3854,104 @@ function toggleWing(){ const c=shipCombat; if(!c||c.over||!c.wing.length) return
   c.wingOut=!c.wingOut; c.my=battleLine();
   c.log=[c.wingOut?"Your fighter wing screams out of the launch bays!":"Your fighters break off and dock back in the bays."];
   Game.save(); UI.render("shipbattle"); }
+/* land one salvo on a combatant (a vehicle OR an enemy ship object with hp/shield). Evasion can
+   make a nimble fighter dodge the whole shot; otherwise it bleeds the shield, then the hull. */
+function applyHit(obj, dmg, evasion){
+  if(evasion>0 && chance(evasion)) return -1;            // dodged
+  let d=dmg;
+  if(obj.shield>0){ const s=Math.min(obj.shield, d); obj.shield-=s; d-=s; }
+  obj.hp-=d; return dmg;
+}
+/* pick which of your ships an enemy gun fires at — weighted toward those that can't dodge, so
+   your fighters draw less fire (and dodge what does come) instead of evaporating turn one */
+function pickPlayerTarget(live){
+  const w=live.map(v=>({v, w:Math.max(0.12, 1-shipEvasion(v))}));
+  const tot=w.reduce((s,x)=>s+x.w,0); let r=Math.random()*tot;
+  for(const x of w){ if((r-=x.w)<0) return x.v; } return live[0];
+}
+/* one enemy volley: every living enemy ship fires at one of yours (mult<1 for a glancing parting shot) */
+function enemyVolley(c, mult){
+  const live=()=>c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0);
+  let total=0; const downed=[];
+  for(const e of c.enemy){ if(e.hp<=0) continue;
+    const L=live(); if(!L.length) break;
+    const tgt=pickPlayerTarget(L), dealt=applyHit(tgt, Math.round(e.attack*(mult||1)), shipEvasion(tgt));
+    if(dealt>0) total+=dealt;
+    if(tgt.hp<=0 && !downed.includes(tgt)) downed.push(tgt);
+  }
+  c.log.push(`Enemy guns answer for ${commas(total)}.`);
+  downed.forEach(v=>c.log.push(`Your ${v.name} is crippled!`));
+}
 function startShipBattle(){
   const m=voidMeet; if(!m) return;
   const mine=myBattleShips();
   if(!mine.length){ toast("No crewed ship to fight with"); return; }
   const wing=carrierWing(mine.map(v=>v.id));
   const all=mine.concat(wing);
-  if(all.reduce((s,v)=>s+shipAttack(v),0)<=0){ toast("Your ships have no working guns — mount weapons at a shipyard"); return; }
-  const t=m.threat, n=m.ships;
-  const eMax=Math.round(n * 700*(1+t*1.1) * rndF(0.9,1.1));
-  shipCombat={ name:m.name, faction:m.faction, ships:n, threat:t,
-    eMaxHp:eMax, eHp:eMax, eAtk:Math.round(n * 45*(1+t*1.1)),
+  if(all.reduce((s,v)=>s+shipPower(v),0)<=0){ toast("Your ships have no working guns — mount weapons at a shipyard"); return; }
+  const enemy=genEnemyFleet(m.threat, m.ships);
+  all.forEach(v=>{ v.shield=shipMaxShield(v); });                 // raise your shields for the fight
+  const loot=Math.round(enemy.reduce((s,e)=>s+e.maxHp,0)*0.10*(1+m.threat*0.4)) + m.ships*180;
+  shipCombat={ name:m.name, faction:m.faction, threat:m.threat, enemy,
     main:mine.map(v=>v.id), wing:wing.map(v=>v.id), wingOut:true, my:all.map(v=>v.id),
-    loot:Math.round(n*900*(1+t*1.4)), over:false, win:false, round:0,
-    log: wing.length?[`Your carrier${mine.filter(v=>v.bays>0).length>1?"s":""} launch ${wing.length} fighter${wing.length>1?"s":""} to join the battle.`]:[] };
+    target:null, loot, over:false, win:false, lost:false, fled:false, round:0,
+    log: wing.length?[`Your carrier${mine.filter(v=>v.bays>0).length>1?"s":""} launch ${wing.length} fighter${wing.length>1?"s":""} to join the line.`]:[] };
   voidMeet=null; Game.logMsg(`You bring your guns to bear on the ${m.name}.`,"hit"); UI.render("shipbattle");
 }
 function shipFire(){
   const c=shipCombat; if(!c||c.over) return;
-  c.round++;
-  const myAtk=fleetAttack(c.my);
-  c.eHp-=myAtk; c.log=[`Your salvo hits for ${commas(myAtk)}.`];
-  if(c.eHp<=0){ return winShipBattle(); }
-  // enemy fires back, focusing your ships in order
-  let dmg=c.eAtk;
-  for(const id of c.my){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v||v.hp<=0) continue;
-    const hit=Math.min(v.hp, dmg); v.hp-=hit; dmg-=hit;
-    if(v.hp<=0) c.log.push(`The ${v.name} is crippled!`);
-    if(dmg<=0) break; }
-  c.log.push(`Enemy fire deals ${commas(c.eAtk)} across your hulls.`);
+  c.round++; c.log=[];
+  // ---- your salvo: concentrate on the focus target (or finish the weakest), overflowing as ships die
+  const shooters=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0);
+  const pickEnemy=()=>{ if(c.target!=null && c.enemy[c.target] && c.enemy[c.target].hp>0) return c.enemy[c.target];
+    const L=c.enemy.filter(e=>e.hp>0); return L.length?L.reduce((a,b)=>a.hp<=b.hp?a:b):null; };
+  let total=0, dodged=0; const kills=[];
+  for(const v of shooters){ const tgt=pickEnemy(); if(!tgt) break;
+    const dealt=applyHit(tgt, shipPower(v), tgt.evasion);
+    if(dealt<0) dodged++; else { total+=dealt; if(tgt.hp<=0) kills.push(tgt.name); } }
+  c.log.push(`Your salvo deals ${commas(total)}${dodged?` (${dodged} shot${dodged>1?"s":""} evaded)`:""}.`);
+  kills.forEach(nm=>c.log.push(`Enemy ${nm} destroyed!`));
+  if(c.enemy.every(e=>e.hp<=0)) return winShipBattle();
+  // ---- enemy salvo, then both sides regenerate shields
+  enemyVolley(c, 1);
+  c.enemy.forEach(e=>{ if(e.hp>0 && e.maxShield) e.shield=Math.min(e.maxShield, e.shield+Math.round(e.maxShield*0.15)); });
+  shooters.forEach(v=>{ const ms=shipMaxShield(v); if(v.hp>0 && ms) v.shield=Math.min(ms,(v.shield||0)+Math.round(ms*0.15)); });
   if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
   Game.save(); UI.render("shipbattle");
 }
+/* retreat: the enemy gets exactly one parting volley, then you jump clear */
 function shipRetreat(){
-  const c=shipCombat; if(!c) return;
-  const p=clamp(0.5+Game.gearMod("flee")-c.threat*0.08, 0.15, 0.9);
-  if(chance(p)){ c.over=true; c.win=false; c.msg=`You break off and jump clear.`; Game.save(); UI.render("shipbattle"); }
-  else { c.log=[`You can't shake them — they get a salvo in.`]; let dmg=Math.round(c.eAtk*0.7);
-    for(const id of c.my){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v||v.hp<=0) continue;
-      const hit=Math.min(v.hp,dmg); v.hp-=hit; dmg-=hit; if(dmg<=0) break; }
-    if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
-    Game.save(); UI.render("shipbattle"); }
+  const c=shipCombat; if(!c||c.over) return;
+  c.log=["You break off — the enemy looses one parting volley as you run."];
+  enemyVolley(c, 1);
+  if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
+  c.over=true; c.win=false; c.fled=true; c.msg=`You disengage and jump clear of the ${c.name}.`;
+  Game.save(); UI.render("shipbattle");
 }
 function winShipBattle(){
-  const c=shipCombat; c.over=true; c.win=true; c.eHp=0;
+  const c=shipCombat; c.over=true; c.win=true;
   state.credits+=c.loot; Game.gainXp(Math.round(c.loot*0.02));
   c.msg=`You shatter the ${c.name}! You strip the wrecks for ${commas(c.loot)}c.`;
-  // a chance to capture an intact hull from a larger fleet
-  if(c.ships>=2 && chance(0.25)){
-    const cls=c.threat>=3?"frigate":c.threat>=2?"corvette":"hauler", cd=shipClass(cls);
-    const ship={ kind:"vehicle", id:newVid(), name:`Captured ${cd.name}`, tier:"common", cls, clsName:cd.name, role:cd.role,
-      range:cd.range, axes:Object.keys(cd.power), power:{...cd.power}, hold:cd.cargo, crewMax:cd.crew, bays:cd.bays,
-      reqPilots:cd.reqPilots, reqMech:cd.reqMech, reqGun:cd.reqGun, value:Math.round(cd.price*0.6),
-      cargo:{}, slot:0, sysId:state.sysId, voidCapture:true };
-    applyShipStats(ship, cd, "common"); ship.hp=Math.round(ship.maxHp*0.4);
-    // it arrives wherever you are (the void or a system)
-    ship.sysId=state.sysId; ship.slot=state.atSlot;
+  // a chance to capture an intact hull — board one of the enemy ships you didn't blast apart
+  if(c.enemy.length>=2 && chance(0.25)){
+    const cd=shipClass(pick(c.enemy).cls)||shipClass("corvette");
+    const ship=vehicleFromOffer(shipOfferFrom(cd, "common", 1.0));
+    ship.name=`Captured ${cd.name}`; ship.hp=Math.round(ship.maxHp*0.4); ship.sysId=state.sysId; ship.slot=state.atSlot; ship.voidCapture=true;
     state.vehicles.push(ship);
-    c.msg+=` You seize an intact ${cd.name} from the wreckage — board it from your Crew tab.`;
+    c.msg+=` You seize an intact ${cd.name} from the wreckage — crew it from your Crew tab.`;
   }
   Game.save(); UI.render("shipbattle");
 }
 function loseShipBattle(){
-  const c=shipCombat; c.over=true; c.win=false;
+  const c=shipCombat; c.over=true; c.win=false; c.lost=true;
   c.msg=`Your ships are shot to pieces. You limp away — hull integrity gone.`;
   Game.logMsg(`Your fleet is crippled by the ${c.name}.`,"bad");
   Game.save(); UI.render("shipbattle");
 }
 /* leave the battle screen — knocked out fleets limp home */
 function shipBattleDone(){
-  const c=shipCombat; const lost=!c.win; shipCombat=null;
+  const c=shipCombat; const lost=c.lost; shipCombat=null;
+  (state.vehicles||[]).forEach(v=>{ delete v.shield; });   // shields recharge out of combat
   if(lost){ const stranded=Game.ship();
     // crippled ships (and you) limp home if you can; otherwise you wake on your homeworld
     if(state.galaxy){ playerGroupIds().forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v){ v.sysId=0; v.slot=0; } });
