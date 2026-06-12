@@ -4116,7 +4116,7 @@ function voidContact(){
   if(cc.hostile){ person.hostile=cc.hostile; person.bounty=rollBounty(cc, draw.race.tier); }
   meeting={ draw, person, intro:`You open a channel to the ${m.name}, flying ${m.faction} colors.`,
     back:"hub", step:1, where:"deep space", fleet:m };
-  voidMeet=null; UI.render("meet");
+  UI.render("meet"); voidMeet=null;   // clear the encounter only AFTER the meet screen renders, so a glitch can't strand it
 }
 function voidEvade(){
   const m=voidMeet; if(!m) return;
@@ -4190,7 +4190,7 @@ function startShipBattle(){
     main:mine.map(v=>v.id), wing:wing.map(v=>v.id), wingOut:true, my:all.map(v=>v.id),
     target:null, loot, over:false, win:false, lost:false, fled:false, round:0,
     log: wing.length?[`Your carrier${mine.filter(v=>v.bays>0).length>1?"s":""} launch ${wing.length} fighter${wing.length>1?"s":""} to join the line.`]:[] };
-  voidMeet=null; Game.logMsg(`You bring your guns to bear on the ${m.name}.`,"hit"); UI.render("shipbattle");
+  Game.logMsg(`You bring your guns to bear on the ${m.name}.`,"hit"); UI.render("shipbattle"); voidMeet=null;
 }
 function shipFire(){
   const c=shipCombat; if(!c||c.over) return;
