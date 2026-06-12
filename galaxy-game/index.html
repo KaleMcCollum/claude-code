@@ -2604,51 +2604,62 @@ const UI = {
     const playerIn=ids.includes(state.activeShip);
     const blockers=groupBlockers(ids), g=state.galaxy;
     const planets = osys.planets||[];
-    const inSys = caps.tier!=="surface";
-    const jumpable = caps.tier==="interstellar";
+    const inSys = caps.tier!=="surface", jumpable = caps.tier==="interstellar";
     const others = g.systems.filter(x=>x.id!==origin).map(x=>({ sys:x, d:sysDist(origin,x.id) })).sort((a,b)=>a.d-b.d);
-    const beyond = others.filter(o=>o.d>caps.jump+1e-6);
+    const reach = others.filter(o=>o.d<=caps.jump+1e-6), beyond = others.filter(o=>o.d>caps.jump+1e-6);
+    const aIcon={shipyard:"&#128736;",market:"&#9878;",tavern:"&#127866;"};
+    const sCol={friendly:'g',hostile:'r',wary:'gold'};
+    // a rich destination card for a charted planet
+    const pcard=(s,slot,p)=>{ const w=p.world, inhab=isInhabited(w), sameSys=s.id===origin, dist=sameSys?0:sysDist(origin,s.id);
+      const hereNow=sameSys&&slot===groupSlot(ids), reachable=sameSys||(jumpable&&dist<=caps.jump+1e-6);
+      const amen=settleAmen(w).filter(a=>aIcon[a]).map(a=>`<span class="chip" title="${a}">${aIcon[a]}</span>`).join("");
+      const dC=w.danger>=7?'r':w.danger>=4?'gold':'g';
+      return `<div class="shipcard">
+        <div class="top"><span class="nm">${p.isHome?"&#9737; ":""}${p.fav?'<span class="gold">&#9733;</span> ':''}${w.name}</span>
+          <span class="tag"${inhab?' style="color:#caa84a"':''}>${inhab?settleDef(w.settle).name:cap(w.biomeName)}</span></div>
+        <div class="sub">${cap(w.biomeName)} &middot; ${s.name}${sameSys?'':` &middot; ${dist.toFixed(1)} ly`}</div>
+        <div class="chips">
+          ${hereNow?'<span class="chip g">&#9679; you are here</span>':''}
+          ${inhab?`<span class="chip">${TECH_LABELS[w.tech]} ${w.tech}/9</span><span class="chip gold">${WEALTH_LABELS[w.wealth]} ${w.wealth}/9</span>`:'<span class="chip">uninhabited</span>'}
+          <span class="chip ${dC}">&#9760; ${DANGER_LABELS[w.danger]||'?'}</span>${amen}</div>
+        <div class="row" style="margin-top:7px">
+          ${hereNow?'<span class="small green">your group is here</span>':reachable?`<button class="small" data-favgo="${s.id}:${slot}">${sameSys?'&#9992; Travel':'&#9650; Jump in'}</button>`:`<span class="small dim">&#128274; ${jumpable?'out of jump range':'system-bound'}</span>`}
+          <button class="small ghost" data-fav="${s.id}:${slot}">${p.fav?'&#9733; Unpin':'&#9734; Favourite'}</button></div></div>`; };
+    // a card for a system within jump range
+    const scard=(o)=>{ const s=o.sys, ch=s.discovered, inRange=o.d<=caps.jump+1e-6, canGo=inRange&&(ch||playerIn);
+      const gov=ch?systemGov(s):null, charted=ch?(s.planets||[]).filter(p=>p&&p.discovered).length:0, isCap=ch&&s.capital!=null;
+      return `<div class="shipcard">
+        <div class="top"><span class="nm">${ch?s.name:'<span class="dim">Uncharted star</span>'}${isCap?' <span class="gold" title="capital system">&#9733;</span>':''}</span><span class="tag">${o.d.toFixed(1)} ly</span></div>
+        <div class="sub">${ch?`${s.size} world${s.size>1?'s':''} &middot; ${charted} charted${isCap?' &middot; a capital system':''}`:`sensor contact &middot; ${s.size} world${s.size>1?'s':''}`}</div>
+        ${gov?`<div class="chips"><span class="chip" style="color:${gov.color}">&#127963; ${gov.name}</span><span class="chip ${sCol[govStance(gov)]||''}">${govStance(gov)}</span></div>`:(ch?'<div class="chips"><span class="chip">unclaimed space</span></div>':'')}
+        <div class="row" style="margin-top:7px">${canGo?`<button class="small" data-jumpsys="${s.id}">&#9650; Jump in</button>`:`<span class="small dim">&#128274; ${!inRange?'out of range':'need to be aboard'}</span>`}</div></div>`; };
+    const favs=[]; g.systems.forEach(s=>(s.planets||[]).forEach((p,slot)=>{ if(p&&p.discovered&&p.fav&&p.world) favs.push({s,slot,p,d:s.id===origin?0:sysDist(origin,s.id)}); }));
+    favs.sort((a,b)=>a.d-b.d);
     return `
     ${this.statHeader()}
-    <div class="card"><h2>&#9992; ${ctx.title||"Move"}</h2>
-      <p class="small dim">In <b class="blue">${osys.name}</b> &middot; ${RANGE_LABEL[caps.tier]} group${jumpable?` &middot; hyperdrive reach <b class="gold">${caps.jump.toFixed(1)} ly</b> (set by the weakest ship)`:""}.
-      ${playerIn?" You're aboard — you travel with it.":" You're not aboard; it can only go to charted worlds."}</p>
-      ${blockers.length?`<p class="small red">Grounded: ${blockers.map(b=>b.name).join(", ")} ${blockers.length>1?"need":"needs"} more crew to fly.</p>`:""}
-      ${caps.tier==="surface"?`<p class="small red">No ship in this group can leave the ground.</p>`:""}
-    </div>
+    <div class="card"><div class="row between"><h2>&#9992; ${ctx.title||"Move"}</h2><span class="tag">${RANGE_LABEL[caps.tier]}</span></div>
+      <div class="chips" style="margin-top:5px"><span class="chip b">&#128205; ${osys.name}</span>${jumpable?`<span class="chip gold">&#9889; ${caps.jump.toFixed(1)} ly reach</span>`:''}<span class="chip ${playerIn?'g':''}">${playerIn?'aboard':'remote group'}</span></div>
+      ${blockers.length?`<p class="small red" style="margin-top:6px">Grounded: ${blockers.map(b=>b.name).join(", ")} ${blockers.length>1?"need":"needs"} more crew to fly.</p>`:""}
+      ${caps.tier==="surface"?`<p class="small red" style="margin-top:6px">No ship in this group can leave the ground.</p>`:""}</div>
     <div class="card"><div class="row" style="gap:6px">
       <button class="${travelTab==='fav'?'sel':''}" data-traveltab="fav">&#9733; Favourites</button>
-      <button class="${travelTab==='all'?'sel':''}" data-traveltab="all">All planets</button>
-    </div></div>
-    ${travelTab==="fav" ? (()=>{
-      const favs=[]; g.systems.forEach(s=>(s.planets||[]).forEach((p,slot)=>{ if(p&&p.discovered&&p.fav&&p.world) favs.push({s,slot,p,d:s.id===origin?0:sysDist(origin,s.id)}); }));
-      favs.sort((a,b)=>a.d-b.d);
-      if(!favs.length) return `<div class="card sheet"><h3>&#9733; Favourite worlds</h3>
-        <p class="small dim">No favourites yet. Switch to <b>All planets</b> and tap the &#9734; beside a charted world to pin it here for quick travel.</p></div>`;
-      return `<div class="card sheet"><h3>&#9733; Favourite worlds <span class="dim small">&middot; quick travel</span></h3>
-        ${favs.map(f=>{ const sameSys=f.s.id===origin, hereNow=sameSys&&f.slot===groupSlot(ids), reachable=sameSys||(jumpable&&f.d<=caps.jump+1e-6);
-          return `<div class="krow"><span class="lbl">${f.p.isHome?"&#9737; ":""}${f.p.world.name} <span class="dim small">&middot; ${f.s.name}${isInhabited(f.p.world)?" &middot; "+settleDef(f.p.world.settle).name:""}${sameSys?"":` &middot; ${f.d.toFixed(1)} ly`}</span></span>
-            <span class="kv">${hereNow?'<span class="green small">here</span>':reachable?`<button class="small" data-favgo="${f.s.id}:${f.slot}">${sameSys?'&#9992; Travel':'&#9650; Jump'}</button>`:`<span class="dim small">${jumpable?"out of range":"system-bound"}</span>`} <button class="small ghost" data-fav="${f.s.id}:${f.slot}" title="Unfavourite">&#9733;</button></span></div>`; }).join("")}
-      </div>`; })()
-    : `${inSys?`<div class="card sheet"><h3>Within ${osys.name}</h3>
-      ${planets.map((p,i)=>{ const hereSlot=i===groupSlot(ids);
-        if(p&&p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.fav?"&#9733; ":""}${p.world.name}</span>
-          <span class="kv">${hereSlot?'<span class="green small">fleet is here</span>':`<button class="small" data-go="${origin}:${i}">&#9992; Travel</button>`} <button class="small ghost" data-fav="${origin}:${i}" title="${p.fav?'Unfavourite':'Favourite'}">${p.fav?'&#9733;':'&#9734;'}</button></span></div>`;
-        return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
-          <span class="kv">${playerIn?`<button class="small" data-go="${origin}:${i}">&#10022; Explore</button>`:'<span class="dim small">&#128274; need to be aboard</span>'}</span></div>`; }).join("")}
-    </div>`:""}
-    ${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapSvg({cx:osys.x, cy:osys.y, span:Math.max(caps.jump*2.6, 26)}, {originId:origin, reach:caps.jump})}</div>
-    <div class="card sheet"><h3>Jump to another system <span class="dim small">&middot; nearest first</span></h3>
-      ${others.map(o=>{ const inRange=o.d<=caps.jump+1e-6, ch=o.sys.discovered, canGo=inRange&&(ch||playerIn);
-        return `<div class="krow"><span class="lbl">${ch?o.sys.name:'<span class="dim">Uncharted star</span>'}
-            <span class="dim small">&middot; ${o.d.toFixed(1)} ly${ch?` &middot; ${o.sys.size} world${o.sys.size>1?"s":""}`:""}</span></span>
-          <span class="kv">${canGo?`<button class="small" data-jumpsys="${o.sys.id}">&#9650; Jump</button>`
-            :`<span class="dim small">${!inRange?"out of range":"need to be aboard"}</span>`}</span></div>`; }).join("")}
-    </div>`:`<div class="card"><p class="small dim">This group can only travel within its own system. A fleet can jump between stars only if every ship aboard is interstellar-class.</p></div>`}
-    ${jumpable&&playerIn&&beyond.length?`<div class="card sheet"><h3>&#127756; Hyperdrive into open space</h3>
-      <p class="small dim">Out of reach by a single jump? Burn into the void in a direction and drift between the stars — keep going to bring distant systems into range (you may cross paths with other ships).</p>
-      ${beyond.slice(0,6).map(o=>`<div class="krow"><span class="lbl">${o.sys.discovered?o.sys.name:'<span class="dim">distant star</span>'} <span class="dim small">&middot; ${o.d.toFixed(1)} ly ${compassBearing(o.sys.x-osys.x, o.sys.y-osys.y)}</span></span></div>`).join("")}
-    </div>${this.voidCompass(caps.jump)}`:""}`}
+      <button class="${travelTab==='all'?'sel':''}" data-traveltab="all">All planets</button></div></div>
+    ${travelTab==="fav"
+      ? (favs.length?`<div class="card sheet"><h3>&#9733; Favourite worlds <span class="dim small">&middot; quick travel</span></h3>${favs.map(f=>pcard(f.s,f.slot,f.p)).join("")}</div>`
+          :`<div class="card sheet"><h3>&#9733; Favourite worlds</h3><p class="small dim">No favourites yet — switch to <b>All planets</b> and tap <b>&#9734; Favourite</b> on a world to pin it here for quick travel.</p></div>`)
+      : `${inSys?`<div class="card sheet"><h3>Within ${osys.name}</h3>
+        ${planets.map((p,i)=> (p&&p.discovered) ? pcard(osys,i,p)
+          : `<div class="shipcard" style="opacity:.62"><div class="top"><span class="nm dim">Uncharted world ${i+1}</span><span class="tag">unexplored</span></div>
+             <div class="row" style="margin-top:6px">${playerIn?`<button class="small" data-go="${origin}:${i}">&#10022; Explore</button>`:'<span class="small dim">&#128274; need to be aboard</span>'}</div></div>`).join("")}
+      </div>`:""}
+      ${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapSvg({cx:osys.x, cy:osys.y, span:Math.max(caps.jump*2.6, 26)}, {originId:origin, reach:caps.jump})}</div>
+      <div class="card sheet"><h3>Jump to another system <span class="dim small">&middot; within reach</span></h3>
+        ${reach.length?reach.slice(0,16).map(scard).join("")+(reach.length>16?`<p class="small dim center" style="margin-top:4px">+${reach.length-16} more within reach — pan the map.</p>`:""):'<p class="small dim">No systems within a single jump. Drift through open space below to close the gap.</p>'}</div>`
+      :`<div class="card"><p class="small dim">This group can only travel within its own system. A fleet jumps between stars only if every ship aboard is interstellar-class.</p></div>`}
+      ${jumpable&&playerIn&&beyond.length?`<div class="card sheet"><h3>&#127756; Hyperdrive into open space</h3>
+        <p class="small dim">Out of single-jump reach? Burn into the void and drift between the stars to bring distant systems into range (you may cross paths with other ships).</p>
+        ${beyond.slice(0,5).map(o=>`<div class="krow"><span class="lbl">${o.sys.discovered?o.sys.name:'<span class="dim">distant star</span>'} <span class="dim small">&middot; ${o.d.toFixed(1)} ly ${compassBearing(o.sys.x-osys.x, o.sys.y-osys.y)}</span></span></div>`).join("")}
+      </div>${this.voidCompass(caps.jump)}`:""}`}
     <div class="card"><button id="tvBack" class="ghost full center">&larr; Back</button></div>`;
   },
   /* ---------- DEEP SPACE (adrift between the stars) ---------- */
