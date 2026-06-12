@@ -3441,11 +3441,21 @@ const UI = {
   /* the trade-job panel inside a fleet's view: current job, the route builder, or the entry point */
   fleetTradeCard(f){
     if(f.trade){ const t=f.trade, A=worldAt(t.buySys,t.buySlot), B=worldAt(t.sellSys,t.sellSlot), c=commodityById(t.commodity);
-      const bp=A?commodityBuy(A,c):0, sp=B?commoditySell(B,c):0, qty=Math.floor(fleetCargoCap(f)/(c?c.bulk:1)), cyc=tradeCycleActions(t, groupCaps(f.shipIds).jump);
+      const bp=A?commodityBuy(A,c):0, sp=B?commoditySell(B,c):0, cap=fleetCargoCap(f), qty=Math.floor(cap/(c?c.bulk:1)), cyc=tradeCycleActions(t, groupCaps(f.shipIds).jump);
+      const margin=sp-bp, crewed=fleetAllCrewed(f), uncrewed=shipsByIds(f.shipIds).filter(v=>!Game.operational(v));
+      // why isn't it earning? surface the exact blocker
+      let warn="";
+      if(!crewed) warn=`<p class="small red">&#9888; <b>PAUSED — not moving or earning.</b> ${uncrewed.map(v=>v.name).join(", ")} ${uncrewed.length>1?"need":"needs"} a full crew. Crew ${uncrewed.length>1?"them":"it"} (or call the job off).</p>`;
+      else if(cap<=0) warn=`<p class="small red">&#9888; <b>No cargo hold</b> — this fleet's ships have nothing to haul with. Call it off and use a freighter.</p>`;
+      else if(!c) warn=`<p class="small red">&#9888; This route's good is missing. Call it off and set a new one.</p>`;
+      else if(!A||!canBuyHere(A,c)) warn=`<p class="small red">&#9888; <b>${A?A.name:"The buy world"} no longer sells ${c.name}</b>, so nothing's being bought. Call it off and re-pick.</p>`;
+      else if(!B||!canSellHere(B,c)) warn=`<p class="small red">&#9888; <b>${B?B.name:"The sell world"} won't buy ${c.name}</b>, so nothing's being sold. Call it off and re-pick.</p>`;
+      else if(margin<=0) warn=`<p class="small red">&#9888; <b>Not profitable right now</b> — ${c.name} sells for no more than it costs here. Call it off and pick a better pair.</p>`;
+      else warn=`<p class="small dim">~${commas(Math.max(0,margin)*qty)}c per ${cyc}-action round trip.</p>`;
       return `<div class="card"><h3>&#128666; Trade job</h3>
-        <p class="small">Buy <b>${c?c.name:"?"}</b> at <b>${A?A.name:"?"}</b> (${commas(bp)}c) &rarr; sell at <b>${B?B.name:"?"}</b> (${commas(sp)}c).</p>
-        <p class="small dim">~${commas(Math.max(0,sp-bp)*qty)}c per ${cyc}-action round trip &middot; ${t.runs||0} runs done, <b class="${(t.earned||0)>=0?'gold':'red'}">${(t.earned||0)>=0?'+':''}${commas(t.earned||0)}c</b> net &middot; ${t.phase==="toSell"?"hauling to sell":"returning to buy"}.</p>
-        <p class="small dim">Its ships work the route on their own — a jump (or a dock) per action you take — until you call them back.</p>
+        <p class="small">Buy <b>${c?c.name:"?"}</b> at <b>${A?A.name:"?"}</b> (${commas(bp)}c) &rarr; sell at <b>${B?B.name:"?"}</b> (${commas(sp)}c) &middot; margin <b class="${margin>0?'gold':'red'}">${margin>0?'+':''}${commas(margin)}c</b>/unit.</p>
+        ${warn}
+        <p class="small dim">${t.runs||0} runs done &middot; <b class="${(t.earned||0)>=0?'gold':'red'}">${(t.earned||0)>=0?'+':''}${commas(t.earned||0)}c</b> net &middot; ${t.phase==="toSell"?"hauling to sell":"returning to buy"}.</p>
         <button class="full center" data-fleetuntrade="${f.id}">Call off the trade job</button></div>`; }
     if(tradeBuild && tradeBuild.fid===f.id) return this.tradeBuilder(f, tradeBuild);
     if(f.shipIds.includes(state.activeShip)) return `<div class="card"><h3>&#128666; Trade job</h3><p class="small dim">You're flying with this fleet — assign a job to a fleet you're not aboard.</p></div>`;
@@ -5166,10 +5176,10 @@ function tradeCycleActions(t,jump){ return legActions(t.buySys,t.buySlot,t.sellS
 /* the fleet buys its chosen good at the buy world, filling its holds with the player's credits */
 function tradeBuy(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(t.buySys,t.buySlot);
   if(!w||!c||!canBuyHere(w,c)) return;
-  const ships=shipsByIds(f.shipIds), free=ships.reduce((s,v)=>s+(v.hold-shipUsed(v)),0), p=commodityBuy(w,c);
-  let qty=Math.min(Math.floor(free/c.bulk), Math.floor(state.credits/p)); if(qty<=0){ t.lastBuy=0; return; }
+  const ships=shipsByIds(f.shipIds), free=ships.reduce((s,v)=>s+Math.max(0,(v.hold||0)-shipUsed(v)),0), p=commodityBuy(w,c);
+  let qty=Math.min(Math.floor(free/c.bulk), Math.floor(state.credits/p)); if(!(qty>0)){ t.lastBuy=0; return; }
   state.credits-=qty*p; t.lastBuy=qty*p; let rem=qty;
-  for(const v of ships){ if(rem<=0) break; const add=Math.min(Math.floor((v.hold-shipUsed(v))/c.bulk), rem); if(add>0){ v.cargo[t.commodity]=(v.cargo[t.commodity]||0)+add; rem-=add; } } }
+  for(const v of ships){ if(rem<=0) break; const add=Math.min(Math.floor(((v.hold||0)-shipUsed(v))/c.bulk), rem); if(add>0){ v.cargo[t.commodity]=(v.cargo[t.commodity]||0)+add; rem-=add; } } }
 /* and sells it all at the sell world */
 function tradeSell(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(t.sellSys,t.sellSlot);
   if(!w||!c||!canSellHere(w,c)) return;
