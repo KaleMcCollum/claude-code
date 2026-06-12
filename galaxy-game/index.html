@@ -2325,7 +2325,9 @@ const UI = {
         })()
         :`<p class="small dim">No ships for sale here — this world hasn't the industry for it. Try a wealthier, higher-tech world.</p>`}
     </div>
-    <div class="card"><h3>Ships docked here</h3>
+    <div class="card"><div class="row between"><h3>Ships docked here</h3>
+      ${(()=>{ const dmg=damagedShipsHere(), tot=repairTotalHere();
+        return dmg.length?`<button class="small" id="syRepairAll" ${state.credits<tot?"disabled":""}>&#128295; Repair all (${dmg.length}) &middot; ${commas(tot)}c</button>`:""; })()}</div>
       ${Game.shipsHere().map(v=>{ const active=v.id===state.activeShip, used=shipUsed(v), atk=shipAttack(v);
         return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
           <div class="row between"><span>${active?'<span class="green">&#9654; </span>':''}${v.name}
@@ -3592,6 +3594,7 @@ const UI = {
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
       app.querySelectorAll("[data-outfit]").forEach(b=> b.onclick=()=>{ outfitShip=b.dataset.outfit; mountPick=null; UI.render("outfit"); });
       const yd=$("#yarder"); if(yd) yd.onclick=()=>talkToYarder();
+      const ra=$("#syRepairAll"); if(ra) ra.onclick=()=>repairAll();
       const rs=$("#rentStub"); if(rs) rs.onclick=()=>toast("Ship rentals coming soon");
       $("#syBack").onclick=()=>UI.render("hub");
     }
@@ -4614,6 +4617,19 @@ function repairShip(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v)
   if(state.credits<cost){ toast(`Repairs cost ${commas(cost)}c`); return; }
   state.credits-=cost; v.hp=v.maxHp;
   Game.logMsg(`You repair the ${v.name}'s hull for ${commas(cost)}c.`,"sys"); Game.save(); UI.render("outfit"); }
+/* every damaged ship docked at this yard (incl. fighters stowed in carriers here) */
+function damagedShipsHere(){ return (state.vehicles||[]).filter(v=>{
+    const carrierHere=v.carrier && (()=>{ const c=(state.vehicles||[]).find(x=>x.id===v.carrier); return c&&atHere(c); })();
+    return (atHere(v)||carrierHere) && !shipBusy(v) && (v.hp||0)<(v.maxHp||0); }); }
+function repairTotalHere(){ return damagedShipsHere().reduce((s,v)=>s+repairCost(v),0); }
+/* repair every damaged hull docked here in one go, for the combined price */
+function repairAll(){
+  const dmg=damagedShipsHere(); if(!dmg.length){ toast("All hulls are whole"); return; }
+  const total=dmg.reduce((s,v)=>s+repairCost(v),0);
+  if(state.credits<total){ toast(`Repairing all costs ${commas(total)}c`); return; }
+  state.credits-=total; dmg.forEach(v=>v.hp=v.maxHp);
+  Game.logMsg(`You patch up ${dmg.length} ship${dmg.length>1?"s":""} for ${commas(total)}c.`,"sys");
+  toast(`Repaired ${dmg.length} ship${dmg.length>1?"s":""}`); Game.save(); UI.render("shipyard"); }
 /* buy a weapon and mount it on a hardpoint (slot index) in one step */
 function mountWeapon(id, slot, wid){ const v=(state.vehicles||[]).find(x=>x.id===id), w=weaponById(wid); if(!v||!w) return;
   if(state.world && w.minTech>state.world.tech){ toast("Not sold at this shipyard"); return; }
