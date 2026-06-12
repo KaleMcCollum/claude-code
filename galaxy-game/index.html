@@ -4215,7 +4215,24 @@ function shipFire(){
   // resolve — if you're wiped you lose even in a mutual kill; otherwise a cleared enemy is a win
   if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
   if(c.enemy.every(e=>e.hp<=0)) return winShipBattle();
+  // the enemy may break and run once they're badly beaten — half their ships gone, or hull integrity low
+  const liveE=c.enemy.filter(e=>e.hp>0);
+  const eFrac=liveE.reduce((s,e)=>s+e.hp,0)/Math.max(1,c.enemy.reduce((s,e)=>s+e.maxHp,0));
+  const halfGone=liveE.length<=Math.floor(c.enemy.length/2);
+  if(c.round>=2 && (eFrac<0.28 || (halfGone && c.enemy.length>=3)) && chance(0.3)) return enemyFlee();
   Game.save(); UI.render("shipbattle");
+}
+/* the enemy routs: they bolt for hyperspace and you get one parting volley as they run */
+function enemyFlee(){
+  const c=shipCombat; c.log=c.log||[];
+  c.log.push(`The ${c.name} breaks and runs for hyperspace!`);
+  const shooters=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0);
+  const weakest=()=>{ const L=c.enemy.filter(e=>e.hp>0); return L.length?L.reduce((a,b)=>a.hp<=b.hp?a:b):null; };
+  let total=0; const kills=[];
+  for(const v of shooters){ const tgt=weakest(); if(!tgt) break; const dealt=applyHit(tgt, shipPower(v), tgt.evasion);
+    if(dealt>0){ total+=dealt; if(tgt.hp<=0) kills.push(tgt.name); } }
+  c.log.push(`You rake them as they flee for ${commas(total)}${kills.length?`, downing ${kills.length} more`:""}.`);
+  c.routed=true; return winShipBattle();
 }
 /* retreat: the enemy gets exactly one parting volley, then you jump clear */
 function shipRetreat(){
@@ -4228,22 +4245,48 @@ function shipRetreat(){
 }
 function winShipBattle(){
   const c=shipCombat; c.over=true; c.win=true;
-  state.credits+=c.loot; Game.gainXp(Math.round(c.loot*0.02));
-  c.msg=`You shatter the ${c.name}! You strip the wrecks for ${commas(c.loot)}c.`;
+  const escaped=c.enemy.filter(e=>e.hp>0).length;
+  const loot=Math.round(c.loot*(c.routed?0.5:1));
+  state.credits+=loot; Game.gainXp(Math.round(loot*0.02));
+  c.msg = (c.routed && escaped>0)
+    ? `You rout the ${c.name} — ${escaped} ship${escaped!==1?"s":""} scatter into hyperspace. You strip the wrecks for ${commas(loot)}c.`
+    : `You shatter the ${c.name}! You strip the wrecks for ${commas(loot)}c.`;
   // your deeds tilt your alignment: crushing raiders & the hostile is the Light's work; preying on
   // the defenseless or turning on friends is the Dark's
   if(c.foeKind==="pirates" || c.foeDispo==="hostile") shiftAlign(+4, "you destroyed a hostile force");
   else if(c.foeDispo==="friendly") shiftAlign(-12, "you turned your guns on friends");
   else if(c.foeThreat===0) shiftAlign(-8, "you preyed on the defenseless");
-  // a chance to capture an intact hull — board one of the enemy ships you didn't blast apart
-  if(c.enemy.length>=2 && chance(0.25)){
-    const cd=shipClass(pick(c.enemy).cls)||shipClass("corvette");
-    const ship=vehicleFromOffer(shipOfferFrom(cd, "common", 1.0));
-    ship.name=`Captured ${cd.name}`; ship.hp=Math.round(ship.maxHp*0.4); ship.sysId=state.sysId; ship.slot=state.atSlot; ship.voidCapture=true;
-    state.vehicles.push(ship);
-    c.msg+=` You seize an intact ${cd.name} from the wreckage — crew it from your Crew tab.`;
+  // RARE: one of the hulls you downed is still flyable — its survivors throw in with you and it
+  // limps into your fleet at almost no hull, running alongside until you can repair it
+  const downed=c.enemy.filter(e=>e.hp<=0);
+  if(downed.length && chance(0.10)){
+    const name=salvageShip(pick(downed));
+    if(name) c.msg+=` Against the odds, a ${name} is still flyable — its crew throw in with you and it limps into your fleet, barely holding together.`;
   }
   Game.save(); UI.render("shipbattle");
+}
+/* a rare salvage: a downed enemy hull still flyable. It joins you, crewed by survivors, limping at
+   almost no hull, and follows you in your fleet (form one if you have none). */
+function salvageShip(e){
+  const cd=shipClass(e.cls)||shipClass("corvette"); if(!cd) return null;
+  const ship=vehicleFromOffer(shipOfferFrom(cd, "common", 1.0));
+  ship.name=`Salvaged ${cd.name}`;
+  ship.hp=Math.max(1, Math.round(ship.maxHp*rndF(0.05,0.13)));   // almost zero — barely holding together
+  ship.range="interstellar";                                     // it was out in the deep, so it can follow you
+  ship.sysId=state.sysId; ship.slot=state.atSlot; ship.voidCapture=true; ship.salvaged=true;
+  state.vehicles.push(ship);
+  // press the survivors into your service — just enough to fly it
+  let seat=0; const raceName=genName("race"); state.crew=state.crew||[];
+  const add=(career,n)=>{ for(let i=0;i<(n||0);i++) state.crew.push({ name:genName("person"), raceName, career, shipId:ship.id, seat:seat++, skills:rollCrewSkills(career,null), salvaged:true }); };
+  add("pilot", ship.reqPilots||1); add("mechanic", ship.reqMech||0); add("laborer", ship.reqLabor||0);
+  // join your group so it follows you — form a fleet around your active ship if you don't have one
+  const active=Game.ship();
+  if(active){
+    let fleet=active.fleetId?fleetById(active.fleetId):null;
+    if(!fleet){ fleet={ id:newVfid(), name:"Salvage Group", shipIds:[active.id] }; state.fleets=state.fleets||[]; state.fleets.push(fleet); active.fleetId=fleet.id; }
+    fleet.shipIds.push(ship.id); ship.fleetId=fleet.id;
+  }
+  return cd.name;
 }
 function loseShipBattle(){
   const c=shipCombat; c.over=true; c.win=false; c.lost=true;
