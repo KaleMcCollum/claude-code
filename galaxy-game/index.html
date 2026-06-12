@@ -2678,6 +2678,17 @@ const UI = {
         ${isHostile(person)?`<p class="small red">${THREAT_LABEL[person.hostile]} — bounty ${commas(person.bounty.alive)}c alive / ${commas(person.bounty.dead)}c dead.</p>`:""}
         ${person.force&&forceDesc(person.force)?`<p class="small ${isHostile(person)?'red':'blue'}">Commands ${forceDesc(person.force)}${m.fleet?` under <b class="violet">${m.fleet.faction}</b> colors`:""}.</p>`:""}
       </div>
+      ${m.fleet?(()=>{ const f=m.fleet, gov=f.govId?govById(f.govId):null;
+        return `<div class="card"><h3>&#9876; Sizing them up</h3>
+          <div class="chips" style="margin-bottom:6px">
+            <span class="chip">${f.ships} ship${f.ships>1?"s":""}</span>
+            <span class="chip ${f.threat>=3?'r':f.threat>=1?'gold':'g'}">${["No threat","Armed","Dangerous","War-fleet","Armada"][f.threat]||"Unknown"}</span>
+            ${gov?`<span class="chip b" style="color:${gov.color}">${gov.name}</span>`:'<span class="chip">unaligned</span>'}
+            <span class="chip ${({friendly:'g',hostile:'r',wary:'gold'})[f.dispo]||''}">${f.dispo||"neutral"}</span>
+          </div>
+          <p class="small dim">${FLEET_ASSESS[f.threat]||"An unknown quantity."}${f.dispo==="friendly"?" They greeted you as a friend — turning on them is a dark deed.":""}</p>
+          <div class="row" style="margin-top:6px"><button id="meetEngage" class="primary">&#9876; Open fire</button><button id="meetFinish2" class="ghost">Leave them be</button></div>
+        </div>`; })():""}
       <div class="card">
         ${!known?`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}<div style="height:8px"></div>`:""}
         <div class="row">
@@ -3773,6 +3784,8 @@ const UI = {
     const mh=$("#meetHire"); if(mh) mh.onclick=()=>{ readRace(); hireFromMeeting(); };
     const mm=$("#meetMore"); if(mm) mm.onclick=()=>{ personExpand=!personExpand; UI.render("meet"); };
     const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ readRace(); meetAttack(); };
+    const me=$("#meetEngage"); if(me) me.onclick=()=>{ readRace(); attackFromContact(); };
+    const mf2=$("#meetFinish2"); if(mf2) mf2.onclick=()=>{ readRace(); finishMeeting(); };
     const so=$("#shipOfferBtn"); if(so) so.onclick=()=>buyPersonShip(m.person, +($("#shipOfferAmt").value), ()=>UI.render("meet"));
   },
 };
@@ -4184,6 +4197,20 @@ function voidSalvage(){
 /* which career commands each kind of void fleet */
 const VOID_CAREER={ cargo:"merchant", transport:"merchant", trader:"merchant", patrol:"mercenary",
   mercs:"mercenary", pirates:"pirate", warfleet:"warlord", armada:"warlord" };
+/* a plain-words read on how dangerous a fleet is to take on, by threat level */
+const FLEET_ASSESS={
+  0:"Lightly crewed and barely armed — you'd cut through them, if you've the stomach for it.",
+  1:"Armed and able to defend themselves — expect a real fight.",
+  2:"A dangerous, battle-ready force — don't pick this fight lightly.",
+  3:"A war-fleet that could overwhelm a lone ship — bring a fleet of your own.",
+  4:"A full armada — suicide for anything less than an army.",
+};
+/* break off the conversation and open fire on the fleet you were just talking to */
+function attackFromContact(){
+  const m=meeting; if(!m||!m.fleet) return;
+  voidMeet=m.fleet; startShipBattle();
+  if(shipCombat) meeting=null; else voidMeet=null;   // battle started, or it couldn't (toast said why) — don't dangle
+}
 /* Contact: open a channel and meet whoever commands the ship/fleet — name them, learn their
    race (like meeting a stranger), and see the force they command. */
 function voidContact(){
