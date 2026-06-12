@@ -3253,7 +3253,8 @@ const UI = {
   },
   tradeBuilder(f, tb){
     const loc=fleetLoc(f), cap=fleetCargoCap(f);
-    const head=`<div class="row between"><h3>&#128666; Trade route</h3><button class="small ghost" data-tbcancel="${f.id}">Cancel</button></div>`;
+    const head=`<div class="row between"><h3>&#128666; Trade route</h3>
+      <span style="display:flex;gap:6px">${tb.phase!=="buySys"?`<button class="small ghost" data-tbback="${f.id}">&larr; Back</button>`:""}<button class="small ghost" data-tbcancel="${f.id}">Cancel</button></span></div>`;
     if(tb.phase==="buySys"){ const sys=reachableTradeSystems(loc.sysId, f);
       return `<div class="card sheet">${head}<p class="small dim">Step 1 &middot; the system to <b>buy</b> in (reachable from ${curSys()?curSys().name:"here"}).</p>
         ${sys.length?sys.map(s=>`<div class="krow"><span class="lbl">${s.name}${s.id===loc.sysId?' <span class="green small">here</span>':` <span class="dim small">&middot; ${sysDist(loc.sysId,s.id).toFixed(1)} ly</span>`}</span><span class="kv"><button class="small" data-tbbuysys="${f.id}:${s.id}">Pick</button></span></div>`).join(""):`<p class="small dim">No inhabited systems in reach.</p>`}</div>`; }
@@ -3692,6 +3693,9 @@ const UI = {
       app.querySelectorAll("[data-fleetdisband]").forEach(b=> b.onclick=()=>disbandFleet(b.dataset.fleetdisband));
       app.querySelectorAll("[data-tbjob]").forEach(b=> b.onclick=()=>{ tradeBuild={ fid:b.dataset.tbjob, phase:"buySys" }; UI.render("crew"); });
       app.querySelectorAll("[data-tbcancel]").forEach(b=> b.onclick=()=>{ tradeBuild=null; UI.render("crew"); });
+      app.querySelectorAll("[data-tbback]").forEach(b=> b.onclick=()=>{ if(!tradeBuild) return;
+        const prev={ buyPlanet:"buySys", buyGood:"buyPlanet", sellSys:"buyGood", sellPlanet:"sellSys", confirm:"sellPlanet" }[tradeBuild.phase];
+        if(prev){ tradeBuild={ ...tradeBuild, phase:prev }; UI.render("crew"); } });
       app.querySelectorAll("[data-tbbuysys]").forEach(b=> b.onclick=()=>{ const [fid,s]=b.dataset.tbbuysys.split(":"); tradeBuild={ fid, phase:"buyPlanet", buySys:+s }; UI.render("crew"); });
       app.querySelectorAll("[data-tbbuyplanet]").forEach(b=> b.onclick=()=>{ const [fid,p]=b.dataset.tbbuyplanet.split(":"); tradeBuild={ ...tradeBuild, fid, phase:"buyGood", buySlot:+p }; UI.render("crew"); });
       app.querySelectorAll("[data-tbgood]").forEach(b=> b.onclick=()=>{ const [fid,cid]=b.dataset.tbgood.split(":"); tradeBuild={ ...tradeBuild, fid, phase:"sellSys", commodity:cid }; UI.render("crew"); });
