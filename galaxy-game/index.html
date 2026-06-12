@@ -1520,6 +1520,7 @@ const Game = {
     }
     // carve up older galaxies that predate the politics layer, and init your (blank) allegiance
     if(state.galaxy && !state.galaxy.governments) seedPolitics(state.galaxy);
+    if(state.galaxy && !state.galaxy.full) populateGalaxy(state.galaxy, state.spawn);   // fill out thin older galaxies
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
     if(!state.contracts) state.contracts=[];
     if(!state.gear) state.gear=[];
@@ -4008,6 +4009,32 @@ function makeNeighborSystems(hx, hy, startId){
   }
   return out;
 }
+/* Fill out the WHOLE galaxy disc with star systems — a rich local neighborhood around home, then a
+   scatter across the entire disc whose density follows the core (packed) -> rim (sparse) gradient,
+   so wherever you sail there are stars, thinning as you head for the rim. Idempotent (galaxy.full). */
+function populateGalaxy(galaxy, spawn){
+  if(!galaxy || galaxy.full) return;
+  const sys=galaxy.systems||[]; let id=sys.reduce((m,s)=>Math.max(m,s.id),0)+1;
+  const home=sys[0]||{x:(spawn&&spawn.x)||0, y:(spawn&&spawn.y)||0};
+  const add=(x,y,cf)=>sys.push({ id:id++, name:genName("system"), x:+x.toFixed(1), y:+y.toFixed(1),
+    size:rollSystemSize(cf), discovered:false, planets:null });
+  // 1) a dense home neighborhood (so early exploration always has reachable stars), if not already there
+  if(sys.filter(s=>s.id!==0 && Math.hypot(s.x-home.x,s.y-home.y)<=55).length < 6){
+    const cf=centralFactor(home.x,home.y), n=clamp(Math.round((8+30*cf)*rndF(0.8,1.2)),6,44);
+    for(let i=0;i<n;i++){ const ang=Math.random()*Math.PI*2, r=i<3?rndF(4.5,7.5):rndF(4,55);
+      const x=home.x+Math.cos(ang)*r, y=home.y+Math.sin(ang)*r; add(x,y,centralFactor(x,y)); }
+  }
+  // 2) scatter the broad galaxy across the disc, accepting points more readily toward the core
+  const target=Math.max(sys.length+450, 720); let tries=0;
+  while(sys.length<target && tries<target*12){ tries++;
+    const ang=Math.random()*Math.PI*2, r=GALAXY.radius*Math.sqrt(Math.random());
+    const x=Math.cos(ang)*r, y=Math.sin(ang)*r, cf=centralFactor(x,y);
+    if(Math.random() > Math.pow(cf, 0.55)) continue;     // thin out the rim, pack the core
+    add(x,y,cf);
+  }
+  galaxy.systems=sys; galaxy.full=true;
+  if(galaxy.governments) sys.forEach(s=>{ if(s.govId===undefined) s.govId=govAt(s.x,s.y,galaxy.governments); });
+}
 /* ===================== MOVEMENT =====================
    Ships move as a group. You ride along only if your active ship is in the group; a group
    you aren't aboard can only travel to worlds you've already charted (no remote exploring). */
@@ -5066,15 +5093,16 @@ function departFirstFlight(){
     occupied:i===0, world:i===0?state.world:null });
   const home={ id:0, name:genName("system"), x:sp.x, y:sp.y, size, discovered:true, reported:true, planets };
   // scatter the rest of the galaxy on the flat 2D plane around the home star
-  const galaxy={ name:state.galaxyName,
-    systems:[home].concat(makeNeighborSystems(sp.x, sp.y, 1)) };
+  const galaxy={ name:state.galaxyName, systems:[home] };
+  populateGalaxy(galaxy, sp);                        // fill the whole disc: dense core, sparse rim
   seedPolitics(galaxy);                              // carve the galaxy into governments & factions
   state.galaxy=galaxy; state.sysId=0; state.system=home; state.atSlot=0;
   const hg=systemGov(home);
   if(hg) Game.logMsg(`Your home star lies within the territory of ${hg.name}.`,"sys");
   state.grounded=false; mapView=null;
   const dist=Math.round(Math.hypot(sp.x,sp.y)), region=cf>0.66?"deep in the crowded core":cf>0.33?"in the galaxy's middle reaches":"out on the sparse rim";
-  Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, lies ${region} — ${dist} ly from the core — and holds ${size} world${size>1?"s":""}, with ${galaxy.systems.length-1} other systems glinting nearby.`,"hit");
+  const nearby=galaxy.systems.filter(s=>s.id!==0 && Math.hypot(s.x-sp.x,s.y-sp.y)<=MAP_SIGHT).length;
+  Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, lies ${region} — ${dist} ly from the core — and holds ${size} world${size>1?"s":""}, with ${nearby} other system${nearby!==1?"s":""} glinting within sensor range and countless more scattered across the galaxy.`,"hit");
   awardObjective("first_flight");
   Game.save(); UI.render("codex"); UI.flashLog();
 }
