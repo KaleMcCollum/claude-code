@@ -1412,6 +1412,66 @@ const DATA = {
   startKit:[],   // you start with nothing — scavenge, sell, and arm yourself
 };
 
+/* ===================== LOOT GEAR: rarity-tiered drops you can't buy =====================
+   The Outfitter only sells the basics (the DATA.items catalog). Anything truly powerful is a
+   procedurally-rolled instance you SCAVENGE or pull from the wrecks of ships you destroy — and the
+   Epic/Legendary finds are vanishingly rare. Each is a one-off object stored in state.gear. */
+const ITEM_RARITY=[
+  { id:"common",    name:"Common",    color:"#9aa3b2", mult:1.0 },
+  { id:"uncommon",  name:"Uncommon",  color:"#5fd0ff", mult:1.6 },
+  { id:"rare",      name:"Rare",      color:"#6ee7a0", mult:2.5 },
+  { id:"epic",      name:"Epic",      color:"#b98cff", mult:4.0 },
+  { id:"legendary", name:"Legendary", color:"#ffae3a", mult:6.5 },
+];
+const rarityDef=rid=>ITEM_RARITY.find(r=>r.id===rid)||ITEM_RARITY[0];
+const rarityColor=rid=>rarityDef(rid).color;
+const rarityName=rid=>rarityDef(rid).name;
+const rarityRank=rid=>ITEM_RARITY.findIndex(r=>r.id===rid);
+/* base archetypes per slot — rolled mods scale with rarity, rarer pieces gain extra affixes */
+const GEAR_ARCH={
+  weapon:{ kind:"weapon", bases:["Blade","Saber","Carbine","Repeater","Lance","Disruptor","Railgun","Maul","Edge"], stats:["might","agility","force"], base:6 },
+  head:  { kind:"armor",  bases:["Helm","Visor","Casque","Hood","Crown"],            base:{hp:14, def:2} },
+  chest: { kind:"armor",  bases:["Cuirass","Plate","Hauberk","Carapace","Aegis"],    base:{hp:34, def:5} },
+  legs:  { kind:"armor",  bases:["Greaves","Legguards","Tassets","Striders"],        base:{hp:18, def:3} },
+  feet:  { kind:"armor",  bases:["Boots","Striders","Treads","Steps"],               base:{hp:9, def:1, dodge:0.03} },
+  back:  { kind:"accessory", bases:["Cloak","Harness","Mantle","Wing","Shroud"],     base:{dodge:0.06, flee:0.08, energy:8} },
+};
+const GEAR_PREFIX={ common:["Worn","Field","Standard","Plain"], uncommon:["Reinforced","Tempered","Marked","Honed"],
+  rare:["Vanguard","Stalwart","Ranger's","Keen"], epic:["Warlord's","Eclipse","Phantom","Sovereign"],
+  legendary:["Godforged","Ascendant","Starborn","Dread","Eternal"] };
+const GEAR_SUFFIX=["of the Verge","of Ruin","of the Deep","of Embers","of the Tyrant","of Dawn","of the Void","of Kings"];
+const STAT_LABEL={ might:"Might", agility:"Agility", force:"Force", hp:"HP", def:"armor", energy:"energy", dodge:"dodge", flee:"flee" };
+function modBlurb(mods){ const parts=[]; for(const k in mods){ const v=mods[k]; if(!v) continue;
+    parts.push((k==="dodge"||k==="flee")?`+${Math.round(v*100)}% ${STAT_LABEL[k]}`:`+${v} ${STAT_LABEL[k]||k}`); }
+  return parts.join(", "); }
+function gearAffix(mods, mult){
+  const roll=pick([["might",Math.round(2*mult)],["agility",Math.round(2*mult)],["force",Math.round(2*mult)],
+    ["hp",Math.round(12*mult)],["def",Math.max(1,Math.round(1*mult))],["dodge",+(0.03*mult).toFixed(2)],["energy",Math.round(7*mult)]]);
+  mods[roll[0]]=(mods[roll[0]]||0)+roll[1];
+}
+/* roll one gear instance of the given rarity (random slot, or a forced one) */
+function genGear(rarity, forceSlot){
+  const slot=forceSlot||pick(Object.keys(GEAR_ARCH)), arch=GEAR_ARCH[slot], mult=rarityDef(rarity).mult, mods={};
+  if(slot==="weapon"){ const st=pick(arch.stats); mods[st]=Math.max(1,Math.round(arch.base*mult*rndF(0.85,1.15))); }
+  else { for(const k in arch.base){ mods[k]=(k==="dodge"||k==="flee")?+(arch.base[k]*mult*rndF(0.85,1.15)).toFixed(2):Math.max(1,Math.round(arch.base[k]*mult*rndF(0.85,1.15))); } }
+  const affixes={common:0,uncommon:1,rare:1,epic:2,legendary:3}[rarity]||0;
+  for(let i=0;i<affixes;i++) gearAffix(mods, mult);
+  const pre=pick(GEAR_PREFIX[rarity]||GEAR_PREFIX.common), bn=pick(arch.bases);
+  let name=pre+" "+bn; if(rarity==="epic"||rarity==="legendary") name+=" "+pick(GEAR_SUFFIX);
+  const power=Object.entries(mods).reduce((s,[k,v])=>s+((k==="dodge"||k==="flee")?v*300:Math.abs(v)),0);
+  return { uid:"g"+Math.random().toString(36).slice(2,9), kind:arch.kind, slot, name, rarity,
+    mods, value:Math.max(20,Math.round(power*10*rarityDef(rarity).mult)), blurb:modBlurb(mods) };
+}
+/* weighted pick over a {key:weight} map */
+function weightedKey(w){ let t=0; for(const k in w) t+=w[k]; let r=Math.random()*t; for(const k in w){ if((r-=w[k])<0) return k; } return Object.keys(w)[0]; }
+/* drop rarity for a wreck: shifts toward rarer with the foe's threat; Epic/Legendary stay tiny */
+function rollDropRarity(threat){
+  return weightedKey({ common:100, uncommon:28+threat*14, rare:6+threat*6, epic:1+threat*1.6, legendary:0.12+threat*0.16 });
+}
+/* resolve an equip-slot reference (a catalog id OR a gear uid) to a unified item def */
+const gearByUid=uid=>(state.gear||[]).find(g=>g.uid===uid)||null;
+function resolveItem(ref){ if(!ref) return null; if(DATA.items[ref]) return DATA.items[ref]; return gearByUid(ref); }
+
 /* Hostile people you run into in settled places — robbers, thieves, raiders. Drop credits
    (loot) and XP, never tamed. minDanger gates the rougher ones to dangerous worlds. */
 const FOES=[
@@ -1462,6 +1522,7 @@ const Game = {
     if(state.galaxy && !state.galaxy.governments) seedPolitics(state.galaxy);
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
     if(!state.contracts) state.contracts=[];
+    if(!state.gear) state.gear=[];
     // keep the live pointer in sync with the saved galaxy
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
     if(state.galaxy && state.galaxy.systems[0]) state.galaxy.systems[0].reported=true;   // you always knew home
@@ -1586,7 +1647,7 @@ const Game = {
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
       allegiance:{ govId:null, factionIds:[], align:0 },   // start Independent & Neutral; earn it in play
-      activeShip:veh.id, bounties:[], contracts:[], crew:[], lastBillYear:0, job:null,
+      activeShip:veh.id, bounties:[], contracts:[], gear:[], crew:[], lastBillYear:0, job:null,
       stimReady:false, log:[],
     };
     veh.slot=0; veh.sysId=0;      // your inherited craft is docked on your homeworld
@@ -1626,7 +1687,7 @@ const Game = {
   // is still dangerous), so even a young child is capable — just not near their peak.
   // sum a mod (might/agility/force/hp/energy/def/dodge/flee) across every equipped slot
   gearMod(key){ let v=0; const eq=state.equipped||{};
-    for(const slot in eq){ const id=eq[slot], it=id&&DATA.items[id];
+    for(const slot in eq){ const it=resolveItem(eq[slot]);
       if(it && it.mods && it.mods[key]) v+=it.mods[key]; }
     return v; },
   effStat(key){ return Math.round((state.stats[key]||0)*Game.maturation()) + Game.gearMod(key); },
@@ -2972,29 +3033,41 @@ const UI = {
     </div>
     <div class="card sheet">
       <h3>Equipment <span class="dim small">&middot; ${Game.effDef()} armor</span></h3>
-      ${[["weapon","Weapon"],["head","Head"],["chest","Chest"],["legs","Legs"],["feet","Feet"],["back","Back"]].map(([slot,label])=>{ const id=state.equipped[slot];
-        return krow(label, id?DATA.items[id].name:'<span class="dim">— empty —</span>'); }).join("")}
+      ${[["weapon","Weapon"],["head","Head"],["chest","Chest"],["legs","Legs"],["feet","Feet"],["back","Back"]].map(([slot,label])=>{ const it=resolveItem(state.equipped[slot]);
+        return krow(label, it?`<span style="color:${rarityColor(it.rarity||'common')}">${it.name}</span>`:'<span class="dim">— empty —</span>'); }).join("")}
     </div>`;
   },
 
   /* ---------- BAG ---------- */
   screen_bag(){
     const ids=Object.keys(state.inv), inC=combat&&!combat.over;
+    const gear=(state.gear||[]).slice().sort((a,b)=>rarityRank(b.rarity)-rarityRank(a.rarity) || a.slot.localeCompare(b.slot));
     return `
     ${this.statHeader()}
     <div class="card">
       <h2>&#9776; Inventory</h2>
       <p class="small dim">Credits: <b class="gold">${state.credits}</b></p>
-      ${ids.length===0?`<p class="dim">Your pack is empty.</p>`:""}
+      ${(!ids.length&&!gear.length)?`<p class="dim">Your pack is empty. Scavenge wrecks and beat enemies to find gear.</p>`:""}
+    </div>
+    ${gear.length?`<div class="card sheet"><h3>&#10022; Looted gear</h3>
+      ${gear.map(g=>{ const eq=state.equipped[g.slot]===g.uid; const col=rarityColor(g.rarity);
+        return `<div class="shipcard" style="border-color:${col}66">
+          <div class="top"><span class="nm" style="color:${col}">${g.name}</span><span class="tag" style="color:${col}">${rarityName(g.rarity)}</span></div>
+          <div class="sub">${cap(g.slot)} &middot; ${g.blurb}</div>
+          <div class="row" style="margin-top:7px"><button class="small${eq?'':' ghost'}" data-equipg="${g.uid}">${eq?"Equipped &middot; unequip":"Equip"}</button>
+            <button class="small ghost" data-sellg="${g.uid}">Sell &middot; ${Math.max(1,Math.round(g.value*0.5))}c</button></div>
+        </div>`; }).join("")}
+    </div>`:""}
+    ${ids.length?`<div class="card"><h3>Supplies &amp; basics</h3>
       ${ids.map(id=>{ const it=DATA.items[id], n=state.inv[id], eq=Object.values(state.equipped).includes(id);
-        let btn=""; if(it.kind==="consumable") btn=`<button data-use="${id}">Use</button>`;
-        else if(it.slot) btn=`<button data-equip="${id}">${eq?"Unequip":"Equip"}</button>`;
-        return `<div class="card" style="margin:8px 0;padding:10px">
+        let btn=""; if(it.kind==="consumable") btn=`<button class="small" data-use="${id}">Use</button>`;
+        else if(it.slot) btn=`<button class="small" data-equip="${id}">${eq?"Unequip":"Equip"}</button>`;
+        return `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
           <div class="row between"><b>${it.name} ${n>1?`<span class="dim">x${n}</span>`:""}</b><span class="tag">${it.kind}</span></div>
-          <p class="small dim" style="margin:4px 0">${it.blurb}</p>
+          <p class="small dim" style="margin:3px 0">${it.blurb}</p>
           <div class="row">${btn}<button class="ghost small" data-sell="${id}">Sell &middot; ${Game.sellPrice(id)}c</button></div>
         </div>`; }).join("")}
-    </div>
+    </div>`:""}
     ${inC?`<div class="card"><button id="backCombat" class="primary full center">&larr; Back to fight</button></div>`:""}`;
   },
 
@@ -3567,6 +3640,8 @@ const UI = {
       app.querySelectorAll("[data-use]").forEach(b=> b.onclick=()=>useItem(b.dataset.use));
       app.querySelectorAll("[data-equip]").forEach(b=> b.onclick=()=>equipItem(b.dataset.equip));
       app.querySelectorAll("[data-sell]").forEach(b=> b.onclick=()=>sellItem(b.dataset.sell));
+      app.querySelectorAll("[data-equipg]").forEach(b=> b.onclick=()=>equipItem(b.dataset.equipg));
+      app.querySelectorAll("[data-sellg]").forEach(b=> b.onclick=()=>sellGear(b.dataset.sellg));
       const bc=$("#backCombat"); if(bc) bc.onclick=()=>UI.render("combat");
     }
     if(screen==="crew"){
@@ -3712,12 +3787,18 @@ function useItem(id){ const it=DATA.items[id]; if(!it||!state.inv[id]) return;
   if(it.buff==="stim"){ state.stimReady=true; msg.push("stim primed"); }
   Game.removeItem(id,1); Game.logMsg(`Used ${it.name}: ${msg.join(", ")}.`,"good"); Game.save();
   UI.render(combat&&!combat.over?"combat":"bag"); }
-function equipItem(id){ const it=DATA.items[id]; const slot=it&&it.slot;
+function equipItem(ref){ const it=resolveItem(ref); const slot=it&&it.slot;   // ref = a catalog id or a gear uid
   if(!slot){ toast("Can't equip that"); return; }
-  if(state.equipped[slot]===id){ state.equipped[slot]=null; toast("Unequipped"); }
-  else { state.equipped[slot]=id; toast(`Equipped ${it.name}`); }
+  if(state.equipped[slot]===ref){ state.equipped[slot]=null; toast("Unequipped"); }
+  else { state.equipped[slot]=ref; toast(`Equipped ${it.name}`); }
   state.hp=Math.min(state.hp,Game.effMaxHp()); state.energy=Math.min(state.energy,Game.effMaxEnergy());
   Game.save(); UI.render("bag"); }
+/* sell a one-off gear instance (looted/scavenged) — for credits, gone for good */
+function sellGear(uid){ const g=gearByUid(uid); if(!g) return;
+  if(state.equipped[g.slot]===uid){ toast("Unequip it first"); return; }
+  const p=Math.max(1,Math.round(g.value*0.5*(1+(state.world?state.world.wealth:4)*0.02)));
+  state.credits+=p; state.gear=(state.gear||[]).filter(x=>x.uid!==uid);
+  Game.logMsg(`Sold ${g.name} for ${p}c.`,"sys"); toast(`+${commas(p)}c`); Game.save(); UI.render("bag"); }
 function sellItem(id){ if(!state.inv[id]) return;
   if(Object.values(state.equipped).includes(id)){ toast("Unequip it first"); return; }
   const p=Game.sellPrice(id); state.credits+=p; Game.removeItem(id,1);
@@ -4095,6 +4176,9 @@ function voidSalvage(){
   const m=voidMeet; if(!m||m.resolved) return;
   const [lo,hi]=m.salvage||[20,120], cr=rnd(lo,hi); state.credits+=cr;
   m.resolved=true; m.msg=`You strip the hulk for ${commas(cr)}c in salvage.`;
+  // a derelict can hide a forgotten cache — scavenged gear you'd never find in a shop
+  if(chance(0.22)){ state.gear=state.gear||[]; const g=genGear(rollDropRarity(1));
+    state.gear.push(g); m.msg+=` Buried in the hulk you find <b style="color:${rarityColor(g.rarity)}">${g.name}</b>!`; }
   Game.gainXp(8); Game.save(); UI.render("voidmeet");
 }
 /* which career commands each kind of void fleet */
@@ -4256,14 +4340,32 @@ function winShipBattle(){
   if(c.foeKind==="pirates" || c.foeDispo==="hostile") shiftAlign(+4, "you destroyed a hostile force");
   else if(c.foeDispo==="friendly") shiftAlign(-12, "you turned your guns on friends");
   else if(c.foeThreat===0) shiftAlign(-8, "you preyed on the defenseless");
+  // pick over the wrecks: supplies, scrap and — rarely — real gear you can't buy anywhere
+  const downed=c.enemy.filter(e=>e.hp<=0);
+  const finds=rollWreckLoot(downed, c.foeThreat||c.threat||0);
+  if(finds) c.msg+=` Picking over the wrecks turns up ${finds}.`;
   // RARE: one of the hulls you downed is still flyable — its survivors throw in with you and it
   // limps into your fleet at almost no hull, running alongside until you can repair it
-  const downed=c.enemy.filter(e=>e.hp<=0);
   if(downed.length && chance(0.10)){
     const name=salvageShip(pick(downed));
     if(name) c.msg+=` Against the odds, a ${name} is still flyable — its crew throw in with you and it limps into your fleet, barely holding together.`;
   }
   Game.save(); UI.render("shipbattle");
+}
+/* loot the wrecks of destroyed enemy ships: scrap & supplies often, real gear rarely, and a tiny
+   chance at an Epic/Legendary find (better odds from tougher foes). Returns a summary string. */
+function rollWreckLoot(downed, threat){
+  const got=[]; state.gear=state.gear||[];
+  downed.forEach(()=>{
+    if(chance(0.16 + threat*0.05)){ const g=genGear(rollDropRarity(threat)); state.gear.push(g);
+      got.push(`<b style="color:${rarityColor(g.rarity)}">${g.name}</b>`); }
+    else if(chance(0.45)){ const id=pick(["medpack","medpack","energy-cell","stim","circuit-scrap"]);
+      Game.addItem(id,1); got.push(DATA.items[id].name); }
+  });
+  if(!got.length) return "";
+  // collapse duplicates (e.g. "Medpack x2")
+  const counts={}; got.forEach(g=>counts[g]=(counts[g]||0)+1);
+  return Object.entries(counts).map(([n,c])=>c>1?`${n} x${c}`:n).join(", ");
 }
 /* a rare salvage: a downed enemy hull still flyable. It joins you, crewed by survivors, limping at
    almost no hull, and follows you in your fleet (form one if you have none). */
