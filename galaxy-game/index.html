@@ -187,6 +187,7 @@
   <button data-screen="hub"><span class="ico">&#9737;</span>World</button>
   <button data-screen="codex"><span class="ico">&#9776;</span>Codex</button>
   <button data-screen="map"><span class="ico">&#128506;</span>Map</button>
+  <button data-screen="gov"><span class="ico">&#127963;</span>Powers</button>
   <button data-screen="bag"><span class="ico">&#9783;</span>Items</button>
   <button data-screen="crew"><span class="ico">&#128101;</span>Crew</button>
   <button data-screen="save"><span class="ico">&#8635;</span>Save</button>
@@ -1454,6 +1455,9 @@ const Game = {
       home.name=home.name||genName("system");
       state.galaxy={ name:state.galaxyName, systems:[home].concat(makeNeighborSystems(home.x, home.y, 1)) };
     }
+    // carve up older galaxies that predate the politics layer, and init your (blank) allegiance
+    if(state.galaxy && !state.galaxy.governments) seedPolitics(state.galaxy);
+    if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
     // keep the live pointer in sync with the saved galaxy
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
     if(state.galaxy && state.galaxy.systems[0]) state.galaxy.systems[0].reported=true;   // you always knew home
@@ -1573,6 +1577,7 @@ const Game = {
       actions:0, dead:false, deathCause:null, lastStage:null,
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
+      allegiance:{ govId:null, factionIds:[], align:0 },   // start Independent & Neutral; earn it in play
       activeShip:veh.id, bounties:[], crew:[], lastBillYear:0, job:null,
       stimReady:false, log:[],
     };
@@ -2409,6 +2414,45 @@ const UI = {
       </div></div>`;
   },
   /* ---------- DEEP-SPACE SHIP ENCOUNTER ---------- */
+  /* ---------- POWERS: governments, factions & your allegiance ---------- */
+  screen_gov(){
+    const al=state.allegiance||{govId:null,factionIds:[],align:0};
+    const govs=(state.galaxy&&state.galaxy.governments)||[], facs=(state.galaxy&&state.galaxy.factions)||[];
+    if(!govs.length) return `${this.statHeader()}
+      <div class="card center"><h2>&#127963; Powers</h2>
+        <p class="small dim">The galaxy's politics are uncharted until you take to the stars. Buy a ship and leave your homeworld to learn who holds the space around you.</p></div>`;
+    const myGov=al.govId?govById(al.govId):null, here=systemGov(curSys());
+    const myFacs=(al.factionIds||[]).map(factionById).filter(Boolean);
+    const sc={friendly:"green",neutral:"dim",wary:"gold",hostile:"red"}, sl={friendly:"Friendly",neutral:"Neutral",wary:"Wary",hostile:"Hostile"};
+    const a=al.align||0, pos=clamp((a+100)/2,0,100);
+    const alignTag=a<=-20?"red":a>=20?"blue":"";
+    return `${this.statHeader()}
+    <div class="card"><h2>&#127963; Allegiance</h2>
+      <div class="krow"><span class="lbl">Government</span><span class="kv">${myGov?`<b style="color:${myGov.color}">${myGov.name}</b>`:'<span class="dim">Independent</span>'}</span></div>
+      <div class="krow"><span class="lbl">Faction${myFacs.length===1?"":"s"}</span><span class="kv">${myFacs.length?myFacs.map(f=>f.name).join(", "):'<span class="dim">none</span>'}</span></div>
+      <div class="krow"><span class="lbl">Alignment</span><span class="kv ${alignTag}">${alignLabel(a)}</span></div>
+      <div style="margin-top:5px;height:8px;border-radius:99px;background:linear-gradient(90deg,#d6455a,#7a7f8c,#3a8dff);position:relative">
+        <i style="position:absolute;left:calc(${pos}% - 2px);top:-2px;width:4px;height:12px;background:#fff;border-radius:2px;display:block"></i></div>
+      <div class="row between small dim" style="margin-top:2px"><span>Dark</span><span>Neutral</span><span>Light</span></div>
+      <p class="small dim" style="margin-top:7px">You answer to no one yet. Earn the trust of a power or faction among their people, and your deeds will tilt you toward the Light or the Dark.</p>
+    </div>
+    <div class="card sheet"><h3>Governments <span class="dim small">&middot; ranked by power</span></h3>
+      ${govs.map(g=>{ const st=govStance(g), mine=g.id===al.govId, hereCtl=here&&here.id===g.id;
+        return `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
+          <div class="row between"><span><b style="color:${g.color}">#${g.rank} ${g.name}</b>${mine?' <span class="green small">&#9733; yours</span>':''}${hereCtl?' <span class="blue small">&#128205; here</span>':''}</span>
+            <span class="tag ${sc[st]}">${sl[st]}</span></div>
+          <p class="small dim" style="margin:2px 0">${g.alignment==="dark"?"&#9790; Dark":g.alignment==="light"?"&#9728; Light":"&#9678; Neutral"} &middot; ${g.wealth>=7?"wealthy":g.wealth>=4?"prosperous":"struggling"} &middot; seat: ${g.capitalName} &middot; ${g.rivals.length?`at war with ${g.rivals.length} power${g.rivals.length>1?"s":""}`:"no open wars"}</p>
+        </div>`; }).join("")}
+    </div>
+    <div class="card sheet"><h3>Factions &amp; clans</h3>
+      <p class="small dim">Smaller outfits within and across the great powers — some you may one day join. Two under the same banner can still be bitter enemies.</p>
+      ${facs.map(f=>{ const pg=f.govId?govById(f.govId):null, mem=(al.factionIds||[]).includes(f.id);
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
+          <div class="row between"><span>${f.name}${mem?' <span class="green small">&#9733; member</span>':''}</span><span class="small dim">${f.alignment}</span></div>
+          <p class="small dim" style="margin:2px 0">${cap(f.kind)} &middot; ${pg?`serves <span style="color:${pg.color}">${pg.name}</span>`:"independent"}${f.rivals.length?` &middot; feuds with ${f.rivals.length}`:""}</p>
+        </div>`; }).join("")}
+    </div>`;
+  },
   screen_voidmeet(){
     const m=voidMeet; if(!m) return this.screen_hub();
     const danger=m.threat>=3?'red':m.threat>=1?'gold':'green';
@@ -3628,6 +3672,86 @@ function buildSystemPlanets(size){
 /* Scatter neighbouring systems around a home position (galactic coordinates, ly). Count and
    size scale with how central the home position is. The first few sit within a starter
    interstellar ship's reach so there's always somewhere to jump. ids start at startId. */
+/* ===================== GOVERNMENTS, FACTIONS & TERRITORY =====================
+   The galaxy is carved into regional powers (governments), each holding a patch of space, leaning
+   Light or Dark. Smaller factions nest under or across them — and can feud even when they share an
+   alignment. You start Independent & Neutral and earn your place through play. */
+const GOV_TITLES={
+  dark:["Imperium","Dominion","Hegemony","Ascendancy","Tyranny","Eclipse"],
+  light:["Republic","Federation","Coalition","Concord","Commonwealth","Alliance"],
+  neutral:["Confederacy","League","Union","Compact","Directorate","Assembly"],
+};
+const GOV_COLORS=["#d6455a","#3a8dff","#39c07a","#c9963f","#9a6cff","#e0823a"];
+const FAC_ADJ=["Crimson","Iron","Free","Shadow","Silver","Ashen","Radiant","Obsidian","Golden","Storm","Hollow","Burning","Pale","Verdant"];
+const FAC_NOUN=["Vanguard","Rebellion","Syndicate","Covenant","Legion","Hand","Circle","Front","Order","Brotherhood","Talons","Accord","Banner"];
+const FAC_KINDS_INDIE=["rebel cell","syndicate","free clan","hidden order"];
+const FAC_KINDS_GOV=["loyalist order","military clan","trade syndicate","inner circle"];
+function genGovernments(){
+  const n=rnd(4,6), govs=[];
+  for(let i=0;i<n;i++){
+    const alignment = i===0?"dark" : i===1?"light" : pick(["dark","light","neutral"]);
+    const name = (chance(0.55)?nameWord(2,3)+" ":"The ")+pick(GOV_TITLES[alignment]);
+    const ang=(i/n)*Math.PI*2 + rndF(-0.5,0.5), dist=rndF(0, GALAXY.radius*0.5);
+    const center={ x:+(Math.cos(ang)*dist).toFixed(1), y:+(Math.sin(ang)*dist).toFixed(1) };
+    const strength=+rndF(0.65,1.4).toFixed(2);
+    const radius=clamp(Math.round((70+rnd(0,70))*strength), 55, 170), wealth=rnd(2,9);
+    govs.push({ id:"gov"+i, name, alignment, center, radius, strength, wealth,
+      power:Math.round(radius*strength*4 + wealth*30), color:GOV_COLORS[i%GOV_COLORS.length],
+      capitalName:genName("system"), rivals:[] });
+  }
+  // opposite alignments are sworn rivals
+  govs.forEach(a=>govs.forEach(b=>{ if(a!==b &&
+    ((a.alignment==="dark"&&b.alignment==="light")||(a.alignment==="light"&&b.alignment==="dark"))) a.rivals.push(b.id); }));
+  govs.sort((x,y)=>y.power-x.power).forEach((g,i)=>g.rank=i+1);
+  return govs;
+}
+function mkFaction(i, parent){
+  return { id:"fac"+i, name:pick(FAC_ADJ)+" "+pick(FAC_NOUN), alignment:parent?parent.alignment:pick(["light","dark","neutral"]),
+    govId:parent?parent.id:null, kind:parent?pick(FAC_KINDS_GOV):pick(FAC_KINDS_INDIE), rivals:[] };
+}
+function genFactions(govs){
+  const facs=[]; let i=0;
+  // give the larger powers a couple of internal factions, so same-banner rivals can feud
+  govs.slice(0, Math.min(govs.length,3)).forEach(g=>{ const k=rnd(1,2); for(let j=0;j<k;j++) facs.push(mkFaction(i++, g)); });
+  // plus a handful of independents — rebels, syndicates, free clans
+  const extra=rnd(3,5); for(let j=0;j<extra;j++) facs.push(mkFaction(i++, null));
+  facs.forEach((a,ai)=>facs.slice(ai+1).forEach(b=>{
+    if(a.govId && a.govId===b.govId){ a.rivals.push(b.id); b.rivals.push(a.id); }   // an internal power struggle
+    else if((!a.govId||!b.govId) && a.alignment!=="neutral" && b.alignment!=="neutral" && a.alignment!==b.alignment && chance(0.4)){ a.rivals.push(b.id); b.rivals.push(a.id); }
+  }));
+  return facs;
+}
+/* which government holds a point in space (null = independent / contested rim) */
+function govAt(x,y,govs){
+  let best=null, bestScore=2;
+  for(const g of (govs||[])){ const d=Math.hypot(x-g.center.x,y-g.center.y);
+    if(d<=g.radius){ const score=d/g.radius; if(score<bestScore){ bestScore=score; best=g; } } }
+  return best?best.id:null;
+}
+function seedPolitics(galaxy){
+  if(!galaxy || galaxy.governments) return;
+  const govs=genGovernments();
+  galaxy.governments=govs; galaxy.factions=genFactions(govs);
+  (galaxy.systems||[]).forEach(s=>{ s.govId=govAt(s.x,s.y,govs); });
+}
+const govById=id=>((state.galaxy&&state.galaxy.governments)||[]).find(g=>g.id===id)||null;
+const factionById=id=>((state.galaxy&&state.galaxy.factions)||[]).find(f=>f.id===id)||null;
+function systemGov(sys){ if(!sys) return null;
+  if(sys.govId===undefined) sys.govId=govAt(sys.x,sys.y,(state.galaxy&&state.galaxy.governments)||[]);
+  return sys.govId?govById(sys.govId):null; }
+/* your earned Light<->Dark standing (a -100..100 meter) as a label & a coarse side */
+function alignLabel(v){ v=v||0; return v<=-60?"Dark":v<=-20?"Shadowed":v<20?"Neutral":v<60?"Tempered":"Light"; }
+function alignSide(v){ v=v||0; return v<=-20?"dark":v>=20?"light":"neutral"; }
+/* how a government currently regards you, from your allegiance, the factions you serve & your alignment */
+function govStance(g){
+  const al=state.allegiance||{}; if(!g) return "neutral";
+  if(al.govId===g.id) return "friendly";
+  if((al.factionIds||[]).some(fid=>{ const f=factionById(fid); return f && f.govId===g.id; })) return "friendly";
+  if(al.govId && g.rivals.includes(al.govId)) return "hostile";
+  const side=alignSide(al.align);
+  if(side!=="neutral" && g.alignment!=="neutral" && side!==g.alignment) return "wary";
+  return "neutral";
+}
 function makeNeighborSystems(hx, hy, startId){
   const cf=centralFactor(hx,hy);
   const n=clamp(Math.round((8 + 30*cf)*rndF(0.8,1.2)), 5, 44);  // dense core, sparse rim
@@ -4525,7 +4649,10 @@ function departFirstFlight(){
   // scatter the rest of the galaxy on the flat 2D plane around the home star
   const galaxy={ name:state.galaxyName,
     systems:[home].concat(makeNeighborSystems(sp.x, sp.y, 1)) };
+  seedPolitics(galaxy);                              // carve the galaxy into governments & factions
   state.galaxy=galaxy; state.sysId=0; state.system=home; state.atSlot=0;
+  const hg=systemGov(home);
+  if(hg) Game.logMsg(`Your home star lies within the territory of ${hg.name}.`,"sys");
   state.grounded=false; mapView=null;
   const dist=Math.round(Math.hypot(sp.x,sp.y)), region=cf>0.66?"deep in the crowded core":cf>0.33?"in the galaxy's middle reaches":"out on the sparse rim";
   Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, lies ${region} — ${dist} ly from the core — and holds ${size} world${size>1?"s":""}, with ${galaxy.systems.length-1} other systems glinting nearby.`,"hit");
