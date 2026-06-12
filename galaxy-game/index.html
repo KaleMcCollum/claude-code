@@ -2438,18 +2438,25 @@ const UI = {
     </div>
     <div class="card sheet"><h3>Governments <span class="dim small">&middot; ranked by power</span></h3>
       ${govs.map(g=>{ const st=govStance(g), mine=g.id===al.govId, hereCtl=here&&here.id===g.id;
+        const act = mine ? `<button class="small ghost" data-renounce="1">Renounce allegiance</button>`
+          : hereCtl ? (pledgeCheck(g).ok ? `<button class="small" data-pledge="${g.id}">&#9733; Pledge allegiance</button>` : `<span class="small dim">${pledgeCheck(g).why||""}</span>`)
+          : ``;
         return `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
           <div class="row between"><span><b style="color:${g.color}">#${g.rank} ${g.name}</b>${mine?' <span class="green small">&#9733; yours</span>':''}${hereCtl?' <span class="blue small">&#128205; here</span>':''}</span>
             <span class="tag ${sc[st]}">${sl[st]}</span></div>
           <p class="small dim" style="margin:2px 0">${g.alignment==="dark"?"&#9790; Dark":g.alignment==="light"?"&#9728; Light":"&#9678; Neutral"} &middot; ${g.wealth>=7?"wealthy":g.wealth>=4?"prosperous":"struggling"} &middot; seat: ${g.capitalName} &middot; ${g.rivals.length?`at war with ${g.rivals.length} power${g.rivals.length>1?"s":""}`:"no open wars"}</p>
+          ${act?`<div style="margin-top:3px">${act}</div>`:""}
         </div>`; }).join("")}
     </div>
     <div class="card sheet"><h3>Factions &amp; clans</h3>
       <p class="small dim">Smaller outfits within and across the great powers — some you may one day join. Two under the same banner can still be bitter enemies.</p>
       ${facs.map(f=>{ const pg=f.govId?govById(f.govId):null, mem=(al.factionIds||[]).includes(f.id);
+        const act = mem ? `<button class="small ghost" data-leavefac="${f.id}">Leave</button>`
+          : joinFactionCheck(f).ok ? `<button class="small" data-joinfac="${f.id}">Join</button>` : ``;
         return `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
           <div class="row between"><span>${f.name}${mem?' <span class="green small">&#9733; member</span>':''}</span><span class="small dim">${f.alignment}</span></div>
           <p class="small dim" style="margin:2px 0">${cap(f.kind)} &middot; ${pg?`serves <span style="color:${pg.color}">${pg.name}</span>`:"independent"}${f.rivals.length?` &middot; feuds with ${f.rivals.length}`:""}</p>
+          ${act?`<div style="margin-top:3px">${act}</div>`:""}
         </div>`; }).join("")}
     </div>`;
   },
@@ -3333,6 +3340,12 @@ const UI = {
     // 🎲 randomize buttons work on every screen that hosts a nameField
     app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
     const qj=$("#quitJob"); if(qj) qj.onclick=()=>quitJob();
+    if(screen==="gov"){
+      app.querySelectorAll("[data-pledge]").forEach(b=> b.onclick=()=>pledgeGov(b.dataset.pledge));
+      const rn=$("[data-renounce]"); if(rn) rn.onclick=()=>renounceGov();
+      app.querySelectorAll("[data-joinfac]").forEach(b=> b.onclick=()=>joinFaction(b.dataset.joinfac));
+      app.querySelectorAll("[data-leavefac]").forEach(b=> b.onclick=()=>leaveFaction(b.dataset.leavefac));
+    }
 
     if(screen==="title"){
       const n=$("#btnNew"); if(n) n.onclick=()=>{ creating={step:0}; UI.render("create"); };
@@ -3764,6 +3777,14 @@ function systemGov(sys){ if(!sys) return null;
 /* your earned Light<->Dark standing (a -100..100 meter) as a label & a coarse side */
 function alignLabel(v){ v=v||0; return v<=-60?"Dark":v<=-20?"Shadowed":v<20?"Neutral":v<60?"Tempered":"Light"; }
 function alignSide(v){ v=v||0; return v<=-20?"dark":v>=20?"light":"neutral"; }
+/* nudge your alignment by a deed; logs when it tips you toward the Light or the Dark */
+function shiftAlign(d, reason){
+  if(!state.allegiance) state.allegiance={govId:null,factionIds:[],align:0};
+  const before=alignLabel(state.allegiance.align);
+  state.allegiance.align=clamp((state.allegiance.align||0)+d, -100, 100);
+  if(reason && alignLabel(state.allegiance.align)!==before)
+    Game.logMsg(`Your path turns ${d>0?"toward the Light":"toward the Dark"} — you are now ${alignLabel(state.allegiance.align)}. (${reason})`, d>0?"good":"bad");
+}
 /* how a government currently regards you, from your allegiance, the factions you serve & your alignment */
 function govStance(g){
   const al=state.allegiance||{}; if(!g) return "neutral";
@@ -3774,6 +3795,40 @@ function govStance(g){
   if(side!=="neutral" && g.alignment!=="neutral" && side!==g.alignment) return "wary";
   return "neutral";
 }
+/* ---- declaring allegiance: earned by being present in a power's space, in their good graces,
+   and walking a compatible path. Factions ask only that your creed and their patrons allow it. ---- */
+function pledgeCheck(g){
+  const al=state.allegiance||{}; if(!g||al.govId===g.id) return {ok:false, why:"already"};
+  const here=systemGov(curSys());
+  if(!here || here.id!==g.id) return {ok:false, why:`You must be within ${g.name} space to pledge.`};
+  if(govStance(g)==="hostile") return {ok:false, why:`${g.name} counts you an enemy — they'd never take your oath.`};
+  const side=alignSide(al.align);
+  if(g.alignment!=="neutral" && side!=="neutral" && side!==g.alignment) return {ok:false, why:`Your ${alignLabel(al.align)} path clashes with their ${g.alignment} cause.`};
+  return {ok:true};
+}
+function pledgeGov(id){ const g=govById(id), chk=pledgeCheck(g); if(!chk.ok){ if(chk.why&&chk.why!=="already") toast(chk.why); return; }
+  state.allegiance.govId=id; state.allegiance.factionIds=state.allegiance.factionIds||[];
+  if(g.alignment==="dark") shiftAlign(-8,""); else if(g.alignment==="light") shiftAlign(8,"");
+  Game.logMsg(`You pledge yourself to ${g.name}. Their banner is now yours, and their space your home.`,"good");
+  toast("Allegiance pledged"); Game.save(); UI.render("gov"); }
+function renounceGov(){ const al=state.allegiance; if(!al||!al.govId) return; const g=govById(al.govId);
+  al.govId=null; al.factionIds=(al.factionIds||[]).filter(fid=>{ const f=factionById(fid); return !(f&&g&&f.govId===g.id); });
+  Game.logMsg(`You renounce ${g?g.name:"your government"} and walk independent once more.`,"sys");
+  toast("Renounced"); Game.save(); UI.render("gov"); }
+function joinFactionCheck(f){
+  const al=state.allegiance||{}; if(!f||(al.factionIds||[]).includes(f.id)) return {ok:false, why:"already"};
+  const side=alignSide(al.align);
+  if(f.alignment!=="neutral" && side!=="neutral" && side!==f.alignment) return {ok:false, why:`Your path clashes with their ${f.alignment} creed.`};
+  if(f.govId){ const g=govById(f.govId); if(g && govStance(g)==="hostile") return {ok:false, why:"Their patrons count you an enemy."}; }
+  if((al.factionIds||[]).some(fid=>f.rivals.includes(fid))) return {ok:false, why:"You already serve their sworn enemy."};
+  return {ok:true};
+}
+function joinFaction(id){ const f=factionById(id), chk=joinFactionCheck(f); if(!chk.ok){ if(chk.why&&chk.why!=="already") toast(chk.why); return; }
+  state.allegiance.factionIds=(state.allegiance.factionIds||[]).concat(id);
+  Game.logMsg(`You throw in with the ${f.name}.`,"good"); toast("Joined "+f.name); Game.save(); UI.render("gov"); }
+function leaveFaction(id){ const f=factionById(id); if(!state.allegiance) return;
+  state.allegiance.factionIds=(state.allegiance.factionIds||[]).filter(x=>x!==id);
+  Game.logMsg(`You part ways with the ${f?f.name:"faction"}.`,"sys"); toast("Left"); Game.save(); UI.render("gov"); }
 function makeNeighborSystems(hx, hy, startId){
   const cf=centralFactor(hx,hy);
   const n=clamp(Math.round((8 + 30*cf)*rndF(0.8,1.2)), 5, 44);  // dense core, sparse rim
@@ -4061,6 +4116,7 @@ function startShipBattle(){
   all.forEach(v=>{ v.shield=shipMaxShield(v); });                 // raise your shields for the fight
   const loot=Math.round(enemy.reduce((s,e)=>s+e.maxHp,0)*0.10*(1+m.threat*0.4)) + m.ships*180;
   shipCombat={ name:m.name, faction:m.faction, threat:m.threat, enemy,
+    foeKind:m.id, foeDispo:m.dispo, foeThreat:m.threat, foeGovId:m.govId,   // for the alignment reckoning on victory
     main:mine.map(v=>v.id), wing:wing.map(v=>v.id), wingOut:true, my:all.map(v=>v.id),
     target:null, loot, over:false, win:false, lost:false, fled:false, round:0,
     log: wing.length?[`Your carrier${mine.filter(v=>v.bays>0).length>1?"s":""} launch ${wing.length} fighter${wing.length>1?"s":""} to join the line.`]:[] };
@@ -4104,6 +4160,11 @@ function winShipBattle(){
   const c=shipCombat; c.over=true; c.win=true;
   state.credits+=c.loot; Game.gainXp(Math.round(c.loot*0.02));
   c.msg=`You shatter the ${c.name}! You strip the wrecks for ${commas(c.loot)}c.`;
+  // your deeds tilt your alignment: crushing raiders & the hostile is the Light's work; preying on
+  // the defenseless or turning on friends is the Dark's
+  if(c.foeKind==="pirates" || c.foeDispo==="hostile") shiftAlign(+4, "you destroyed a hostile force");
+  else if(c.foeDispo==="friendly") shiftAlign(-12, "you turned your guns on friends");
+  else if(c.foeThreat===0) shiftAlign(-8, "you preyed on the defenseless");
   // a chance to capture an intact hull — board one of the enemy ships you didn't blast apart
   if(c.enemy.length>=2 && chance(0.25)){
     const cd=shipClass(pick(c.enemy).cls)||shipClass("corvette");
