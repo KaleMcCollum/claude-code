@@ -1458,6 +1458,7 @@ const Game = {
     // carve up older galaxies that predate the politics layer, and init your (blank) allegiance
     if(state.galaxy && !state.galaxy.governments) seedPolitics(state.galaxy);
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
+    if(!state.contracts) state.contracts=[];
     // keep the live pointer in sync with the saved galaxy
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
     if(state.galaxy && state.galaxy.systems[0]) state.galaxy.systems[0].reported=true;   // you always knew home
@@ -1578,7 +1579,7 @@ const Game = {
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
       allegiance:{ govId:null, factionIds:[], align:0 },   // start Independent & Neutral; earn it in play
-      activeShip:veh.id, bounties:[], crew:[], lastBillYear:0, job:null,
+      activeShip:veh.id, bounties:[], contracts:[], crew:[], lastBillYear:0, job:null,
       stimReady:false, log:[],
     };
     veh.slot=0; veh.sysId=0;      // your inherited craft is docked on your homeworld
@@ -2118,13 +2119,35 @@ const UI = {
     <div class="card"><h3>Who's here</h3>
       <button class="full" id="tPatron">&#128483; Talk to a patron</button>
       <button class="full" id="tBartender">&#127867; Talk to the bartender</button>
-      <button class="full" id="tBounty">&#127919; Find a bounty hunter</button>
+      <button class="full" id="tBounty">&#127919; Talk to a bounty hunter</button>
       ${(state.bounties||[]).length?`<button class="full primary" id="tRedeem">&#9878; Redeem bounties (${state.bounties.length}) &middot; +${commas(state.bounties.reduce((s,b)=>s+b.value,0))}c</button>`:""}
       <button class="full ghost" id="tDrink">Buy a round &middot; 10c (rest your bones)</button>
     </div>
     <div class="card"><button id="tBack" class="ghost full center">&larr; Back outside</button></div>`;
   },
 
+  /* ---------- BOUNTY BOARD (a hunter's posted contracts) ---------- */
+  screen_bounties(){
+    const b=state.bountyBoard, active=state.contracts||[];
+    const mark=c=>`<div class="row between"><span><b>${c.name}</b> <span class="small dim">&middot; ${c.raceName} ${careerName(c.career)}</span></span><span class="small" style="color:#ff6b6b">${THREAT_LABEL[c.threat]||"WANTED"}</span></div>`;
+    return `${this.statHeader()}
+    <div class="card"><h2>&#127919; Bounty Hunter</h2>
+      <p class="small dim">A scarred hunter slides a datapad across the table. "Three marks worth your time. Bring 'em in breathing or cold — the price holds either way. They're out there; you'll have to track 'em down yourself."</p></div>
+    ${active.length?`<div class="card sheet"><h3>Your contracts <span class="dim small">&middot; ${active.length}/3</span></h3>
+      ${active.map(c=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)">${mark(c)}
+        <p class="small dim" style="margin:2px 0">&#128205; <b>${c.worldName}</b> (${c.sysName} system) &middot; ${commas(c.alive)}c alive / ${commas(c.dead)}c dead</p>
+        <button class="small ghost" data-abandon="${c.id}">Abandon</button></div>`).join("")}
+      <p class="small dim" style="margin-top:6px">Travel to a mark's world, then <b>Talk to a patron</b> and ask around to flush them out.</p></div>`:""}
+    <div class="card sheet"><h3>Marks on offer</h3>
+      ${b?b.list.map((c,i)=> c?`<div style="padding:7px 0;border-bottom:1px solid var(--line)">${mark(c)}
+        <p class="small dim" style="margin:2px 0">Last seen: &#128205; <b>${c.worldName}</b> (${c.sysName} system)</p>
+        <div class="odds">${commas(c.alive)}c alive &middot; ${commas(c.dead)}c dead</div>
+        <button class="small" data-accept="${i}" ${active.length>=3?"disabled":""}>Accept contract</button></div>`
+        :`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="small dim">&mdash; contract taken &mdash;</span></div>`).join(""):""}
+      ${active.length>=3?`<p class="small gold" style="margin-top:6px">Your contract ledger is full (3/3).</p>`:""}
+    </div>
+    <div class="card"><button id="bvBack" class="ghost full center">&larr; Back to the tavern</button></div>`;
+  },
   /* ---------- THE BARTENDER (rumors + buys your information) ---------- */
   screen_bartender(){
     const w=state.world, u=unreportedInfo();
@@ -3340,6 +3363,11 @@ const UI = {
     // 🎲 randomize buttons work on every screen that hosts a nameField
     app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
     const qj=$("#quitJob"); if(qj) qj.onclick=()=>quitJob();
+    if(screen==="bounties"){
+      app.querySelectorAll("[data-accept]").forEach(b=> b.onclick=()=>acceptContract(+b.dataset.accept));
+      app.querySelectorAll("[data-abandon]").forEach(b=> b.onclick=()=>abandonContract(b.dataset.abandon));
+      const bk=$("#bvBack"); if(bk) bk.onclick=()=>UI.render("tavern");
+    }
     if(screen==="gov"){
       app.querySelectorAll("[data-pledge]").forEach(b=> b.onclick=()=>pledgeGov(b.dataset.pledge));
       const rn=$("[data-renounce]"); if(rn) rn.onclick=()=>renounceGov();
@@ -3406,7 +3434,7 @@ const UI = {
     if(screen==="tavern"){
       $("#tPatron").onclick=()=>startMeeting("A patron at a corner table waves you over.","tavern");
       $("#tBartender").onclick=()=>UI.render("bartender");
-      $("#tBounty").onclick=()=>{ toast("No bounties posted right now"); Game.logMsg("No bounties on the board today. (Bounty contracts coming soon.)","sys"); };
+      $("#tBounty").onclick=()=>openBountyBoard();
       const rd=$("#tRedeem"); if(rd) rd.onclick=()=>redeemBounties();
       $("#tDrink").onclick=()=>{ if(state.credits<10){ toast("Not enough credits"); return; }
         state.credits-=10; state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.25));
@@ -4206,6 +4234,13 @@ const RUMORS=[
   "they whisper of a desolate world where no one lives at all.",
 ];
 function startMeeting(intro, back){
+  // if you've a bounty on someone holed up on THIS world, asking around may turn them up
+  const hit=activeContractHere();
+  if(hit && chance(0.55)){
+    meeting={ draw:hit.draw, person:hit.person, back:back||"hub", step:2, where:state.world?state.world.name:"deep space",
+      intro:`You put out word that you're hunting a mark — and a ${careerName(hit.person.career).toLowerCase()} matching the bounty turns to face you. It's ${hit.person.name}.` };
+    personExpand=false; shipDealMsg=null; UI.render("meet"); return;
+  }
   const draw=drawRace(), person=Gen.person(draw.race);
   if(!person.name) person.name=genName("person");   // no upfront naming step — they already have a name
   meeting={ draw, person, intro, back:back||"hub", step:2 };
@@ -4657,9 +4692,56 @@ function claimBounty(alive){
   state.bounties=state.bounties||[];
   state.bounties.push({ name:p.name, raceName:p.raceName, value:val, alive });
   p.captured=true; p.captureAlive=alive;
-  Game.logMsg(`${alive?"You restrain":"You kill"} ${p.name}. Redeem the ${commas(val)}c bounty at a bar.`,"good");
+  let extra="";
+  if(p.contractId){ const had=(state.contracts||[]).some(c=>c.id===p.contractId);
+    state.contracts=(state.contracts||[]).filter(c=>c.id!==p.contractId);
+    if(had) extra=" Contract fulfilled."; }
+  Game.logMsg(`${alive?"You restrain":"You kill"} ${p.name}. Redeem the ${commas(val)}c bounty at a bar.${extra}`,"good");
   combat=null; Game.save(); UI.render("hub"); UI.flashLog();
 }
+/* ---- BOUNTY CONTRACTS: a hunter at the bar posts marks; track them to a world and hunt them down ---- */
+/* inhabited, charted worlds where a mark could be holed up */
+function bountyLocations(){
+  const out=[];
+  (state.galaxy?state.galaxy.systems:[]).forEach(s=>{ if(!s.discovered||!s.planets) return;
+    s.planets.forEach(p=>{ if(p&&p.discovered&&p.occupied&&p.world) out.push({sysId:s.id,slot:p.index,sysName:s.name,worldName:p.world.name}); }); });
+  return out;
+}
+/* roll one contract: a hostile mark, their alive/dead price, and the world they were last seen on */
+function genContract(){
+  const draw=drawRace(); if(!draw.race.name) draw.race.name=genName("race");   // the notice names the mark's species
+  let person, n=0;
+  do { person=Gen.person(draw.race); n++; } while(!isHostile(person)&&n<14);
+  if(!isHostile(person)){ const cc=pick(CAREERS.filter(c=>c.hostile));   // force a wanted mark if the roll came up civilian
+    person.career=cc.id; person.hostile=cc.hostile; person.bounty=rollBounty(cc, draw.race.tier);
+    const f=rollForce(cc); if(f) person.force=f; person.credits=rollWealth(cc); delete person.ship; }
+  if(!person.name) person.name=genName("person");
+  person.raceName=draw.race.name;
+  const locs=bountyLocations();
+  const loc=locs.length?pick(locs):{sysId:state.sysId??0,slot:state.atSlot,sysName:(curSys()||{name:"this"}).name,worldName:state.world?state.world.name:"this world"};
+  const id="ct"+Date.now().toString(36)+rnd(100,999); person.contractId=id;
+  return { id, draw, person, name:person.name, career:person.career, raceName:draw.race.name, threat:person.hostile,
+    alive:person.bounty.alive, dead:person.bounty.dead, sysId:loc.sysId, slot:loc.slot, sysName:loc.sysName, worldName:loc.worldName };
+}
+/* talk to the hunter — post three marks (steady per planet until you move on) */
+function openBountyBoard(){
+  const key=(state.sysId??0)+":"+state.atSlot;
+  if(!state.bountyBoard || state.bountyBoard.key!==key) state.bountyBoard={ key, list:[genContract(),genContract(),genContract()] };
+  UI.render("bounties");
+}
+function acceptContract(i){
+  const b=state.bountyBoard; if(!b) return; const ct=b.list[i]; if(!ct) return;
+  state.contracts=state.contracts||[];
+  if(state.contracts.length>=3){ toast("You can carry 3 contracts at once"); return; }
+  state.contracts.push(ct); b.list[i]=null;
+  Game.logMsg(`Bounty accepted: ${ct.name}, last seen on ${ct.worldName} in the ${ct.sysName} system.`,"good");
+  toast("Bounty accepted"); Game.save(); UI.render("bounties");
+}
+function abandonContract(id){ state.contracts=(state.contracts||[]).filter(c=>c.id!==id);
+  Game.logMsg("You let a bounty go cold.","sys"); toast("Dropped"); Game.save(); UI.render("bounties"); }
+/* an accepted mark hiding on the very world you're standing on */
+function activeContractHere(){ const sid=state.sysId??0, slot=state.atSlot;
+  return (state.contracts||[]).find(c=>c.sysId===sid && c.slot===slot); }
 /* the dockmaster who runs this planet's shipyard — a Shipwright, met once per planet */
 function talkToYarder(){
   state.yarders = state.yarders||{};
