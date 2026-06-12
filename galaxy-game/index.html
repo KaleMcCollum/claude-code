@@ -3728,15 +3728,17 @@ function finishArrival(){
    crossing paths with other ships, from a lone freighter to a whole armada (the seed for
    future ship-to-ship combat). */
 const VOID_FLEETS=[
-  { id:"derelict",  name:"Derelict Hulk",    weight:6,   ships:[1,1],   threat:0, salvage:[40,320], blurb:"a dead, drifting wreck — long abandoned" },
-  { id:"cargo",     name:"Cargo Freighter",  weight:15,  ships:[1,1],   threat:0, blurb:"a lone freighter hauling goods between the stars" },
-  { id:"transport", name:"Transport Convoy", weight:12,  ships:[2,4],   threat:0, blurb:"a transport convoy ferrying colonists out to the rim" },
-  { id:"trader",    name:"Free Trader",      weight:10,  ships:[1,2],   threat:0, blurb:"a free trader flashing a friendly beacon" },
-  { id:"patrol",    name:"Patrol Squadron",  weight:7,   ships:[2,4],   threat:1, blurb:"a patrol squadron sweeping the lanes" },
-  { id:"mercs",     name:"Mercenary Wing",   weight:5,   ships:[2,5],   threat:1, blurb:"a mercenary wing — for hire, or for hunting" },
-  { id:"pirates",   name:"Pirate Raiders",   weight:5,   ships:[2,6],   threat:2, blurb:"pirate raiders sizing up your hull" },
-  { id:"warfleet",  name:"War Fleet",        weight:2,   ships:[8,18],  threat:3, blurb:"a war fleet under banners you don't recognize" },
-  { id:"armada",    name:"Grand Armada",     weight:0.5, ships:[30,90], threat:4, blurb:"a vast armada — an entire army adrift between worlds" },
+  // most traffic is peaceful: lone civilians & cargo dominate, armed groups are the exception,
+  // and a true war-fleet/armada is a rare event you'll remember
+  { id:"derelict",  name:"Derelict Hulk",    weight:6,    ships:[1,1],   threat:0, salvage:[40,320], blurb:"a dead, drifting wreck — long abandoned" },
+  { id:"cargo",     name:"Cargo Freighter",  weight:26,   ships:[1,2],   threat:0, blurb:"a lone freighter hauling goods between the stars" },
+  { id:"transport", name:"Transport Convoy", weight:16,   ships:[2,4],   threat:0, blurb:"a transport convoy ferrying colonists out to the rim" },
+  { id:"trader",    name:"Free Trader",      weight:14,   ships:[1,2],   threat:0, blurb:"a free trader flashing a friendly beacon" },
+  { id:"patrol",    name:"Patrol Squadron",  weight:6,    ships:[2,4],   threat:1, blurb:"a patrol squadron sweeping the lanes" },
+  { id:"mercs",     name:"Mercenary Wing",   weight:4,    ships:[2,5],   threat:1, blurb:"a mercenary wing — for hire, or for hunting" },
+  { id:"pirates",   name:"Pirate Raiders",   weight:3.5,  ships:[2,6],   threat:2, blurb:"pirate raiders sizing up your hull" },
+  { id:"warfleet",  name:"War Fleet",        weight:1.2,  ships:[8,18],  threat:3, blurb:"a war fleet under banners you don't recognize" },
+  { id:"armada",    name:"Grand Armada",     weight:0.25, ships:[30,90], threat:4, blurb:"a vast armada — an entire army adrift between worlds" },
 ];
 /* Build an enemy fleet as REAL individual ships (each its own stat-block), drawn from hull classes
    that suit the threat level — a low-threat raid is fighters & gunships, a warlord brings frigates,
@@ -3795,7 +3797,7 @@ function compassBearing(dx,dy){ const dirs=["E","NE","N","NW","W","SW","S","SE"]
   let a=Math.atan2(dy,dx); if(a<0) a+=Math.PI*2; return dirs[Math.round(a/(Math.PI/4))%8]; }
 /* a chance, on each deep-space hop, to run into other ships */
 function voidEncounter(){
-  if(!chance(0.5)) return false;
+  if(!chance(0.4)) return false;
   const f=weightedPick(VOID_FLEETS), n=rnd(f.ships[0], f.ships[1]);
   voidMeet={ id:f.id, name:f.name, ships:n, threat:f.threat, salvage:f.salvage,
     faction:genName("system"), blurb:f.blurb, resolved:false, msg:"" };
@@ -3869,11 +3871,11 @@ function pickPlayerTarget(live){
   const tot=w.reduce((s,x)=>s+x.w,0); let r=Math.random()*tot;
   for(const x of w){ if((r-=x.w)<0) return x.v; } return live[0];
 }
-/* one enemy volley: every living enemy ship fires at one of yours (mult<1 for a glancing parting shot) */
-function enemyVolley(c, mult){
+/* one enemy volley: each ship in `shooters` fires at one of yours (mult<1 for a glancing shot) */
+function enemyVolley(c, shooters, mult){
   const live=()=>c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0);
   let total=0; const downed=[];
-  for(const e of c.enemy){ if(e.hp<=0) continue;
+  for(const e of shooters){            // caller decides who fires (the start-of-round roster)
     const L=live(); if(!L.length) break;
     const tgt=pickPlayerTarget(L), dealt=applyHit(tgt, Math.round(e.attack*(mult||1)), shipEvasion(tgt));
     if(dealt>0) total+=dealt;
@@ -3901,8 +3903,11 @@ function startShipBattle(){
 function shipFire(){
   const c=shipCombat; if(!c||c.over) return;
   c.round++; c.log=[];
-  // ---- your salvo: concentrate on the focus target (or finish the weakest), overflowing as ships die
+  // both sides fire SIMULTANEOUSLY — snapshot who's alive at the top of the round so a ship downed
+  // by your salvo still gets its shot off this turn (and vice-versa)
   const shooters=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0);
+  const enemyShooters=c.enemy.filter(e=>e.hp>0).slice();
+  // ---- your salvo: concentrate on the focus target (or finish the weakest), overflowing as ships die
   const pickEnemy=()=>{ if(c.target!=null && c.enemy[c.target] && c.enemy[c.target].hp>0) return c.enemy[c.target];
     const L=c.enemy.filter(e=>e.hp>0); return L.length?L.reduce((a,b)=>a.hp<=b.hp?a:b):null; };
   let total=0, dodged=0; const kills=[];
@@ -3911,19 +3916,20 @@ function shipFire(){
     if(dealt<0) dodged++; else { total+=dealt; if(tgt.hp<=0) kills.push(tgt.name); } }
   c.log.push(`Your salvo deals ${commas(total)}${dodged?` (${dodged} shot${dodged>1?"s":""} evaded)`:""}.`);
   kills.forEach(nm=>c.log.push(`Enemy ${nm} destroyed!`));
-  if(c.enemy.every(e=>e.hp<=0)) return winShipBattle();
-  // ---- enemy salvo, then both sides regenerate shields
-  enemyVolley(c, 1);
+  // ---- enemy's return fire (from the start-of-round roster), then both sides regen shields
+  enemyVolley(c, enemyShooters, 1);
   c.enemy.forEach(e=>{ if(e.hp>0 && e.maxShield) e.shield=Math.min(e.maxShield, e.shield+Math.round(e.maxShield*0.15)); });
   shooters.forEach(v=>{ const ms=shipMaxShield(v); if(v.hp>0 && ms) v.shield=Math.min(ms,(v.shield||0)+Math.round(ms*0.15)); });
+  // resolve — if you're wiped you lose even in a mutual kill; otherwise a cleared enemy is a win
   if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
+  if(c.enemy.every(e=>e.hp<=0)) return winShipBattle();
   Game.save(); UI.render("shipbattle");
 }
 /* retreat: the enemy gets exactly one parting volley, then you jump clear */
 function shipRetreat(){
   const c=shipCombat; if(!c||c.over) return;
   c.log=["You break off — the enemy looses one parting volley as you run."];
-  enemyVolley(c, 1);
+  enemyVolley(c, c.enemy.filter(e=>e.hp>0), 1);
   if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
   c.over=true; c.win=false; c.fled=true; c.msg=`You disengage and jump clear of the ${c.name}.`;
   Game.save(); UI.render("shipbattle");
