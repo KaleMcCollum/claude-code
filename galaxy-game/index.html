@@ -520,11 +520,23 @@ function isInhabited(w){ return !!(w && w.occupied!==false && settleDef(w.settle
 function settleAmen(w){ return isInhabited(w) ? settleDef(w.settle).amen : []; }
 function settleHasShipyard(w){ return settleAmen(w).includes("shipyard"); }
 /* choose a settlement for a freshly-charted inhabited world (gated by its tech/wealth) */
+const PRODUCER_SETTLES=["agri","mining","industrial","capital"];   // worlds that make goods to export
+const BUYER_SETTLES=["frontier","mining","trade","scrap"];          // worlds that import/resell them
 function pickSettlement(world, sysId){
   let pool=SETTLEMENTS.filter(s=> s.weight>0
     && (s.minTech==null||world.tech>=s.minTech) && (s.minWealth==null||world.wealth>=s.minWealth));
   if(!pool.length) pool=SETTLEMENTS.filter(s=>s.id==="frontier");
-  return weightedPick(pool).id;
+  // give every system a varied economy: don't clone a niche that's already here, make sure the
+  // system PRODUCES something, and give it somewhere to sell it — so an in-system trade always exists
+  const sys=state.galaxy && state.galaxy.systems[sysId];
+  const present=(sys&&sys.planets) ? sys.planets.filter(p=>p&&p.world&&isInhabited(p.world)).map(p=>p.world.settle) : [];
+  const hasProducer=present.some(t=>PRODUCER_SETTLES.includes(t));
+  const adj=pool.map(s=>{ let w=s.weight;
+    if(present.includes(s.id)) w*=0.18;                                           // avoid a duplicate niche
+    if(!hasProducer && PRODUCER_SETTLES.includes(s.id)) w*=4;                      // the system must grow something
+    else if(hasProducer && BUYER_SETTLES.includes(s.id) && !present.includes(s.id)) w*=2;  // ...and have a buyer for it
+    return { id:s.id, weight:Math.max(0.01,w) }; });
+  return (weightedPick(adj)||pool[0]).id;
 }
 /* the local who greets you at the dock — a shipwright where there's a yard, else a fitting local */
 const GREETER_CIV={ agri:"farmer", mining:"miner", frontier:"laborer" };
@@ -1143,10 +1155,16 @@ const demands =(w,c)=>!!(w&&c.demand.includes(w.settle));
 const STAPLE_IDS=["fuel","grain","ore"];
 const isStaple=c=>STAPLE_IDS.includes(c.id);
 const isBasicDepot=w=>w&&(w.settle==="frontier"||w.settle==="colony");
+/* a stable ±14% local-economy swing unique to each world+good (so two planets never price alike,
+   and even similar worlds throw up the odd profitable run) */
+function worldEcon(w,c){ let h=2166136261; const s=(w.name||"?")+":"+c.id;
+  for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); }
+  return 0.86 + ((h>>>0)%280)/1000; }
 /* one local price per world (produce = cheap, demand = dear); buy at it, sell a touch under */
 function commodityFactor(w,c){
-  let f = produces(w,c) ? 0.6 : demands(w,c) ? 1.65 : 1.05;
+  let f = produces(w,c) ? 0.55 : demands(w,c) ? 1.75 : 1.05;   // a touch wider spread — planets are distinct
   f *= (1 + (w.wealth-4.5)*0.03);                 // wealthier worlds run pricier
+  f *= worldEcon(w,c);                            // each world's own supply/demand quirk
   return f;
 }
 function commodityBuy(w,c){ return Math.max(1, Math.round(c.base*commodityFactor(w,c))); }
