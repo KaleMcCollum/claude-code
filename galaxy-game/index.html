@@ -1110,6 +1110,23 @@ function genMarketStock(w){
   const take=clamp(Math.round(gear.length*(0.4+w.wealth*0.06)), Math.min(3,gear.length), gear.length);
   return staples.concat(gear.slice(0,take));
 }
+/* a rare under-the-counter find at an Outfitter: usually nothing, occasionally a Rare piece, and
+   only the wealthiest/highest-tech worlds ever turn up an Epic — Legendary almost never. Priced at a
+   steep premium, because you can't buy this calibre anywhere else. */
+function genMarketGear(w){
+  const richness=(w.tech||0)+(w.wealth||0);                 // 0..18
+  if(!chance(0.08 + richness*0.012)) return [];
+  const ceil = richness>=16?4 : richness>=12?3 : 2;          // rare .. (rich) epic .. (richest) legendary
+  const lean={ rare:40, epic:8, legendary:1 };
+  const wts={}; for(let i=2;i<=ceil;i++){ const id=ITEM_RARITY[i].id; if(lean[id]) wts[id]=lean[id]; }
+  const g=genGear(weightedKey(wts)); g.price=Math.round(g.value*1.9*(1+(w.wealth||4)*0.03));
+  return [g];
+}
+function buyMarketGear(uid){ const list=Game.marketGear(); const g=list.find(x=>x.uid===uid); if(!g) return;
+  if(state.credits<g.price){ toast("Not enough credits"); return; }
+  state.credits-=g.price; state.gear=state.gear||[]; delete g.price; state.gear.push(g);
+  const key=(state.sysId??0)+":"+state.atSlot; state.marketGearByLoc[key]=list.filter(x=>x.uid!==uid);
+  Game.logMsg(`You buy a rare find: <b style="color:${rarityColor(g.rarity)}">${g.name}</b>.`,"good"); toast("Bought "+g.name); Game.save(); UI.render("market"); }
 
 /* Planetary-system size: how many worlds orbit your home star. Avg ~5, rarely alone,
    rarely crowded. Rolled the first time you leave your planet. */
@@ -1769,6 +1786,12 @@ const Game = {
     const key=(state.sysId??0)+":"+state.atSlot;
     if(!state.marketStock[key]) state.marketStock[key]=genMarketStock(state.world);
     return state.marketStock[key]; },
+  // an Outfitter occasionally has a rare find under the counter — wealthy/high-tech worlds more so,
+  // but it's never the path to the best gear (that comes from kills). Stable per world per year.
+  marketGear(){ state.marketGearByLoc=state.marketGearByLoc||{};
+    const key=(state.sysId??0)+":"+state.atSlot;
+    if(!(key in state.marketGearByLoc)) state.marketGearByLoc[key]=genMarketGear(state.world);
+    return state.marketGearByLoc[key]; },
 
   gainXp(n){ n=Math.round(n*Game.tempEff("xpMult",1)); state.xp+=n; let lv=false;
     // your GENETICS set how fast you grow — a gifted genome gains more HP, stamina and stats per level
@@ -3545,6 +3568,14 @@ const UI = {
           <span><b>${it.name}</b>${it.slot?` <span class="tag">${it.slot}</span>`:""}${owned?` <span class="dim small">&middot; owned ${owned}</span>`:""}<br><span class="small dim">${it.blurb}</span></span>
           <button data-buy="${id}" ${state.credits<p?"disabled":""}>${p}c</button></div>`; }).join("")}
     </div>
+    ${(()=>{ const finds=Game.marketGear(); if(!finds.length) return "";
+      return `<div class="card sheet"><h3>&#10022; Under the counter <span class="dim small">&middot; a rare find</span></h3>
+        ${finds.map(g=>{ const col=rarityColor(g.rarity); return `<div class="shipcard" style="border-color:${col}66">
+          <div class="top"><span class="nm" style="color:${col}">${g.name}</span><span class="tag" style="color:${col}">${rarityName(g.rarity)}</span></div>
+          <div class="sub">${cap(g.slot)} &middot; ${g.blurb}</div>
+          <div class="row" style="margin-top:6px"><button class="small" data-buygear="${g.uid}" ${state.credits<g.price?"disabled":""}>Buy &middot; ${commas(g.price)}c</button></div>
+        </div>`; }).join("")}
+        <p class="small dim" style="margin-top:4px">The smith won't say where it came from. Real power, though, is taken from the dead — not bought.</p></div>`; })()}
     ${(()=>{ const sell=Object.keys(state.inv).filter(id=>!Object.values(state.equipped).includes(id));
       if(!sell.length) return "";
       return `<div class="card"><h3>Sell your haul</h3>
@@ -3864,6 +3895,7 @@ const UI = {
     }
     if(screen==="market"){
       app.querySelectorAll("[data-buy]").forEach(b=> b.onclick=()=>buyItem(b.dataset.buy));
+      app.querySelectorAll("[data-buygear]").forEach(b=> b.onclick=()=>buyMarketGear(b.dataset.buygear));
       app.querySelectorAll("[data-sell]").forEach(b=> b.onclick=()=>sellItem(b.dataset.sell));
       $("#leaveMarket").onclick=()=>UI.render("hub");
     }
