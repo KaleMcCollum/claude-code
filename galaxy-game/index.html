@@ -2456,21 +2456,31 @@ const UI = {
   screen_voidmeet(){
     const m=voidMeet; if(!m) return this.screen_hub();
     const danger=m.threat>=3?'red':m.threat>=1?'gold':'green';
+    const gov=m.govId?govById(m.govId):null, hostile=m.dispo==="hostile";
+    const dispoLine={
+      hostile:`<p class="small red">&#9888; They're powering weapons and moving to intercept — this is going to come to a fight.</p>`,
+      wary:`<p class="small gold">They hold position, weapons hot, watching your every move.</p>`,
+      friendly:`<p class="small green">&#9786; They hail you as a friend and dip their wings in greeting.</p>`,
+      neutral:"", none:"" }[m.dispo]||"";
     return `
     ${this.statHeader()}
     <div class="card">
-      <div class="row between"><h2 class="${danger}">${m.name}</h2><span class="tag">${m.ships} ship${m.ships>1?"s":""}</span></div>
-      <p class="small dim">You drop out of hyperspace and find ${m.blurb} — flying the colors of <b class="violet">${m.faction}</b>.</p>
-      ${m.threat>=3?`<p class="small red">A force this size could swat you without slowing down.</p>`:m.threat>=1?`<p class="small gold">They look like they can handle themselves.</p>`:""}
+      <div class="row between"><h2 class="${hostile?'red':danger}">${m.name}</h2><span class="tag">${m.ships} ship${m.ships>1?"s":""}</span></div>
+      <p class="small dim">You drop out of hyperspace and find ${m.blurb} — flying the colors of <b style="color:${m.factionColor||'#b59cff'}">${m.faction}</b>.</p>
+      ${gov?`<p class="small dim">This is <b style="color:${gov.color}">${gov.name}</b> space &middot; they regard you as <b class="${({friendly:'green',hostile:'red',wary:'gold'})[govStance(gov)]||'dim'}">${govStance(gov)}</b>.</p>`:`<p class="small dim">Lawless, unclaimed space — no power holds sway here.</p>`}
+      ${dispoLine}
+      ${m.threat>=3&&!hostile?`<p class="small red">A force this size could swat you without slowing down.</p>`:""}
     </div>
     ${m.resolved?`<div class="card"><p class="small">${m.msg}</p>
       <button class="primary full center" id="voidGo">Hyperdrive on</button></div>`
     :`<div class="card"><div class="grid">
       ${m.id==="derelict"?`<button id="voidSalvage" class="primary">&#9874; Salvage</button>`
+        :hostile?`<button id="voidAttack" class="primary">&#9876; Engage</button>
+      <button id="voidContact" class="ghost">&#128483; Hail</button>`
         :`<button id="voidContact" class="primary">&#128483; Contact</button>
       <button id="voidAttack" class="ghost">&#9876; Attack</button>`}
-      <button id="voidEvade" class="ghost">&#127756; Evade</button>
-      </div>${m.id==="derelict"?"":`<p class="small dim" style="margin-top:6px">Contact them to meet who commands this ${m.ships>1?"fleet":"ship"} — name them and record their kind.</p>`}</div>`}
+      <button id="voidEvade" class="ghost">&#127756; ${hostile?'Run':'Evade'}</button>
+      </div>${m.id==="derelict"?"":`<p class="small dim" style="margin-top:6px">${hostile?'They will not let you pass easily — running may fail.':`Contact them to meet who commands this ${m.ships>1?"fleet":"ship"} — name them and record their kind.`}</p>`}</div>`}
     ${this.logCard()}`;
   },
   /* ---------- GALAXY MAP (zoomable, fog-of-war) ---------- */
@@ -3923,9 +3933,27 @@ function compassBearing(dx,dy){ const dirs=["E","NE","N","NW","W","SW","S","SE"]
 function voidEncounter(){
   if(!chance(0.4)) return false;
   const f=weightedPick(VOID_FLEETS), n=rnd(f.ships[0], f.ships[1]);
+  const pos=playerXY()||{x:0,y:0};
+  const gov=govById(govAt(pos.x,pos.y,(state.galaxy&&state.galaxy.governments)||[]));
   voidMeet={ id:f.id, name:f.name, ships:n, threat:f.threat, salvage:f.salvage,
-    faction:genName("system"), blurb:f.blurb, resolved:false, msg:"" };
+    govId:gov?gov.id:null, faction:gov?gov.name:"unaligned spacers", factionColor:gov?gov.color:"#9aa3b2",
+    dispo:encounterDispo(f, gov), blurb:f.blurb, resolved:false, msg:"" };
   UI.render("voidmeet"); return true;
+}
+/* how a deep-space encounter regards you — set from the LOCAL controlling power's stance plus the
+   kind of ship: civilians never open fire, pirates prey regardless of politics, and government
+   forces in space hostile to you will move to engage. */
+function encounterDispo(f, gov){
+  if(f.id==="derelict") return "none";
+  const stance = gov ? govStance(gov) : "neutral";
+  if(f.id==="pirates") return chance(0.8)?"hostile":"wary";              // raiders are raiders
+  if(f.threat===0) return stance==="hostile"?"wary": stance==="friendly"?"friendly":"neutral";  // civilians won't fight
+  if(f.id==="mercs") return stance==="hostile"&&chance(0.5)?"hostile":"neutral";
+  // patrols, war-fleets & armadas are the local power's muscle — they mirror its stance toward you
+  if(stance==="hostile") return "hostile";
+  if(stance==="friendly") return "friendly";
+  if(stance==="wary") return chance(0.4)?"hostile":"wary";
+  return "neutral";
 }
 function voidSalvage(){
   const m=voidMeet; if(!m||m.resolved) return;
@@ -3956,7 +3984,9 @@ function voidContact(){
 function voidEvade(){
   const m=voidMeet; if(!m) return;
   let p=clamp(0.55+Game.effStat("agility")*0.01+Game.gearMod("flee")-m.threat*0.08, 0.1, 0.95);
+  if(m.dispo==="hostile") p=clamp(p-0.25, 0.05, 0.85);   // a hostile force is hard to shake
   if(chance(p)){ m.resolved=true; m.msg=`You slip back into hyperspace before they can close.`; }
+  else if(m.dispo==="hostile"){ Game.logMsg(`The ${m.name} run you down — there's no shaking them.`,"bad"); return startShipBattle(); }
   else if(m.threat>=2){ const lost=Math.round(state.credits*0.15); state.credits-=lost;
     state.hp=Math.max(1,state.hp-Math.round(Game.effMaxHp()*0.15));
     m.resolved=true; m.msg=`They rake your hull as you run — ${commas(lost)}c and some blood lost, but you escape.`; }
