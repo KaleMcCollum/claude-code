@@ -632,13 +632,16 @@ const isLaborCareer=c=>LABOR_CAREERS.includes(c);
    sharpen with battle later. A Gunner starts strong at gunnery; a Pilot at piloting (and runs the
    pilot-mounts, so they carry some gunnery too). */
 function rollCrewSkills(career, p){
-  const A=p&&p.attrs||{}, val=k=>(A[k]&&A[k].value)||8;
-  const ag=val("agility"), intel=val("intellect"), per=p&&p.bio&&p.bio.perception?p.bio.perception.value:8;
-  const gunBase=career==="gunner"?5: (career==="pilot"||career==="mercenary")?3:1;
-  const pilBase=career==="pilot"?5:1;
-  const gunnery=clamp(Math.round(gunBase+(ag-10)*0.2+(per-10)*0.15+rnd(0,2)),0,10);
-  const piloting=clamp(Math.round(pilBase+(ag-10)*0.2+(intel-10)*0.15+rnd(0,2)),0,10);
-  return { gunnery, piloting };
+  const A=p&&p.attrs||{}, val=k=>(A[k]&&A[k].value)||10;
+  const ag=val("agility"), intel=val("intellect"), per=p&&p.bio&&p.bio.perception?p.bio.perception.value:10;
+  // skewed HIGH around ~7: most are good, the odd one excellent, and any who fall short fall only a
+  // little (downside compressed, floor 4). Only gunners & pilots carry these — no one else needs them.
+  const skew=(center, nudge)=>{ let g=gauss(); if(g<0) g*=0.4; return clamp(Math.round(center+g*1.6+nudge), 4, 10); };
+  const skills={};
+  if(career==="gunner") skills.gunnery=skew(7, (ag-10)*0.12+(per-10)*0.1);
+  if(career==="pilot"){ skills.piloting=skew(7, (ag-10)*0.12+(intel-10)*0.1);
+    skills.gunnery=skew(6, (ag-10)*0.1); }   // pilots run the pilot-mounts too, a touch under a dedicated gunner
+  return skills;                              // mechanics / laborers / medics etc. have neither
 }
 const crewSkill=(c,which)=>(c&&c.skills&&c.skills[which]!=null)?c.skills[which]:0;
 const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
@@ -964,10 +967,13 @@ function shipEvasion(v){
   else { const p=(state.crew||[]).find(c=>c.shipId===v.id&&c.career==="pilot"); pil=p?crewSkill(p,"piloting"):0; }
   return clamp(0.08 + pil/10*0.45, 0, 0.55);
 }
-/* Shields: corvette-and-up hulls carry a regenerating shield layer (the big-ship answer to not
-   being able to dodge). Soaks damage before armor+hull; regenerates a slice each round. */
-function shipCanShield(v){ const s=(shipClass(v.cls)||{}).size||0; return s>=6 || shipCat(v)==="warship"; }
-function shipMaxShield(v){ return shipCanShield(v)?Math.round((v.maxHp||0)*0.3):0; }
+/* Shields: NOT standard — a regenerating layer you install and upgrade (up to Tier 3) on gunships
+   and warships, the big-ship answer to not being able to dodge. Soaks damage before the hull and
+   regenerates a slice each round. Fighters & freighters can't mount one. */
+const SHIELD=[ {name:"None",mult:0}, {name:"Deflector Screen",mult:0.15}, {name:"Aegis Field",mult:0.25}, {name:"Bastion Barrier",mult:0.38} ];
+const SHIELD_MAX_TIER=3;
+function shipCanShield(v){ return ["gunship","warship"].includes(shipCat(v)); }
+function shipMaxShield(v){ return shipCanShield(v) ? Math.round((v.maxHp||0)*SHIELD[v.shieldTier||0].mult) : 0; }
 /* Rarer hulls only turn up at higher-tech worlds (and are still rare even there). */
 function rollShipTier(tech){
   const maxIdx=clamp(Math.floor(tech*0.9), 0, RARITY.tiers.length-1);
@@ -1002,11 +1008,15 @@ function shipOfferFrom(c, tierId, priceFactor){
   const m=SHIP_RARITY_MULT[RARITY.index(tierId)], vf=rndF(0.9,1.12);
   const power={}; Object.keys(c.power).forEach(a=>power[a]=Math.round(c.power[a]*m));
   const cs=shipStatsFor(c, tierId);
-  const price=Math.round((c.price + cs.armor*c.price*0.25 + cs.hyper*c.price*0.2 + cs.slotSizes.reduce((s,z)=>s+z*c.price*0.06,0))*m*(priceFactor||1)*rndF(0.95,1.08));
+  // a rarer gunship/warship hull sometimes ships with a shield already fitted
+  let shieldTier=0;
+  if(["gunship","warship"].includes(c.cat)){ const ti=RARITY.index(tierId);
+    if(ti>=2 && chance(0.18+ti*0.1)) shieldTier=clamp(Math.round(ti/2),1,SHIELD_MAX_TIER); }
+  const price=Math.round((c.price + cs.armor*c.price*0.25 + cs.hyper*c.price*0.2 + cs.slotSizes.reduce((s,z)=>s+z*c.price*0.06,0) + shieldTier*c.price*0.18)*m*(priceFactor||1)*rndF(0.95,1.08));
   return { cls:c.id, name:c.name, role:c.role, cat:c.cat, size:c.size, tier:tierId, range:c.range,
     cargo:Math.round(c.cargo*m*vf), crew:Math.max(c.crew, Math.round(c.crew*m)), bays:Math.round(c.bays*m),
     reqPilots:c.reqPilots, reqMech:c.reqMech, reqGun:c.reqGun, reqLabor:c.reqLabor||0,
-    maxHp:cs.maxHp, armor:cs.armor, hyper:cs.hyper, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns, slotSizes:cs.slotSizes,
+    maxHp:cs.maxHp, armor:cs.armor, hyper:cs.hyper, shieldTier, pilotGuns:cs.pilotGuns, gunnerGuns:cs.gunnerGuns, slotSizes:cs.slotSizes,
     power, price };
 }
 /* Some people you meet own a personal ship — ordinary civilians, pilots, mechanics, traders.
@@ -1033,7 +1043,7 @@ function vehicleFromOffer(o){
   return { kind:"vehicle", id:newVid(), name:o.name, tier:o.tier||"common", cls:o.cls, clsName:o.name, role:o.role,
     range:o.range, axes:Object.keys(o.power), power:{...o.power}, hold:o.cargo, crewMax:o.crew,
     bays:o.bays, reqPilots:o.reqPilots, reqMech:o.reqMech, reqGun:o.reqGun, reqLabor:o.reqLabor||0, value:o.price, cargo:{}, slot:state.atSlot, sysId:state.sysId,
-    maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, hyper:o.hyper||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
+    maxHp:o.maxHp, hp:o.maxHp, armor:o.armor||0, hyper:o.hyper||0, shieldTier:o.shieldTier||0, pilotGuns:o.pilotGuns||0, gunnerGuns:o.gunnerGuns||0,
     slotSizes:(o.slotSizes||[]).slice(), guns:new Array((o.pilotGuns||0)+(o.gunnerGuns||0)).fill(null) };
 }
 /* ---- Carriers: ships with bays stow fighter-class craft, which then ride along inside ---- */
@@ -1474,6 +1484,7 @@ const Game = {
     // backfill ship combat stats (HP, armor, weapon hardpoints) for pre-combat saves
     (state.vehicles||[]).forEach(v=>{ const c=shipClass(v.cls);
       if(v.reqLabor==null) v.reqLabor=c?(c.reqLabor||0):0;
+      if(v.shieldTier==null) v.shieldTier=0;
       if(v.pilotGuns==null){ v.pilotGuns=c?c.pilotGuns:0; v.gunnerGuns=c?c.gunnerGuns:0; }
       if(!v.guns) v.guns=new Array((v.pilotGuns||0)+(v.gunnerGuns||0)).fill(null);
       if(v.armor==null) v.armor=0;
@@ -2265,6 +2276,13 @@ const UI = {
         <p class="small dim">Fit a hyperdrive to this fighter, making it an <b class="gold">Advanced Starfighter</b> that can jump between systems &mdash; <b class="gold">~${advLy.toFixed(1)} ly</b> to start, then upgradable like any interstellar drive.</p>
         ${w.tech>=6?`<button class="full center" id="ofAdvance" ${state.credits<advCost?"disabled":""}>Fit hyperdrive &middot; ${commas(advCost)}c</button>`
           :`<p class="small red">This world's yard isn't advanced enough &mdash; a hyperdrive needs a Tech 6+ world.</p>`}</div>`; })():""}
+    ${shipCanShield(v)?(()=>{ const cur=v.shieldTier||0, next=cur<SHIELD_MAX_TIER?cur+1:null,
+        shCost=next!=null?Math.round((v.maxHp||500)*0.55*next*(1+w.wealth*0.04)):0;
+      return `<div class="card"><h3>&#128737; Shield generator <span class="dim small">&middot; ${cur?`Tier ${cur}/3`:"none fitted"}</span></h3>
+        <p class="small dim">${cur?`A <b>${SHIELD[cur].name}</b> absorbs <b class="gold">${commas(shipMaxShield(v))}</b> damage before your hull, and recharges in a fight.`:"No shield fitted. A shield soaks fire before it reaches your hull — the big-ship answer to not being able to dodge."}</p>
+        ${next!=null?(w.tech>=6?`<button class="full center" id="ofShield" ${state.credits<shCost?"disabled":""}>${cur?`Upgrade to ${SHIELD[next].name} (Tier ${next})`:`Install ${SHIELD[next].name}`} &middot; ${commas(shCost)}c</button>`
+          :`<p class="small red">Shields need a Tech 6+ world to fit.</p>`)
+          :`<p class="small green">Already the top-tier Bastion Barrier.</p>`}</div>`; })():""}
     <div class="card"><h3>Hull plating <span class="dim small">&middot; Tier ${(v.armor||0)+1}/5</span></h3>
       ${nextArmor!=null?`<p class="small dim">Upgrade to <b>${ARMOR[nextArmor].name}</b> (Tier ${nextArmor+1}) &mdash; +${armorPct(nextArmor)}% base hull.</p>
         <button class="full center" id="ofArmor" ${state.credits<armorCost?"disabled":""}>Refit plating &middot; ${commas(armorCost)}c</button>`
@@ -3298,6 +3316,7 @@ const UI = {
       const ar=$("#ofArmor"); if(ar) ar.onclick=()=>upgradeArmor(outfitShip);
       const hy=$("#ofHyper"); if(hy) hy.onclick=()=>upgradeHyper(outfitShip);
       const ad=$("#ofAdvance"); if(ad) ad.onclick=()=>fitFighterHyperdrive(outfitShip);
+      const osh=$("#ofShield"); if(osh) osh.onclick=()=>installShield(outfitShip);
       app.querySelectorAll("[data-unmount]").forEach(b=> b.onclick=()=>unmountWeapon(outfitShip, +b.dataset.unmount));
       app.querySelectorAll("[data-mountslot]").forEach(b=> b.onclick=()=>{ mountPick=+b.dataset.mountslot; UI.render("outfit"); });
       app.querySelectorAll("[data-buygun]").forEach(b=> b.onclick=()=>{ mountWeapon(outfitShip, mountPick, b.dataset.buygun); mountPick=null; });
@@ -3740,8 +3759,10 @@ function genEnemyFleet(threat, n){
     const skillMult=1+clamp(t*1.6/10,0,1)*0.3;                 // tougher fleets crew their guns better
     const attack=Math.round(guns*ENEMY_PERMOUNT[t]*skillMult*rndF(0.85,1.15));
     const fighter=cls.cat==="fighter";
-    const maxShield=(((cls.size||0)>=6)||cls.cat==="warship")?Math.round(maxHp*0.3):0;
-    ships.push({ name:cls.name, cls:cls.id, cat:cls.cat, maxHp, hp:maxHp, maxShield, shield:maxShield,
+    const canSh=["gunship","warship"].includes(cls.cat);
+    const shieldTier=canSh?clamp(Math.round(t/1.5),0,SHIELD_MAX_TIER):0;   // tougher fleets fit better shields
+    const maxShield=Math.round(maxHp*SHIELD[shieldTier].mult);
+    ships.push({ name:cls.name, cls:cls.id, cat:cls.cat, maxHp, hp:maxHp, shieldTier, maxShield, shield:maxShield,
       attack, evasion: fighter?clamp(0.1+t*0.06,0,0.5):0 });
   }
   return ships;
@@ -4086,6 +4107,18 @@ function fitFighterHyperdrive(id){ const v=(state.vehicles||[]).find(x=>x.id===i
   v.advFighter=true; v.value=(v.value||0)+Math.round(cost*0.6);
   Game.logMsg(`You fit a hyperdrive — the ${v.name} becomes an Advanced Starfighter, reaching ${jumpRange(v).toFixed(1)} ly.`,"good");
   toast("Now an Advanced Starfighter"); Game.save(); UI.render("outfit"); }
+/* install or upgrade a ship's shield generator, up to Tier 3 (gunships & warships only) */
+function installShield(id){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
+  if(!shipCanShield(v)){ toast("This hull can't mount a shield generator"); return; }
+  const cur=v.shieldTier||0;
+  if(cur>=SHIELD_MAX_TIER){ toast("Already the top-tier shield"); return; }
+  const w=state.world;
+  if(!w || w.tech<6){ toast("This world's yard can't fit shields — find a higher-tech world (Tech 6+)"); return; }
+  const next=cur+1, cost=Math.round((v.maxHp||500)*0.55*next*(1+w.wealth*0.04));
+  if(state.credits<cost){ toast(`That shield costs ${commas(cost)}c`); return; }
+  v.shieldTier=next; v.value=(v.value||0)+Math.round(cost*0.5); state.credits-=cost;
+  Game.logMsg(`You fit a ${SHIELD[next].name} (Tier ${next}) to the ${v.name} — ${commas(shipMaxShield(v))} shield strength.`,"good");
+  toast("Shield installed"); Game.save(); UI.render("outfit"); }
 function shipLocationName(v){
   if(!v||!state.galaxy) return "home";
   const sys=state.galaxy.systems[v.sysId??0]; if(!sys) return "uncharted space";
