@@ -3979,7 +3979,7 @@ const UI = {
     const a=arriving; if(!a) return;
     app.querySelectorAll("[data-rnd]").forEach(b=> b.onclick=()=>{ const inp=$("#"+b.dataset.for); if(inp) inp.value=genName(b.dataset.rnd); });
     if(a.step===1){
-      $("#arrCancel").onclick=()=>{ arriving=null; UI.render("codex"); };
+      $("#arrCancel").onclick=()=>{ arriving=null; UI.render(travelCtx ? "travel" : "hub"); };
       $("#arrStep1").onclick=()=>{ a.world.name=$("#arrWorld").value.trim()||genName("world");
         if(a.occupied){ a.person=Gen.person(a.draw.race); const cr=greeterCareer(a.world);
           a.person.career=cr; delete a.person.bounty; delete a.person.hostile; delete a.person.force;
