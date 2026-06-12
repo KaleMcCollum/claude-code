@@ -627,6 +627,20 @@ const HIRE_ROLES={
 /* careers that can fill a ship's LABOR seats (grunt work in the holds) */
 const LABOR_CAREERS=["drifter","laborer","dockhand","factory"];
 const isLaborCareer=c=>LABOR_CAREERS.includes(c);
+/* Crew combat skills (0-10). Gunnery turns a ship's raw gun power into effective damage; Piloting
+   lets a nimble fighter dodge fire. Rolled from a recruit's genetics + trade when hired, and they
+   sharpen with battle later. A Gunner starts strong at gunnery; a Pilot at piloting (and runs the
+   pilot-mounts, so they carry some gunnery too). */
+function rollCrewSkills(career, p){
+  const A=p&&p.attrs||{}, val=k=>(A[k]&&A[k].value)||8;
+  const ag=val("agility"), intel=val("intellect"), per=p&&p.bio&&p.bio.perception?p.bio.perception.value:8;
+  const gunBase=career==="gunner"?5: (career==="pilot"||career==="mercenary")?3:1;
+  const pilBase=career==="pilot"?5:1;
+  const gunnery=clamp(Math.round(gunBase+(ag-10)*0.2+(per-10)*0.15+rnd(0,2)),0,10);
+  const piloting=clamp(Math.round(pilBase+(ag-10)*0.2+(intel-10)*0.15+rnd(0,2)),0,10);
+  return { gunnery, piloting };
+}
+const crewSkill=(c,which)=>(c&&c.skills&&c.skills[which]!=null)?c.skills[which]:0;
 const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
 /* Jobs you can ASK a person for when you meet them. chance = odds they take you on (rarer
    work is harder to land); pay = the yearly salary you then earn. Hostile careers aren't here
@@ -928,6 +942,32 @@ function shipAttack(v){
   return atk;
 }
 function mountedCount(v){ return (v.guns||[]).filter(Boolean).length; }
+/* ---- ship combat stats: skill-scaled attack, fighter evasion, big-ship shields ---- */
+/* Gunnery multiplier: a crack gun crew turns raw gun power into more effective damage (up to +30%).
+   Pilot-mounts are run by the ship's pilot (you, if you're flying it); heavy mounts by gunners. */
+function shipGunneryMult(v){
+  const skills=[];
+  if((v.pilotGuns||0)>0){ if(v.id===state.activeShip) skills.push(Game.selfGunnery());
+    else { const p=(state.crew||[]).find(c=>c.shipId===v.id&&c.career==="pilot"); if(p) skills.push(crewSkill(p,"gunnery")); } }
+  (state.crew||[]).filter(c=>c.shipId===v.id&&c.career==="gunner").forEach(g=>skills.push(crewSkill(g,"gunnery")));
+  if(!skills.length) return 1;
+  const avg=skills.reduce((s,x)=>s+x,0)/skills.length;
+  return 1 + clamp(avg/10,0,1)*0.3;
+}
+/* a ship's effective attack this battle = raw gun power x its gun crew's gunnery */
+function shipPower(v){ return Math.round(shipAttack(v)*shipGunneryMult(v)); }
+/* Evasion: ONLY nimble fighters dodge, and only as well as their pilot flies. Big hulls never weave. */
+function shipEvasion(v){
+  if(shipCat(v)!=="fighter") return 0;
+  let pil=0;
+  if(v.id===state.activeShip) pil=Game.selfPiloting();
+  else { const p=(state.crew||[]).find(c=>c.shipId===v.id&&c.career==="pilot"); pil=p?crewSkill(p,"piloting"):0; }
+  return clamp(0.08 + pil/10*0.45, 0, 0.55);
+}
+/* Shields: corvette-and-up hulls carry a regenerating shield layer (the big-ship answer to not
+   being able to dodge). Soaks damage before armor+hull; regenerates a slice each round. */
+function shipCanShield(v){ const s=(shipClass(v.cls)||{}).size||0; return s>=6 || shipCat(v)==="warship"; }
+function shipMaxShield(v){ return shipCanShield(v)?Math.round((v.maxHp||0)*0.3):0; }
 /* Rarer hulls only turn up at higher-tech worlds (and are still rare even there). */
 function rollShipTier(tech){
   const maxIdx=clamp(Math.floor(tech*0.9), 0, RARITY.tiers.length-1);
@@ -1408,6 +1448,7 @@ const Game = {
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
     if(state.galaxy && state.galaxy.systems[0]) state.galaxy.systems[0].reported=true;   // you always knew home
     (state.vehicles||[]).forEach(v=>{ if(v.sysId==null) v.sysId=0; if(v.fleetId===undefined) v.fleetId=null; });
+    (state.crew||[]).forEach(c=>{ if(!c.skills){ const p=c.personIdx>=0&&state.codex&&state.codex.people?state.codex.people[c.personIdx]:null; c.skills=rollCrewSkills(c.career||"laborer", p); } });
     if(state.actions==null) state.actions=Math.round((state.daysElapsed||0)/15);   // old day-based saves -> actions
     if(state.lastBillYear==null) state.lastBillYear=Math.floor((state.actions||0)/ACTIONS_PER_YEAR);
     (state.vehicles||[]).forEach(v=>{ if(!v.id) v.id=newVid(); if(!v.cargo) v.cargo={};
@@ -1465,6 +1506,9 @@ const Game = {
   pilots(v){ return Game.aboard(v,"pilot") + (v.id===state.activeShip?1:0); },
   // a ship is operational (flyable) only with enough pilots + mechanics for its class
   laborers(v){ return v?(state.crew||[]).filter(c=>c.shipId===v.id && isLaborCareer(c.career)).length:0; },
+  // your own crew skills as captain — you run the pilot-mounts and fly your own ship
+  selfGunnery(){ return clamp(Math.round(3 + Game.effStat("agility")*0.25), 0, 10); },
+  selfPiloting(){ return clamp(Math.round(3 + Game.effStat("agility")*0.2 + Game.effStat("tech")*0.1), 0, 10); },
   operational(v){ return Game.pilots(v) >= (v.reqPilots??1) && Game.aboard(v,"mechanic") >= (v.reqMech??0) && Game.laborers(v) >= (v.reqLabor??0); },
   canLeave(){ const s=Game.ship(); return !!(s && spaceworthy(s) && atHere(s) && Game.operational(s)); },
   shipsHere(){ return (state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)&&!v.carrier); },
@@ -3674,6 +3718,34 @@ const VOID_FLEETS=[
   { id:"warfleet",  name:"War Fleet",        weight:2,   ships:[8,18],  threat:3, blurb:"a war fleet under banners you don't recognize" },
   { id:"armada",    name:"Grand Armada",     weight:0.5, ships:[30,90], threat:4, blurb:"a vast armada — an entire army adrift between worlds" },
 ];
+/* Build an enemy fleet as REAL individual ships (each its own stat-block), drawn from hull classes
+   that suit the threat level — a low-threat raid is fighters & gunships, a warlord brings frigates,
+   destroyers and capitals. Per-mount firepower tracks the player's own weapon tiers. */
+const ENEMY_POOLS={
+  0:["shuttle","clipper","sysfreighter","starfighter"],
+  1:["starfighter","interceptor","gunship","corvette"],
+  2:["interceptor","heavyfighter","gunship","corvette","frigate"],
+  3:["gunship","corvette","frigate","destroyer"],
+  4:["frigate","destroyer","capital"],
+};
+const ENEMY_PERMOUNT=[150,420,950,2100,4200];   // firepower per gun, by threat (mirrors WEAPON tiers)
+function genEnemyFleet(threat, n){
+  const t=clamp(threat,0,4), pool=ENEMY_POOLS[t]||ENEMY_POOLS[1];
+  const tierId=RARITY.tiers[clamp(Math.round(t*1.3),0,RARITY.tiers.length-1)].id;
+  const ships=[];
+  for(let i=0;i<n;i++){
+    const cls=shipClass(pick(pool)); if(!cls) continue;
+    const cs=shipStatsFor(cls, tierId), maxHp=cs.maxHp;
+    const guns=Math.max(1,(cls.pilotGuns||0)+(cls.gunnerGuns||0));
+    const skillMult=1+clamp(t*1.6/10,0,1)*0.3;                 // tougher fleets crew their guns better
+    const attack=Math.round(guns*ENEMY_PERMOUNT[t]*skillMult*rndF(0.85,1.15));
+    const fighter=cls.cat==="fighter";
+    const maxShield=(((cls.size||0)>=6)||cls.cat==="warship")?Math.round(maxHp*0.3):0;
+    ships.push({ name:cls.name, cls:cls.id, cat:cls.cat, maxHp, hp:maxHp, maxShield, shield:maxShield,
+      attack, evasion: fighter?clamp(0.1+t*0.06,0,0.5):0 });
+  }
+  return ships;
+}
 let voidMeet=null;   // transient deep-space ship encounter
 let shipCombat=null; // transient ship-to-ship battle
 /* drop your group out of a system (or further along) into open space at `np` */
@@ -4092,7 +4164,7 @@ function hireCrew(i){
   if(!r){ toast("You can't hire "+careerName(p.career)+"s as crew"); return; }
   if(state.credits<r.fee){ toast("Hiring costs "+r.fee+"c"); return; }
   state.credits-=r.fee; state.crew=state.crew||[];
-  const member={ name:p.name, raceName:p.raceName, career:p.career, personIdx:i, shipId:null, seat:null };
+  const member={ name:p.name, raceName:p.raceName, career:p.career, personIdx:i, shipId:null, seat:null, skills:rollCrewSkills(p.career, p) };
   // pilots auto-take a free spaceworthy ship docked with you; other roles start idle
   let ship=null;
   if(p.career==="pilot"){ ship=(state.vehicles||[]).find(v=>atHere(v) && v.id!==state.activeShip && spaceworthy(v) && !Game.pilotOf(v));
