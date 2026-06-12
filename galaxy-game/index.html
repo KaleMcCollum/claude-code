@@ -2628,7 +2628,7 @@ const UI = {
         </div>
         ${person.askedJob?`<p class="small dim" style="margin-top:6px">${state.job&&state.job.career===person.career?"You took the job.":"They had no work for you."}</p>`:""}
         ${HIRE_ROLES[person.career]&&!isHostile(person)?`<p class="small dim" style="margin-top:6px">${cap(careerName(person.career))}: ${HIRE_ROLES[person.career].role}.</p>`:""}
-        <p class="small dim" style="margin-top:6px">Leaving the conversation records ${person.name.split(" ")[0]} in your Codex.</p>
+        <p class="small dim" style="margin-top:6px">Leaving the conversation records ${(person.name||"this stranger").split(" ")[0]} in your Codex.</p>
       </div>
       ${!isHostile(person)?this.shipDealCard(person):""}
       ${personExpand?`${originCard(person)}${speciesSheet(person)}`:""}`;
@@ -4102,6 +4102,7 @@ function voidContact(){
   const draw=drawRace(), person=Gen.person(draw.race);
   const career=VOID_CAREER[m.id]||"merchant", cc=careerById(career);
   person.career=career;
+  if(!person.name) person.name=genName("person");   // Gen.person leaves name null — name them, or the meet screen crashes
   // their command becomes their "force"; bigger fleets, deeper pockets
   person.force={ ships:m.ships, shipName:"ship", crew:rnd(m.ships*3, Math.max(m.ships*12,6)),
     fleet:m.ships>=4, controls:false };
