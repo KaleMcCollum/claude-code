@@ -2491,10 +2491,12 @@ const UI = {
     const cur=curSys(), pos=playerXY(), core=Math.round(Math.hypot(pos.x,pos.y));
     if(!mapView) this.mapCenterMe();
     const vis=visibleSystems(), charted=vis.filter(s=>s.discovered).length;
+    const hg=systemGov(cur);
     return `${this.statHeader()}
     <div class="card"><div class="row between"><h2>&#128506; Galaxy Map</h2>
       <span class="tag">${core} ly from core</span></div>
       <p class="small dim">You are ${cur?`in <b class="blue">${cur.name}</b>`:`<b class="gold">adrift in deep space</b>`} at <b>(${Math.round(pos.x)}, ${Math.round(pos.y)})</b> &middot; ${charted} system${charted!==1?"s":""} charted, ${vis.length-charted} sensor contact${(vis.length-charted)!==1?"s":""} in range.</p>
+      <p class="small dim">${hg?`Held by <b style="color:${hg.color}">${hg.name}</b> &middot; they regard you as <b class="${({friendly:'green',hostile:'red',wary:'gold'})[govStance(hg)]||'dim'}">${govStance(hg)}</b>.`:`<span class="gold">Unclaimed space</span> — no power holds sway here.`}</p>
       ${this.mapSvg(undefined, adrift()?{originXY:pos}:{})}
       <div class="row" style="margin-top:8px;justify-content:center;gap:6px">
         <button class="small" id="mapZin">&#10133; Zoom in</button>
@@ -2533,8 +2535,18 @@ const UI = {
     // a drift marker when you're between the stars (no system to mark)
     if(opts.originXY){ const ox=sx(opts.originXY.x), oy=sy(opts.originXY.y);
       els+=`<circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="3" fill="#e0b24a"/>`; }
-    // systems (only those you can see), labels only when zoomed in enough
+    // territory of the powers you've learned of (a government becomes known once you chart any
+    // system it holds) — drawn faint and UNDER the stars so the map reads as a political chart
     const showLabels=v.span<=46;
+    const knownGovs=new Set(); (state.galaxy.systems||[]).forEach(s=>{ if(s.discovered && s.govId) knownGovs.add(s.govId); });
+    const hereG=systemGov(curSys()); if(hereG) knownGovs.add(hereG.id);
+    (state.galaxy.governments||[]).forEach(g=>{ if(!knownGovs.has(g.id)) return;
+      const gx=sx(g.center.x), gy=sy(g.center.y), gr=g.radius/v.span*SIZE;
+      if(!inView(gx,gy,gr)) return;
+      els+=`<circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="${gr.toFixed(1)}" fill="${g.color}14" stroke="${g.color}55" stroke-width="1"/>`;
+      if(gr>18) els+=`<text x="${gx.toFixed(1)}" y="${gy.toFixed(1)}" fill="${g.color}" font-size="${clamp(gr/6,7,11).toFixed(0)}" text-anchor="middle" opacity="0.7">${g.name}</text>`;
+    });
+    // systems (only those you can see), labels only when zoomed in enough
     visibleSystems().forEach(s=>{ const px=sx(s.x), py=sy(s.y); if(!inView(px,py,8)) return;
       const here=s.id===originId;
       if(here){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.5" fill="none" stroke="#5aa9ff" stroke-width="1.5"/>
