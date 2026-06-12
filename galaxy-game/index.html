@@ -286,6 +286,14 @@ function centralFactor(x,y){ return clamp(1 - Math.hypot(x,y)/GALAXY.radius, 0, 
    and harsh biomes (molten, frozen, airless) almost never are. (biomeHab defined w/ BIOMES) */
 function occChanceFor(sys, biomeId){ const cf=centralFactor(sys.x,sys.y);
   return clamp((0.15 + 0.8*cf) * Math.pow(biomeHab(biomeId), 0.9), 0.02, 0.97); }
+/* Whether a world ends up settled. Region & habitability set the base, but a world that rolled
+   an advanced, wealthy civilization is almost always inhabited — so you don't find a hyper-
+   advanced world standing empty. (Low-tech worlds stay mostly wild unless the region is busy.) */
+function worldOccChance(sys, world){
+  const base=occChanceFor(sys, world.biome);
+  const civ=clamp((Math.max(0,world.tech-2)+Math.max(0,world.wealth-2))/8, 0, 1);
+  return clamp(base + civ*0.92, 0.02, 0.99);
+}
 
 /* You begin as a YOUNG CHILD — able to do a bit of everything, but far from your
    genetic potential — and grow toward it as the years pass (full power at maturity). */
@@ -521,6 +529,13 @@ function greeterCareer(w){ return settleHasShipyard(w)?"shipwright":(GREETER_CIV
 const TECH_LABELS  = ["Stone-age","Pre-industrial","Industrial","Atomic","Information-age","Spacefaring","Interstellar","Advanced","Hyper-advanced","Transcendent"];
 const WEALTH_LABELS= ["Destitute","Impoverished","Poor","Modest","Comfortable","Prosperous","Wealthy","Opulent","Lavish","Gilded"];
 const DANGER_LABELS= ["","Tranquil","Calm","Mild","Restless","Rough","Dangerous","Hostile","Deadly","Lethal","Hellish"];
+/* Tech & wealth describe a CIVILIZATION, so they only read out on inhabited worlds; a wild,
+   unsettled world shows as Uninhabited rather than claiming some tech level. Each label carries
+   its number (e.g. "Spacefaring 5/9") so the scale is legible at a glance. */
+function techText(w){ return isInhabited(w) ? `${TECH_LABELS[w.tech]} <span class="dim">(${w.tech}/9)</span>` : '<span class="dim">Uninhabited &mdash; no civilization</span>'; }
+function wealthText(w){ return isInhabited(w) ? `${WEALTH_LABELS[w.wealth]} <span class="dim">(${w.wealth}/9)</span>` : '<span class="dim">&mdash;</span>'; }
+function dangerText(w){ return `<span class="${w.danger>=7?'red':w.danger>=4?'gold':'green'}">${DANGER_LABELS[w.danger]} <span class="dim">(${w.danger}/10)</span></span>`; }
+function popText(w){ return isInhabited(w) ? cap(w.popName) : '<span class="dim">Uninhabited &middot; wildlife only</span>'; }
 
 /* Inborn temperament — categorical (not better/worse, just different). Each gives a
    small mechanical flavor. Rolled at birth, fixed for life. */
@@ -2006,9 +2021,9 @@ const UI = {
       <div class="row between"><h2>&#9737; ${w.name}</h2>
         <span class="tag" style="color:${RARITY.byId(w.tier).color}">${RARITY.byId(w.tier).name}</span></div>
       <p class="small dim">${worldDesc(w)}</p>
-      <span class="pill b">${TECH_LABELS[w.tech]}</span>
-      <span class="pill g">${WEALTH_LABELS[w.wealth]}</span>
-      <span class="pill ${w.danger>=7?'':'v'}">${DANGER_LABELS[w.danger]}</span>
+      ${isInhabited(w)?`<span class="pill b">${TECH_LABELS[w.tech]} ${w.tech}/9</span>
+      <span class="pill g">${WEALTH_LABELS[w.wealth]} ${w.wealth}/9</span>`:'<span class="pill">Uninhabited</span>'}
+      <span class="pill ${w.danger>=7?'':'v'}">${DANGER_LABELS[w.danger]} ${w.danger}/10</span>
       <p class="small ${Game.atHome()?'green':'dim'}" style="margin-top:6px">
         ${Game.atHome()?`&#9737; Your kind's ancestral biome — you are at home here (better finds &amp; faster healing).`
           :`Far from the ${cap(BIOMES.find(b=>b.id===state.species.detail.nativeBiome).name)} your kind calls home.`}</p>
@@ -2098,7 +2113,7 @@ const UI = {
     return `
     ${this.statHeader()}
     <div class="card"><h2>&#128230; ${w.name} Depot</h2>
-      <p class="small dim">${isInhabited(w)?settleDef(w.settle).name:""} &middot; ${WEALTH_LABELS[w.wealth]}. Prices follow what this world makes and needs.
+      <p class="small dim">${isInhabited(w)?settleDef(w.settle).name:""} &middot; ${WEALTH_LABELS[w.wealth]} ${w.wealth}/9. Prices follow what this world makes and needs.
       Shared hold: <b>${used}/${cap}</b> slot${cap!==1?"s":""} (${free} free) across ${n} ship${n!==1?"s":""} docked here.</p>
       <p class="small dim">Bulk goods fill more of the hold &mdash; a Ship Chassis takes 10 slots, Grain just 1.</p></div>
     <div class="card">
@@ -2130,7 +2145,7 @@ const UI = {
     return `
     ${this.statHeader()}
     <div class="card"><h2>&#128736; ${w.name} Shipyard</h2>
-      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]} — stock reflects this world's industry, and turns over each year.</p></div>
+      <p class="small dim">${WEALTH_LABELS[w.wealth]} ${w.wealth}/9, ${TECH_LABELS[w.tech]} ${w.tech}/9 — stock reflects this world's industry, and turns over each year.</p></div>
     <div class="card"><h3>Ships for sale <span class="dim small">&middot; ${stock.length}</span></h3>
       ${stock.length?(()=>{ let lastCat=null;
         const ordered=stock.map((o,i)=>({o,i})).sort((a,b)=>{
@@ -2641,10 +2656,10 @@ const UI = {
       ${krow("Biome", cap(w.biomeName))}
       ${krow("Settlement", isInhabited(w)?settleDef(w.settle).name:'<span class="dim">Uninhabited</span>')}
       ${krow("Rarity", `<span style="color:${t.color}">${t.name}</span> &middot; ${RARITY.odds(t)}`)}
-      ${w.tech!=null?krow("Tech level", TECH_LABELS[w.tech]):""}
-      ${w.wealth!=null?krow("Wealth", WEALTH_LABELS[w.wealth]):""}
-      ${w.danger!=null?krow("Danger", `${w.danger}/9`):""}
-      ${w.popName?krow("Population", w.popName):""}
+      ${krow("Technology", techText(w))}
+      ${krow("Wealth", wealthText(w))}
+      ${w.danger!=null?krow("Danger", dangerText(w)):""}
+      ${krow("Population", popText(w))}
     </div>
     ${isInhabited(w)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
     <div class="card"><button class="ghost full center" id="backWorlds">&larr; Back to planets &amp; systems</button></div>`;
@@ -2673,10 +2688,10 @@ const UI = {
         <h2>${cap(article(w.biomeName))} <span class="blue">${w.biomeName}</span></h2>
         <p class="small dim">${worldDesc(w)}</p>
         ${krow("Settlement", isInhabited(w)?`<b class="gold">${settleDef(w.settle).name}</b>`:'<span class="dim">Uninhabited</span>')}
-        ${krow("Population", cap(w.popName))}
-        ${krow("Technology", TECH_LABELS[w.tech])}
-        ${krow("Wealth", WEALTH_LABELS[w.wealth])}
-        ${krow("Danger", `<span class="${w.danger>=7?'red':w.danger>=4?'gold':'green'}">${DANGER_LABELS[w.danger]}</span>`)}
+        ${krow("Population", popText(w))}
+        ${krow("Technology", techText(w))}
+        ${krow("Wealth", wealthText(w))}
+        ${krow("Danger", dangerText(w))}
       </div>
       ${isInhabited(w)?`<div class="card"><p class="small dim">${settleDef(w.settle).desc}.</p></div>`:""}
       <div class="card">
@@ -3084,7 +3099,7 @@ const UI = {
     ${this.statHeader()}
     <div class="card">
       <h2>&#9879; ${w.name} Outfitter</h2>
-      <p class="small dim">${WEALTH_LABELS[w.wealth]}, ${TECH_LABELS[w.tech]}. Weapons, armor and field gear —
+      <p class="small dim">${WEALTH_LABELS[w.wealth]} ${w.wealth}/9, ${TECH_LABELS[w.tech]} ${w.tech}/9. Weapons, armor and field gear —
         stock turns over each year. Credits: <b class="gold">${state.credits}</b></p>
     </div>
     <div class="card">
@@ -3615,7 +3630,7 @@ function moveGroupTo(ids, destSys, destSlot, backTo){
     Game.save(); UI.render(playerIn?"hub":(backTo||"crew")); UI.flashLog(); return;
   }
   // uncharted, and you're aboard -> chart it
-  const world=Gen.world(), occupied=chance(occChanceFor(sys, world.biome));
+  const world=Gen.world(), occupied=chance(worldOccChance(sys, world));
   if(occupied) world.settle=pickSettlement(world, destSys);   // capital, trade hub, farmworld, ...
   const draw=occupied?drawRace():null;
   arriving={ sysId:destSys, slot:destSlot, world, occupied, draw, outpost:pick(OUTPOSTS),
@@ -4539,8 +4554,11 @@ function genomeBanner(g){
   </div>`;
 }
 function worldDesc(w){
+  const dr=DANGER_LABELS[w.danger].toLowerCase();
+  if(!isInhabited(w))   // a wild, unsettled world — no civilization to speak of
+    return `A wild, unsettled ${w.biomeName.toLowerCase()} with no one living on it — only its native creatures. The ${w.biomeName} is rated ${dr}.`;
   const wl=WEALTH_LABELS[w.wealth].toLowerCase(), tl=TECH_LABELS[w.tech].toLowerCase();
-  return `${cap(article(wl))} ${wl}, ${tl} world, ${w.popName}. The ${w.biomeName} is rated ${DANGER_LABELS[w.danger].toLowerCase()}.`;
+  return `${cap(article(wl))} ${wl}, ${tl} world, ${w.popName}. The ${w.biomeName} is rated ${dr}.`;
 }
 
 /* ============================================================ BOOT ===== */
