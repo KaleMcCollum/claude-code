@@ -3011,6 +3011,8 @@ const UI = {
         ${state.skills.includes("Mend")?`<button data-atk="Mend">Mend<br><span class="small dim">6 en</span></button>`:""}
         <button data-atk="Focus" class="ghost">Focus<br><span class="small dim">+energy</span></button>
         ${(c.person||c.foe)?"":`<button id="actTame">Tame</button>`}
+        ${state.inv["medpack"]?`<button data-quaff="medpack" class="ghost">&#10010; Medpack<br><span class="small dim">x${state.inv["medpack"]} &middot; +${DATA.items["medpack"].heal} HP</span></button>`:""}
+        ${state.inv["energy-cell"]?`<button data-quaff="energy-cell" class="ghost">&#9889; Energy Cell<br><span class="small dim">x${state.inv["energy-cell"]} &middot; +${DATA.items["energy-cell"].energy} en</span></button>`:""}
         <button id="actFlee" class="ghost">Flee</button>
         <button id="actBag">Use item</button>
       </div>
@@ -3644,6 +3646,7 @@ const UI = {
       app.querySelectorAll("[data-atk]").forEach(b=> b.onclick=()=>playerAttack(b.dataset.atk));
       app.querySelectorAll("[data-claim]").forEach(b=> b.onclick=()=>claimBounty(b.dataset.claim==="alive"));
       const tm=$("#actTame"); if(tm) tm.onclick=()=>tryTame();
+      app.querySelectorAll("[data-quaff]").forEach(b=> b.onclick=()=>useItem(b.dataset.quaff));   // quick-use packs mid-fight
       const fl=$("#actFlee"); if(fl) fl.onclick=()=>fleeEncounter();
       const bg=$("#actBag"); if(bg) bg.onclick=()=>UI.render("bag");
     }
