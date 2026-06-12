@@ -3237,11 +3237,11 @@ const UI = {
   /* the trade-job panel inside a fleet's view: current job, the route builder, or the entry point */
   fleetTradeCard(f){
     if(f.trade){ const t=f.trade, A=worldAt(t.buySys,t.buySlot), B=worldAt(t.sellSys,t.sellSlot), c=commodityById(t.commodity);
-      const bp=A?commodityBuy(A,c):0, sp=B?commoditySell(B,c):0, qty=Math.floor(fleetCargoCap(f)/(c?c.bulk:1)), cyc=tradeCycleActions(t);
+      const bp=A?commodityBuy(A,c):0, sp=B?commoditySell(B,c):0, qty=Math.floor(fleetCargoCap(f)/(c?c.bulk:1)), cyc=tradeCycleActions(t, groupCaps(f.shipIds).jump);
       return `<div class="card"><h3>&#128666; Trade job</h3>
         <p class="small">Buy <b>${c?c.name:"?"}</b> at <b>${A?A.name:"?"}</b> (${commas(bp)}c) &rarr; sell at <b>${B?B.name:"?"}</b> (${commas(sp)}c).</p>
         <p class="small dim">~${commas(Math.max(0,sp-bp)*qty)}c per ${cyc}-action round trip &middot; ${t.runs||0} runs done, <b class="${(t.earned||0)>=0?'gold':'red'}">${(t.earned||0)>=0?'+':''}${commas(t.earned||0)}c</b> net &middot; ${t.phase==="toSell"?"hauling to sell":"returning to buy"}.</p>
-        <p class="small dim">Its ships work the route, one leg per action you take, until you call them back.</p>
+        <p class="small dim">Its ships work the route on their own — a jump (or a dock) per action you take — until you call them back.</p>
         <button class="full center" data-fleetuntrade="${f.id}">Call off the trade job</button></div>`; }
     if(tradeBuild && tradeBuild.fid===f.id) return this.tradeBuilder(f, tradeBuild);
     if(f.shipIds.includes(state.activeShip)) return `<div class="card"><h3>&#128666; Trade job</h3><p class="small dim">You're flying with this fleet — assign a job to a fleet you're not aboard.</p></div>`;
@@ -3255,9 +3255,13 @@ const UI = {
     const loc=fleetLoc(f), cap=fleetCargoCap(f);
     const head=`<div class="row between"><h3>&#128666; Trade route</h3>
       <span style="display:flex;gap:6px">${tb.phase!=="buySys"?`<button class="small ghost" data-tbback="${f.id}">&larr; Back</button>`:""}<button class="small ghost" data-tbcancel="${f.id}">Cancel</button></span></div>`;
+    const interstellar=groupCaps(f.shipIds).tier==="interstellar";
+    const tradeNote=interstellar
+      ? `<p class="small dim">Charted, inhabited systems you've visited — more open up as you explore. Far-off systems just take more jumps per run.</p>`
+      : `<p class="small gold">This fleet can't jump between systems — every ship in it needs an interstellar hyperdrive. For now it can only trade between worlds in its current system.</p>`;
     if(tb.phase==="buySys"){ const sys=reachableTradeSystems(loc.sysId, f);
-      return `<div class="card sheet">${head}<p class="small dim">Step 1 &middot; the system to <b>buy</b> in (reachable from ${curSys()?curSys().name:"here"}).</p>
-        ${sys.length?sys.map(s=>`<div class="krow"><span class="lbl">${s.name}${s.id===loc.sysId?' <span class="green small">here</span>':` <span class="dim small">&middot; ${sysDist(loc.sysId,s.id).toFixed(1)} ly</span>`}</span><span class="kv"><button class="small" data-tbbuysys="${f.id}:${s.id}">Pick</button></span></div>`).join(""):`<p class="small dim">No inhabited systems in reach.</p>`}</div>`; }
+      return `<div class="card sheet">${head}<p class="small dim">Step 1 &middot; the system to <b>buy</b> in.</p>${tradeNote}
+        ${sys.length?sys.map(s=>`<div class="krow"><span class="lbl">${s.name}${s.id===loc.sysId?' <span class="green small">here</span>':` <span class="dim small">&middot; ${sysDist(loc.sysId,s.id).toFixed(1)} ly</span>`}</span><span class="kv"><button class="small" data-tbbuysys="${f.id}:${s.id}">Pick</button></span></div>`).join(""):`<p class="small dim">No charted inhabited systems in reach.</p>`}</div>`; }
     if(tb.phase==="buyPlanet"){ const ps=inhabPlanets(tb.buySys);
       return `<div class="card sheet">${head}<p class="small dim">Step 2 &middot; the <b>buy</b> planet.</p>
         ${ps.map(x=>`<div class="krow"><span class="lbl">${x.world.name} <span class="dim small">&middot; ${settleDef(x.world.settle).name}</span></span><span class="kv"><button class="small" data-tbbuyplanet="${f.id}:${x.slot}">Pick</button></span></div>`).join("")}</div>`; }
@@ -3265,7 +3269,7 @@ const UI = {
       return `<div class="card sheet">${head}<p class="small dim">Step 3 &middot; the <b>good to buy</b> at ${A.name} — what it sells, at its price.</p>
         ${goods.map(c=>`<div class="krow"><span class="lbl">${c.name} <span class="dim small">&middot; ${c.bulk} slot${c.bulk>1?"s":""}</span></span><span class="kv"><span class="gold small">${commas(commodityBuy(A,c))}c</span> <button class="small" data-tbgood="${f.id}:${c.id}">Pick</button></span></div>`).join("")}</div>`; }
     if(tb.phase==="sellSys"){ const sys=reachableTradeSystems(tb.buySys, f), c=commodityById(tb.commodity);
-      return `<div class="card sheet">${head}<p class="small dim">Step 4 &middot; the system to <b>sell</b> your ${c.name} in (reachable from the buy world).</p>
+      return `<div class="card sheet">${head}<p class="small dim">Step 4 &middot; the system to <b>sell</b> your ${c.name} in.</p>${tradeNote}
         ${sys.map(s=>`<div class="krow"><span class="lbl">${s.name}${s.id===tb.buySys?' <span class="dim small">(same system)</span>':` <span class="dim small">&middot; ${sysDist(tb.buySys,s.id).toFixed(1)} ly</span>`}</span><span class="kv"><button class="small" data-tbsellsys="${f.id}:${s.id}">Pick</button></span></div>`).join("")}</div>`; }
     if(tb.phase==="sellPlanet"){ const ps=inhabPlanets(tb.sellSys), c=commodityById(tb.commodity);
       return `<div class="card sheet">${head}<p class="small dim">Step 5 &middot; the <b>sell</b> planet — confirm it buys ${c.name} and see the price.</p>
@@ -3274,7 +3278,7 @@ const UI = {
     // confirm
     const A=worldAt(tb.buySys,tb.buySlot), B=worldAt(tb.sellSys,tb.sellSlot), c=commodityById(tb.commodity);
     const bp=commodityBuy(A,c), sp=commoditySell(B,c), qty=Math.floor(cap/c.bulk), profit=(sp-bp)*qty;
-    const cyc=tradeCycleActions({buySys:tb.buySys,buySlot:tb.buySlot,sellSys:tb.sellSys,sellSlot:tb.sellSlot});
+    const cyc=tradeCycleActions({buySys:tb.buySys,buySlot:tb.buySlot,sellSys:tb.sellSys,sellSlot:tb.sellSlot}, groupCaps(f.shipIds).jump);
     return `<div class="card sheet">${head}
       <p class="small">Buy <b>${c.name}</b> at <b>${A.name}</b> for <span class="gold">${commas(bp)}c</span>, sell at <b>${B.name}</b> for <span class="gold">${commas(sp)}c</span> (margin ${commas(sp-bp)}c).</p>
       <p class="small dim">${qty} units a run &middot; ~<b class="${profit>0?'gold':'red'}">${commas(profit)}c</b> profit per ${cyc}-action round trip. The fleet spends your credits to buy and banks the sales.</p>
@@ -4896,15 +4900,19 @@ function fleetAllCrewed(f){ const s=shipsByIds(f.shipIds); return s.length>0 && 
 /* charted, inhabited planets in one system: [{slot, world}] */
 function inhabPlanets(sysId){ const sys=state.galaxy&&state.galaxy.systems[sysId]; if(!sys||!sys.planets) return [];
   return sys.planets.map((p,slot)=>({slot,p})).filter(x=>x.p&&x.p.discovered&&isInhabited(x.p.world)).map(x=>({slot:x.slot, world:x.p.world})); }
-/* charted, inhabited systems the fleet can reach from `fromSys` (same system, or one jump away) */
+/* charted, inhabited systems the fleet can run a route to. Same system always; any OTHER charted
+   inhabited system if the fleet is interstellar (distant ones just take more jumps/actions per leg). */
 function reachableTradeSystems(fromSys, f){ const caps=groupCaps(f.shipIds);
   return (state.galaxy?state.galaxy.systems:[]).filter(s=>{ if(!s.discovered||!inhabPlanets(s.id).length) return false;
     if(s.id===fromSys) return true;
-    return caps.tier==="interstellar" && sysDist(fromSys,s.id)<=caps.jump+1e-6; }); }
-/* a single leg between two planets = one action (same-system move or one jump) */
-function legActions(aSys,aSlot,bSys,bSlot){ return (aSys===bSys && aSlot===bSlot) ? 0 : 1; }
-function tradeCycleActions(t){ return legActions(t.buySys,t.buySlot,t.sellSys,t.sellSlot)
-  + legActions(t.sellSys,t.sellSlot,t.buySys,t.buySlot); }
+    return caps.tier==="interstellar"; }); }
+/* number of actions to move between two planets: 0 same planet, 1 a same-system hop, else one per
+   jump (distance / the fleet's jump range) so far-flung routes take proportionally longer */
+function legActions(aSys,aSlot,bSys,bSlot,jump){
+  if(aSys===bSys) return (aSlot===bSlot)?0:1;
+  return Math.max(1, Math.ceil(sysDist(aSys,bSys)/Math.max(1,jump||9999))); }
+function tradeCycleActions(t,jump){ return legActions(t.buySys,t.buySlot,t.sellSys,t.sellSlot,jump)
+  + legActions(t.sellSys,t.sellSlot,t.buySys,t.buySlot,jump); }
 /* the fleet buys its chosen good at the buy world, filling its holds with the player's credits */
 function tradeBuy(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(t.buySys,t.buySlot);
   if(!w||!c||!canBuyHere(w,c)) return;
@@ -4920,12 +4928,18 @@ function tradeSell(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(
   for(const v of ships){ const take=Math.min(v.cargo[t.commodity]||0,rem); if(take>0){ v.cargo[t.commodity]-=take; if(v.cargo[t.commodity]<=0) delete v.cargo[t.commodity]; rem-=take; } }
   t.earned=(t.earned||0)+(have*p-(t.lastBuy||0)); t.runs=(t.runs||0)+1;
   Game.logMsg(`Trade fleet ${f.name}: ${have} ${c.name} sold at ${w.name} for ${commas(have*p)}c.`,"good"); }
-/* advance one fleet's route by a single leg (the real cost of one action) */
+/* advance one fleet's route by a single action — a same-system hop arrives at once; a jump between
+   systems takes one action per jump (distance / jump range) before it arrives and trades */
 function tradeStep(f){ const t=f.trade; if(!t||!fleetAllCrewed(f)) return;
   const tgt = t.phase==="toSell" ? {s:t.sellSys,p:t.sellSlot} : {s:t.buySys,p:t.buySlot};
-  if(t.pos.sysId!==tgt.s || t.pos.slot!==tgt.p){            // travel one leg toward the target
-    t.pos={sysId:tgt.s, slot:tgt.p};
+  if(t.pos.sysId!==tgt.s){                                  // crossing to another system — count down the jumps
+    if(t.legLeft==null){ const jump=Math.max(1, groupCaps(f.shipIds).jump);
+      t.legLeft=Math.max(1, Math.ceil(sysDist(t.pos.sysId,tgt.s)/jump)); }
+    if(--t.legLeft>0) return;                               // still in transit this action
+    t.legLeft=null; t.pos={sysId:tgt.s, slot:tgt.p};
     shipsByIds(f.shipIds).forEach(v=>{ v.sysId=tgt.s; v.slot=tgt.p; });
+  } else if(t.pos.slot!==tgt.p){                            // same system, different planet — one hop
+    t.pos={sysId:tgt.s, slot:tgt.p}; shipsByIds(f.shipIds).forEach(v=>{ v.sysId=tgt.s; v.slot=tgt.p; });
   }
   if(t.pos.sysId===tgt.s && t.pos.slot===tgt.p){            // arrived — buy or sell, then turn around
     if(t.phase==="toSell"){ tradeSell(f); t.phase="toBuy"; } else { tradeBuy(f); t.phase="toSell"; }
