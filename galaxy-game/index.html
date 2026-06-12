@@ -3413,14 +3413,13 @@ const UI = {
     }
     const shown=ships.filter(v=>!v.carrier);   // stowed fighters live in their carrier's hangar
     const order=SHIP_CATS.map(c=>c.id);
-    const sorted=shown.slice().sort((a,b)=>{ const ca=order.indexOf(shipCat(a)), cb=order.indexOf(shipCat(b));
+    const active=shown.find(v=>v.id===state.activeShip);
+    const rest=shown.filter(v=>v.id!==state.activeShip).sort((a,b)=>{ const ca=order.indexOf(shipCat(a)), cb=order.indexOf(shipCat(b));
       return ((ca<0?99:ca)-(cb<0?99:cb)) || ((shipClass(a.cls)||{}).size||0)-((shipClass(b.cls)||{}).size||0) || a.name.localeCompare(b.name); });
-    let lastCat=null;
-    const rows=sorted.map(v=>{ const active=v.id===state.activeShip, here=atHere(v), op=Game.operational(v),
-        crew=(active?1:0)+Game.shipCrew(v).length, cmax=v.crewMax||1, fleet=fleetOf(v), hold=carriedShips(v.id).length, busy=shipBusy(v),
-        cat=shipCat(v), head=(cat!==lastCat?(lastCat=cat, `<div class="shipcat">${cat?shipCatName(cat):"Other craft"}</div>`):"");
-      return head+`<button class="shipcard${active?' on':''}" data-selshipview="${v.id}">
-        <div class="top"><span class="nm">${active?'&#9654; ':''}${v.name}</span>
+    const shipCard=(v)=>{ const isA=v.id===state.activeShip, here=atHere(v), op=Game.operational(v),
+        crew=(isA?1:0)+Game.shipCrew(v).length, cmax=v.crewMax||1, fleet=fleetOf(v), hold=carriedShips(v.id).length, busy=shipBusy(v);
+      return `<button class="shipcard${isA?' on':''}" data-selshipview="${v.id}">
+        <div class="top"><span class="nm">${isA?'&#9654; ':''}${v.name}</span>
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
         <div class="sub">${v.clsName||v.role||"Ship"} &middot; ${v.range==="interstellar"?`<span class="gold">${jumpRange(v).toFixed(1)} ly</span>`:RANGE_LABEL[v.range]} &middot; ${shipLocationName(v)}</div>
         <div class="chips">
@@ -3430,7 +3429,10 @@ const UI = {
           ${hold?`<span class="chip v">&#128640; ${hold}</span>`:""}
           ${(!fleet&&!v.carrier&&v.homeCarrier)?(()=>{ const hc=(state.vehicles||[]).find(x=>x.id===v.homeCarrier); return hc&&(hc.sysId??0)===(v.sysId??0)&&hc.slot===v.slot?`<span class="chip v">&#128640; with ${hc.name}</span>`:""; })():""}
           ${busy?'<span class="chip gold">&#128666; trading</span>':""}
-        </div></button>`; }).join("");
+        </div></button>`; };
+    let lastCat=null;
+    const restRows=rest.map(v=>{ const cat=shipCat(v), head=(cat!==lastCat?(lastCat=cat, `<div class="shipcat">${cat?shipCatName(cat):"Other craft"}</div>`):""); return head+shipCard(v); }).join("");
+    const rows=(active?`<div class="shipcat" style="color:var(--green)">&#9654; Now commanding</div>${shipCard(active)}`:"")+restRows;
     return `<div class="card"><div class="row between"><h3>Your ships <span class="dim small">&middot; ${shown.length}</span></h3>${state.activeShip?'<span class="small dim">&#9654; piloting</span>':""}</div>
       ${shown.length?rows:'<p class="small dim">No ships yet. Buy one at a shipyard or off a trader you meet.</p>'}
     </div>`;
@@ -3488,6 +3490,7 @@ const UI = {
   },
   fleetsView(){
     const fleets=state.fleets||[];
+    const myFleet=(Game.ship()||{}).fleetId||null;   // the fleet you're flying with
     if(fleetBuild){            // creating a new fleet — only ships in your current system, not already in a fleet
       const avail=fleetShipsHereWithYou();
       const sel=new Set(fleetBuild.shipIds);
@@ -3544,12 +3547,13 @@ const UI = {
     }
     return `<div class="card"><h3>Your fleets <span class="dim small">&middot; ${fleets.length}</span></h3>
       <p class="small dim">Group ships to move them together. A fleet jumps between systems only if every ship is interstellar-class, and is limited by its weakest ship's range.</p>
-      ${fleets.length?fleets.map(f=>{ const caps=groupCaps(f.shipIds), fs=state.galaxy.systems[fleetSys(f)], withYou=fleetSys(f)===state.sysId, crewed=fleetAllCrewed(f);
-        return `<button class="shipcard" data-fleetview="${f.id}">
-          <div class="top"><span class="nm">${f.name}</span><span class="tag">${f.shipIds.length} ship${f.shipIds.length!==1?"s":""}</span></div>
+      ${fleets.length?fleets.slice().sort((a,b)=>(b.id===myFleet)-(a.id===myFleet)).map(f=>{ const isMine=f.id===myFleet, caps=groupCaps(f.shipIds), fs=state.galaxy.systems[fleetSys(f)], withYou=fleetSys(f)===state.sysId, crewed=fleetAllCrewed(f);
+        return `<button class="shipcard${isMine?' on':''}" data-fleetview="${f.id}">
+          <div class="top"><span class="nm">${isMine?'&#9654; ':''}${f.name}</span><span class="tag">${f.shipIds.length} ship${f.shipIds.length!==1?"s":""}</span></div>
           <div class="sub">${RANGE_LABEL[caps.tier]}${caps.tier==="interstellar"?` &middot; <span class="gold">${caps.jump.toFixed(1)} ly</span>`:""} &middot; ${fs?fs.name:"?"}</div>
           <div class="chips">
-            ${withYou?'<span class="chip g">&#9679; with you</span>':""}
+            ${isMine?'<span class="chip g">&#9654; commanding</span>':""}
+            ${withYou&&!isMine?'<span class="chip g">&#9679; with you</span>':""}
             ${f.trade?'<span class="chip gold">&#128666; trading</span>':crewed?'<span class="chip g">ready</span>':'<span class="chip r">needs crew</span>'}
           </div></button>`; }).join("")
         :`<p class="small dim">No fleets yet.</p>`}
