@@ -1463,6 +1463,10 @@ const Game = {
     if(state.galaxy && state.galaxy.systems[state.sysId]) state.system=state.galaxy.systems[state.sysId];
     if(state.galaxy && state.galaxy.systems[0]) state.galaxy.systems[0].reported=true;   // you always knew home
     (state.vehicles||[]).forEach(v=>{ if(v.sysId==null) v.sysId=0; if(v.fleetId===undefined) v.fleetId=null; });
+    // heal fleets that reference sold/lost ships: drop the stale ids, then disband any left empty
+    { const have=new Set((state.vehicles||[]).map(v=>v.id));
+      (state.fleets||[]).forEach(f=>{ f.shipIds=(f.shipIds||[]).filter(id=>have.has(id)); });
+      state.fleets=(state.fleets||[]).filter(f=>f.shipIds.length); }
     (state.crew||[]).forEach(c=>{ if(!c.skills){ const p=c.personIdx>=0&&state.codex&&state.codex.people?state.codex.people[c.personIdx]:null; c.skills=rollCrewSkills(c.career||"laborer", p); } });
     if(state.actions==null) state.actions=Math.round((state.daysElapsed||0)/15);   // old day-based saves -> actions
     if(state.lastBillYear==null) state.lastBillYear=Math.floor((state.actions||0)/ACTIONS_PER_YEAR);
@@ -4303,6 +4307,8 @@ function sellShip(id){
   if(carriedShips(id).length){ toast("Launch its fighters from the hangar first"); return; }
   const i=state.vehicles.findIndex(v=>v.id===id); if(i<0) return;
   const v=state.vehicles[i], p=shipSell(v);
+  if(v.fleetId){ const fl=fleetById(v.fleetId); if(fl){ fl.shipIds=fl.shipIds.filter(x=>x!==v.id);
+    if(!fl.shipIds.length) state.fleets=(state.fleets||[]).filter(x=>x.id!==fl.id); } }   // don't orphan the fleet
   state.vehicles.splice(i,1); state.credits+=p;
   Game.logMsg(`You sell the ${v.name} for ${p}c.`,"sys"); Game.save(); UI.render("shipyard");
 }
@@ -4591,11 +4597,12 @@ function removeFromFleet(fid, shipId){
   if(!f.shipIds.length){ disbandFleet(fid, true); return; }
   Game.save(); UI.render("crew");
 }
-/* disband a fleet — you must be with it (in its system), unless it's already empty */
+/* disband a fleet — you must be with it (in its system), unless it has no actual ships left */
 function disbandFleet(fid, silent){
   const f=fleetById(fid); if(!f) return;
   if(!silent && f.trade){ toast("Call the fleet off its trade run first"); return; }
-  if(!silent && f.shipIds.length && fleetSys(f)!==state.sysId){ toast("You must be with the fleet to disband it"); return; }
+  const real=f.shipIds.filter(id=>(state.vehicles||[]).some(v=>v.id===id));   // ignore stale ids of sold/lost ships
+  if(!silent && real.length && fleetSys(f)!==state.sysId){ toast("You must be with the fleet to disband it"); return; }
   f.shipIds.forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v) v.fleetId=null; });
   state.fleets=(state.fleets||[]).filter(x=>x.id!==fid);
   if(viewingFleet===fid) viewingFleet=null;
