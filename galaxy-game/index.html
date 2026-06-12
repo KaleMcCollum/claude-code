@@ -517,6 +517,8 @@ const SETTLEMENTS = [
 const settleDef=id=>SETTLEMENTS.find(s=>s.id===id)||null;
 /* a world is inhabited iff it has a settlement — the single source of truth for "has a town" */
 function isInhabited(w){ return !!(w && w.occupied!==false && settleDef(w.settle)); }
+/* a charted planet you still keep on your charts (you can "forget" a junk world to declutter) */
+function pSeen(p){ return !!(p && p.discovered && !p.forgotten); }
 function settleAmen(w){ return isInhabited(w) ? settleDef(w.settle).amen : []; }
 function settleHasShipyard(w){ return settleAmen(w).includes("shipyard"); }
 /* choose a settlement for a freshly-charted inhabited world (gated by its tech/wealth) */
@@ -2618,9 +2620,9 @@ const UI = {
     </div>
     ${inSys?`<div class="card sheet"><h3>Within ${osys.name}</h3>
       ${planets.map((p,i)=>{ const hereSlot=i===groupSlot(ids);
-        if(p&&p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name}</span>
+        if(pSeen(p)) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${p.world.name}</span>
           <span class="kv">${hereSlot?'<span class="green small">fleet is here</span>':`<button class="small" data-go="${origin}:${i}">&#9992; Travel</button>`}</span></div>`;
-        return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
+        return `<div class="krow"><span class="lbl dim">${p&&p.discovered&&p.forgotten?"Forgotten world "+(i+1):"Uncharted world "+(i+1)}</span>
           <span class="kv">${playerIn?`<button class="small" data-go="${origin}:${i}">&#10022; Explore</button>`:'<span class="dim small">&#128274; need to be aboard</span>'}</span></div>`; }).join("")}
     </div>`:""}
     ${jumpable?`<div class="card"><h3>&#10024; Star Map</h3>${this.mapSvg({cx:osys.x, cy:osys.y, span:Math.max(caps.jump*2.6, 26)}, {originId:origin, reach:caps.jump})}</div>
@@ -3028,13 +3030,17 @@ const UI = {
     return `
     ${this.statHeader()}
     <div class="card sheet"><h2>&#9737; Planets &amp; systems</h2>
-      ${sys?`<h3 style="margin-top:8px">${sys.name} <span class="dim small">&middot; current system</span></h3>
-        <p class="small dim">${sys.size} world${sys.size>1?"s":""} &middot; ${sys.planets.filter(p=>p.discovered).length} charted. <span class="dim">Tap a charted world to study it.</span></p>
+      ${sys?(()=>{ const forgot=sys.planets.filter(p=>p&&p.discovered&&p.forgotten).length;
+        return `<h3 style="margin-top:8px">${sys.name} <span class="dim small">&middot; current system</span></h3>
+        <p class="small dim">${sys.size} world${sys.size>1?"s":""} &middot; ${sys.planets.filter(pSeen).length} on your charts. <span class="dim">Tap a world to study it; forget the ones you don't care about.</span></p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
-          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}<button class="small ghost" data-world="${sys.id}:${i}">${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
-               <span class="kv">${isInhabited(p.world)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)}${p.isHome?' <span class="dim">(home)</span>':!isInhabited(p.world)?' <span class="dim">(empty)</span>':''}</span></div>`;
+          if(pSeen(p)) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}<button class="small ghost" data-world="${sys.id}:${i}">${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
+               <span class="kv">${isInhabited(p.world)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)}${p.isHome?'':` <button class="small ghost" data-forget="${sys.id}:${i}" title="Forget this world">&#10005;</button>`}</span></div>`;
+          if(p&&p.discovered&&p.forgotten) return cxShowForgotten?`<div class="krow"><span class="lbl dim">${p.world.name} <span class="dim small">&middot; forgotten</span></span>
+               <span class="kv"><button class="small" data-remember="${sys.id}:${i}">Remember</button></span></div>`:"";
           return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
-               <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`
+               <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}
+        ${forgot?`<button class="small ghost full center" id="cxToggleForgot" style="margin-top:6px">${cxShowForgotten?"Hide":"Show"} ${forgot} forgotten world${forgot>1?"s":""}</button>`:""}`; })()
       : adrift()?`<h3 style="margin-top:8px">&#127756; Deep space</h3>
         <p class="small dim">Adrift between the stars at <b>(${Math.round(pos.x)}, ${Math.round(pos.y)})</b>, ${Math.round(Math.hypot(pos.x,pos.y))} ly from the core. Navigate from the <b>World</b> tab.</p>`
       : `<p class="small dim">Unknown. Buy a ship at the Shipyard and take off to chart your home system — then the wider galaxy opens up.</p>`}
@@ -3817,6 +3823,9 @@ const UI = {
       app.querySelectorAll("[data-world]").forEach(b=> b.onclick=()=>{ const [si,pi]=b.dataset.world.split(":").map(Number);
         const p=state.galaxy.systems[si].planets[pi]; if(p&&p.world){ viewingWorld=Object.assign({sysName:state.galaxy.systems[si].name}, p.world); UI.render("cx_world"); } });
       app.querySelectorAll("[data-worldlog]").forEach(b=> b.onclick=()=>{ viewingWorld=(state.codex.worlds||[])[+b.dataset.worldlog]; if(viewingWorld) UI.render("cx_world"); });
+      app.querySelectorAll("[data-forget]").forEach(b=> b.onclick=()=>setForgotten(b.dataset.forget,true));
+      app.querySelectorAll("[data-remember]").forEach(b=> b.onclick=()=>setForgotten(b.dataset.remember,false));
+      const tf=$("#cxToggleForgot"); if(tf) tf.onclick=()=>{ cxShowForgotten=!cxShowForgotten; UI.render("cx_worlds"); };
       const bw=$("#backWorlds"); if(bw) bw.onclick=()=>UI.render("cx_worlds");
       const sh=$("#sayHi"); if(sh) sh.onclick=()=>sayHi(viewingPerson);
       const hr=$("#hire"); if(hr) hr.onclick=()=>hireCrew(viewingPerson);
@@ -4285,6 +4294,7 @@ function moveGroupTo(ids, destSys, destSlot, backTo){
   if(!p.discovered && !playerIn){ toast("You must be aboard to chart a new world"); return; }
   if(advanceTime()) return;                       // a move is one action
   if(p.discovered){
+    if(p.forgotten){ p.forgotten=false; Game.logMsg(`You re-acquaint yourself with ${p.world.name} — back on your charts.`,"sys"); }
     relocateGroup(ids, destSys, destSlot);
     Game.logMsg(crossSys?`The fleet jumps to ${p.world.name}, in the ${sys.name} system.`
                         :`The fleet sets down on ${p.world.name}.`,"sys");
@@ -4930,7 +4940,7 @@ function sellInformation(){
 }
 
 /* record an individual you've met (compact snapshot) + bump their race's tally */
-let viewingPerson=null, viewingRace=null, viewingWorld=null, personExpand=false;
+let viewingPerson=null, viewingRace=null, viewingWorld=null, personExpand=false, cxShowForgotten=false;
 function recordMeeting(person, race, where){
   if(!state.codex.people) state.codex.people=[];
   const p=JSON.parse(JSON.stringify(person));
@@ -5094,8 +5104,18 @@ function worldAt(sysId, slot){ const sys=state.galaxy&&state.galaxy.systems[sysI
 function fleetAllCrewed(f){ const s=shipsByIds(f.shipIds); return s.length>0 && s.every(v=>Game.operational(v)); }
 /* best single leg: buy a good at A, sell at B, filling `cap` cargo slots */
 /* charted, inhabited planets in one system: [{slot, world}] */
+/* forget (or remember) a charted world — keeps its data but hides it from your charts, travel
+   lists, trade pickers and bounty boards, so a system with one good world isn't cluttered by five
+   junk ones. Re-visiting (or Remember) brings it back. */
+function setForgotten(ref, val){ const [si,pi]=ref.split(":").map(Number);
+  const sys=state.galaxy&&state.galaxy.systems[si], p=sys&&sys.planets&&sys.planets[pi];
+  if(!p||!p.world) return;
+  if(p.isHome){ toast("You can't forget your home"); return; }
+  p.forgotten=val;
+  Game.logMsg(val?`You strike ${p.world.name} from your charts.`:`${p.world.name} is back on your charts.`,"sys");
+  toast(val?"World forgotten":"World remembered"); Game.save(); UI.render("cx_worlds"); }
 function inhabPlanets(sysId){ const sys=state.galaxy&&state.galaxy.systems[sysId]; if(!sys||!sys.planets) return [];
-  return sys.planets.map((p,slot)=>({slot,p})).filter(x=>x.p&&x.p.discovered&&isInhabited(x.p.world)).map(x=>({slot:x.slot, world:x.p.world})); }
+  return sys.planets.map((p,slot)=>({slot,p})).filter(x=>pSeen(x.p)&&isInhabited(x.p.world)).map(x=>({slot:x.slot, world:x.p.world})); }
 /* charted, inhabited systems the fleet can run a route to. Same system always; any OTHER charted
    inhabited system if the fleet is interstellar (distant ones just take more jumps/actions per leg). */
 function reachableTradeSystems(fromSys, f){ const caps=groupCaps(f.shipIds);
@@ -5197,7 +5217,7 @@ function claimBounty(alive){
 function bountyLocations(){
   const out=[];
   (state.galaxy?state.galaxy.systems:[]).forEach(s=>{ if(!s.discovered||!s.planets) return;
-    s.planets.forEach(p=>{ if(p&&p.discovered&&p.occupied&&p.world) out.push({sysId:s.id,slot:p.index,sysName:s.name,worldName:p.world.name}); }); });
+    s.planets.forEach(p=>{ if(pSeen(p)&&p.occupied&&p.world) out.push({sysId:s.id,slot:p.index,sysName:s.name,worldName:p.world.name}); }); });
   return out;
 }
 /* roll one contract: a hostile mark, their alive/dead price, and the world they were last seen on */
