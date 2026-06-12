@@ -3213,6 +3213,9 @@ const UI = {
       const caps=groupCaps(f.shipIds), fsys=state.galaxy.systems[fleetSys(f)];
       const withYou=fleetSys(f)===state.sysId;
       const addable=(state.vehicles||[]).filter(v=>!v.fleetId && !v.carrier && (v.sysId??0)===fleetSys(f));
+      const fShips=shipsByIds(f.shipIds);
+      const fHp=fShips.reduce((s,v)=>s+Math.max(0,v.hp||0),0), fMax=fShips.reduce((s,v)=>s+(v.maxHp||0),0);
+      const fAtk=fShips.reduce((s,v)=>s+shipAttack(v),0), fPct=fMax?clamp(Math.round(fHp/fMax*100),0,100):0;
       return `<div class="card">
         <div class="row between"><h2 class="gold">${f.name}</h2><span class="tag">${f.shipIds.length} ship${f.shipIds.length!==1?"s":""}</span></div>
         <div class="chips" style="margin-top:7px">
@@ -3221,6 +3224,8 @@ const UI = {
           <span class="chip">${RANGE_LABEL[caps.tier]}${caps.tier==="interstellar"?` &middot; ${caps.jump.toFixed(1)} ly`:""}</span>
           ${f.trade?'<span class="chip gold">&#128666; trading</span>':fleetAllCrewed(f)?'<span class="chip g">ready</span>':'<span class="chip r">needs crew</span>'}
         </div>
+        <div class="row between small" style="margin:11px 0 1px"><span class="dim">Fleet hull</span><span class="${fPct<34?'red':''}">${commas(fHp)} / ${commas(fMax)} HP &middot; &#9876; ${commas(fAtk)} firepower</span></div>
+        <div class="bar"><i class="hpfill" style="width:${fPct}%"></i></div>
         <div class="row" style="margin-top:10px">
           <button data-fleetmove="${f.id}">&#9992; Move fleet</button>
           <button class="ghost small" data-fleetrename="${f.id}">Rename</button>
