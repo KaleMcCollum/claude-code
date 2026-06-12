@@ -110,6 +110,9 @@
   .chip.g{color:var(--green); border-color:#2c4a38;} .chip.r{color:var(--red); border-color:#5a2b2b;}
   .chip.b{color:var(--blue); border-color:#234a57;} .chip.v{color:var(--violet); border-color:#3a2a57;}
   .chip.gold{color:var(--gold); border-color:#4a3f22;}
+  .frow{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line);}
+  .frow:last-child{border-bottom:none;}
+  .frow .finfo{min-width:0;} .frow .finfo .nm{font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   input[type=text],input[type=number]{width:100%; font-family:inherit; font-size:1rem; padding:11px;
     background:#070a11; color:var(--ink); border:1px solid var(--line); border-radius:10px;}
   button.rnd{flex:0 0 auto; padding:11px 13px; font-size:1.1rem; line-height:1;}
@@ -3062,39 +3065,51 @@ const UI = {
       const active=v.id===state.activeShip, here=atHere(v), cmax=v.crewMax||1;
       const layout=shipSeats(v), berths=passengerBerths(v);
       let seats="";
-      layout.forEach((seat,n)=>{ const lbl=`<span class="${SEAT_COLOR[seat.role]}">${seatLabel(seat)}</span>`;
-        if(active && n===0){ seats+=`<div class="krow"><span class="lbl">${lbl}</span><span class="kv green">You</span></div>`; return; }
+      layout.forEach((seat,n)=>{ const lbl=`<span class="${SEAT_COLOR[seat.role]}" style="font-weight:600">${seatLabel(seat)}</span>`;
+        if(active && n===0){ seats+=`<div class="frow"><div class="finfo">${lbl}<div class="small dim" style="margin-top:2px">that's you</div></div><span class="chip g">Captain</span></div>`; return; }
         const occ=seatOccupant(v.id,n);
         seats+= occ
-          ? `<div class="krow"><span class="lbl">${lbl}</span><span class="kv">${occ.name} <span class="dim small">${careerName(occ.career)}</span> <button class="small ghost" data-unseat="${state.crew.indexOf(occ)}">Remove</button></span></div>`
-          : `<div class="krow"><span class="lbl">${lbl}</span><span class="kv">${here?`<button class="small" data-seat="${v.id}:${n}">Assign</button>`:'<span class="dim">empty</span>'}</span></div>`;
+          ? `<div class="frow"><div class="finfo">${lbl}<div class="small" style="margin-top:2px">${occ.name} <span class="dim">&middot; ${careerName(occ.career)}</span></div></div><button class="small ghost" data-unseat="${state.crew.indexOf(occ)}">Remove</button></div>`
+          : `<div class="frow"><div class="finfo">${lbl}<div class="small dim" style="margin-top:2px">empty</div></div>${here?`<button class="small" data-seat="${v.id}:${n}">Assign</button>`:'<span class="chip">&mdash;</span>'}</div>`;
       });
       // passenger berths (capacity beyond the working crew)
       const pax=(state.crew||[]).filter(c=>c.shipId===v.id && c.seat>=layout.length);
       if(berths>0){
-        seats+=`<div class="krow"><span class="lbl"><span class="dim">Passengers</span></span><span class="kv">${pax.length}/${berths} berth${berths!==1?"s":""}${here&&pax.length<berths?` <button class="small" data-seatpax="${v.id}">Board</button>`:""}</span></div>`;
-        seats+=pax.map(c=>`<div class="krow"><span class="lbl dim small">&middot; passenger</span><span class="kv">${c.name} <span class="dim small">${careerName(c.career)}</span> <button class="small ghost" data-unseat="${state.crew.indexOf(c)}">Remove</button></span></div>`).join("");
+        seats+=`<div class="frow"><div class="finfo"><span class="dim" style="font-weight:600">Passenger berths</span><div class="small dim" style="margin-top:2px">${pax.length}/${berths} aboard</div></div>${here&&pax.length<berths?`<button class="small" data-seatpax="${v.id}">Board</button>`:""}</div>`;
+        seats+=pax.map(c=>`<div class="frow"><div class="finfo"><span class="dim small">passenger</span><div class="small" style="margin-top:2px">${c.name} <span class="dim">&middot; ${careerName(c.career)}</span></div></div><button class="small ghost" data-unseat="${state.crew.indexOf(c)}">Remove</button></div>`).join("");
       }
       const fleet=fleetOf(v), grounded=state.grounded && active && spaceworthy(v);
       const canMove=!grounded && (v.range!=="surface") && Game.operational(v);
+      const op=Game.operational(v), hpPct=v.maxHp?clamp(Math.round(v.hp/v.maxHp*100),0,100):0, shMax=shipMaxShield(v);
       return `<div class="card">
         <div class="row between"><h2 class="gold">${active?'&#9654; ':''}${v.name}</h2>
           <span class="tag" style="color:${RARITY.byId(v.tier).color}">${RARITY.byId(v.tier).name}</span></div>
-        <p class="small dim">${v.role||v.clsName} &middot; ${RANGE_LABEL[v.range]} &middot; docked at <b class="blue">${shipLocationName(v)}</b>${here?' <span class="green small">(here)</span>':''}</p>
-        ${krow("Hull", `<b>${commas(v.hp||0)} / ${commas(v.maxHp||0)}</b> HP${v.armor?` &middot; ${ARMOR[v.armor].name}`:""}`)}
-        ${krow("Weapons", `${mountedCount(v)}/${(v.guns||[]).length} mounted &middot; <span class="gold">${commas(shipAttack(v))}</span> attack`)}
-        ${(v.guns||[]).length?krow("Hardpoints", slotBreakdown(v.slotSizes)):""}
-        ${krow("Fleet", fleet?`<b class="blue">${fleet.name}</b>`:'<span class="dim">Independent</span>')}
-        ${krow("Crew needed", `${v.reqPilots||1} pilot${(v.reqPilots||1)>1?"s":""}${v.reqMech?`, ${v.reqMech} mechanic${v.reqMech>1?"s":""}`:""}${(v.gunnerGuns||0)?` <span class="dim">(${v.gunnerGuns} gunner mounts)</span>`:""}`)}
-        ${krow("Aboard", `${Game.pilots(v)} pilot${Game.pilots(v)!==1?"s":""}${active?' <span class="dim small">(incl. you)</span>':''}, ${Game.aboard(v,"mechanic")} mechanic${Game.aboard(v,"mechanic")!==1?"s":""}${(v.reqLabor||0)?`, ${Game.laborers(v)} labor`:""}`)}
-        ${krow("Operational", Game.operational(v)?'<span class="green">Yes — ready to fly</span>':'<span class="red">No — needs more crew</span>')}
-        ${krow("Range", v.range==="interstellar"?`<span class="gold">${jumpRange(v).toFixed(1)} ly hyperdrive</span>`:RANGE_LABEL[v.range])}
-        ${krow("Maintenance", `${commas(shipMaint(v))}c/yr`)}
-        <div class="row" style="margin-top:8px">
+        <div class="sub" style="font-size:.78rem;color:var(--dim)">${v.role||v.clsName} &middot; docked at <b class="blue">${shipLocationName(v)}</b></div>
+        <div class="chips" style="margin-top:9px">
+          ${here?'<span class="chip g">&#9679; here</span>':'<span class="chip">away</span>'}
+          <span class="chip ${op?'g':'r'}">${op?'&#10003; operational':'needs crew'}</span>
+          <span class="chip">${v.range==="interstellar"?`&#9889; ${jumpRange(v).toFixed(1)} ly`:RANGE_LABEL[v.range]}</span>
+          ${fleet?`<span class="chip b">&#9863; ${fleet.name}</span>`:'<span class="chip">independent</span>'}
+          ${v.bays>0?`<span class="chip v">&#128640; ${carriedShips(v.id).length}/${v.bays} bays</span>`:""}
+          ${shipBusy(v)?'<span class="chip gold">&#128666; trading</span>':""}
+        </div>
+        <div class="row between small" style="margin:11px 0 1px"><span class="dim">Hull${v.armor?` &middot; ${ARMOR[v.armor].name}`:""}</span><span class="${hpPct<34?'red':''}">${commas(v.hp||0)} / ${commas(v.maxHp||0)} HP</span></div>
+        <div class="bar"><i class="hpfill" style="width:${hpPct}%"></i></div>
+        ${shMax?`<div class="row between small" style="margin:7px 0 1px"><span class="dim">Shield &middot; ${SHIELD[v.shieldTier].name}</span><span>${commas(shMax)}</span></div><div class="bar"><i class="enfill" style="width:100%"></i></div>`:""}
+        ${(grounded||canMove)?`<div class="row" style="margin-top:11px">
           ${grounded?`<button class="primary" data-takeoff="${v.id}">&#9650; Take off &amp; chart your system</button>`:""}
           ${canMove?`<button data-moveship="${v.id}">&#9992; ${fleet?`Move (via ${fleet.name})`:"Move ship"}</button>`:""}
-        </div>
-        ${!here?`<p class="small dim">You're not docked with this ship — travel to it to assign crew or pilot it.</p>`:""}
+        </div>`:""}
+        ${!here?`<p class="small dim" style="margin-top:8px">You're not docked with this ship — travel to it to assign crew or pilot it.</p>`:""}
+      </div>
+      <div class="card sheet"><h3>Specifications</h3>
+        ${krow("Class", `${v.clsName||v.role} <span class="dim small">&middot; ${shipCatName(shipCat(v))||"craft"}</span>`)}
+        ${krow("Weapons", `${mountedCount(v)}/${(v.guns||[]).length} mounted &middot; <span class="gold">${commas(shipAttack(v))}</span> atk`)}
+        ${(v.guns||[]).length?krow("Hardpoints", slotBreakdown(v.slotSizes)):""}
+        ${krow("Crew needed", `${v.reqPilots||1} pilot${(v.reqPilots||1)>1?"s":""}${v.reqMech?`, ${v.reqMech} mech${v.reqMech>1?"s":""}`:""}${(v.gunnerGuns||0)?`, ${v.gunnerGuns} gunner${v.gunnerGuns>1?"s":""}`:""}`)}
+        ${krow("Aboard", `${Game.pilots(v)} pilot${Game.pilots(v)!==1?"s":""}${active?' <span class="dim small">(incl. you)</span>':''}, ${Game.aboard(v,"mechanic")} mech${(v.reqLabor||0)?`, ${Game.laborers(v)} labor`:""}`)}
+        ${krow("Cargo hold", `${commas(v.hold||0)} slots`)}
+        ${krow("Maintenance", `${commas(shipMaint(v))}c / yr`)}
       </div>
       <div class="card sheet"><h3>Crew seats <span class="dim small">&middot; ${layout.length} stations${berths?` + ${berths} berths`:""}</span></h3>${seats}
         <p class="small dim" style="margin-top:6px">The Captain seat is yours. A ship flies only with its pilots and mechanics aboard, and each Gunner mans one weapon mount. Crew aboard travel with the ship.</p></div>
@@ -3199,25 +3214,31 @@ const UI = {
       const withYou=fleetSys(f)===state.sysId;
       const addable=(state.vehicles||[]).filter(v=>!v.fleetId && !v.carrier && (v.sysId??0)===fleetSys(f));
       return `<div class="card">
-        <div class="row between"><h2 class="gold">${f.name}</h2><span class="tag">${f.shipIds.length} ship${f.shipIds.length>1?"s":""}</span></div>
-        <p class="small dim">In <b class="blue">${fsys?fsys.name:"?"}</b> system${withYou?' <span class="green small">(with you)</span>':''} &middot; ${RANGE_LABEL[caps.tier]}${caps.tier==="interstellar"?` &middot; reach <b class="gold">${caps.jump.toFixed(1)} ly</b>`:""}</p>
-        <div class="row" style="margin-top:8px">
+        <div class="row between"><h2 class="gold">${f.name}</h2><span class="tag">${f.shipIds.length} ship${f.shipIds.length!==1?"s":""}</span></div>
+        <div class="chips" style="margin-top:7px">
+          <span class="chip b">&#128205; ${fsys?fsys.name:"?"}</span>
+          ${withYou?'<span class="chip g">&#9679; with you</span>':'<span class="chip">away</span>'}
+          <span class="chip">${RANGE_LABEL[caps.tier]}${caps.tier==="interstellar"?` &middot; ${caps.jump.toFixed(1)} ly`:""}</span>
+          ${f.trade?'<span class="chip gold">&#128666; trading</span>':fleetAllCrewed(f)?'<span class="chip g">ready</span>':'<span class="chip r">needs crew</span>'}
+        </div>
+        <div class="row" style="margin-top:10px">
           <button data-fleetmove="${f.id}">&#9992; Move fleet</button>
           <button class="ghost small" data-fleetrename="${f.id}">Rename</button>
-          <button class="ghost small ${withYou?'':'dim'}" data-fleetdisband="${f.id}">Disband</button>
+          <button class="ghost small" data-fleetdisband="${f.id}">Disband</button>
         </div>
-        ${withYou?"":'<p class="small dim" style="margin-top:6px">You can add/remove ships from anywhere, but must be with the fleet to disband it.</p>'}
+        ${withYou?"":'<p class="small dim" style="margin-top:6px">Add or remove ships from anywhere; be with the fleet to disband it.</p>'}
       </div>
       <div class="card sheet"><h3>Ships in fleet</h3>
-        ${shipsByIds(f.shipIds).map(v=>`<div class="krow"><span class="lbl">${v.id===state.activeShip?'&#9654; ':''}${v.name} <span class="dim small">&middot; ${RANGE_LABEL[v.range]}${!Game.operational(v)?' <span class="red">no crew</span>':''}</span></span>
-          <span class="kv"><button class="small ghost" data-fleetremove="${f.id}:${v.id}">Remove</button></span></div>`).join("")}
+        ${shipsByIds(f.shipIds).map(v=>{ const a=v.id===state.activeShip, ok=Game.operational(v);
+          return `<div class="frow"><div class="finfo"><div class="nm">${a?'&#9654; ':''}${v.name}</div>
+            <div class="chips" style="margin-top:4px"><span class="chip">${RANGE_LABEL[v.range]}</span>${ok?'<span class="chip g">crewed</span>':'<span class="chip r">no crew</span>'}</div></div>
+            <button class="small ghost" data-fleetremove="${f.id}:${v.id}">Remove</button></div>`; }).join("")}
       </div>
       ${this.fleetTradeCard(f)}
-      <div class="card sheet"><h3>Add a ship <span class="dim small">&middot; must be in ${fsys?fsys.name:"the fleet's"} system</span></h3>
-        ${addable.length?addable.map(v=>`<div class="krow"><span class="lbl">${v.name} <span class="dim small">&middot; ${RANGE_LABEL[v.range]}</span></span>
-          <span class="kv"><button class="small" data-fleetadd="${f.id}:${v.id}">Add</button></span></div>`).join("")
-          :`<p class="small dim">No free ships in that system.</p>`}
-      </div>
+      ${addable.length?`<div class="card sheet"><h3>Add a ship <span class="dim small">&middot; in ${fsys?fsys.name:"system"}</span></h3>
+        ${addable.map(v=>`<div class="frow"><div class="finfo"><div class="nm">${v.name}</div>
+          <div class="chips" style="margin-top:4px"><span class="chip">${RANGE_LABEL[v.range]}</span></div></div>
+          <button class="small" data-fleetadd="${f.id}:${v.id}">Add</button></div>`).join("")}</div>`:""}
       <div class="card"><button class="ghost full center" id="fleetBack">&larr; All fleets</button></div>`;
     }
     return `<div class="card"><h3>Your fleets <span class="dim small">&middot; ${fleets.length}</span></h3>
