@@ -1242,15 +1242,17 @@ const Gen = {
              genome:{ avgPct, grade:gradeLabel(avgPct) } };
   },
 
-  world(){
+  world(cf=0.5){
     const tier=RARITY.roll();              // overall "specialness" / resource richness
     const biome=weightedPick(BIOMES);
     const pop=weightedPick(POPULATIONS);
     const ti=RARITY.index(tier.id);
-    // independent skewed axes (rarer worlds nudge tech/wealth up a touch)
-    const tech  =clamp(skewRoll(9,1.7)+Math.round(ti*0.4),0,9);
-    const wealth=clamp(skewRoll(9,1.7)+Math.round(ti*0.5),0,9);
-    const danger=clamp(skewRoll(9,1.5)+1+Math.round(ti*0.3),1,10);
+    // development tracks galactic position: rich, high-tech worlds cluster from the core out to about
+    // halfway; the outer rim stays poor, low-tech and lightly settled (dev: 1 core .. 0 rim edge)
+    const dev=clamp((cf-0.1)/0.45, 0, 1);
+    const tech  =clamp(skewRoll(9,1.7)+Math.round(ti*0.4)+Math.round(dev*5),0,9);
+    const wealth=clamp(skewRoll(9,1.7)+Math.round(ti*0.5)+Math.round(dev*5),0,9);
+    const danger=clamp(skewRoll(9,1.5)+1+Math.round(ti*0.3)-Math.round(dev*2),1,10);
     const market=+(0.5+tech*0.05+wealth*0.05).toFixed(2); // breadth/quality of goods
     return { kind:"world", name:null, tier:tier.id, biome:biome.id, biomeName:biome.name,
              creatures:biome.creatures, pop:pop.id, popName:pop.name, peaceMod:pop.peaceMod,
@@ -1521,6 +1523,7 @@ const Game = {
     // carve up older galaxies that predate the politics layer, and init your (blank) allegiance
     if(state.galaxy && !state.galaxy.governments) seedPolitics(state.galaxy);
     if(state.galaxy && !state.galaxy.full) populateGalaxy(state.galaxy, state.spawn);   // fill out thin older galaxies
+    if(state.galaxy && state.galaxy.governments) assignCapitals(state.galaxy);          // ensure capitals sit on real systems
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
     if(!state.contracts) state.contracts=[];
     if(!state.gear) state.gear=[];
@@ -2645,27 +2648,35 @@ const UI = {
     if(opts.originXY){ const ox=sx(opts.originXY.x), oy=sy(opts.originXY.y);
       els+=`<circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="3" fill="#e0b24a"/>`; }
     // territory of the powers you've learned of (a government becomes known once you chart any
-    // system it holds) — drawn faint and UNDER the stars so the map reads as a political chart
+    // system it holds) — drawn UNDER the stars so the map reads as a political chart
     const showLabels=v.span<=46;
     const knownGovs=new Set(); (state.galaxy.systems||[]).forEach(s=>{ if(s.discovered && s.govId) knownGovs.add(s.govId); });
     const hereG=systemGov(curSys()); if(hereG) knownGovs.add(hereG.id);
     (state.galaxy.governments||[]).forEach(g=>{ if(!knownGovs.has(g.id)) return;
       const gx=sx(g.center.x), gy=sy(g.center.y), gr=g.radius/v.span*SIZE;
       if(!inView(gx,gy,gr)) return;
-      els+=`<circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="${gr.toFixed(1)}" fill="${g.color}14" stroke="${g.color}55" stroke-width="1"/>`;
-      if(gr>18) els+=`<text x="${gx.toFixed(1)}" y="${gy.toFixed(1)}" fill="${g.color}" font-size="${clamp(gr/6,7,11).toFixed(0)}" text-anchor="middle" opacity="0.7">${g.name}</text>`;
+      els+=`<circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="${gr.toFixed(1)}" fill="${g.color}1e" stroke="${g.color}88" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+      if(gr>16) els+=`<text x="${gx.toFixed(1)}" y="${gy.toFixed(1)}" fill="${g.color}" font-size="${clamp(gr/6,7,12).toFixed(0)}" text-anchor="middle" opacity="0.85" font-weight="bold">${g.name}</text>`;
     });
-    // systems (only those you can see), labels only when zoomed in enough
+    // systems you can see — discovered stars are tinted by who controls them
     visibleSystems().forEach(s=>{ const px=sx(s.x), py=sy(s.y); if(!inView(px,py,8)) return;
-      const here=s.id===originId;
+      const here=s.id===originId, gcol=(s.govId&&knownGovs.has(s.govId))?((govById(s.govId)||{}).color||null):null;
       if(here){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.5" fill="none" stroke="#5aa9ff" stroke-width="1.5"/>
         <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2" fill="#5aa9ff"/>`; }
-      else if(s.discovered){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.6" fill="#cfe0ff"/>`; }
-      else { els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.2" fill="none" stroke="#5b6b8a" stroke-width="1"/>`; }
-      if(showLabels && (s.discovered||here)) els+=`<text x="${px.toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${here?'#5aa9ff':'#9fb0cc'}" font-size="7" text-anchor="middle">${here?(originId===state.sysId?"You":"Fleet"):s.name}</text>`;
+      else if(s.capital!=null && gcol){ /* capital drawn in the pass below */ }
+      else if(s.discovered){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.6" fill="${gcol||'#cfe0ff'}"/>`; }
+      else { els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.2" fill="none" stroke="${gcol||'#5b6b8a'}" stroke-width="1"/>`; }
+      if(showLabels && (s.discovered||here) && s.capital==null) els+=`<text x="${px.toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${here?'#5aa9ff':'#9fb0cc'}" font-size="7" text-anchor="middle">${here?(originId===state.sysId?"You":"Fleet"):s.name}</text>`;
+    });
+    // capital stars for the powers you know — landmarks toward the core, drawn on top
+    (state.galaxy.governments||[]).forEach(g=>{ if(!knownGovs.has(g.id) || g.capitalSys==null) return;
+      const cap=state.galaxy.systems[g.capitalSys]; if(!cap) return;
+      const cxp=sx(cap.x), cyp=sy(cap.y); if(!inView(cxp,cyp,12)) return;
+      els+=`<text x="${cxp.toFixed(1)}" y="${(cyp+4.5).toFixed(1)}" fill="${g.color}" font-size="14" text-anchor="middle" stroke="#0a0e16" stroke-width="0.6" paint-order="stroke">&#9733;</text>`;
+      if(showLabels) els+=`<text x="${cxp.toFixed(1)}" y="${(cyp-7).toFixed(1)}" fill="${g.color}" font-size="7" text-anchor="middle">${cap.name}</text>`;
     });
     return `<svg viewBox="0 0 ${SIZE} ${SIZE}" class="gmap" preserveAspectRatio="xMidYMid meet">${els}</svg>
-      <p class="small dim center" style="margin-top:4px">&#9678; ${originId===state.sysId?"you":"fleet"} &middot; &#9737; core &middot; &#9679; charted &middot; &#8728; contact${reach>0?' &middot; ring = jump range':''}</p>`;
+      <p class="small dim center" style="margin-top:4px">&#9678; ${originId===state.sysId?"you":"fleet"} &middot; &#9737; core &middot; &#9733; capital &middot; &#9679; charted (tinted by ruling power) &middot; &#8728; contact${reach>0?' &middot; ring = jump range':''}</p>`;
   },
   mapCenterMe(){ const p=playerXY(); mapView={ cx:p.x, cy:p.y, span:36 }; },
 
@@ -3904,7 +3915,8 @@ function genGovernments(){
   for(let i=0;i<n;i++){
     const alignment = i===0?"dark" : i===1?"light" : pick(["dark","light","neutral"]);
     const name = (chance(0.55)?nameWord(2,3)+" ":"The ")+pick(GOV_TITLES[alignment]);
-    const ang=(i/n)*Math.PI*2 + rndF(-0.5,0.5), dist=rndF(0, GALAXY.radius*0.5);
+    // seats of power cluster near the core (sqrt bias pulls them inward), out to ~a third of the disc
+    const ang=(i/n)*Math.PI*2 + rndF(-0.5,0.5), dist=GALAXY.radius*0.36*Math.sqrt(Math.random());
     const center={ x:+(Math.cos(ang)*dist).toFixed(1), y:+(Math.sin(ang)*dist).toFixed(1) };
     const strength=+rndF(0.65,1.4).toFixed(2);
     const radius=clamp(Math.round((70+rnd(0,70))*strength), 55, 170), wealth=rnd(2,9);
@@ -3946,6 +3958,18 @@ function seedPolitics(galaxy){
   const govs=genGovernments();
   galaxy.governments=govs; galaxy.factions=genFactions(govs);
   (galaxy.systems||[]).forEach(s=>{ s.govId=govAt(s.x,s.y,govs); });
+  assignCapitals(galaxy);
+}
+/* plant each government's capital on the real system nearest its seat of power (these sit core-ward,
+   since government centres are seeded within the inner half of the disc). Idempotent. */
+function assignCapitals(galaxy){
+  const govs=galaxy.governments||[], sys=galaxy.systems||[]; if(!govs.length||!sys.length) return;
+  const used=new Set();
+  govs.forEach(g=>{ if(g.capitalSys!=null && sys[g.capitalSys]){ used.add(g.capitalSys); return; } });
+  govs.forEach(g=>{ if(g.capitalSys!=null && sys[g.capitalSys]) return;
+    let best=null, bd=Infinity;
+    sys.forEach(s=>{ if(used.has(s.id)) return; const d=Math.hypot(s.x-g.center.x, s.y-g.center.y); if(d<bd){ bd=d; best=s; } });
+    if(best){ g.capitalSys=best.id; g.capitalName=best.name; best.capital=g.id; best.capitalSlot=0; best.govId=g.id; used.add(best.id); } });
 }
 const govById=id=>((state.galaxy&&state.galaxy.governments)||[]).find(g=>g.id===id)||null;
 const factionById=id=>((state.galaxy&&state.galaxy.factions)||[]).find(f=>f.id===id)||null;
@@ -4035,12 +4059,13 @@ function populateGalaxy(galaxy, spawn){
     for(let i=0;i<n;i++){ const ang=Math.random()*Math.PI*2, r=i<3?rndF(4.5,7.5):rndF(4,55);
       const x=home.x+Math.cos(ang)*r, y=home.y+Math.sin(ang)*r; add(x,y,centralFactor(x,y)); }
   }
-  // 2) scatter the broad galaxy across the disc, accepting points more readily toward the core
-  const target=Math.max(sys.length+450, 720); let tries=0;
-  while(sys.length<target && tries<target*12){ tries++;
+  // 2) scatter the broad galaxy across the disc, accepting points far more readily toward the core
+  // so the inner galaxy is densely packed and the outer rim thins to scattered lonely stars
+  const target=Math.max(sys.length+550, 820); let tries=0;
+  while(sys.length<target && tries<target*16){ tries++;
     const ang=Math.random()*Math.PI*2, r=GALAXY.radius*Math.sqrt(Math.random());
     const x=Math.cos(ang)*r, y=Math.sin(ang)*r, cf=centralFactor(x,y);
-    if(Math.random() > Math.pow(cf, 0.55)) continue;     // thin out the rim, pack the core
+    if(Math.random() > Math.pow(cf, 0.85)) continue;     // steep falloff: thick core, sparse rim
     add(x,y,cf);
   }
   galaxy.systems=sys; galaxy.full=true;
@@ -4098,9 +4123,13 @@ function moveGroupTo(ids, destSys, destSlot, backTo){
                         :`The fleet sets down on ${p.world.name}.`,"sys");
     Game.save(); UI.render(playerIn?"hub":(backTo||"crew")); UI.flashLog(); return;
   }
-  // uncharted, and you're aboard -> chart it
-  const world=Gen.world(), occupied=chance(worldOccChance(sys, world));
-  if(occupied) world.settle=pickSettlement(world, destSys);   // capital, trade hub, farmworld, ...
+  // uncharted, and you're aboard -> chart it. Development tracks position; a government's seat world
+  // is a guaranteed, fully-developed Capital City.
+  const cf=centralFactor(sys.x, sys.y), isCap=sys.capital!=null && destSlot===(sys.capitalSlot||0);
+  const world=Gen.world(isCap?1:cf);
+  if(isCap){ world.tech=Math.max(world.tech,7); world.wealth=Math.max(world.wealth,7); }
+  const occupied = isCap || chance(worldOccChance(sys, world));
+  if(occupied) world.settle = isCap ? "capital" : pickSettlement(world, destSys);   // capital, trade hub, farmworld, ...
   const draw=occupied?drawRace():null;
   arriving={ sysId:destSys, slot:destSlot, world, occupied, draw, outpost:pick(OUTPOSTS),
     person:null, step:1, crossSys, shipIds:ids.slice() };
