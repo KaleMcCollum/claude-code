@@ -595,6 +595,8 @@ const careerById=id=>CAREERS.find(c=>c.id===id);
 const isHostile=p=>!!(p&&p.hostile);
 /* wealth rolled toward the low end of a career's range — most members are poor, a few rich */
 function rollWealth(c){ const [lo,hi]=c.wealth; return Math.round(lo+(hi-lo)*Math.pow(Math.random(),2.2)); }
+/* a wanted figure's combat LEVEL, by threat — an outlaw is low, a warlord is a triple-digit terror */
+function bountyLevel(hostile){ return Math.max(1, Math.round(({1:12,2:42,3:120,4:240}[hostile]||12)*rndF(0.8,1.25))); }
 /* a hostile figure's bounty, by threat level (and a touch higher for rarer races) */
 function rollBounty(c, raceTier){ const tm=1+RARITY.index(raceTier)*0.4;
   const base={1:rnd(600,3000),2:rnd(4000,20000),3:rnd(30000,150000),4:rnd(200000,1500000)}[c.hostile]||0;
@@ -1475,6 +1477,14 @@ function weightedKey(w){ let t=0; for(const k in w) t+=w[k]; let r=Math.random()
 function rollDropRarity(threat){
   return weightedKey({ common:100, uncommon:28+threat*14, rare:6+threat*6, epic:1+threat*1.6, legendary:0.12+threat*0.16 });
 }
+/* a level-up reward piece: the rarity CEILING rises with level, so nothing strong drops early and
+   the top tiers only show up deep in a long career (best high-end gear still comes from kills) */
+function levelRewardGear(level){
+  const ceil = level<20?0 : level<50?1 : level<100?2 : level<160?3 : 4;   // common..legendary
+  const w={}; const lean=[100,42,16,5,1.4];
+  for(let i=0;i<=ceil;i++) w[ITEM_RARITY[i].id]=lean[i]||1;
+  return genGear(weightedKey(w));
+}
 /* resolve an equip-slot reference (a catalog id OR a gear uid) to a unified item def */
 const gearByUid=uid=>(state.gear||[]).find(g=>g.uid===uid)||null;
 function resolveItem(ref){ if(!ref) return null; if(DATA.items[ref]) return DATA.items[ref]; return gearByUid(ref); }
@@ -1743,11 +1753,21 @@ const Game = {
     return state.marketStock[key]; },
 
   gainXp(n){ n=Math.round(n*Game.tempEff("xpMult",1)); state.xp+=n; let lv=false;
+    // your GENETICS set how fast you grow — a gifted genome gains more HP, stamina and stats per level
+    const gq=clamp(((state.species&&state.species.genome&&state.species.genome.avgPct)||50)/100, 0.05, 0.99), gmul=0.7+gq*0.9;
     while(state.xp>=state.xpNext){ state.xp-=state.xpNext; state.level++; lv=true;
       state.xpNext=Math.round(state.xpNext*1.4+20);
-      state.maxHp+=12; state.maxEnergy+=5; state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
-      const keys=["might","agility","force","tech","charm"]; state.stats[keys[state.level%keys.length]]++; }
-    if(lv){ Game.logMsg(`You reached level ${state.level}!`,"good"); learnSkills(); } return lv; },
+      const hpGain=Math.round(12*gmul), enGain=Math.round(5*gmul);
+      state.maxHp+=hpGain; state.maxEnergy+=enGain;
+      const keys=["might","agility","force","tech","charm"], k1=keys[state.level%keys.length]; state.stats[k1]=(state.stats[k1]||0)+1;
+      let statMsg=`${k1} +1`; if(chance(gq)){ const k2=pick(keys); state.stats[k2]=(state.stats[k2]||0)+1; statMsg+=`, ${k2} +1`; }   // good genes -> extra growth
+      state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
+      const cr=state.level*15; state.credits+=cr;
+      Game.logMsg(`Level ${state.level}! +${hpGain} HP, +${enGain} stamina, ${statMsg}, +${commas(cr)}c.`,"good");
+      if(chance(0.16)){ const g=levelRewardGear(state.level); state.gear=state.gear||[]; state.gear.push(g);
+        Game.logMsg(`A spoil of your renown: <b style="color:${rarityColor(g.rarity)}">${g.name}</b>!`,"good"); }
+      learnSkills(); }
+    return lv; },
 
   logMsg(t,c=""){ state.log.push({t,c}); if(state.log.length>60) state.log=state.log.slice(-60); },
 };
@@ -1837,26 +1857,26 @@ function beastEncounter(w){
   if(!state.codex.creatures) state.codex.creatures={};
   const seen=state.codex.creatures[cid]||(state.codex.creatures[cid]={name:tpl.name, blurb:tpl.blurb, count:0, where:w.name, reported:false});
   seen.count++;
-  const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06;
-  combat={ cid, name:tpl.name, blurb:tpl.blurb,
+  const scale=1+(w.danger-1)*0.06, lvl=enemyLevelFor(w.danger, centralFactor(curSys()?curSys().x:0, curSys()?curSys().y:0));
+  combat={ cid, name:tpl.name, blurb:tpl.blurb, level:lvl,
     maxHp:Math.round(tpl.hp*scale), hp:Math.round(tpl.hp*scale),
-    atk:Math.round(tpl.atk*scale), xp:Math.round(tpl.xp*scale),
+    atk:Math.round(tpl.atk*scale), xp:Math.round(tpl.xp*scale*(1+lvl*0.04)),
     tame:tpl.tame, over:false, stim:state.stimReady, surprised:false,
     traits: chance(0.45)?[pick(["savage","evasive","venomous"])]:[], dropTier:clamp(Math.round((w.danger-1)/2),0,3) };
-  initCombat(combat); state.stimReady=false;
+  applyLevelScaling(combat); initCombat(combat); state.stimReady=false;
   if(applyInitiative(tpl.name, `A wild ${tpl.name} appears! ${tpl.blurb}`)) return;
   Game.save(); UI.render("combat");
 }
 function humanoidEncounter(w){
   const pool=FOES.filter(f=>w.danger>=(f.minDanger||1));
   const f=weightedPick(pool.length?pool:FOES);
-  const scale=1+(state.level-1)*0.05+(w.danger-1)*0.06, hp=Math.round(f.hp*scale);
-  combat={ foe:true, fid:f.id, name:f.name, blurb:f.blurb, maxHp:hp, hp,
-    atk:Math.round(f.atk*scale), xp:Math.round(f.xp*scale), loot:f.loot,
+  const scale=1+(w.danger-1)*0.06, hp=Math.round(f.hp*scale), lvl=enemyLevelFor(w.danger, centralFactor(curSys()?curSys().x:0, curSys()?curSys().y:0));
+  combat={ foe:true, fid:f.id, name:f.name, blurb:f.blurb, level:lvl, maxHp:hp, hp,
+    atk:Math.round(f.atk*scale), xp:Math.round(f.xp*scale*(1+lvl*0.04)), loot:f.loot,
     over:false, stim:state.stimReady, surprised:false,
     traits:(f.traits||[]).slice().concat(w.danger>=6&&chance(0.3)?[pick(["armored","brute","venomous"])]:[]),
     dropTier:clamp(Math.round((w.danger-1)/2),0,4) };
-  initCombat(combat); state.stimReady=false;
+  applyLevelScaling(combat); initCombat(combat); state.stimReady=false;
   if(applyInitiative(f.name, `${f.blurb}`)) return;
   Game.save(); UI.render("combat");
 }
@@ -1908,6 +1928,20 @@ function initCombat(c){
   c.eStatus={bleed:0,daze:0}; c.pStatus={poison:0}; c.winding=false;
   return c;
 }
+/* ---- LEVELS: every character has one. The GAP between their level and yours decides the fight:
+   far above you and they nearly one-shot you; far below and you stomp them. ---- */
+function levelGap(enemyLevel){ return clamp(Math.pow(1.07, (enemyLevel||1)-(state.level||1)), 0.02, 250); }
+function threatOf(enemyLevel){ const g=(enemyLevel||1)-(state.level||1);
+  if(g<=-22) return {t:"Trivial",  c:"dim"};
+  if(g<=-8)  return {t:"Easy",     c:"green"};
+  if(g<8)    return {t:"Even",     c:"blue"};
+  if(g<20)   return {t:"Tough",    c:"gold"};
+  if(g<45)   return {t:"Deadly",   c:"red"};
+  return            {t:"Suicidal", c:"red"}; }
+/* an enemy's absolute level, from how rough & developed its corner of the galaxy is */
+function enemyLevelFor(danger, cf){ return Math.max(1, Math.round((danger*2.6 + (cf||0)*16) * rndF(0.8,1.2))); }
+/* scale a fresh combatant's hp & atk by the level gap to the player (the one-shot / stomp dynamic) */
+function applyLevelScaling(c){ const gm=levelGap(c.level); c.maxHp=Math.max(1,Math.round(c.maxHp*gm)); c.hp=c.maxHp; c.atk=Math.max(1,Math.round(c.atk*gm)); return c; }
 /* drop loot gear from a beaten foe, by its toughness tier */
 function dropFoeGear(ch){ if(!combat||!chance(ch)) return null;
   state.gear=state.gear||[]; const g=genGear(rollDropRarity(clamp(combat.dropTier||0,0,4)));
@@ -2274,7 +2308,8 @@ const UI = {
   /* ---------- BOUNTY BOARD (a hunter's posted contracts) ---------- */
   screen_bounties(){
     const b=state.bountyBoard, active=state.contracts||[];
-    const mark=c=>`<div class="row between"><span><b>${c.name}</b> <span class="small dim">&middot; ${c.raceName} ${careerName(c.career)}</span></span><span class="small" style="color:#ff6b6b">${THREAT_LABEL[c.threat]||"WANTED"}</span></div>`;
+    const mark=c=>{ const th=threatOf(c.level||1); return `<div class="row between"><span><b>${c.name}</b> <span class="small dim">&middot; ${c.raceName} ${careerName(c.career)}</span></span><span class="small">Lv ${c.level||"?"} <span class="${th.c}">${th.t}</span></span></div>
+      <div class="small dim" style="margin:1px 0 2px">${THREAT_LABEL[c.threat]||"WANTED"}${(c.level||0)>(state.level||1)+30?' &middot; <span class="red">far above your level</span>':''}</div>`; };
     return `${this.statHeader()}
     <div class="card"><h2>&#127919; Bounty Hunter</h2>
       <p class="small dim">A scarred hunter slides a datapad across the table. "Three marks worth your time. Bring 'em in breathing or cold — the price holds either way. They're out there; you'll have to track 'em down yourself."</p></div>
@@ -3087,10 +3122,12 @@ const UI = {
     const fx=s=>{ const k=DATA.skills[s]; return k.applies==="bleed"?' <span class="r">&#129656;</span>':k.applies==="daze"?' <span class="gold">&#128171;</span>':k.hits>1?` <span class="dim">x${k.hits}</span>`:k.critBonus?' <span class="gold">&#10022;</span>':""; };
     return `
     ${this.statHeader()}
-    <div class="card">
+    ${(()=>{ const th=threatOf(c.level||1); return `<div class="card">
       <div class="row between"><h2 class="red">${c.name}</h2>
-        <span class="small dim">${c.stim?'<span class="gold">stim primed</span>':''}</span></div>
+        <span class="small">Lv ${c.level||1} &middot; <b class="${th.c}">${th.t}</b></span></div>
       <p class="small dim">${c.blurb}</p>
+      ${c.stim?'<p class="small gold">stim primed</p>':""}
+      ${(c.level||1) > (state.level||1)+30 ? '<p class="small red">&#9760; This foe is far beyond you — one hit could end you. Flee.</p>' : (c.level||1) < (state.level||1)-22 ? '<p class="small dim">Beneath your notice — this will be quick.</p>' : ""}`; })()}
       ${traits.length?`<div class="chips" style="margin:4px 0">${traits.map(t=>`<span class="chip ${t.tag}" title="${t.hint}">${t.name}</span>`).join("")}${eStat.join("")}</div>`:(eStat.length?`<div class="chips" style="margin:4px 0">${eStat.join("")}</div>`:"")}
       <div class="statline"><span>HP</span><span>${Math.max(0,c.hp)} / ${c.maxHp}</span></div>
       <div class="bar"><i class="hpfill" style="width:${Math.max(0,c.hp/c.maxHp*100)}%"></i></div>
@@ -5075,16 +5112,15 @@ function tickTrades(n){ for(let i=0;i<n;i++) (state.fleets||[]).forEach(f=>{ if(
 function startDuel(i){
   const p=(state.codex.people||[])[i];
   if(!p || !isHostile(p) || p.captured) return;
-  // tougher targets fight with guards at their back — threat scales their HP and bite
-  const tmul={1:1, 2:1.7, 3:2.8, 4:4.5}[p.hostile]||1;
-  const maxHp=Math.round((p.attrs.endurance.value*5 + p.height.value*0.06)*tmul);
+  const lvl=p.level||bountyLevel(p.hostile); p.level=lvl;
+  const maxHp=Math.round(p.attrs.endurance.value*5 + p.height.value*0.06);
   const dtraits={1:["evasive"],2:["savage"],3:["armored","savage"],4:["armored","brute","savage"]}[p.hostile]||[];
-  combat={ person:true, personIdx:i, name:p.name,
+  combat={ person:true, personIdx:i, name:p.name, level:lvl,
     blurb:`A ${careerName(p.career).toLowerCase()} — ${commas(p.bounty.alive)}c alive.${forceDesc(p.force)?` Backed by ${forceDesc(p.force)}.`:""}`,
-    maxHp, hp:maxHp, atk:Math.round((p.attrs.strength.value*0.8 + p.mass.value*0.02)*tmul),
+    maxHp, hp:maxHp, atk:Math.round(p.attrs.strength.value*0.8 + p.mass.value*0.02),
     xp:Math.round(maxHp*0.4), over:false, claim:false, stim:state.stimReady, surprised:false, bounty:p.bounty,
     traits:dtraits.slice(), dropTier:clamp(p.hostile,0,4) };
-  initCombat(combat); state.stimReady=false;
+  applyLevelScaling(combat); combat.xp=Math.round(combat.xp*(1+lvl*0.05)); initCombat(combat); state.stimReady=false;
   Game.logMsg(`You move to apprehend ${p.name}.`,"hit");
   UI.render("combat");
 }
@@ -5127,7 +5163,8 @@ function genContract(){
   const locs=bountyLocations();
   const loc=locs.length?pick(locs):{sysId:state.sysId??0,slot:state.atSlot,sysName:(curSys()||{name:"this"}).name,worldName:state.world?state.world.name:"this world"};
   const id="ct"+Date.now().toString(36)+rnd(100,999); person.contractId=id;
-  return { id, draw, person, name:person.name, career:person.career, raceName:draw.race.name, threat:person.hostile,
+  person.level=bountyLevel(person.hostile);
+  return { id, draw, person, name:person.name, career:person.career, raceName:draw.race.name, threat:person.hostile, level:person.level,
     alive:person.bounty.alive, dead:person.bounty.dead, sysId:loc.sysId, slot:loc.slot, sysName:loc.sysName, worldName:loc.worldName };
 }
 /* talk to the hunter — post three marks (steady per planet until you move on) */
