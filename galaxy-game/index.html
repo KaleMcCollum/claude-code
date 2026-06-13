@@ -2614,7 +2614,8 @@ const UI = {
       <div class="odds">${r.name} is jumped near ${r.sysName}</div>
     </div>
     <div class="card sheet">
-      <p class="small dim">A raider pack drops out of the dark across your trade lane and moves to board. Your captain holds for orders.</p>
+      <p class="small dim">${cap(r.kind||"a band of")} <b class="red">${r.ships||"several"}</b> raider ship${(r.ships||2)!==1?"s":""} drops out of the dark across your trade lane and moves to board. Your captain holds for orders.</p>
+      ${krow("Raider ships", `<b class="red">${r.ships||"?"}</b>`)}
       ${krow("Threat", `<b class="red">${"&#9876;".repeat(r.threat)}</b> <span class="dim small">level ${r.threat}</span>`)}
       ${krow("Raider strength", `<b class="red">${commas(r.raiderPower)}</b>`)}
       ${krow("Your firepower", `<b class="${r.power>=r.raiderPower?'green':r.power>1?'gold':'red'}">${commas(r.power)}</b> ${escorts.length?`<span class="dim small">&middot; ${escorts.length} escort${escorts.length>1?"s":""}</span>`:`<span class="red small">&middot; no escort!</span>`}`)}
@@ -4424,17 +4425,24 @@ function finishArrival(){
    crossing paths with other ships, from a lone freighter to a whole armada (the seed for
    future ship-to-ship combat). */
 const VOID_FLEETS=[
-  // most traffic is peaceful: lone civilians & cargo dominate, armed groups are the exception,
-  // and a true war-fleet/armada is a rare event you'll remember
-  { id:"derelict",  name:"Derelict Hulk",    weight:6,    ships:[1,1],   threat:0, salvage:[40,320], blurb:"a dead, drifting wreck — long abandoned" },
-  { id:"cargo",     name:"Cargo Freighter",  weight:26,   ships:[1,2],   threat:0, blurb:"a lone freighter hauling goods between the stars" },
-  { id:"transport", name:"Transport Convoy", weight:16,   ships:[2,4],   threat:0, blurb:"a transport convoy ferrying colonists out to the rim" },
-  { id:"trader",    name:"Free Trader",      weight:14,   ships:[1,2],   threat:0, blurb:"a free trader flashing a friendly beacon" },
-  { id:"patrol",    name:"Patrol Squadron",  weight:6,    ships:[2,4],   threat:1, blurb:"a patrol squadron sweeping the lanes" },
-  { id:"mercs",     name:"Mercenary Wing",   weight:4,    ships:[2,5],   threat:1, blurb:"a mercenary wing — for hire, or for hunting" },
-  { id:"pirates",   name:"Pirate Raiders",   weight:3.5,  ships:[2,6],   threat:2, blurb:"pirate raiders sizing up your hull" },
-  { id:"warfleet",  name:"War Fleet",        weight:1.2,  ships:[8,18],  threat:3, blurb:"a war fleet under banners you don't recognize" },
-  { id:"armada",    name:"Grand Armada",     weight:0.25, ships:[30,90], threat:4, blurb:"a vast armada — an entire army adrift between worlds" },
+  // most traffic is peaceful: lone civilians & cargo dominate. Armed encounters run the full gamut —
+  // a lone raider skiff you'd swat aside, a pirate pack, on up to a rare enemy battle group or armada.
+  { id:"derelict",  name:"Derelict Hulk",       weight:6,    ships:[1,1],   threat:0, salvage:[40,320], blurb:"a dead, drifting wreck — long abandoned" },
+  { id:"cargo",     name:"Cargo Freighter",     weight:24,   ships:[1,2],   threat:0, blurb:"a lone freighter hauling goods between the stars" },
+  { id:"transport", name:"Transport Convoy",    weight:14,   ships:[2,5],   threat:0, blurb:"a transport convoy ferrying colonists out to the rim" },
+  { id:"trader",    name:"Free Trader",         weight:12,   ships:[1,3],   threat:0, blurb:"a free trader flashing a friendly beacon" },
+  // small & common — meant to be beatable in a decent ship
+  { id:"skiff",     name:"Raider Skiff",        weight:9,    ships:[1,2],   threat:1, blurb:"a lone raider skiff looking for an easy mark" },
+  { id:"patrol",    name:"Patrol Squadron",     weight:7,    ships:[2,4],   threat:1, blurb:"a patrol squadron sweeping the lanes" },
+  // medium — a real fight
+  { id:"mercs",     name:"Mercenary Wing",      weight:5,    ships:[2,5],   threat:2, blurb:"a mercenary wing — for hire, or for hunting" },
+  { id:"pirates",   name:"Pirate Raiders",      weight:5,    ships:[3,7],   threat:2, blurb:"pirate raiders sizing up your hull" },
+  { id:"corsairs",  name:"Corsair Pack",        weight:2.6,  ships:[6,11],  threat:2, blurb:"a corsair pack hunting in numbers" },
+  { id:"navy",      name:"Navy Squadron",       weight:2.2,  ships:[5,10],  threat:3, blurb:"a government navy squadron on patrol" },
+  // large & rare — events you'll remember
+  { id:"warfleet",  name:"War Fleet",           weight:1.1,  ships:[10,20], threat:3, blurb:"a war fleet under banners you don't recognize" },
+  { id:"battlegrp", name:"Naval Battle Group",  weight:0.6,  ships:[18,30], threat:3, blurb:"a full naval battle group — an enemy government's muscle" },
+  { id:"armada",    name:"Grand Armada",        weight:0.18, ships:[28,55], threat:4, blurb:"a vast armada — an entire army adrift between worlds" },
 ];
 /* Build an enemy fleet as REAL individual ships (each its own stat-block), drawn from hull classes
    that suit the threat level — a low-threat raid is fighters & gunships, a warlord brings frigates,
@@ -4448,11 +4456,14 @@ const ENEMY_POOLS={
 };
 const ENEMY_PERMOUNT=[150,420,950,2100,4200];   // firepower per gun, by threat (mirrors WEAPON tiers)
 function genEnemyFleet(threat, n){
-  const t=clamp(threat,0,4), pool=ENEMY_POOLS[t]||ENEMY_POOLS[1];
+  const t=clamp(threat,0,4), pool=ENEMY_POOLS[t]||ENEMY_POOLS[1];   // pools run light -> heavy
   const tierId=RARITY.tiers[clamp(Math.round(t*0.7),0,RARITY.tiers.length-1)].id;   // mostly common; tougher fleets a notch rarer
   const ships=[];
   for(let i=0;i<n;i++){
-    const cls=shipClass(pick(pool)); if(!cls) continue;
+    // real fleets are mostly escorts with a few heavies — bias the draw toward the LIGHT end of the
+    // pool so a 30-strong fleet is a swarm of fighters & corvettes, not thirty capital ships
+    const idx=Math.min(pool.length-1, Math.floor(Math.pow(Math.random(),1.9)*pool.length));
+    const cls=shipClass(pool[idx]); if(!cls) continue;
     const cs=shipStatsFor(cls, tierId), maxHp=cs.maxHp;
     const guns=Math.max(1,(cls.pilotGuns||0)+(cls.gunnerGuns||0));
     const skillMult=1+clamp(t*1.6/10,0,1)*0.3;                 // tougher fleets crew their guns better
@@ -4508,10 +4519,10 @@ function voidEncounter(){
 function encounterDispo(f, gov){
   if(f.id==="derelict") return "none";
   const stance = gov ? govStance(gov) : "neutral";
-  if(f.id==="pirates") return chance(0.8)?"hostile":"wary";              // raiders are raiders
+  if(["pirates","skiff","corsairs"].includes(f.id)) return chance(0.8)?"hostile":"wary";   // raiders are raiders
   if(f.threat===0) return stance==="hostile"?"wary": stance==="friendly"?"friendly":"neutral";  // civilians won't fight
   if(f.id==="mercs") return stance==="hostile"&&chance(0.5)?"hostile":"neutral";
-  // patrols, war-fleets & armadas are the local power's muscle — they mirror its stance toward you
+  // patrols, navy, war-fleets, battle groups & armadas are the local power's muscle — they mirror its stance
   if(stance==="hostile") return "hostile";
   if(stance==="friendly") return "friendly";
   if(stance==="wary") return chance(0.4)?"hostile":"wary";
@@ -4528,7 +4539,8 @@ function voidSalvage(){
 }
 /* which career commands each kind of void fleet */
 const VOID_CAREER={ cargo:"merchant", transport:"merchant", trader:"merchant", patrol:"mercenary",
-  mercs:"mercenary", pirates:"pirate", warfleet:"warlord", armada:"warlord" };
+  mercs:"mercenary", pirates:"pirate", skiff:"pirate", corsairs:"pirate", navy:"mercenary",
+  warfleet:"warlord", battlegrp:"warlord", armada:"warlord" };
 /* a plain-words read on how dangerous a fleet is to take on, by threat level */
 const FLEET_ASSESS={
   0:"Lightly crewed and barely armed — you'd cut through them, if you've the stomach for it.",
@@ -5272,11 +5284,18 @@ function ambushChance(f){ const sys=state.galaxy&&state.galaxy.systems[f.trade.p
    call to the player: stand and fight with the escorts, or burn for the horizon and try to run. */
 function beginTradeRaid(f){
   const t=f.trade, sys=state.galaxy.systems[t.pos.sysId]||state.galaxy.systems[t.buySys], cf=sys?centralFactor(sys.x,sys.y):0.5;
-  const threat=1+Math.round((1-cf)*4);
-  const raiderPower=Math.round(threat*1700*rndF(0.8,1.25));
+  const rim=1-cf;                                   // 0 in the policed core .. 1 out on the lawless rim
+  // roll the kind of raiders: most are small opportunists, but the rim breeds bigger packs — and, rarely,
+  // a hostile-government interdiction fleet of a couple dozen ships
+  const roll=Math.random(); let threat, ships, kind;
+  if(roll < 0.50 - rim*0.22){ threat=1; ships=rnd(2,3); kind="a lone band of"; }
+  else if(roll < 0.82 - rim*0.12){ threat=2; ships=rnd(3,6); kind="a pack of"; }
+  else if(roll < 0.97 - rim*0.04){ threat=3; ships=rnd(7,14); kind="a heavy wing of"; }
+  else { threat=3; ships=rnd(18,28); kind="a whole interdiction fleet of"; }
+  const raiderPower=Math.round(ships*ENEMY_PERMOUNT[clamp(threat,0,4)]*1.6*rndF(0.85,1.15));
   let cargo=0; shipsByIds(f.shipIds).forEach(v=>{ for(const id in (v.cargo||{})) cargo+=v.cargo[id]; });
   state.tradeRaid={ fleetId:f.id, name:f.name, sysName:sys?sys.name:"deep space",
-    threat, raiderPower, power:Math.round(fleetFirepower(f)), cargo,
+    threat, ships, kind, raiderPower, power:Math.round(fleetFirepower(f)), cargo,
     back:(typeof UI!=="undefined"&&UI.current&&UI.current!=="traderaid")?UI.current:"crew" };
 }
 /* apply cargo plunder + hull damage across a fleet's living ships; returns units of cargo lost */
@@ -5299,7 +5318,7 @@ function raidFight(){
   const mine=shipsByIds(f.shipIds).filter(v=>v.hp>0 && Game.operational(v));
   if(!mine.length){ Game.logMsg(`${f.name} has no ship fit to fight — it has to run.`,"bad"); raidFlee(); return; }
   const wing=carrierWing(mine.map(v=>v.id)), all=mine.concat(wing);
-  const n=clamp(rnd(Math.max(1,r.threat-1), r.threat+1), 1, 8);   // raider ships scale with the threat
+  const n=clamp(r.ships||rnd(2,4), 1, 30);                        // the raider force rolled at ambush time
   const enemy=genEnemyFleet(r.threat, n);
   all.forEach(v=>{ v.shield=shipMaxShield(v); });                  // raise shields for the fight
   const loot=Math.round(enemy.reduce((s,e)=>s+e.maxHp,0)*0.10*(1+r.threat*0.4)) + n*160;
