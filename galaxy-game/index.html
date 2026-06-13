@@ -2680,7 +2680,9 @@ const UI = {
             <button class="full center" data-eclaim="buy" ${state.credits<bc?"disabled":""}>&#128176; Buy it out &middot; ${commas(bc)}c</button>
             <p class="small dim" style="margin-top:5px">${gov?"Bribe a sovereign world's administration to cede it — a colossal sum.":"Purchase the independent world outright."}</p>`; })()
             :`<p class="small dim" style="margin-top:8px">Build an <b>Outpost</b> here to gain the foothold needed to take this world.</p>`}
-        </div>`:`<p class="small green" style="margin-top:10px">&#9733; This world flies your colors. Loyalty ${Math.round((estateAt(sysId,slot)||{}).loyalty||0)}%.</p>`}
+        </div>`:(()=>{ const e=estateAt(sysId,slot)||{}, loy=Math.round(e.loyalty||0);
+          return `<p class="small green" style="margin-top:10px">&#9733; This world flies your colors. Loyalty ${loy}% <span style="color:${empireColor()}">(+${loyaltyGrowth(e)}%/yr)</span>.</p>
+          ${loy<60?`<p class="small dim">A heavier garrison pacifies it faster — build or upgrade <b>Outposts</b> here to speed loyalty.</p>`:""}`; })()}
       </div>`;
     // --- stockpile ---
     const stockIds=Object.keys(E.stock).filter(c=>E.stock[c]>0).sort((a,b)=>E.stock[b]-E.stock[a]);
@@ -2707,7 +2709,7 @@ const UI = {
     const estateCard = estates.length?`<div class="card sheet"><h3>Worlds you hold <span class="dim small">&middot; ${estates.length}</span></h3>
       ${estates.map(e=>{ const ew=worldAt(e.sysId,e.slot), es=state.galaxy.systems[e.sysId], loy=Math.round(e.loyalty||0);
         return `<div class="frow"><div class="finfo"><div class="nm">&#9733; ${ew?ew.name:"world"} <span class="dim small">&middot; ${es?es.name:""}${es&&controlsSystem(e.sysId)?" (system held)":""}</span>${loy<15?' <span class="chip r">revolt risk</span>':loy<30?' <span class="chip gold">restless</span>':''}</div>
-          ${bar(loy, loy<35?'enfill':'hpfill')}<div class="sub">loyalty ${loy}% &middot; defense ${planetDefense(e)} &middot; ${holdingsAt(e.sysId,e.slot).length} building${holdingsAt(e.sysId,e.slot).length!==1?"s":""}</div></div></div>`; }).join("")}
+          ${bar(loy, loy<35?'enfill':'hpfill')}<div class="sub">loyalty ${loy}%${loy<100?` <span style="color:${empireColor()}">+${loyaltyGrowth(e)}%/yr</span>`:""} &middot; defense ${planetDefense(e)} &middot; ${holdingsAt(e.sysId,e.slot).length} building${holdingsAt(e.sysId,e.slot).length!==1?"s":""}</div></div></div>`; }).join("")}
       ${ctrl.length?`<p class="small green" style="margin-top:6px">&#9873; Systems under your full control: ${ctrl.map(id=>state.galaxy.systems[id].name).join(", ")}.</p>`:""}
     </div>`:"";
 
@@ -5569,6 +5571,8 @@ function controlsSystem(sysId){ const sys=state.galaxy&&state.galaxy.systems[sys
   return inhab.length>0 && inhab.every(x=>ownsPlanet(sysId,x.i)); }
 function hasHolding(sysId,slot){ return holdingsAt(sysId,slot).length>0 || ownsPlanet(sysId,slot); }
 function planetDefense(e){ return 6 + holdingsAt(e.sysId,e.slot).reduce((s,h)=>{ const d=buildingDef(h.kind); return s+(d&&d.defense&&h.hp>0?d.defense*(h.lvl||1):0); },0); }
+/* how fast a held world's loyalty climbs per year — a heavier garrison pacifies a restless world faster */
+function loyaltyGrowth(e){ return 2 + clamp(Math.round((planetDefense(e)-6)/9*3), 0, 14); }
 function empireUpkeepTotal(){ return (state.empire?state.empire.holdings:[]).reduce((s,h)=>{ const d=buildingDef(h.kind); return s+(d&&h.hp>0?d.upkeep*(h.lvl||1):0); },0); }
 function stockValueAt(w){ const E=state.empire; if(!E||!w) return 0; let v=0; for(const cid in E.stock){ const c=commodityById(cid); if(c) v+=E.stock[cid]*(canSellHere(w,c)?commoditySell(w,c):c.base); } return Math.round(v); }
 /* what it costs to plant a building here — pricier on richer worlds */
@@ -5743,7 +5747,7 @@ function empireYear(){
   if(!E.estates.length) return;
   let income=0;
   E.estates.forEach(e=>{ const w=worldAt(e.sysId,e.slot); if(!w) return;
-    e.loyalty=clamp((e.loyalty||40)+4,0,100);                       // a settled world warms to you over the years
+    e.loyalty=clamp((e.loyalty||40)+loyaltyGrowth(e),0,100);          // a garrison settles a world faster
     income+=Math.round((w.wealth+1)*(w.tech+1)*95*(0.4+0.6*(e.loyalty/100))); });
   const upkeep=empireUpkeepTotal(), net=income-upkeep;
   if(income||upkeep) Game.logMsg(`Domain ledger: +${commas(income)}c taxes, -${commas(upkeep)}c holdings upkeep (net ${net>=0?"+":""}${commas(net)}c).`, net>=0?"good":"sys");
