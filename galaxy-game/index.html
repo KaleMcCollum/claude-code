@@ -3585,9 +3585,11 @@ const UI = {
       </div>
       ${this.fleetTradeCard(f)}
       ${addable.length?`<div class="card sheet"><h3>Add a ship <span class="dim small">&middot; in ${fsys?fsys.name:"system"}</span></h3>
-        ${addable.map(v=>`<div class="frow"><div class="finfo"><div class="nm">${v.name}</div>
-          <div class="chips" style="margin-top:4px"><span class="chip">${RANGE_LABEL[v.range]}</span></div></div>
-          <button class="small" data-fleetadd="${f.id}:${v.id}">Add</button></div>`).join("")}</div>`:""}
+        ${f.trade?'<p class="small dim" style="margin:0 0 8px">This fleet is on a trade run — a ship joins it mid-loop, but must be crewed or it would stall the run.</p>':""}
+        ${addable.map(v=>{ const ok=Game.operational(v);
+          return `<div class="frow"><div class="finfo"><div class="nm">${v.name}</div>
+          <div class="chips" style="margin-top:4px"><span class="chip">${RANGE_LABEL[v.range]}</span>${f.trade?(ok?'<span class="chip g">crewed</span>':'<span class="chip r">no crew</span>'):""}</div></div>
+          <button class="small" data-fleetadd="${f.id}:${v.id}" ${f.trade&&!ok?"disabled":""}>Add</button></div>`; }).join("")}</div>`:""}
       <div class="card"><button class="ghost full center" id="fleetBack">&larr; All fleets</button></div>`;
     }
     return `<div class="card"><h3>Your fleets <span class="dim small">&middot; ${fleets.length}</span></h3>
@@ -5173,13 +5175,19 @@ function createFleet(name, shipIds){
   Game.logMsg(`Fleet "${f.name}" formed with ${shipIds.length} ship${shipIds.length>1?"s":""}.`,"good");
   Game.save(); UI.render("crew");
 }
-/* add a ship to an existing fleet — the ship must be in the fleet's system (you needn't be) */
+/* add a ship to an existing fleet — the ship must be where the fleet is (you needn't be). A ship can
+   join even a fleet that's away on a trade run, so long as it's crewed (an empty hull would stall it). */
 function addToFleet(fid, shipId){
   const f=fleetById(fid), v=(state.vehicles||[]).find(x=>x.id===shipId); if(!f||!v) return;
-  if(f.trade){ toast("Call the fleet off its trade run first"); return; }
   if(v.fleetId){ toast("Ship is already in a fleet"); return; }
   if((v.sysId??0)!==fleetSys(f)){ toast("Ship must be in the fleet's system"); return; }
+  if(f.trade){
+    if(v.id===state.activeShip){ toast("You're flying that ship — you can't send it off trading"); return; }
+    if(!Game.operational(v)){ toast("Crew the ship first — an empty hull would stall the run"); return; }
+  }
   f.shipIds.push(shipId); v.fleetId=fid; v.homeCarrier=null;   // travels with the fleet now, not a carrier
+  if(f.trade){ v.sysId=f.trade.pos.sysId; v.slot=f.trade.pos.slot;   // fall in with the fleet at its current waypoint
+    Game.logMsg(`${v.name} falls in with ${f.name} on its trade run.`,"good"); }
   Game.save(); UI.render("crew");
 }
 /* remove a ship from a fleet (allowed from anywhere) */
