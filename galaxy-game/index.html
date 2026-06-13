@@ -2673,8 +2673,11 @@ const UI = {
             return `<button class="small" data-ebuild="${d.id}" ${state.credits<cost?"disabled":""} title="${d.blurb}">${d.icon} ${d.name}<br><span class="dim">${commas(cost)}c</span></button>`; }).join("")}
           </div>`:""}
         ${!owned?`<div style="margin-top:10px">
-          ${hasOutpost?`<button class="primary full center" data-eclaim="1">&#9873; ${gov?`Take ${w.name} from ${gov.name}`:`Annex ${w.name} (${commas(annexCost(w))}c)`}</button>
-            <p class="small dim" style="margin-top:5px">${gov?"A government holds this world — taking it means breaking its defending fleet in battle.":"Independent — buy it out to add it to your domain."}</p>`
+          ${hasOutpost?(()=>{ const a=worldAssault(w,sys), bc=annexCost(w,sys);
+            return `<button class="primary full center" data-eclaim="war">&#9876; Assault ${w.name}</button>
+            <p class="small dim" style="margin:5px 0 9px">Break its defenses in battle — ~${a.n} ship${a.n!==1?"s":""}${a.platforms?` + ${a.platforms} orbital platform${a.platforms!==1?"s":""}`:""} at threat <span class="red">${"&#9876;".repeat(a.threat)}</span>. ${gov?`${gov.name} holds it.`:"Defended by local forces."} Fought with your present fleet.</p>
+            <button class="full center" data-eclaim="buy" ${state.credits<bc?"disabled":""}>&#128176; Buy it out &middot; ${commas(bc)}c</button>
+            <p class="small dim" style="margin-top:5px">${gov?"Bribe a sovereign world's administration to cede it — a colossal sum.":"Purchase the independent world outright."}</p>`; })()
             :`<p class="small dim" style="margin-top:8px">Build an <b>Outpost</b> here to gain the foothold needed to take this world.</p>`}
         </div>`:`<p class="small green" style="margin-top:10px">&#9733; This world flies your colors. Loyalty ${Math.round((estateAt(sysId,slot)||{}).loyalty||0)}%.</p>`}
       </div>`;
@@ -3872,7 +3875,7 @@ const UI = {
       app.querySelectorAll("[data-edemolish]").forEach(b=> b.onclick=()=>demolishHolding(b.dataset.edemolish));
       app.querySelectorAll("[data-esell]").forEach(b=> b.onclick=()=>sellStock(b.dataset.esell));
       app.querySelectorAll("[data-defend]").forEach(b=> b.onclick=()=>defendThreat(b.dataset.defend));
-      const cl=$("[data-eclaim]"); if(cl) cl.onclick=()=>claimPlanet();
+      app.querySelectorAll("[data-eclaim]").forEach(b=> b.onclick=()=>claimPlanet(b.dataset.eclaim));
     }
     if(screen==="gov"){
       app.querySelectorAll("[data-pledge]").forEach(b=> b.onclick=()=>pledgeGov(b.dataset.pledge));
@@ -5605,7 +5608,28 @@ function sellStock(cid){
   Game.logMsg(`Sold ${commas(have)} ${c.name} from your stockpile at ${w.name} for ${commas(gross)}c.`,"good");
   Game.save(); UI.render("empire");
 }
-function annexCost(w){ return Math.round(((w?w.wealth:4)+1)*((w?w.tech:4)+1)*55000 + 2500000); }
+/* buyout price — scales HARD with how deep-core the world sits (rim ~tens of millions, a rich core
+   world up toward a billion); a sovereign government's world costs a fortune more to buy than free space */
+function annexCost(w, sys){
+  const central=sys?clamp(centralFactor(sys.x,sys.y),0,1):0.4;
+  const richness=((w.wealth+1)*(w.tech+1))/100;                 // ~0.04 .. 1.0
+  let c=18000000*(0.6+richness*1.2)*(1+central*central*24);     // core scales quadratically
+  if(sys && systemGov(sys)) c*=2.6;                             // bribing a sovereign holding away costs far more
+  return Math.round(c);
+}
+/* the planet's military: a defending fleet plus fixed orbital batteries — scales with importance */
+function worldAssault(w, sys){
+  const central=sys?clamp(centralFactor(sys.x,sys.y),0,1):0.4;
+  const imp=central*0.6 + ((w.wealth+w.tech)/18)*0.4;           // 0 (sleepy rim) .. 1 (core stronghold)
+  return { threat:clamp(1+Math.round(imp*3),1,4),
+           n:clamp(Math.round(2 + central*8 + (w.wealth+w.tech)/3), 2, 20),
+           platforms:clamp(Math.round(imp*4),0,5) };
+}
+/* a fixed orbital defense platform — heavy hull, shielded, hits hard, can't dodge or flee */
+function defensePlatform(threat){ const hp=Math.round(4000*(1+threat*0.8));
+  return { name:"Orbital Defense Platform", cls:"capital", cat:"warship", maxHp:hp, hp, shieldTier:2,
+    maxShield:Math.round(hp*0.25), shield:Math.round(hp*0.25),
+    attack:Math.round(ENEMY_PERMOUNT[clamp(threat,0,4)]*4*rndF(0.9,1.2)), evasion:0 }; }
 function addEstate(sysId,slot){ const E=ensureEmpire(); if(ownsPlanet(sysId,slot)) return;
   E.estates.push({ sysId, slot, loyalty:35, founded:state.actions||0 });
   if(!E.name) E.name=(state.name?state.name.split(" ")[0]+"'s Domain":"Your Domain"); }
@@ -5613,21 +5637,23 @@ function loseEstate(sysId,slot){ const E=ensureEmpire(); E.estates=E.estates.fil
   holdingsAt(sysId,slot).forEach(h=>{ h.hp=0; });   // garrison overrun
 }
 function removeThreat(tid){ const E=ensureEmpire(); E.threats=E.threats.filter(t=>t.id!==tid); }
-/* claim the world you're standing on — a fight if a government holds it, a buyout if it's independent */
-function claimPlanet(){
+/* take the world you're standing on — by force (assault its fleet + orbital defenses) or by buyout */
+function claimPlanet(mode){
   const E=ensureEmpire(), w=state.world, sysId=state.sysId, slot=state.atSlot;
   if(!w||!isInhabited(w)){ toast("No settlement here to take"); return; }
   if(ownsPlanet(sysId,slot)){ toast("You already hold this world"); return; }
   if(!holdingsAt(sysId,slot).some(h=>buildingDef(h.kind).claim && h.hp>0)){ toast("Build a working Outpost here first"); return; }
   const sys=state.galaxy.systems[sysId], gov=systemGov(sys);
-  const threat=clamp(1+Math.round((1-centralFactor(sys.x,sys.y))*3),1,4);
-  if(gov){ startEmpireBattle({ type:"annex", sysId, slot, threat, name:`${gov.name} garrison`, faction:gov.name,
-      intro:`Your guns move to seize ${w.name} from ${gov.name}.` }); }
-  else { const cost=annexCost(w);
-    if((state.credits||0)<cost){ toast(`Annexing this independent world costs ${commas(cost)}c`); return; }
+  if(mode==="buy"){ const cost=annexCost(w,sys);
+    if((state.credits||0)<cost){ toast(`Buying out this world costs ${commas(cost)}c`); return; }
     state.credits-=cost; addEstate(sysId,slot);
-    Game.logMsg(`You annex the independent world ${w.name} for ${commas(cost)}c — it joins your domain.`,"good");
-    Game.save(); UI.render("empire"); }
+    Game.logMsg(`You ${gov?`buy ${w.name} from ${gov.name}`:`buy out the independent world ${w.name}`} for ${commas(cost)}c — it joins your domain.`,"good");
+    Game.save(); UI.render("empire"); return; }
+  // assault: fight the planet's defending fleet + fixed orbital batteries
+  const a=worldAssault(w,sys);
+  startEmpireBattle({ type:"annex", sysId, slot, threat:a.threat, n:a.n, platforms:a.platforms,
+    name:`defense of ${w.name}${gov?` (${gov.name})`:""}`, faction:gov?gov.name:"local defenders",
+    intro:`Your fleet opens the assault on ${w.name}${gov?`, held by ${gov.name}`:""}.` });
 }
 function defendThreat(tid){
   const t=(ensureEmpire().threats||[]).find(x=>x.id===tid); if(!t){ toast("That threat has passed"); return; }
@@ -5640,7 +5666,8 @@ function startEmpireBattle(op){
   const mine=myBattleShips(); if(!mine.length){ toast("You need a crewed warship here to do this"); return; }
   const wing=carrierWing(mine.map(v=>v.id)), all=mine.concat(wing);
   if(all.reduce((s,v)=>s+shipPower(v),0)<=0){ toast("Your ships have no working guns — fit weapons at a shipyard"); return; }
-  const n=clamp(rnd(2, 3+op.threat), 1, 12), enemy=genEnemyFleet(clamp(op.threat,0,4), n);
+  const n=op.n!=null?op.n:clamp(rnd(2, 3+op.threat), 1, 12), enemy=genEnemyFleet(clamp(op.threat,0,4), n);
+  for(let i=0;i<(op.platforms||0);i++) enemy.push(defensePlatform(op.threat));   // fixed orbital batteries
   all.forEach(v=>{ v.shield=shipMaxShield(v); });
   const loot=Math.round(enemy.reduce((s,e)=>s+e.maxHp,0)*0.08*(1+op.threat*0.3));
   shipCombat={ name:op.name, faction:op.faction||"defenders", threat:op.threat, enemy,
