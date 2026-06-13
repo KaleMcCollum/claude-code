@@ -2604,11 +2604,10 @@ const UI = {
     const r=state.tradeRaid; if(!r) return this.screen_crew();
     const f=fleetById(r.fleetId);
     const escorts=f?shipsByIds(f.shipIds).filter(v=>v.hp>0&&shipPower(v)>1):[];
-    const ratio=r.power/Math.max(1,r.raiderPower);
-    const fightOdds=clamp(ratio/(ratio+0.85),0.04,0.96);
     const armed=r.power>=r.raiderPower*0.6;
     const fleeOdds=clamp(0.72 - r.threat*0.07 + (armed?0.12:0), 0.18, 0.85);
     const odds=p=>{ const c=p>=0.66?"green":p>=0.4?"gold":"red"; return `<span class="${c}">${Math.round(p*100)}%</span>`; };
+    const edge=r.power>=r.raiderPower?'<span class="green">you outgun them</span>':r.power>1?'<span class="gold">a hard fight</span>':'<span class="red">you have no escort</span>';
     return `
     <div class="rarity-banner" style="border-color:#c0392b">
       <div class="rn" style="color:#e74c3c">&#9876; RAIDERS</div>
@@ -2622,8 +2621,8 @@ const UI = {
       ${krow("Cargo at risk", r.cargo?`<b class="gold">${commas(r.cargo)}</b> units`:`<span class="dim">empty holds</span>`)}
     </div>
     <div class="card">
-      <button class="primary full center" id="raidFight">&#9876; Stand and fight <span class="dim small">(${odds(fightOdds)} to win)</span></button>
-      <p class="small dim" style="margin:6px 0 12px">Commit your escorts head-on. Win and they strip the wrecks for salvage; lose and the holds are plundered, hulls mauled.</p>
+      <button class="primary full center" id="raidFight">&#9876; Stand and fight <span class="dim small">(${edge})</span></button>
+      <p class="small dim" style="margin:6px 0 12px">Take the helm and fight it out, round by round, on the battle screen. Win and your escorts strip the wrecks for salvage; you can still break off mid-fight.</p>
       <button class="full center" id="raidFlee">&#128640; Run for it <span class="dim small">(${odds(fleeOdds)} to escape)</span></button>
       <p class="small dim" style="margin-top:6px">Burn for the horizon. Slip away light, or get run down and hit hard from astern.</p>
     </div>`;
@@ -4704,10 +4703,11 @@ function winShipBattle(){
   if(finds) c.msg+=` Picking over the wrecks turns up ${finds}.`;
   // RARE: one of the hulls you downed is still flyable — its survivors throw in with you and it
   // limps into your fleet at almost no hull, running alongside until you can repair it
-  if(downed.length && chance(0.10)){
+  if(!c.tradeRaid && downed.length && chance(0.10)){
     const name=salvageShip(pick(downed));
     if(name) c.msg+=` Against the odds, a ${name} is still flyable — its crew throw in with you and it limps into your fleet, barely holding together.`;
   }
+  if(c.tradeRaid){ const f=fleetById(c.tradeRaid); if(f&&f.trade) f.trade.earned=(f.trade.earned||0)+loot; }
   Game.save(); UI.render("shipbattle");
 }
 /* loot the wrecks of destroyed enemy ships: scrap & supplies often, real gear rarely, and a tiny
@@ -4750,14 +4750,25 @@ function salvageShip(e){
 }
 function loseShipBattle(){
   const c=shipCombat; c.over=true; c.win=false; c.lost=true;
-  c.msg=`Your ships are shot to pieces. You limp away — hull integrity gone.`;
-  Game.logMsg(`Your fleet is crippled by the ${c.name}.`,"bad");
+  c.msg = c.tradeRaid ? `Your trade fleet is overrun — escorts shot to pieces. It limps on, holds plundered.`
+                      : `Your ships are shot to pieces. You limp away — hull integrity gone.`;
+  Game.logMsg(c.tradeRaid?`Your trade fleet is crippled by the ${c.name}.`:`Your fleet is crippled by the ${c.name}.`,"bad");
   Game.save(); UI.render("shipbattle");
 }
 /* leave the battle screen — knocked out fleets limp home */
 function shipBattleDone(){
   const c=shipCombat; const lost=c.lost; shipCombat=null;
   (state.vehicles||[]).forEach(v=>{ delete v.shield; });   // shields recharge out of combat
+  if(c.tradeRaid){                       // a remote trade-fleet fight — the fleet limps on, never destroyed in absentia
+    const f=fleetById(c.tradeRaid);
+    if(f){ shipsByIds(f.shipIds).forEach(v=>{ if(v.hp<=0) v.hp=1; });   // crippled hulls survive, barely
+      if(lost){ let plundered=0;                                       // overrun: raiders strip the holds as they peel off
+        shipsByIds(f.shipIds).forEach(v=>{ for(const id in (v.cargo||{})){ const take=Math.round(v.cargo[id]*rndF(0.4,0.7)); if(take>0){ v.cargo[id]=Math.max(0,v.cargo[id]-take); if(v.cargo[id]<=0) delete v.cargo[id]; plundered+=take; } } });
+        if(plundered) Game.logMsg(`${f.name} loses ${commas(plundered)} units of cargo to the raiders.`,"bad");
+      }
+    }
+    Game.save(); UI.render(c.raidBack||"crew"); UI.flashLog(); return;
+  }
   if(lost){ const stranded=Game.ship();
     // crippled ships (and you) limp home if you can; otherwise you wake on your homeworld
     if(state.galaxy){ playerGroupIds().forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v){ v.sysId=0; v.slot=0; } });
@@ -5271,24 +5282,27 @@ function raidMaul(f, cargoFrac, hullFrac){
 }
 function endTradeRaid(){ const r=state.tradeRaid; state.tradeRaid=null; Game.save();
   if(typeof UI!=="undefined") UI.render(r&&r.back?r.back:"crew"); if(typeof UI!=="undefined"&&UI.flashLog) UI.flashLog(); }
-/* STAND AND FIGHT — committing your escorts beats being caught flat-footed: better odds than fleeing,
-   and a clean win lets the escorts strip the raider wrecks for salvage. */
+/* STAND AND FIGHT — take the helm of your trade fleet and fight the raiders out in the real
+   ship-to-ship battle screen, so you see the engagement play out and decide it round by round. */
 function raidFight(){
   const r=state.tradeRaid; if(!r) return;
   const f=fleetById(r.fleetId);
   if(!f||!f.trade){ endTradeRaid(); return; }
-  const power=fleetFirepower(f), ratio=power/Math.max(1,r.raiderPower);
-  const win=chance(clamp(ratio/(ratio+0.85),0.04,0.96));
-  if(win){
-    const hullFrac=rndF(0.03,0.13); raidMaul(f, 0, hullFrac);
-    const salvage=Math.round(r.raiderPower*rndF(0.3,0.65));
-    state.credits=(state.credits||0)+salvage; if(f.trade) f.trade.earned=(f.trade.earned||0)+salvage;
-    Game.logMsg(`&#9876; <b>${f.name}</b> stood and fought off ${r.sysName} — its escorts broke the raiders and stripped the wrecks for ${commas(salvage)}c salvage.`,"good");
-  } else {
-    const cargoFrac=rndF(0.35,0.65), hullFrac=rndF(0.28,0.5), lost=raidMaul(f, cargoFrac, hullFrac);
-    Game.logMsg(`&#9876; <b>${f.name}</b> fought near ${r.sysName} but was outgunned — ${lost?commas(lost)+" units plundered, ":""}hulls badly mauled.${power<=1?" It had NO escort to fight with.":" Heavier escort would even the odds."}`,"bad");
-  }
-  endTradeRaid();
+  const mine=shipsByIds(f.shipIds).filter(v=>v.hp>0 && Game.operational(v));
+  if(!mine.length){ Game.logMsg(`${f.name} has no ship fit to fight — it has to run.`,"bad"); raidFlee(); return; }
+  const wing=carrierWing(mine.map(v=>v.id)), all=mine.concat(wing);
+  const n=clamp(rnd(Math.max(1,r.threat-1), r.threat+1), 1, 8);   // raider ships scale with the threat
+  const enemy=genEnemyFleet(r.threat, n);
+  all.forEach(v=>{ v.shield=shipMaxShield(v); });                  // raise shields for the fight
+  const loot=Math.round(enemy.reduce((s,e)=>s+e.maxHp,0)*0.10*(1+r.threat*0.4)) + n*160;
+  shipCombat={ name:`raiders off ${r.sysName}`, faction:"raiders", threat:r.threat, enemy,
+    foeKind:"pirates", foeDispo:"hostile", foeThreat:r.threat, foeGovId:null,
+    tradeRaid:r.fleetId, raidBack:r.back,                          // mark this as a remote trade-fleet fight
+    main:mine.map(v=>v.id), wing:wing.map(v=>v.id), wingOut:true, my:all.map(v=>v.id),
+    target:null, loot, over:false, win:false, lost:false, fled:false, round:0,
+    log:[`<b>${f.name}</b> brings its escort guns to bear on the raiders.`] };
+  state.tradeRaid=null;                                            // now resolved through the battle screen
+  Game.save(); UI.render("shipbattle");
 }
 /* RUN FOR IT — light, fast fleets slip the net; if the raiders run you down they hit you from astern,
    worse than a lost stand-up fight. */
