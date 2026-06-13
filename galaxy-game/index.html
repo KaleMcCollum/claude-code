@@ -161,8 +161,9 @@
   .tag{font-size:.72rem; padding:2px 7px; border-radius:6px; background:var(--panel2); color:var(--dim);}
   .compass{display:grid; grid-template-columns:repeat(3,1fr); grid-template-areas:". n ." "w . e" ". s ."; gap:6px; max-width:240px; margin:8px auto;}
   .compass button{padding:10px 0;} .compass .cn{grid-area:n;} .compass .cs{grid-area:s;} .compass .cw{grid-area:w;} .compass .ce{grid-area:e;}
-  svg.gmap{display:block; width:100%; max-width:340px; margin:8px auto; aspect-ratio:1/1;
+  svg.gmap{display:block; width:100%; max-width:440px; margin:8px auto; aspect-ratio:1/1;
     background:radial-gradient(circle at 50% 50%, #0d1322, #070a11); border:1px solid var(--line); border-radius:10px;}
+  svg.gmap [data-mapsel]{cursor:pointer;}
   .hidden{display:none;}
   .flash{animation:flash .5s;}
   @keyframes flash{0%{background:#1a2233;}100%{background:var(--panel);}}
@@ -2924,25 +2925,76 @@ const UI = {
     const cur=curSys(), pos=playerXY(), core=Math.round(Math.hypot(pos.x,pos.y));
     if(!mapView) this.mapCenterMe();
     const vis=visibleSystems(), charted=vis.filter(s=>s.discovered).length;
-    const hg=systemGov(cur);
+    const hg=systemGov(cur), sCol={friendly:'green',hostile:'red',wary:'gold'};
+    const ids=playerGroupIds(), caps=ids.length?groupCaps(ids):{tier:"surface",jump:0}, jumpable=caps.tier==="interstellar", aboard=ids.includes(state.activeShip);
+    const distOf=s=>(!adrift()&&s.id===state.sysId)?0:pointDist(pos,{x:s.x,y:s.y});
+    const reachOf=s=>(!adrift()&&s.id===state.sysId)|| (jumpable && distOf(s)<=caps.jump+1e-6);
+    // territory totals for the header
+    const owned=(state.empire&&state.empire.estates||[]).length, ctrlN=ownedSystems().filter(controlsSystem).length;
+    // ---- selected-system detail panel ----
+    const sel = mapSel!=null ? state.galaxy.systems[mapSel] : null;
+    let selCard="";
+    if(sel){ const ch=sel.discovered, g=ch?systemGov(sel):null, d=distOf(sel), reach=reachOf(sel), isHere=!adrift()&&sel.id===state.sysId;
+      const chartedW=ch?(sel.planets||[]).filter(p=>p&&p.discovered):[];
+      const ownHere=ownedSystems().includes(sel.id), full=controlsSystem(sel.id);
+      selCard=`<div class="card sheet" style="border-color:#caa84a55">
+        <div class="row between"><h3>${ch?sel.name:'Uncharted contact'}${sel.capital!=null?' <span class="gold" title="capital system">&#9733;</span>':''}</h3>
+          <span class="tag">${isHere?'you are here':d.toFixed(1)+' ly'}</span></div>
+        <div class="chips" style="margin-top:5px">
+          ${g?`<span class="chip" style="color:${g.color}">&#127963; ${g.name}</span><span class="chip ${sCol[govStance(g)]||''}">${govStance(g)}</span>`:(ch?'<span class="chip">unclaimed space</span>':'<span class="chip">sensor contact</span>')}
+          ${full?`<span class="chip" style="color:${empireColor()}">&#9873; you control this system</span>`:ownHere?`<span class="chip" style="color:${empireColor()}">&#9874; you hold worlds here</span>`:''}
+          <span class="chip">${sel.size} world${sel.size>1?'s':''}${ch?` &middot; ${chartedW.length} charted`:''}</span>
+        </div>
+        ${ch&&chartedW.length?`<div style="margin-top:8px">${chartedW.map(p=>{ const w=p.world, i=sel.planets.indexOf(p), inhab=isInhabited(w), own=ownsPlanet(sel.id,i), hold=hasHolding(sel.id,i);
+          return `<div class="krow"><span class="lbl">${own?`<span style="color:${empireColor()}">&#9873;</span> `:hold?'<span class="gold">&#9874;</span> ':''}${p.fav?'<span class="gold">&#9733;</span> ':''}${w.name} <span class="dim small">&middot; ${inhab?settleDef(w.settle).name:cap(w.biomeName)}</span></span>
+            <span class="kv"><span class="chip ${w.danger>=7?'r':w.danger>=4?'gold':'g'}" title="danger">&#9760;${w.danger}</span>${reach&&aboard?`<button class="small" data-mapgo="${sel.id}:${i}">${isHere?'&#9992;':'&#9650;'}</button>`:''} <button class="small ghost" data-fav="${sel.id}:${i}">${p.fav?'&#9733;':'&#9734;'}</button></span></div>`; }).join("")}</div>`
+          :ch?`<p class="small dim" style="margin-top:6px">No worlds charted here yet — jump in to explore them.</p>`:`<p class="small dim" style="margin-top:6px">A star on your sensors, not yet charted. Jump in to reveal it.</p>`}
+        <div class="row" style="margin-top:9px;gap:6px;flex-wrap:wrap">
+          ${isHere?'<span class="small green">&#9679; your group is here</span>'
+            :reach&&aboard?`<button class="small primary" data-mapjump="${sel.id}">&#9650; Set course here</button>`
+            :`<span class="small dim">&#128274; ${!aboard?'be aboard your ship to travel':!jumpable?'group is system-bound':'out of jump range'}</span>`}
+          ${ch?`<button class="small ghost" data-sysfav="${sel.id}">${sel.fav?'&#9733; Pinned':'&#9734; Favourite'}</button>`:''}
+          <button class="small ghost" data-mapcenter="${sel.id}">&#9673; Center map</button>
+          <button class="small ghost" data-mapclose="1">&times; Close</button>
+        </div></div>`;
+    }
+    // ---- system browser ----
+    const filt=mapFilter;
+    let list=vis.filter(s=>!(s.id===state.sysId&&!adrift()));
+    if(filt==="fav") list=list.filter(s=>s.fav&&s.discovered);
+    else if(filt==="mine") list=list.filter(s=>ownedSystems().includes(s.id));
+    else if(filt==="contacts") list=list.filter(s=>!s.discovered);
+    else list=list.filter(s=>s.discovered);   // "all" = charted
+    list=list.map(s=>({s,d:distOf(s)})).sort((a,b)=>a.d-b.d);
+    const fchip=(id,lbl)=>`<button class="small ${filt===id?'sel':''}" data-mapfilter="${id}">${lbl}</button>`;
+    const row=({s,d})=>{ const ch=s.discovered, g=ch?systemGov(s):null, reach=reachOf(s), full=controlsSystem(s.id), ownHere=ownedSystems().includes(s.id);
+      return `<div class="krow" style="${s.id===mapSel?'background:#caa84a14;border-radius:8px':''}">
+        <span class="lbl"><button class="small ghost" data-mapsel="${s.id}">${full?`<span style="color:${empireColor()}">&#9873;</span> `:ownHere?'<span class="gold">&#9874;</span> ':''}${s.capital!=null?'&#9733; ':''}${ch?s.name:'<span class="dim">contact</span>'}</button>
+          ${g?`<span class="chip" style="color:${g.color}">${g.name}</span>`:''}</span>
+        <span class="kv">${d.toFixed(1)} ly${reach&&aboard?` <button class="small" data-mapjump="${s.id}">&#9650;</button>`:''}</span></div>`; };
     return `${this.statHeader()}
     <div class="card"><div class="row between"><h2>&#128506; Galaxy Map</h2>
       <span class="tag">${core} ly from core</span></div>
-      <p class="small dim">You are ${cur?`in <b class="blue">${cur.name}</b>`:`<b class="gold">adrift in deep space</b>`} at <b>(${Math.round(pos.x)}, ${Math.round(pos.y)})</b> &middot; ${charted} system${charted!==1?"s":""} charted, ${vis.length-charted} sensor contact${(vis.length-charted)!==1?"s":""} in range.</p>
-      <p class="small dim">${hg?`Held by <b style="color:${hg.color}">${hg.name}</b> &middot; they regard you as <b class="${({friendly:'green',hostile:'red',wary:'gold'})[govStance(hg)]||'dim'}">${govStance(hg)}</b>.`:`<span class="gold">Unclaimed space</span> — no power holds sway here.`}</p>
-      ${this.mapSvg(undefined, adrift()?{originXY:pos}:{})}
-      <div class="row" style="margin-top:8px;justify-content:center;gap:6px">
-        <button class="small" id="mapZin">&#10133; Zoom in</button>
-        <button class="small" id="mapZout">&#10134; Zoom out</button>
-        <button class="small ghost" id="mapMe">&#9673; Center on me</button>
-        <button class="small ghost" id="mapAll">&#9737; Whole galaxy</button>
-      </div>
+      <p class="small dim">You are ${cur?`in <b class="blue">${cur.name}</b>`:`<b class="gold">adrift in deep space</b>`} at <b>(${Math.round(pos.x)}, ${Math.round(pos.y)})</b> &middot; ${charted} charted, ${vis.length-charted} contact${(vis.length-charted)!==1?"s":""} in range${jumpable?` &middot; reach <b class="gold">${caps.jump.toFixed(1)} ly</b>`:''}.</p>
+      <p class="small dim">${hg?`Held by <b style="color:${hg.color}">${hg.name}</b> &middot; they regard you as <b class="${sCol[govStance(hg)]||'dim'}">${govStance(hg)}</b>.`:`<span class="gold">Unclaimed space</span> — no power holds sway here.`}${owned?` <span style="color:${empireColor()}">&middot; your domain: ${owned} world${owned!==1?'s':''}${ctrlN?`, ${ctrlN} system${ctrlN!==1?'s':''} held`:''}</span>`:''}</p>
+      ${this.mapSvg(undefined, adrift()?{originXY:pos, pick:true}:{pick:true})}
+      <p class="small dim center" style="margin-top:-2px">Tap any star to inspect it.</p>
       <div class="row" style="margin-top:6px;justify-content:center;gap:6px">
+        <button class="small" id="mapZin">&#10133;</button>
+        <button class="small" id="mapZout">&#10134;</button>
+        <button class="small ghost" id="mapMe">&#9673; Me</button>
+        <button class="small ghost" id="mapAll">&#9737; All</button>
         <button class="small ghost" id="mapU">&#9650;</button>
         <button class="small ghost" id="mapD">&#9660;</button>
         <button class="small ghost" id="mapL">&#9664;</button>
         <button class="small ghost" id="mapR">&#9654;</button>
       </div>
+    </div>
+    ${selCard}
+    <div class="card sheet"><div class="row between"><h3>Systems</h3><span class="dim small">${list.length} shown</span></div>
+      <div class="row" style="gap:5px;margin:4px 0 8px;flex-wrap:wrap">
+        ${fchip("all","Charted")}${fchip("fav","&#9733; Favourites")}${fchip("mine","&#9873; My domain")}${fchip("contacts","&#128225; Contacts")}</div>
+      ${list.length?list.slice(0,40).map(row).join("")+(list.length>40?`<p class="small dim center" style="margin-top:4px">+${list.length-40} more — zoom/pan or filter.</p>`:""):`<p class="small dim">Nothing here yet. ${filt==="fav"?"Favourite systems with the &#9734; button.":filt==="mine"?"Take worlds from the Empire tab to build your domain.":filt==="contacts"?"No uncharted contacts in sensor range.":"Chart systems by traveling to them."}</p>`}
     </div>`;
   },
   /* build the SVG for the current mapView window */
@@ -2979,15 +3031,23 @@ const UI = {
       els+=`<circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="${gr.toFixed(1)}" fill="${g.color}1e" stroke="${g.color}88" stroke-width="1.2" stroke-dasharray="5 4"/>`;
       if(gr>16) els+=`<text x="${gx.toFixed(1)}" y="${gy.toFixed(1)}" fill="${g.color}" font-size="${clamp(gr/6,7,12).toFixed(0)}" text-anchor="middle" opacity="0.85" font-weight="bold">${g.name}</text>`;
     });
+    // your own domain: a halo in your colour around systems you hold/control (drawn under the stars)
+    const ecol=empireColor(), fleetSys=new Set((state.fleets||[]).filter(f=>f.trade&&f.trade.pos).map(f=>f.trade.pos.sysId));
+    if(state.empire && (state.empire.estates||[]).length){ ownedSystems().forEach(sid=>{ const s=state.galaxy.systems[sid]; if(!s) return;
+      const px=sx(s.x), py=sy(s.y); if(!inView(px,py,12)) return; const full=controlsSystem(sid);
+      els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${full?7:5}" fill="${ecol}22" stroke="${ecol}" stroke-width="${full?1.4:1}" ${full?'':'stroke-dasharray="2 2"'}/>`; }); }
     // systems you can see — discovered stars are tinted by who controls them
     visibleSystems().forEach(s=>{ const px=sx(s.x), py=sy(s.y); if(!inView(px,py,8)) return;
-      const here=s.id===originId, gcol=(s.govId&&knownGovs.has(s.govId))?((govById(s.govId)||{}).color||null):null;
+      const here=s.id===originId, gcol=(s.govId&&knownGovs.has(s.govId))?((govById(s.govId)||{}).color||null):null, sel=s.id===mapSel;
+      if(sel) els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="none" stroke="#ffd66b" stroke-width="1.4"/>`;
       if(here){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.5" fill="none" stroke="#5aa9ff" stroke-width="1.5"/>
         <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2" fill="#5aa9ff"/>`; }
       else if(s.capital!=null && gcol){ /* capital drawn in the pass below */ }
       else if(s.discovered){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.6" fill="${gcol||'#cfe0ff'}"/>`; }
       else { els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.2" fill="none" stroke="${gcol||'#5b6b8a'}" stroke-width="1"/>`; }
-      if(showLabels && (s.discovered||here) && s.capital==null) els+=`<text x="${px.toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${here?'#5aa9ff':'#9fb0cc'}" font-size="7" text-anchor="middle">${here?(originId===state.sysId?"You":"Fleet"):s.name}</text>`;
+      if(fleetSys.has(s.id) && !here) els+=`<text x="${(px+5).toFixed(1)}" y="${(py-3).toFixed(1)}" fill="#caa84a" font-size="7">&#128666;</text>`;
+      if(showLabels && (s.discovered||here) && s.capital==null) els+=`<text x="${px.toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${sel?'#ffd66b':here?'#5aa9ff':'#9fb0cc'}" font-size="7" text-anchor="middle">${here?(originId===state.sysId?"You":"Fleet"):s.name}</text>`;
+      if(opts.pick && (s.discovered||systemVisible(s))) els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="9" fill="transparent" data-mapsel="${s.id}"><title>${s.discovered?s.name:"uncharted contact"}</title></circle>`;
     });
     // capital stars for the powers you know — landmarks toward the core, drawn on top
     (state.galaxy.governments||[]).forEach(g=>{ if(!knownGovs.has(g.id) || g.capitalSys==null) return;
@@ -4013,6 +4073,18 @@ const UI = {
       const md=$("#mapD"); if(md) md.onclick=()=>{ mapView.cy-=step(); UI.render("map"); };
       const ml=$("#mapL"); if(ml) ml.onclick=()=>{ mapView.cx-=step(); UI.render("map"); };
       const mr=$("#mapR"); if(mr) mr.onclick=()=>{ mapView.cx+=step(); UI.render("map"); };
+      // selection + browser
+      app.querySelectorAll("[data-mapsel]").forEach(b=> b.onclick=()=>{ mapSel=+b.dataset.mapsel; UI.render("map"); });
+      app.querySelectorAll("[data-mapfilter]").forEach(b=> b.onclick=()=>{ mapFilter=b.dataset.mapfilter; UI.render("map"); });
+      const mc=$("[data-mapclose]"); if(mc) mc.onclick=()=>{ mapSel=null; UI.render("map"); };
+      app.querySelectorAll("[data-mapcenter]").forEach(b=> b.onclick=()=>{ const s=state.galaxy.systems[+b.dataset.mapcenter]; if(s){ mapView={cx:s.x,cy:s.y,span:Math.min(mapView.span,28)}; UI.render("map"); } });
+      app.querySelectorAll("[data-sysfav]").forEach(b=> b.onclick=()=>toggleSystemFav(+b.dataset.sysfav));
+      app.querySelectorAll("[data-fav]").forEach(b=> b.onclick=()=>togglePlanetFav(b.dataset.fav));
+      app.querySelectorAll("[data-mapjump]").forEach(b=> b.onclick=()=>{ const sid=+b.dataset.mapjump, sys=state.galaxy.systems[sid];
+        if(!sys.planets) sys.planets=buildSystemPlanets(sys.size);
+        let slot=sys.planets.findIndex(p=>p&&p.discovered); if(slot<0) slot=0;
+        moveGroupTo(playerGroupIds(), sid, slot, "map"); });
+      app.querySelectorAll("[data-mapgo]").forEach(b=> b.onclick=()=>{ const [s,p]=b.dataset.mapgo.split(":").map(Number); moveGroupTo(playerGroupIds(), s, p, "map"); });
     }
     if(screen==="codex"){
       app.querySelectorAll("[data-cx]").forEach(b=> b.onclick=()=>UI.render("cx_"+b.dataset.cx));
@@ -5256,6 +5328,8 @@ function idleHires(){ return (state.crew||[]).filter(c=>!c.shipId); }
 let seatPick=null, crewTab="crewmates", viewingShip=null;   // Crew-tab UI state
 let travelCtx=null;   // {ids:[shipId], title} — what the Travel screen is moving
 let mapView=null;     // {cx,cy,span} — galaxy-map viewport in light-years
+let mapSel=null;      // id of the system selected on the Map tab (shows its detail panel)
+let mapFilter="all";  // system-browser filter on the Map tab: all / fav / mine / contacts
 /* open the Travel screen for a set of ships */
 function openTravel(ids, title){ travelCtx={ ids:ids.slice(), title }; UI.render("travel"); }
 /* move one ship; if it's in a fleet, that whole fleet moves (jump to its fleet view) */
@@ -5928,7 +6002,7 @@ function departFirstFlight(){
   state.galaxy=galaxy; state.sysId=0; state.system=home; state.atSlot=0;
   const hg=systemGov(home);
   if(hg) Game.logMsg(`Your home star lies within the territory of ${hg.name}.`,"sys");
-  state.grounded=false; mapView=null;
+  state.grounded=false; mapView=null; mapSel=null; mapFilter="all";
   const dist=Math.round(Math.hypot(sp.x,sp.y)), region=cf>0.66?"deep in the crowded core":cf>0.33?"in the galaxy's middle reaches":"out on the sparse rim";
   const nearby=galaxy.systems.filter(s=>s.id!==0 && Math.hypot(s.x-sp.x,s.y-sp.y)<=MAP_SIGHT).length;
   Game.logMsg(`You break atmosphere for the first time. Your home star, ${home.name}, lies ${region} — ${dist} ly from the core — and holds ${size} world${size>1?"s":""}, with ${nearby} other system${nearby!==1?"s":""} glinting within sensor range and countless more scattered across the galaxy.`,"hit");
