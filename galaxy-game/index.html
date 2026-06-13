@@ -1576,6 +1576,7 @@ const Game = {
     if(state.galaxy && !state.galaxy.full) populateGalaxy(state.galaxy, state.spawn);   // fill out thin older galaxies
     if(state.galaxy && state.galaxy.governments) assignCapitals(state.galaxy);          // ensure capitals sit on real systems
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
+    if(!state.allegiance.enemies) state.allegiance.enemies=[];
     if(!state.empire) state.empire={ name:null, founded:state.actions||0, holdings:[], estates:[], stock:{}, threats:[] };
     else { state.empire.holdings=state.empire.holdings||[]; state.empire.estates=state.empire.estates||[]; state.empire.stock=state.empire.stock||{}; state.empire.threats=state.empire.threats||[]; }
     if(!state.contracts) state.contracts=[];
@@ -2705,7 +2706,7 @@ const UI = {
     // --- estates / territory ---
     const estateCard = estates.length?`<div class="card sheet"><h3>Worlds you hold <span class="dim small">&middot; ${estates.length}</span></h3>
       ${estates.map(e=>{ const ew=worldAt(e.sysId,e.slot), es=state.galaxy.systems[e.sysId], loy=Math.round(e.loyalty||0);
-        return `<div class="frow"><div class="finfo"><div class="nm">&#9733; ${ew?ew.name:"world"} <span class="dim small">&middot; ${es?es.name:""}${es&&controlsSystem(e.sysId)?" (system held)":""}</span></div>
+        return `<div class="frow"><div class="finfo"><div class="nm">&#9733; ${ew?ew.name:"world"} <span class="dim small">&middot; ${es?es.name:""}${es&&controlsSystem(e.sysId)?" (system held)":""}</span>${loy<15?' <span class="chip r">revolt risk</span>':loy<30?' <span class="chip gold">restless</span>':''}</div>
           ${bar(loy, loy<35?'enfill':'hpfill')}<div class="sub">loyalty ${loy}% &middot; defense ${planetDefense(e)} &middot; ${holdingsAt(e.sysId,e.slot).length} building${holdingsAt(e.sysId,e.slot).length!==1?"s":""}</div></div></div>`; }).join("")}
       ${ctrl.length?`<p class="small green" style="margin-top:6px">&#9873; Systems under your full control: ${ctrl.map(id=>state.galaxy.systems[id].name).join(", ")}.</p>`:""}
     </div>`:"";
@@ -4368,6 +4369,7 @@ function shiftAlign(d, reason){
 /* how a government currently regards you, from your allegiance, the factions you serve & your alignment */
 function govStance(g){
   const al=state.allegiance||{}; if(!g) return "neutral";
+  if((al.enemies||[]).includes(g.id)) return "hostile";          // you made war on them by seizing their worlds
   if(al.govId===g.id) return "friendly";
   if((al.factionIds||[]).some(fid=>{ const f=factionById(fid); return f && f.govId===g.id; })) return "friendly";
   if(al.govId && g.rivals.includes(al.govId)) return "hostile";
@@ -4904,7 +4906,7 @@ function shipBattleDone(){
   if(c.empireOp){                        // an annex assault or a world-defense — apply the outcome where you fought
     const op=c.empireOp, won=c.win && !c.fled, w=worldAt(op.sysId,op.slot);
     if(op.type==="annex"){
-      if(won){ addEstate(op.sysId,op.slot); Game.logMsg(`&#9873; ${w?w.name:"The world"} bows to your banner — it joins your domain. Win the people over to raise its loyalty.`,"good"); }
+      if(won){ addEstate(op.sysId,op.slot,15); Game.logMsg(`&#9873; ${w?w.name:"The world"} falls to your fleet — but a conquered people are restless (loyalty 15%). Garrison it and let years pass to win them over.`,"good"); }
       else Game.logMsg(`Your assault on ${w?w.name:"the world"} was thrown back. Regroup and try again.`,"bad");
     } else if(op.type==="defend"){
       removeThreat(op.threatId);
@@ -5630,9 +5632,15 @@ function defensePlatform(threat){ const hp=Math.round(4000*(1+threat*0.8));
   return { name:"Orbital Defense Platform", cls:"capital", cat:"warship", maxHp:hp, hp, shieldTier:2,
     maxShield:Math.round(hp*0.25), shield:Math.round(hp*0.25),
     attack:Math.round(ENEMY_PERMOUNT[clamp(threat,0,4)]*4*rndF(0.9,1.2)), evasion:0 }; }
-function addEstate(sysId,slot){ const E=ensureEmpire(); if(ownsPlanet(sysId,slot)) return;
-  E.estates.push({ sysId, slot, loyalty:35, founded:state.actions||0 });
+function addEstate(sysId,slot,loyalty){ const E=ensureEmpire(); if(ownsPlanet(sysId,slot)) return;
+  E.estates.push({ sysId, slot, loyalty:(loyalty==null?35:loyalty), founded:state.actions||0 });
   if(!E.name) E.name=(state.name?state.name.split(" ")[0]+"'s Domain":"Your Domain"); }
+/* a war footing: the named government now counts you an enemy (their forces will hunt you in their space) */
+function markGovEnemy(govId){ if(!govId) return; const al=state.allegiance||(state.allegiance={govId:null,factionIds:[],align:0});
+  al.enemies=al.enemies||[];
+  if(al.govId===govId) al.govId=null;                       // you can't both serve and war a power
+  if(al.enemies.includes(govId)) return; al.enemies.push(govId);
+  const g=govById(govId); Game.logMsg(`&#9876; ${g?g.name:"A government"} declares you an enemy — expect their fleets to come for you in their space.`,"bad"); }
 function loseEstate(sysId,slot){ const E=ensureEmpire(); E.estates=E.estates.filter(e=>!(e.sysId===sysId&&e.slot===slot));
   holdingsAt(sysId,slot).forEach(h=>{ h.hp=0; });   // garrison overrun
 }
@@ -5646,12 +5654,13 @@ function claimPlanet(mode){
   const sys=state.galaxy.systems[sysId], gov=systemGov(sys);
   if(mode==="buy"){ const cost=annexCost(w,sys);
     if((state.credits||0)<cost){ toast(`Buying out this world costs ${commas(cost)}c`); return; }
-    state.credits-=cost; addEstate(sysId,slot);
+    state.credits-=cost; addEstate(sysId,slot,45);            // a paid-for world settles smoothly
     Game.logMsg(`You ${gov?`buy ${w.name} from ${gov.name}`:`buy out the independent world ${w.name}`} for ${commas(cost)}c — it joins your domain.`,"good");
     Game.save(); UI.render("empire"); return; }
-  // assault: fight the planet's defending fleet + fixed orbital batteries
+  // assault: fight the planet's defending fleet + fixed orbital batteries — and make an enemy of its rulers
   const a=worldAssault(w,sys);
-  startEmpireBattle({ type:"annex", sysId, slot, threat:a.threat, n:a.n, platforms:a.platforms,
+  if(gov) markGovEnemy(gov.id);
+  startEmpireBattle({ type:"annex", sysId, slot, threat:a.threat, n:a.n, platforms:a.platforms, govId:gov?gov.id:null,
     name:`defense of ${w.name}${gov?` (${gov.name})`:""}`, faction:gov?gov.name:"local defenders",
     intro:`Your fleet opens the assault on ${w.name}${gov?`, held by ${gov.name}`:""}.` });
 }
@@ -5671,7 +5680,7 @@ function startEmpireBattle(op){
   all.forEach(v=>{ v.shield=shipMaxShield(v); });
   const loot=Math.round(enemy.reduce((s,e)=>s+e.maxHp,0)*0.08*(1+op.threat*0.3));
   shipCombat={ name:op.name, faction:op.faction||"defenders", threat:op.threat, enemy,
-    foeKind:"defenders", foeDispo:"hostile", foeThreat:op.threat, foeGovId:null,
+    foeKind:"defenders", foeDispo:"hostile", foeThreat:op.threat, foeGovId:op.govId||null,
     empireOp:op, main:mine.map(v=>v.id), wing:wing.map(v=>v.id), wingOut:true, my:all.map(v=>v.id),
     target:null, loot, over:false, win:false, lost:false, fled:false, round:0, log:[op.intro||""] };
   Game.logMsg(op.intro||"Battle stations!","hit"); UI.render("shipbattle");
@@ -5686,14 +5695,18 @@ function tickEmpire(n){
         for(const cid in d.inp) E.stock[cid]=Math.max(0,(E.stock[cid]||0)-d.inp[cid]*lvl); }
       if(d.out) for(const cid in d.out) E.stock[cid]=(E.stock[cid]||0)+d.out[cid]*lvl;
     });
-    if(E.estates.length && !E.threats.length && chance(0.010*E.estates.length)) maybeSpawnThreat();
+    const restless=E.estates.filter(e=>(e.loyalty||40)<30).length;   // unhappy worlds draw raids & invasions
+    if(E.estates.length && !E.threats.length && chance(0.010*E.estates.length + 0.008*restless)) maybeSpawnThreat();
     E.threats.forEach(t=>{ t.turnsLeft--; });
     const expired=E.threats.filter(t=>t.turnsLeft<=0); expired.forEach(autoResolveThreat);
     if(expired.length) E.threats=E.threats.filter(t=>t.turnsLeft>0);
   }
 }
 function maybeSpawnThreat(){
-  const E=state.empire, est=pick(E.estates); if(!est) return;
+  const E=state.empire; if(!E.estates.length) return;
+  // weight trouble toward your least-loyal worlds — restless conquests are where rivals press
+  const wts=E.estates.map(e=>({e, w:(100-(e.loyalty||40))+12})); const tot=wts.reduce((s,x)=>s+x.w,0);
+  let r=Math.random()*tot, est=E.estates[0]; for(const x of wts){ if((r-=x.w)<0){ est=x.e; break; } }
   const sys=state.galaxy.systems[est.sysId], w=worldAt(est.sysId,est.slot); if(!w) return;
   const rim=sys?1-centralFactor(sys.x,sys.y):0.5;
   if(!chance(0.32+rim*0.22)){                              // a raid — bloodies a building, no takeover
@@ -5724,6 +5737,10 @@ function repairHolding(hid){
 }
 function empireYear(){
   const E=state.empire; if(!E||!E.estates.length){ return; }
+  // a world left at rock-bottom loyalty may rise in revolt and break away
+  E.estates.slice().forEach(e=>{ if((e.loyalty||0)<=8 && chance(0.3)){ const w=worldAt(e.sysId,e.slot);
+    loseEstate(e.sysId,e.slot); Game.logMsg(`&#9888; <b>${w?w.name:"A world"}</b> rises in revolt and breaks from your domain! Win hearts (loyalty) before it comes to this.`,"bad"); } });
+  if(!E.estates.length) return;
   let income=0;
   E.estates.forEach(e=>{ const w=worldAt(e.sysId,e.slot); if(!w) return;
     e.loyalty=clamp((e.loyalty||40)+4,0,100);                       // a settled world warms to you over the years
