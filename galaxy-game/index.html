@@ -3452,9 +3452,11 @@ const UI = {
       else if(!B||!canSellHere(B,c)) warn=`<p class="small red">&#9888; <b>${B?B.name:"The sell world"} won't buy ${c.name}</b>, so nothing's being sold. Call it off and re-pick.</p>`;
       else if(margin<=0) warn=`<p class="small red">&#9888; <b>Not profitable right now</b> — ${c.name} sells for no more than it costs here. Call it off and pick a better pair.</p>`;
       else warn=`<p class="small dim">~${commas(Math.max(0,margin)*qty)}c per ${cyc}-action round trip.</p>`;
+      const fp=fleetFirepower(f);
       return `<div class="card"><h3>&#128666; Trade job</h3>
         <p class="small">Buy <b>${c?c.name:"?"}</b> at <b>${A?A.name:"?"}</b> (${commas(bp)}c) &rarr; sell at <b>${B?B.name:"?"}</b> (${commas(sp)}c) &middot; margin <b class="${margin>0?'gold':'red'}">${margin>0?'+':''}${commas(margin)}c</b>/unit.</p>
         ${warn}
+        <p class="small ${fp<=1?'red':fp<4000?'gold':'dim'}">&#128737; Escort: ${fp<=1?'<b>none — easy prey for raiders</b>':fp<4000?'light — a starfighter or two would help':'well-guarded'} <span class="dim">(firepower ${commas(fp)}). Raiders rarely strike, harder on the rim.</span></p>
         <p class="small dim">${t.runs||0} runs done &middot; <b class="${(t.earned||0)>=0?'gold':'red'}">${(t.earned||0)>=0?'+':''}${commas(t.earned||0)}c</b> net &middot; ${t.phase==="toSell"?"hauling to sell":"returning to buy"}.</p>
         <button class="full center" data-fleetuntrade="${f.id}">Call off the trade job</button></div>`; }
     if(tradeBuild && tradeBuild.fid===f.id) return this.tradeBuilder(f, tradeBuild);
@@ -5188,9 +5190,28 @@ function tradeSell(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(
   for(const v of ships){ const take=Math.min(v.cargo[t.commodity]||0,rem); if(take>0){ v.cargo[t.commodity]-=take; if(v.cargo[t.commodity]<=0) delete v.cargo[t.commodity]; rem-=take; } }
   t.earned=(t.earned||0)+(have*p-(t.lastBuy||0)); t.runs=(t.runs||0)+1;
   Game.logMsg(`Trade fleet ${f.name}: ${have} ${c.name} sold at ${w.name} for ${commas(have*p)}c.`,"good"); }
+/* a trade fleet's total combat strength — escorts (fighters/warships) carry it; bare freighters
+   have almost none, which is what makes them easy prey */
+function fleetFirepower(f){ return shipsByIds(f.shipIds).reduce((s,v)=>s+(v.hp>0?shipPower(v):0),0); }
+/* odds raiders hit a running trade fleet this action — low in policed core/friendly space, higher
+   out on the lawless rim. Always a slim chance. */
+function ambushChance(f){ const sys=state.galaxy&&state.galaxy.systems[f.trade.pos.sysId]; if(!sys) return 0.025;
+  let ch=0.018+(1-centralFactor(sys.x,sys.y))*0.05; const gov=systemGov(sys); if(gov&&govStance(gov)==="friendly") ch*=0.4; return ch; }
+/* resolve a raider ambush on an unattended trade fleet automatically: escorts decide the outcome */
+function tradeAmbush(f){ const t=f.trade, ships=shipsByIds(f.shipIds).filter(v=>v.hp>0); if(!ships.length) return;
+  const sys=state.galaxy.systems[t.pos.sysId]||state.galaxy.systems[t.buySys], cf=sys?centralFactor(sys.x,sys.y):0.5;
+  const threat=1+Math.round((1-cf)*4), raider=threat*1700*rndF(0.7,1.3), power=fleetFirepower(f), ratio=power/Math.max(1,raider);
+  if(ratio>=1.6){ Game.logMsg(`&#9876; Raiders jumped your trade fleet <b>${f.name}</b> — its escorts drove them off clean.`,"good"); return; }
+  const heavy = ratio<0.7, cargoFrac = heavy?rndF(0.6,0.9):rndF(0.2,0.45), hullFrac = heavy?rndF(0.3,0.55):rndF(0.08,0.18);
+  let lost=0;
+  ships.forEach(v=>{ for(const id in (v.cargo||{})){ const take=Math.round(v.cargo[id]*cargoFrac); if(take>0){ v.cargo[id]=Math.max(0,v.cargo[id]-take); if(v.cargo[id]<=0) delete v.cargo[id]; lost+=take; } }
+    v.hp=Math.max(1, Math.round(v.hp*(1-hullFrac))); });   // battered, never destroyed while you're away
+  Game.logMsg(`&#9876; Raiders struck <b>${f.name}</b> near ${sys?sys.name:"deep space"}!${power<=1?" It rode with NO escort.":""} ${heavy?"Mauled":"Bloodied"} — ${lost?commas(lost)+" units of cargo plundered, ":""}hulls battered.${power<raider?" Add a starfighter or two to ride shotgun.":""}`,"bad");
+}
 /* advance one fleet's route by a single action — a same-system hop arrives at once; a jump between
    systems takes one action per jump (distance / jump range) before it arrives and trades */
 function tradeStep(f){ const t=f.trade; if(!t||!fleetAllCrewed(f)) return;
+  if(chance(ambushChance(f))){ tradeAmbush(f); if(!f.trade) return; }   // raiders may strike a run; escorts fend them off
   const tgt = t.phase==="toSell" ? {s:t.sellSys,p:t.sellSlot} : {s:t.buySys,p:t.buySlot};
   if(t.pos.sysId!==tgt.s){                                  // crossing to another system — count down the jumps
     if(t.legLeft==null){ const jump=Math.max(1, groupCaps(f.shipIds).jump);
