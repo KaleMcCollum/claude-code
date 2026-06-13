@@ -2685,6 +2685,20 @@ const UI = {
         return `<div class="krow"><span class="lbl">${c.name} <span class="dim small">&times;${commas(E.stock[cid])}</span></span>
           <span class="kv">${sellable?`<button class="small" data-esell="${cid}">Sell @ ${commas(commoditySell(w,c))}c</button>`:`<span class="dim small">${here?"not sold here":"land to sell"}</span>`}</span></div>`; }).join("")}
       <p class="small dim" style="margin-top:6px">Goods pile up at your holdings; sell them at any world that buys them, or route a trade fleet by.</p></div>`:"";
+    // --- all-holdings dashboard (manage every building from anywhere) ---
+    const byWorld={};
+    holdings.forEach(h=>{ const key=h.sysId+":"+h.slot; (byWorld[key]=byWorld[key]||[]).push(h); });
+    const worldKeys=Object.keys(byWorld).sort();
+    const dashCard = holdings.length?`<div class="card sheet"><h3>All holdings <span class="dim small">&middot; ${holdings.length} across ${worldKeys.length} world${worldKeys.length!==1?"s":""}</span></h3>
+      ${worldKeys.map(key=>{ const [sy,sl]=key.split(":").map(Number), ww=worldAt(sy,sl), wsys=state.galaxy.systems[sy], atW=state.sysId===sy&&state.atSlot===sl;
+        return `<div style="margin:4px 0 8px"><div class="row between" style="margin-bottom:3px"><b>${ownsPlanet(sy,sl)?`<span style="color:${empireColor()}">&#9873;</span> `:""}${ww?ww.name:"world"}</b><span class="dim small">${wsys?wsys.name:""}${atW?' &middot; here':''}</span></div>
+          ${byWorld[key].map(h=>{ const d=buildingDef(h.kind), pct=Math.round(h.hp/h.maxHp*100), out=d.out?Object.entries(d.out).map(([c,q])=>"+"+q*(h.lvl||1)+" "+commodityById(c).name).join(", "):d.defense?`+${d.defense*(h.lvl||1)} defense`:"";
+            return `<div class="frow"><div class="finfo"><div class="nm">${d.icon} ${d.name} <span class="dim small">Lv ${h.lvl||1}${h.idle?" &middot; idle":""}</span></div>
+              <div class="bar" style="margin:3px 0 2px"><i class="${pct<40?'enfill':'hpfill'}" style="width:${clamp(pct,0,100)}%"></i></div><div class="sub">${pct}% &middot; ${out}/turn</div></div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                ${h.hp<h.maxHp?`<button class="small" data-erepair="${h.id}">Repair</button>`:`<button class="small ghost" data-eupgrade="${h.id}" ${(h.lvl||1)>=4?"disabled":""}>Upgrade</button>`}
+                <button class="small ghost" data-edemolish="${h.id}">Raze</button></div></div>`; }).join("")}</div>`; }).join("")}
+      <p class="small dim">Upgrade, repair or raze any holding from here — wherever you are.</p></div>`:"";
     // --- estates / territory ---
     const estateCard = estates.length?`<div class="card sheet"><h3>Worlds you hold <span class="dim small">&middot; ${estates.length}</span></h3>
       ${estates.map(e=>{ const ew=worldAt(e.sysId,e.slot), es=state.galaxy.systems[e.sysId], loy=Math.round(e.loyalty||0);
@@ -2710,6 +2724,7 @@ const UI = {
     ${threatCard}
     ${buildCard}
     ${stockCard}
+    ${dashCard}
     ${estateCard}`;
   },
 
@@ -3182,7 +3197,7 @@ const UI = {
       ${sys?`<h3 style="margin-top:8px">${sys.name} <span class="dim small">&middot; current system</span></h3>
         <p class="small dim">${sys.size} world${sys.size>1?"s":""} &middot; ${sys.planets.filter(p=>p.discovered).length} charted. <span class="dim">Tap a charted world to study it.</span></p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
-          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${ownsPlanet(sys.id,i)?'<span class="green" title="Yours">&#9873;</span> ':hasHolding(sys.id,i)?'<span class="gold" title="You have holdings here">&#9874;</span> ':''}<button class="small ghost" data-world="${sys.id}:${i}">${p.fav?"&#9733; ":""}${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
+          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${ownsPlanet(sys.id,i)?`<span style="color:${empireColor()}" title="Yours">&#9873;</span> `:hasHolding(sys.id,i)?'<span class="gold" title="You have holdings here">&#9874;</span> ':''}<button class="small ghost" data-world="${sys.id}:${i}" style="${ownsPlanet(sys.id,i)?`color:${empireColor()}`:''}">${p.fav?"&#9733; ":""}${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
                <span class="kv">${isInhabited(p.world)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)} <button class="small ghost" data-fav="${sys.id}:${i}" title="${p.fav?'Unfavourite':'Favourite'}">${p.fav?'&#9733;':'&#9734;'}</button></span></div>`;
           return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
                <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`
@@ -3192,9 +3207,9 @@ const UI = {
     </div>
     ${g&&g.systems.length>1?`<div class="card sheet"><h3>Known systems <span class="dim small">&middot; ${known.length} charted / ${g.systems.length} in range of sensors</span></h3>
       ${known.map(({s,d})=>{ const cur=!adrift()&&s.id===state.sysId, own=controlsSystem(s.id), hold=!own&&ownedSystems().includes(s.id);
-        return `<div class="krow"><span class="lbl">${cur?'&#9737; ':''}${own?'<span class="green" title="Under your control">&#9873;</span> ':hold?'<span class="gold" title="You hold worlds here">&#9874;</span> ':''}${s.name}${cur?' <span class="green small">&#9679; here</span>':own?' <span class="green small">&middot; yours</span>':''}</span>
+        return `<div class="krow"><span class="lbl">${cur?'&#9737; ':''}${own?`<span style="color:${empireColor()}" title="Under your control">&#9873;</span> `:hold?'<span class="gold" title="You hold worlds here">&#9874;</span> ':''}<span style="${own?`color:${empireColor()}`:''}">${s.name}</span>${cur?' <span class="green small">&#9679; here</span>':own?` <span class="small" style="color:${empireColor()}">&middot; yours</span>`:''}</span>
         <span class="kv">${cur?'<span class="dim">current</span>':`${d.toFixed(1)} ly`} <span class="dim small">&middot; ${(s.planets||[]).filter(p=>p.discovered).length}/${s.size} charted</span></span></div>`; }).join("")}
-      <p class="small dim" style="margin-top:6px">Open <b>Travel</b> from the Crew tab to fly or jump between systems. <span class="green">&#9873;</span> a system you control, <span class="gold">&#9874;</span> one where you hold worlds.</p>
+      <p class="small dim" style="margin-top:6px">Open <b>Travel</b> from the Crew tab to fly or jump between systems. <span style="color:${empireColor()}">&#9873;</span> a system you control, <span class="gold">&#9874;</span> one where you hold worlds.</p>
     </div>`:""}
     <div class="card sheet"><h3>Worlds logged <span class="dim small">&middot; ${worlds.length}</span></h3>
       ${worlds.length?worlds.map((w,wi)=>`<div class="krow"><span class="lbl"><button class="small ghost" data-worldlog="${wi}">${w.name}</button>${w.sysName?` <span class="dim small">&middot; ${w.sysName}</span>`:""}</span>
@@ -3599,9 +3614,11 @@ const UI = {
     if(tb.phase==="buyPlanet"){ const ps=inhabPlanets(tb.buySys);
       return `<div class="card sheet">${head}<p class="small dim">Step 2 &middot; the <b>buy</b> planet.</p>
         ${ps.map(x=>`<div class="krow"><span class="lbl">${x.world.name} <span class="dim small">&middot; ${settleDef(x.world.settle).name}</span></span><span class="kv"><button class="small" data-tbbuyplanet="${f.id}:${x.slot}">Pick</button></span></div>`).join("")}</div>`; }
-    if(tb.phase==="buyGood"){ const A=worldAt(tb.buySys,tb.buySlot), goods=COMMODITIES.filter(c=>canBuyHere(A,c));
-      return `<div class="card sheet">${head}<p class="small dim">Step 3 &middot; the <b>good to buy</b> at ${A.name} — what it sells, at its price.</p>
-        ${goods.map(c=>`<div class="krow"><span class="lbl">${c.name} <span class="dim small">&middot; ${c.bulk} slot${c.bulk>1?"s":""}</span></span><span class="kv"><span class="gold small">${commas(commodityBuy(A,c))}c</span> <button class="small" data-tbgood="${f.id}:${c.id}">Pick</button></span></div>`).join("")}</div>`; }
+    if(tb.phase==="buyGood"){ const A=worldAt(tb.buySys,tb.buySlot);
+      const goods=COMMODITIES.filter(c=>canBuyHere(A,c)||routeFreeGood(tb.buySys,tb.buySlot,c.id));
+      return `<div class="card sheet">${head}<p class="small dim">Step 3 &middot; the <b>good to buy</b> at ${A.name}. Goods from <b style="color:${empireColor()}">your own holdings</b> here load free from your stockpile.</p>
+        ${goods.map(c=>{ const free=routeFreeGood(tb.buySys,tb.buySlot,c.id), market=canBuyHere(A,c), inStock=(state.empire&&state.empire.stock[c.id])||0;
+          return `<div class="krow"><span class="lbl">${c.name} <span class="dim small">&middot; ${c.bulk} slot${c.bulk>1?"s":""}</span>${free?` <span class="small" style="color:${empireColor()}">&#9874; yours</span>`:""}</span><span class="kv">${free?`<span class="small" style="color:${empireColor()}">free${inStock?` &middot; ${commas(inStock)} in stock`:""}</span>`:`<span class="gold small">${commas(commodityBuy(A,c))}c</span>`} <button class="small" data-tbgood="${f.id}:${c.id}">Pick</button></span></div>`; }).join("")}</div>`; }
     if(tb.phase==="sellSys"){ const sys=reachableTradeSystems(tb.buySys, f), c=commodityById(tb.commodity);
       return `<div class="card sheet">${head}<p class="small dim">Step 4 &middot; the system to <b>sell</b> your ${c.name} in.</p>${tradeNote}
         ${sys.map(s=>`<div class="krow"><span class="lbl">${s.name}${s.id===tb.buySys?' <span class="dim small">(same system)</span>':` <span class="dim small">&middot; ${sysDist(tb.buySys,s.id).toFixed(1)} ly</span>`}</span><span class="kv"><button class="small" data-tbsellsys="${f.id}:${s.id}">Pick</button></span></div>`).join("")}</div>`; }
@@ -3611,11 +3628,12 @@ const UI = {
           return `<div class="krow"><span class="lbl">${x.world.name} <span class="dim small">&middot; ${settleDef(x.world.settle).name}</span></span><span class="kv">${ok?`<span class="gold small">${commas(commoditySell(x.world,c))}c</span> <button class="small" data-tbsellplanet="${f.id}:${x.slot}">Pick</button>`:'<span class="dim small">won’t buy it</span>'}</span></div>`; }).join("")}</div>`; }
     // confirm
     const A=worldAt(tb.buySys,tb.buySlot), B=worldAt(tb.sellSys,tb.sellSlot), c=commodityById(tb.commodity);
-    const bp=commodityBuy(A,c), sp=commoditySell(B,c), qty=Math.floor(cap/c.bulk), profit=(sp-bp)*qty;
+    const free=routeFreeGood(tb.buySys,tb.buySlot,tb.commodity), bp=free?0:commodityBuy(A,c);
+    const sp=commoditySell(B,c), qty=Math.floor(cap/c.bulk), profit=(sp-bp)*qty;
     const cyc=tradeCycleActions({buySys:tb.buySys,buySlot:tb.buySlot,sellSys:tb.sellSys,sellSlot:tb.sellSlot}, groupCaps(f.shipIds).jump);
     return `<div class="card sheet">${head}
-      <p class="small">Buy <b>${c.name}</b> at <b>${A.name}</b> for <span class="gold">${commas(bp)}c</span>, sell at <b>${B.name}</b> for <span class="gold">${commas(sp)}c</span> (margin ${commas(sp-bp)}c).</p>
-      <p class="small dim">${qty} units a run &middot; ~<b class="${profit>0?'gold':'red'}">${commas(profit)}c</b> profit per ${cyc}-action round trip. The fleet spends your credits to buy and banks the sales.</p>
+      <p class="small">${free?`Load <b>${c.name}</b> free from your stockpile at <b style="color:${empireColor()}">${A.name}</b>`:`Buy <b>${c.name}</b> at <b>${A.name}</b> for <span class="gold">${commas(bp)}c</span>`}, sell at <b>${B.name}</b> for <span class="gold">${commas(sp)}c</span> (margin ${commas(sp-bp)}c).</p>
+      <p class="small dim">${qty} units a run &middot; ~<b class="${profit>0?'gold':'red'}">${commas(profit)}c</b> profit per ${cyc}-action round trip. ${free?"The fleet hauls your own goods at no cost and banks every sale.":"The fleet spends your credits to buy and banks the sales."}</p>
       <button class="full primary center" data-tbconfirm="${f.id}" ${profit>0?"":"disabled"}>${profit>0?"Confirm trade job":"Not profitable"}</button></div>`;
   },
   fleetsView(){
@@ -5528,8 +5546,14 @@ const BUILDINGS=[
 ];
 const buildingDef=id=>BUILDINGS.find(b=>b.id===id)||null;
 const MAX_HOLDINGS_PER_WORLD=4;
+const EMPIRE_COLORS=["#36d1c4","#f2a93b","#c879f0","#5aa7ff","#7ed957","#ff6f91"];
 function ensureEmpire(){ if(!state.empire) state.empire={ name:null, founded:state.actions||0, holdings:[], estates:[], stock:{}, threats:[] };
-  const E=state.empire; E.holdings=E.holdings||[]; E.estates=E.estates||[]; E.stock=E.stock||{}; E.threats=E.threats||[]; return E; }
+  const E=state.empire; E.holdings=E.holdings||[]; E.estates=E.estates||[]; E.stock=E.stock||{}; E.threats=E.threats||[];
+  if(!E.color) E.color=EMPIRE_COLORS[Math.floor(Math.random()*EMPIRE_COLORS.length)]; return E; }
+function empireColor(){ return (state.empire&&state.empire.color)||"#36d1c4"; }
+/* commodities your buildings produce anywhere — what you can ship out of a holding world for free */
+function empireProduces(cid){ return (state.empire?state.empire.holdings:[]).some(h=>{ const d=buildingDef(h.kind); return d&&d.out&&d.out[cid]&&h.hp>0; }); }
+function routeFreeGood(sysId,slot,cid){ return hasHolding(sysId,slot) && (empireProduces(cid) || ((state.empire&&state.empire.stock[cid])||0)>0); }
 function holdingsAt(sysId,slot){ return (state.empire?state.empire.holdings:[]).filter(h=>h.sysId===sysId&&h.slot===slot); }
 function estateAt(sysId,slot){ return (state.empire?state.empire.estates:[]).find(e=>e.sysId===sysId&&e.slot===slot)||null; }
 function ownsPlanet(sysId,slot){ return !!estateAt(sysId,slot); }
