@@ -191,6 +191,7 @@
   <button data-screen="codex"><span class="ico">&#9776;</span>Codex</button>
   <button data-screen="map"><span class="ico">&#128506;</span>Map</button>
   <button data-screen="gov"><span class="ico">&#127963;</span>Powers</button>
+  <button data-screen="empire"><span class="ico">&#128081;</span>Empire</button>
   <button data-screen="bag"><span class="ico">&#9783;</span>Items</button>
   <button data-screen="crew"><span class="ico">&#128101;</span>Crew</button>
   <button data-screen="save"><span class="ico">&#8635;</span>Save</button>
@@ -1575,6 +1576,8 @@ const Game = {
     if(state.galaxy && !state.galaxy.full) populateGalaxy(state.galaxy, state.spawn);   // fill out thin older galaxies
     if(state.galaxy && state.galaxy.governments) assignCapitals(state.galaxy);          // ensure capitals sit on real systems
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
+    if(!state.empire) state.empire={ name:null, founded:state.actions||0, holdings:[], estates:[], stock:{}, threats:[] };
+    else { state.empire.holdings=state.empire.holdings||[]; state.empire.estates=state.empire.estates||[]; state.empire.stock=state.empire.stock||{}; state.empire.threats=state.empire.threats||[]; }
     if(!state.contracts) state.contracts=[];
     if(!state.gear) state.gear=[];
     learnSkills(true);   // grant techniques an existing character already qualifies for
@@ -1821,6 +1824,7 @@ function advanceTime(n){
   state.actions=(state.actions||0)+n;
   tickTrades(n);                          // automated trade fleets bank their profit as time passes
   if(state.tradeRaid){ UI.render("traderaid"); return true; }   // raiders jumped a fleet — demand the player's call before time moves on
+  tickEmpire(n);                          // your holdings produce goods (and rivals may stir)
   // natural healing between actions — faster for high Recovery, doubled at home
   if(state.hp < Game.effMaxHp()){
     const heal=Math.round(n*Game.bio("recovery")*0.3*(Game.atHome()?2:1));
@@ -1840,7 +1844,7 @@ function advanceTime(n){
   const yrs=Math.floor(state.actions/ACTIONS_PER_YEAR);
   if(state.lastBillYear==null) state.lastBillYear=yrs;
   const prevYr=state.lastBillYear;
-  while(state.lastBillYear<yrs){ chargeUpkeep(); state.lastBillYear++; }
+  while(state.lastBillYear<yrs){ chargeUpkeep(); empireYear(); state.lastBillYear++; }
   if(yrs>prevYr){                       // a year turned over: markets & shipyards refresh stock
     state.shipStock={}; state.marketStock={};
     Game.logMsg(`A year turns over — markets and shipyards across the galaxy refresh their stock.`,"sys");
@@ -2627,6 +2631,86 @@ const UI = {
       <button class="full center" id="raidFlee">&#128640; Run for it <span class="dim small">(${odds(fleeOdds)} to escape)</span></button>
       <p class="small dim" style="margin-top:6px">Burn for the horizon. Slip away light, or get run down and hit hard from astern.</p>
     </div>`;
+  },
+
+  /* ---------- EMPIRE (your domain: holdings, worlds, territory, defense) ---------- */
+  screen_empire(){
+    const E=ensureEmpire(), w=state.world, here=!adrift()&&isInhabited(w), sysId=state.sysId, slot=state.atSlot;
+    const sys=curSys();
+    const estates=E.estates, holdings=E.holdings, ctrl=ownedSystems().filter(controlsSystem);
+    const upkeep=empireUpkeepTotal();
+    let income=0; estates.forEach(e=>{ const ww=worldAt(e.sysId,e.slot); if(ww) income+=Math.round((ww.wealth+1)*(ww.tech+1)*95*(0.4+0.6*((e.loyalty||40)/100))); });
+    const net=income-upkeep;
+    const bar=(v,cl)=>`<div class="bar" style="margin:3px 0 2px"><i class="${cl||'hpfill'}" style="width:${clamp(v,0,100)}%"></i></div>`;
+    // --- threats banner ---
+    const threats=E.threats||[];
+    const threatCard = threats.length?`<div class="card" style="border-color:#c0392b">
+      <h3 class="red">&#9888; Worlds under attack</h3>
+      ${threats.map(t=>{ const tw=worldAt(t.sysId,t.slot), atHere=state.sysId===t.sysId&&state.atSlot===t.slot, tsys=state.galaxy.systems[t.sysId];
+        return `<div class="frow"><div class="finfo"><div class="nm red">${tw?tw.name:"a world"} <span class="dim small">&middot; ${tsys?tsys.name:""}</span></div>
+          <div class="chips" style="margin-top:4px"><span class="chip r">&#9876; ${commas(t.strength)} strength</span><span class="chip gold">${t.turnsLeft} turn${t.turnsLeft!==1?"s":""} left</span></div></div>
+          <button class="small ${atHere?'primary':'ghost'}" data-defend="${t.id}" ${atHere?"":"disabled"}>${atHere?"Defend":"Travel there"}</button></div>`; }).join("")}
+      <p class="small dim" style="margin-top:6px">Fly to the world and lead the defense in person, or your garrison fights alone when time runs out (and may lose).</p></div>`:"";
+    // --- build-here card ---
+    const localH = here?holdingsAt(sysId,slot):[];
+    const owned = here&&ownsPlanet(sysId,slot);
+    const hasOutpost = localH.some(h=>buildingDef(h.kind).claim && h.hp>0);
+    const gov = sys?systemGov(sys):null;
+    const buildCard = !here ? `<div class="card"><p class="small dim">${adrift()?"You're adrift in deep space.":"Land on an inhabited world to build, or to take it for your own."}</p></div>`
+      : `<div class="card sheet">
+        <div class="row between"><h3>${w.name}</h3>${owned?'<span class="chip g">&#9733; yours</span>':gov?`<span class="chip">${gov.name}</span>`:'<span class="chip">independent</span>'}</div>
+        ${localH.length?`<p class="small dim">Your holdings here (${localH.length}/${MAX_HOLDINGS_PER_WORLD}):</p>
+          ${localH.map(h=>{ const d=buildingDef(h.kind), pct=Math.round(h.hp/h.maxHp*100);
+            return `<div class="frow"><div class="finfo"><div class="nm">${d.icon} ${d.name} <span class="dim small">Lv ${h.lvl||1}</span>${h.idle?' <span class="gold small">&middot; idle (no input)</span>':''}</div>
+              ${bar(pct, pct<40?'enfill':'hpfill')}<div class="sub">integrity ${pct}%${d.out?` &middot; +${Object.entries(d.out).map(([c,q])=>q*(h.lvl||1)+" "+commodityById(c).name).join(", ")}/turn`:""}</div></div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                ${h.hp<h.maxHp?`<button class="small" data-erepair="${h.id}">Repair</button>`:`<button class="small ghost" data-eupgrade="${h.id}" ${(h.lvl||1)>=4?"disabled":""}>Upgrade</button>`}
+                <button class="small ghost" data-edemolish="${h.id}">Raze</button></div></div>`; }).join("")}`
+          :`<p class="small dim">No holdings here yet. Raise one to start producing.</p>`}
+        ${localH.length<MAX_HOLDINGS_PER_WORLD?`<p class="small dim" style="margin:8px 0 3px">Build (credits: <b class="gold">${commas(state.credits)}</b>):</p>
+          <div class="grid">
+          ${BUILDINGS.map(d=>{ const cost=buildCostHere(d,w);
+            return `<button class="small" data-ebuild="${d.id}" ${state.credits<cost?"disabled":""} title="${d.blurb}">${d.icon} ${d.name}<br><span class="dim">${commas(cost)}c</span></button>`; }).join("")}
+          </div>`:""}
+        ${!owned?`<div style="margin-top:10px">
+          ${hasOutpost?`<button class="primary full center" data-eclaim="1">&#9873; ${gov?`Take ${w.name} from ${gov.name}`:`Annex ${w.name} (${commas(annexCost(w))}c)`}</button>
+            <p class="small dim" style="margin-top:5px">${gov?"A government holds this world — taking it means breaking its defending fleet in battle.":"Independent — buy it out to add it to your domain."}</p>`
+            :`<p class="small dim" style="margin-top:8px">Build an <b>Outpost</b> here to gain the foothold needed to take this world.</p>`}
+        </div>`:`<p class="small green" style="margin-top:10px">&#9733; This world flies your colors. Loyalty ${Math.round((estateAt(sysId,slot)||{}).loyalty||0)}%.</p>`}
+      </div>`;
+    // --- stockpile ---
+    const stockIds=Object.keys(E.stock).filter(c=>E.stock[c]>0).sort((a,b)=>E.stock[b]-E.stock[a]);
+    const stockCard = stockIds.length?`<div class="card sheet"><h3>Stockpile <span class="dim small">&middot; ~${commas(stockValueAt(w))}c value here</span></h3>
+      ${stockIds.map(cid=>{ const c=commodityById(cid), sellable=here&&canSellHere(w,c);
+        return `<div class="krow"><span class="lbl">${c.name} <span class="dim small">&times;${commas(E.stock[cid])}</span></span>
+          <span class="kv">${sellable?`<button class="small" data-esell="${cid}">Sell @ ${commas(commoditySell(w,c))}c</button>`:`<span class="dim small">${here?"not sold here":"land to sell"}</span>`}</span></div>`; }).join("")}
+      <p class="small dim" style="margin-top:6px">Goods pile up at your holdings; sell them at any world that buys them, or route a trade fleet by.</p></div>`:"";
+    // --- estates / territory ---
+    const estateCard = estates.length?`<div class="card sheet"><h3>Worlds you hold <span class="dim small">&middot; ${estates.length}</span></h3>
+      ${estates.map(e=>{ const ew=worldAt(e.sysId,e.slot), es=state.galaxy.systems[e.sysId], loy=Math.round(e.loyalty||0);
+        return `<div class="frow"><div class="finfo"><div class="nm">&#9733; ${ew?ew.name:"world"} <span class="dim small">&middot; ${es?es.name:""}${es&&controlsSystem(e.sysId)?" (system held)":""}</span></div>
+          ${bar(loy, loy<35?'enfill':'hpfill')}<div class="sub">loyalty ${loy}% &middot; defense ${planetDefense(e)} &middot; ${holdingsAt(e.sysId,e.slot).length} building${holdingsAt(e.sysId,e.slot).length!==1?"s":""}</div></div></div>`; }).join("")}
+      ${ctrl.length?`<p class="small green" style="margin-top:6px">&#9873; Systems under your full control: ${ctrl.map(id=>state.galaxy.systems[id].name).join(", ")}.</p>`:""}
+    </div>`:"";
+
+    return `${this.statHeader()}
+    <div class="card">
+      <div class="row between"><h2>&#128081; ${E.name||"Your Domain"}</h2>
+        ${holdings.length||estates.length?`<span class="tag">${holdings.length} building${holdings.length!==1?"s":""} &middot; ${estates.length} world${estates.length!==1?"s":""}</span>`:""}</div>
+      ${holdings.length||estates.length
+        ? `<div class="chips" style="margin-top:7px">
+            <span class="chip ${net>=0?'g':'r'}">${net>=0?"+":""}${commas(net)}c / yr</span>
+            <span class="chip">&#127981; ${commas(income)}c taxes</span>
+            <span class="chip">&#128176; ${commas(upkeep)}c upkeep</span>
+            ${ctrl.length?`<span class="chip v">&#9873; ${ctrl.length} system${ctrl.length!==1?"s":""}</span>`:""}
+          </div>
+          <p class="small dim" style="margin-top:7px">Holdings produce goods into your stockpile each turn; worlds you hold pay yearly taxes. Defend them, or rivals will take them.</p>`
+        : `<p class="small dim" style="margin-top:6px">Build your own corner of the galaxy. Raise farms, mines and factories on the worlds you visit; take whole planets; hold systems — and defend it all. Start by landing on an inhabited world and raising your first building below.</p>`}
+    </div>
+    ${threatCard}
+    ${buildCard}
+    ${stockCard}
+    ${estateCard}`;
   },
 
   /* ---------- TRAVEL / MOVE (a ship or a whole fleet) ---------- */
@@ -3763,6 +3847,15 @@ const UI = {
       app.querySelectorAll("[data-abandon]").forEach(b=> b.onclick=()=>abandonContract(b.dataset.abandon));
       const bk=$("#bvBack"); if(bk) bk.onclick=()=>UI.render("tavern");
     }
+    if(screen==="empire"){
+      app.querySelectorAll("[data-ebuild]").forEach(b=> b.onclick=()=>foundBuilding(b.dataset.ebuild));
+      app.querySelectorAll("[data-eupgrade]").forEach(b=> b.onclick=()=>upgradeHolding(b.dataset.eupgrade));
+      app.querySelectorAll("[data-erepair]").forEach(b=> b.onclick=()=>repairHolding(b.dataset.erepair));
+      app.querySelectorAll("[data-edemolish]").forEach(b=> b.onclick=()=>demolishHolding(b.dataset.edemolish));
+      app.querySelectorAll("[data-esell]").forEach(b=> b.onclick=()=>sellStock(b.dataset.esell));
+      app.querySelectorAll("[data-defend]").forEach(b=> b.onclick=()=>defendThreat(b.dataset.defend));
+      const cl=$("[data-eclaim]"); if(cl) cl.onclick=()=>claimPlanet();
+    }
     if(screen==="gov"){
       app.querySelectorAll("[data-pledge]").forEach(b=> b.onclick=()=>pledgeGov(b.dataset.pledge));
       const rn=$("[data-renounce]"); if(rn) rn.onclick=()=>renounceGov();
@@ -4787,6 +4880,19 @@ function shipBattleDone(){
     }
     Game.save(); UI.render(c.raidBack||"crew"); UI.flashLog(); return;
   }
+  if(c.empireOp){                        // an annex assault or a world-defense — apply the outcome where you fought
+    const op=c.empireOp, won=c.win && !c.fled, w=worldAt(op.sysId,op.slot);
+    if(op.type==="annex"){
+      if(won){ addEstate(op.sysId,op.slot); Game.logMsg(`&#9873; ${w?w.name:"The world"} bows to your banner — it joins your domain. Win the people over to raise its loyalty.`,"good"); }
+      else Game.logMsg(`Your assault on ${w?w.name:"the world"} was thrown back. Regroup and try again.`,"bad");
+    } else if(op.type==="defend"){
+      removeThreat(op.threatId);
+      if(won){ const e=estateAt(op.sysId,op.slot); if(e) e.loyalty=clamp((e.loyalty||40)+10,0,100);
+        Game.logMsg(`&#9876; You break the attack on ${w?w.name:"your world"} — it holds, and its people rally to you.`,"good"); }
+      else { loseEstate(op.sysId,op.slot); Game.logMsg(`&#9760; The defense of ${w?w.name:"your world"} failed — it falls to the invaders.`,"bad"); }
+    }
+    Game.save(); UI.render("empire"); UI.flashLog(); return;
+  }
   if(lost){ const stranded=Game.ship();
     // crippled ships (and you) limp home if you can; otherwise you wake on your homeworld
     if(state.galaxy){ playerGroupIds().forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v){ v.sysId=0; v.slot=0; } });
@@ -5391,6 +5497,179 @@ function clearFleetTrade(fid){ const f=fleetById(fid); if(!f||!f.trade) return;
 /* called from advanceTime — every trading fleet takes one route step per player action */
 function tickTrades(n){ for(let i=0;i<n;i++){ if(state.tradeRaid) return;   // a pending ambush freezes all runs until you call it
   (state.fleets||[]).forEach(f=>{ if(f.trade && !state.tradeRaid) tradeStep(f); }); } }
+
+/* ============================================================ EMPIRE ===
+   Build your domain: raise farms/mines/factories on worlds you visit, take whole planets, hold
+   systems, and defend it all from rival fleets. Production banks goods into a shared stockpile each
+   action; owned worlds pay yearly taxes; holdings cost upkeep. */
+const BUILDINGS=[
+  // —— producers: turn a world into a source of a raw good ——
+  { id:"farm",     name:"Farm",         icon:"&#127806;", cost:9000,   upkeep:700,  out:{grain:12},                tag:"Food",  blurb:"open fields — steady grain" },
+  { id:"ranch",    name:"Ranch",        icon:"&#128004;", cost:15000,  upkeep:1100, out:{livestock:5},             tag:"Food",  blurb:"grazing stock for the inner worlds" },
+  { id:"mine",     name:"Mine",         icon:"&#9935;",   cost:20000,  upkeep:1500, out:{ore:9},                   tag:"Raw",   blurb:"strips raw ore from the crust" },
+  { id:"well",     name:"Fuel Well",    icon:"&#9981;",   cost:24000,  upkeep:1800, out:{fuel:7},                  tag:"Raw",   blurb:"pumps refined fuel" },
+  // —— converters: feed on the stockpile to make higher-value goods (a supply chain) ——
+  { id:"refinery", name:"Refinery",     icon:"&#127981;", cost:48000,  upkeep:3400, inp:{ore:7},   out:{alloys:5},     tag:"Industry", blurb:"smelts ore into refined alloys (needs ore in the pool)" },
+  { id:"factory",  name:"Factory",      icon:"&#9881;",   cost:95000,  upkeep:6200, inp:{alloys:4},out:{machinery:3},  tag:"Industry", blurb:"works alloys into machinery (needs alloys)" },
+  { id:"fab",      name:"Fabricator",   icon:"&#128268;", cost:165000, upkeep:9500, inp:{alloys:2},out:{circuitry:4},  tag:"Industry", blurb:"prints electronic components (needs alloys)" },
+  // —— outpost: no production, but garrisons the world and is your foothold to ANNEX it ——
+  { id:"outpost",  name:"Outpost",      icon:"&#128737;", cost:32000,  upkeep:2600, defense:9, claim:true,         tag:"Military", blurb:"a garrison & shield — needed to take the world, and to hold it" },
+];
+const buildingDef=id=>BUILDINGS.find(b=>b.id===id)||null;
+const MAX_HOLDINGS_PER_WORLD=4;
+function ensureEmpire(){ if(!state.empire) state.empire={ name:null, founded:state.actions||0, holdings:[], estates:[], stock:{}, threats:[] };
+  const E=state.empire; E.holdings=E.holdings||[]; E.estates=E.estates||[]; E.stock=E.stock||{}; E.threats=E.threats||[]; return E; }
+function holdingsAt(sysId,slot){ return (state.empire?state.empire.holdings:[]).filter(h=>h.sysId===sysId&&h.slot===slot); }
+function estateAt(sysId,slot){ return (state.empire?state.empire.estates:[]).find(e=>e.sysId===sysId&&e.slot===slot)||null; }
+function ownsPlanet(sysId,slot){ return !!estateAt(sysId,slot); }
+function ownedSystems(){ const s=new Set(); (state.empire?state.empire.estates:[]).forEach(e=>s.add(e.sysId)); return [...s]; }
+/* you CONTROL a system once you hold every inhabited world in it */
+function controlsSystem(sysId){ const sys=state.galaxy&&state.galaxy.systems[sysId]; if(!sys||!sys.planets) return false;
+  const inhab=sys.planets.map((p,i)=>({i,p})).filter(x=>x.p&&x.p.discovered&&isInhabited(x.p.world));
+  return inhab.length>0 && inhab.every(x=>ownsPlanet(sysId,x.i)); }
+function hasHolding(sysId,slot){ return holdingsAt(sysId,slot).length>0 || ownsPlanet(sysId,slot); }
+function planetDefense(e){ return 6 + holdingsAt(e.sysId,e.slot).reduce((s,h)=>{ const d=buildingDef(h.kind); return s+(d&&d.defense&&h.hp>0?d.defense*(h.lvl||1):0); },0); }
+function empireUpkeepTotal(){ return (state.empire?state.empire.holdings:[]).reduce((s,h)=>{ const d=buildingDef(h.kind); return s+(d&&h.hp>0?d.upkeep*(h.lvl||1):0); },0); }
+function stockValueAt(w){ const E=state.empire; if(!E||!w) return 0; let v=0; for(const cid in E.stock){ const c=commodityById(cid); if(c) v+=E.stock[cid]*(canSellHere(w,c)?commoditySell(w,c):c.base); } return Math.round(v); }
+/* what it costs to plant a building here — pricier on richer worlds */
+function buildCostHere(def,w){ return Math.round(def.cost*(1+((w?w.wealth:4)-4)*0.06)); }
+function canBuildHere(w){ return isInhabited(w) && (state.sysId!=null) && !adrift(); }
+function foundBuilding(kind){
+  const E=ensureEmpire(), w=state.world, def=buildingDef(kind); if(!def||!w) return;
+  if(!canBuildHere(w)){ toast("You can build only on an inhabited world you're standing on"); return; }
+  if(holdingsAt(state.sysId,state.atSlot).length>=MAX_HOLDINGS_PER_WORLD){ toast(`A world holds at most ${MAX_HOLDINGS_PER_WORLD} of your buildings`); return; }
+  const cost=buildCostHere(def,w);
+  if((state.credits||0)<cost){ toast(`Need ${commas(cost)}c to build a ${def.name}`); return; }
+  state.credits-=cost;
+  const maxHp=80+(def.defense||0)*14;
+  E.holdings.push({ id:newVfid(), kind, sysId:state.sysId, slot:state.atSlot, lvl:1, hp:maxHp, maxHp });
+  if(!E.name){ E.name=(state.name?state.name.split(" ")[0]+"'s Domain":"Your Domain"); E.founded=state.actions||0; }
+  Game.logMsg(`You raise a ${def.name} on ${w.name}${def.cost?` for ${commas(cost)}c`:""}.`,"good");
+  Game.save(); UI.render("empire");
+}
+function upgradeHolding(hid){
+  const E=ensureEmpire(), h=E.holdings.find(x=>x.id===hid); if(!h) return; const def=buildingDef(h.kind); if(!def) return;
+  if((h.lvl||1)>=4){ toast("Already at maximum level"); return; }
+  const cost=Math.round(buildCostHere(def,worldAt(h.sysId,h.slot))*0.7*(h.lvl||1));
+  if((state.credits||0)<cost){ toast(`Upgrade needs ${commas(cost)}c`); return; }
+  state.credits-=cost; h.lvl=(h.lvl||1)+1; h.maxHp=Math.round(h.maxHp*1.25); h.hp=h.maxHp;
+  Game.logMsg(`Your ${def.name} on ${worldAt(h.sysId,h.slot).name} expands to level ${h.lvl}.`,"good");
+  Game.save(); UI.render("empire");
+}
+function demolishHolding(hid){
+  const E=ensureEmpire(), i=E.holdings.findIndex(x=>x.id===hid); if(i<0) return; const h=E.holdings[i];
+  E.holdings.splice(i,1); Game.logMsg(`You tear down your ${buildingDef(h.kind).name} on ${worldAt(h.sysId,h.slot).name}.`,"sys");
+  Game.save(); UI.render("empire");
+}
+/* sell a chunk of stockpiled goods at the world you're standing on (must buy that good) */
+function sellStock(cid){
+  const E=ensureEmpire(), w=state.world, c=commodityById(cid); if(!w||!c) return;
+  const have=E.stock[cid]||0; if(have<=0){ toast("None in the stockpile"); return; }
+  if(!canSellHere(w,c)){ toast(`${w.name} won't buy ${c.name}`); return; }
+  const p=commoditySell(w,c), gross=have*p; state.credits+=gross; delete E.stock[cid];
+  Game.logMsg(`Sold ${commas(have)} ${c.name} from your stockpile at ${w.name} for ${commas(gross)}c.`,"good");
+  Game.save(); UI.render("empire");
+}
+function annexCost(w){ return Math.round(((w?w.wealth:4)+1)*((w?w.tech:4)+1)*1400 + 40000); }
+function addEstate(sysId,slot){ const E=ensureEmpire(); if(ownsPlanet(sysId,slot)) return;
+  E.estates.push({ sysId, slot, loyalty:35, founded:state.actions||0 });
+  if(!E.name) E.name=(state.name?state.name.split(" ")[0]+"'s Domain":"Your Domain"); }
+function loseEstate(sysId,slot){ const E=ensureEmpire(); E.estates=E.estates.filter(e=>!(e.sysId===sysId&&e.slot===slot));
+  holdingsAt(sysId,slot).forEach(h=>{ h.hp=0; });   // garrison overrun
+}
+function removeThreat(tid){ const E=ensureEmpire(); E.threats=E.threats.filter(t=>t.id!==tid); }
+/* claim the world you're standing on — a fight if a government holds it, a buyout if it's independent */
+function claimPlanet(){
+  const E=ensureEmpire(), w=state.world, sysId=state.sysId, slot=state.atSlot;
+  if(!w||!isInhabited(w)){ toast("No settlement here to take"); return; }
+  if(ownsPlanet(sysId,slot)){ toast("You already hold this world"); return; }
+  if(!holdingsAt(sysId,slot).some(h=>buildingDef(h.kind).claim && h.hp>0)){ toast("Build a working Outpost here first"); return; }
+  const sys=state.galaxy.systems[sysId], gov=systemGov(sys);
+  const threat=clamp(1+Math.round((1-centralFactor(sys.x,sys.y))*3),1,4);
+  if(gov){ startEmpireBattle({ type:"annex", sysId, slot, threat, name:`${gov.name} garrison`, faction:gov.name,
+      intro:`Your guns move to seize ${w.name} from ${gov.name}.` }); }
+  else { const cost=annexCost(w);
+    if((state.credits||0)<cost){ toast(`Annexing this independent world costs ${commas(cost)}c`); return; }
+    state.credits-=cost; addEstate(sysId,slot);
+    Game.logMsg(`You annex the independent world ${w.name} for ${commas(cost)}c — it joins your domain.`,"good");
+    Game.save(); UI.render("empire"); }
+}
+function defendThreat(tid){
+  const t=(ensureEmpire().threats||[]).find(x=>x.id===tid); if(!t){ toast("That threat has passed"); return; }
+  if(!(state.sysId===t.sysId && state.atSlot===t.slot)){ toast("Travel to the world to lead its defense in person"); return; }
+  startEmpireBattle({ type:"defend", sysId:t.sysId, slot:t.slot, threatId:tid, threat:clamp(1+Math.round(t.strength/1800),1,4),
+    name:`raiders over ${worldAt(t.sysId,t.slot).name}`, faction:"invaders", intro:`You throw your fleet into the defense of ${worldAt(t.sysId,t.slot).name}.` });
+}
+/* set up a ship battle for an empire operation (annex / defend), fought with your present fleet */
+function startEmpireBattle(op){
+  const mine=myBattleShips(); if(!mine.length){ toast("You need a crewed warship here to do this"); return; }
+  const wing=carrierWing(mine.map(v=>v.id)), all=mine.concat(wing);
+  if(all.reduce((s,v)=>s+shipPower(v),0)<=0){ toast("Your ships have no working guns — fit weapons at a shipyard"); return; }
+  const n=clamp(rnd(2, 3+op.threat), 1, 12), enemy=genEnemyFleet(clamp(op.threat,0,4), n);
+  all.forEach(v=>{ v.shield=shipMaxShield(v); });
+  const loot=Math.round(enemy.reduce((s,e)=>s+e.maxHp,0)*0.08*(1+op.threat*0.3));
+  shipCombat={ name:op.name, faction:op.faction||"defenders", threat:op.threat, enemy,
+    foeKind:"defenders", foeDispo:"hostile", foeThreat:op.threat, foeGovId:null,
+    empireOp:op, main:mine.map(v=>v.id), wing:wing.map(v=>v.id), wingOut:true, my:all.map(v=>v.id),
+    target:null, loot, over:false, win:false, lost:false, fled:false, round:0, log:[op.intro||""] };
+  Game.logMsg(op.intro||"Battle stations!","hit"); UI.render("shipbattle");
+}
+/* per-action empire tick: production into the shared stockpile, then a slim chance of trouble */
+function tickEmpire(n){
+  const E=state.empire; if(!E||(!E.holdings.length && !E.estates.length)) return;
+  for(let k=0;k<n;k++){
+    E.holdings.forEach(h=>{ const d=buildingDef(h.kind); if(!d||h.hp<=0) return; const lvl=h.lvl||1;
+      if(d.inp){ let ok=true; for(const cid in d.inp) if((E.stock[cid]||0)<d.inp[cid]*lvl){ ok=false; break; }
+        h.idle=!ok; if(!ok) return;
+        for(const cid in d.inp) E.stock[cid]=Math.max(0,(E.stock[cid]||0)-d.inp[cid]*lvl); }
+      if(d.out) for(const cid in d.out) E.stock[cid]=(E.stock[cid]||0)+d.out[cid]*lvl;
+    });
+    if(E.estates.length && !E.threats.length && chance(0.010*E.estates.length)) maybeSpawnThreat();
+    E.threats.forEach(t=>{ t.turnsLeft--; });
+    const expired=E.threats.filter(t=>t.turnsLeft<=0); expired.forEach(autoResolveThreat);
+    if(expired.length) E.threats=E.threats.filter(t=>t.turnsLeft>0);
+  }
+}
+function maybeSpawnThreat(){
+  const E=state.empire, est=pick(E.estates); if(!est) return;
+  const sys=state.galaxy.systems[est.sysId], w=worldAt(est.sysId,est.slot); if(!w) return;
+  const rim=sys?1-centralFactor(sys.x,sys.y):0.5;
+  if(!chance(0.32+rim*0.22)){                              // a raid — bloodies a building, no takeover
+    const hs=holdingsAt(est.sysId,est.slot).filter(h=>h.hp>0);
+    if(hs.length){ const h=pick(hs), d=buildingDef(h.kind); h.hp=Math.max(0,h.hp-Math.round(h.maxHp*rndF(0.2,0.45)));
+      // plunder a little stock too
+      const cids=Object.keys(E.stock).filter(c=>E.stock[c]>0); if(cids.length){ const c=pick(cids); E.stock[c]=Math.max(0,Math.round(E.stock[c]*rndF(0.6,0.85))); }
+      Game.logMsg(`&#9876; Raiders strike your ${d.name} on ${w.name} — ${h.hp<=0?"it's wrecked":"hull damaged"}. Repair it from the Empire tab.`,"bad"); }
+    est.loyalty=clamp((est.loyalty||40)-6,0,100);
+  } else {                                                 // an invasion — defend in person or lose the world
+    const strength=Math.round((1+rim*3)*1700*rndF(0.85,1.25));
+    E.threats.push({ id:newVfid(), sysId:est.sysId, slot:est.slot, strength, turnsLeft:rnd(4,7), kind:"invasion" });
+    Game.logMsg(`&#9888; A hostile fleet bears down on your world <b>${w.name}</b>! Get there and defend it within a few turns, or lose it.`,"bad");
+  }
+}
+function autoResolveThreat(t){
+  const E=state.empire, e=estateAt(t.sysId,t.slot), w=worldAt(t.sysId,t.slot);
+  const def=e?planetDefense(e)*430:0;                      // garrison strength without you there
+  if(def*rndF(0.8,1.3) >= t.strength){ if(e) e.loyalty=clamp((e.loyalty||40)-4,0,100);
+    Game.logMsg(`Your garrison on ${w?w.name:"a world"} beat back the invaders on its own.`,"good"); }
+  else { loseEstate(t.sysId,t.slot); Game.logMsg(`&#9760; Undefended, <b>${w?w.name:"your world"}</b> has fallen to the invaders. Its garrison is lost.`,"bad"); }
+}
+function repairHolding(hid){
+  const E=ensureEmpire(), h=E.holdings.find(x=>x.id===hid); if(!h) return; const miss=h.maxHp-h.hp; if(miss<=0){ toast("Already at full integrity"); return; }
+  const cost=Math.round(miss*9); if((state.credits||0)<cost){ toast(`Repairs cost ${commas(cost)}c`); return; }
+  state.credits-=cost; h.hp=h.maxHp; Game.logMsg(`Repaired your ${buildingDef(h.kind).name} on ${worldAt(h.sysId,h.slot).name} for ${commas(cost)}c.`,"sys");
+  Game.save(); UI.render("empire");
+}
+function empireYear(){
+  const E=state.empire; if(!E||!E.estates.length){ return; }
+  let income=0;
+  E.estates.forEach(e=>{ const w=worldAt(e.sysId,e.slot); if(!w) return;
+    e.loyalty=clamp((e.loyalty||40)+4,0,100);                       // a settled world warms to you over the years
+    income+=Math.round((w.wealth+1)*(w.tech+1)*95*(0.4+0.6*(e.loyalty/100))); });
+  const upkeep=empireUpkeepTotal(), net=income-upkeep;
+  if(income||upkeep) Game.logMsg(`Domain ledger: +${commas(income)}c taxes, -${commas(upkeep)}c holdings upkeep (net ${net>=0?"+":""}${commas(net)}c).`, net>=0?"good":"sys");
+  state.credits=Math.max(0, (state.credits||0)+net);
+}
 
 /* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
 function startDuel(i){
