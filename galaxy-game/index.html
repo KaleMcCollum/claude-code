@@ -4604,24 +4604,15 @@ function toggleWing(){ const c=shipCombat; if(!c||c.over||!c.wing.length) return
   c.log=[c.wingOut?"Your fighter wing screams out of the launch bays!":"Your fighters break off and dock back in the bays."];
   Game.save(); UI.render("shipbattle"); }
 /* land one salvo on a combatant (a vehicle OR an enemy ship object with hp/shield). Evasion can
-   make a nimble fighter dodge the whole shot; otherwise it bleeds the shield, then the hull. */
-const MAX_HULL_LOSS_PER_ROUND=0.4;   // a ship can lose at most this fraction of its hull in one round —
-                                     // weapons far outscale hulls, so without this big guns one-shot everything
+   make a nimble fighter dodge the whole shot; otherwise it bleeds the shield, then the hull.
+   COMBAT_DMG_SCALE turns down everyone's damage uniformly so battles play out over several salvos
+   instead of one — relative firepower (the ratios) is untouched, just less is dealt per round. */
+const COMBAT_DMG_SCALE=0.25;
 function applyHit(obj, dmg, evasion){
   if(evasion>0 && chance(evasion)) return -1;            // dodged
-  let remaining=dmg, applied=0;
-  if(obj.shield>0){ const s=Math.min(obj.shield, remaining); obj.shield-=s; remaining-=s; applied+=s; }
-  if(remaining>0 && obj.maxHp){                          // anti one-shot: cap HULL loss per round so fights run several salvos
-    const capLeft=Math.max(0, Math.round(obj.maxHp*MAX_HULL_LOSS_PER_ROUND) - (obj._dmgRound||0));
-    remaining=Math.min(remaining, capLeft);
-  }
-  obj.hp-=remaining; obj._dmgRound=(obj._dmgRound||0)+remaining; applied+=remaining;
-  return applied;
-}
-/* start-of-round: clear each combatant's "hull lost this round" tally so the per-round damage cap resets */
-function resetCombatRound(c){
-  c.enemy.forEach(e=>{ e._dmgRound=0; });
-  c.my.forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v) v._dmgRound=0; });
+  let d=Math.max(1, Math.round(dmg*COMBAT_DMG_SCALE));
+  if(obj.shield>0){ const s=Math.min(obj.shield, d); obj.shield-=s; d-=s; }
+  obj.hp-=d; return Math.round(dmg*COMBAT_DMG_SCALE);
 }
 /* pick which of your ships an enemy gun fires at — weighted toward those that can't dodge, so
    your fighters draw less fire (and dodge what does come) instead of evaporating turn one */
@@ -4662,7 +4653,7 @@ function startShipBattle(){
 }
 function shipFire(){
   const c=shipCombat; if(!c||c.over) return;
-  c.round++; c.log=[]; resetCombatRound(c);
+  c.round++; c.log=[];
   // both sides fire SIMULTANEOUSLY — snapshot who's alive at the top of the round so a ship downed
   // by your salvo still gets its shot off this turn (and vice-versa)
   const shooters=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0);
@@ -4692,7 +4683,7 @@ function shipFire(){
 }
 /* the enemy routs: they bolt for hyperspace and you get one parting volley as they run */
 function enemyFlee(){
-  const c=shipCombat; c.log=c.log||[]; resetCombatRound(c);
+  const c=shipCombat; c.log=c.log||[];
   c.log.push(`The ${c.name} breaks and runs for hyperspace!`);
   const shooters=c.my.map(id=>(state.vehicles||[]).find(v=>v.id===id)).filter(v=>v&&v.hp>0);
   const weakest=()=>{ const L=c.enemy.filter(e=>e.hp>0); return L.length?L.reduce((a,b)=>a.hp<=b.hp?a:b):null; };
@@ -4705,7 +4696,7 @@ function enemyFlee(){
 /* retreat: the enemy gets exactly one parting volley, then you jump clear */
 function shipRetreat(){
   const c=shipCombat; if(!c||c.over) return;
-  c.log=["You break off — the enemy looses one parting volley as you run."]; resetCombatRound(c);
+  c.log=["You break off — the enemy looses one parting volley as you run."];
   enemyVolley(c, c.enemy.filter(e=>e.hp>0), 1);
   if(!c.my.some(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); return v&&v.hp>0; })) return loseShipBattle();
   c.over=true; c.win=false; c.fled=true; c.msg=`You disengage and jump clear of the ${c.name}.`;
@@ -4785,7 +4776,7 @@ function loseShipBattle(){
 /* leave the battle screen — knocked out fleets limp home */
 function shipBattleDone(){
   const c=shipCombat; const lost=c.lost; shipCombat=null;
-  (state.vehicles||[]).forEach(v=>{ delete v.shield; delete v._dmgRound; });   // shields recharge out of combat
+  (state.vehicles||[]).forEach(v=>{ delete v.shield; });   // shields recharge out of combat
   if(c.tradeRaid){                       // a remote trade-fleet fight — the fleet limps on, never destroyed in absentia
     const f=fleetById(c.tradeRaid);
     if(f){ shipsByIds(f.shipIds).forEach(v=>{ if(v.hp<=0) v.hp=1; });   // crippled hulls survive, barely
