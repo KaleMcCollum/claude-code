@@ -3182,7 +3182,7 @@ const UI = {
       ${sys?`<h3 style="margin-top:8px">${sys.name} <span class="dim small">&middot; current system</span></h3>
         <p class="small dim">${sys.size} world${sys.size>1?"s":""} &middot; ${sys.planets.filter(p=>p.discovered).length} charted. <span class="dim">Tap a charted world to study it.</span></p>
         ${sys.planets.map((p,i)=>{ const here=i===state.atSlot;
-          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}<button class="small ghost" data-world="${sys.id}:${i}">${p.fav?"&#9733; ":""}${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
+          if(p.discovered) return `<div class="krow"><span class="lbl">${p.isHome?"&#9737; ":""}${ownsPlanet(sys.id,i)?'<span class="green" title="Yours">&#9873;</span> ':hasHolding(sys.id,i)?'<span class="gold" title="You have holdings here">&#9874;</span> ':''}<button class="small ghost" data-world="${sys.id}:${i}">${p.fav?"&#9733; ":""}${p.world.name}</button> ${here?'<span class="green small">&#9679; here</span>':''}</span>
                <span class="kv">${isInhabited(p.world)?`<span class="gold">${settleDef(p.world.settle).name}</span>`:cap(p.world.biomeName)} <button class="small ghost" data-fav="${sys.id}:${i}" title="${p.fav?'Unfavourite':'Favourite'}">${p.fav?'&#9733;':'&#9734;'}</button></span></div>`;
           return `<div class="krow"><span class="lbl dim">Uncharted world ${i+1}</span>
                <span class="kv dim">&#128274; unexplored</span></div>`; }).join("")}`
@@ -3191,10 +3191,10 @@ const UI = {
       : `<p class="small dim">Unknown. Buy a ship at the Shipyard and take off to chart your home system — then the wider galaxy opens up.</p>`}
     </div>
     ${g&&g.systems.length>1?`<div class="card sheet"><h3>Known systems <span class="dim small">&middot; ${known.length} charted / ${g.systems.length} in range of sensors</span></h3>
-      ${known.map(({s,d})=>{ const cur=!adrift()&&s.id===state.sysId;
-        return `<div class="krow"><span class="lbl">${cur?'&#9737; ':''}${s.name}${cur?' <span class="green small">&#9679; here</span>':''}</span>
+      ${known.map(({s,d})=>{ const cur=!adrift()&&s.id===state.sysId, own=controlsSystem(s.id), hold=!own&&ownedSystems().includes(s.id);
+        return `<div class="krow"><span class="lbl">${cur?'&#9737; ':''}${own?'<span class="green" title="Under your control">&#9873;</span> ':hold?'<span class="gold" title="You hold worlds here">&#9874;</span> ':''}${s.name}${cur?' <span class="green small">&#9679; here</span>':own?' <span class="green small">&middot; yours</span>':''}</span>
         <span class="kv">${cur?'<span class="dim">current</span>':`${d.toFixed(1)} ly`} <span class="dim small">&middot; ${(s.planets||[]).filter(p=>p.discovered).length}/${s.size} charted</span></span></div>`; }).join("")}
-      <p class="small dim" style="margin-top:6px">Open <b>Travel</b> from the Crew tab to fly or jump between systems.</p>
+      <p class="small dim" style="margin-top:6px">Open <b>Travel</b> from the Crew tab to fly or jump between systems. <span class="green">&#9873;</span> a system you control, <span class="gold">&#9874;</span> one where you hold worlds.</p>
     </div>`:""}
     <div class="card sheet"><h3>Worlds logged <span class="dim small">&middot; ${worlds.length}</span></h3>
       ${worlds.length?worlds.map((w,wi)=>`<div class="krow"><span class="lbl"><button class="small ghost" data-worldlog="${wi}">${w.name}</button>${w.sysName?` <span class="dim small">&middot; ${w.sysName}</span>`:""}</span>
@@ -5372,12 +5372,23 @@ function legActions(aSys,aSlot,bSys,bSlot,jump){
 function tradeCycleActions(t,jump){ return legActions(t.buySys,t.buySlot,t.sellSys,t.sellSlot,jump)
   + legActions(t.sellSys,t.sellSlot,t.buySys,t.buySlot,jump); }
 /* the fleet buys its chosen good at the buy world, filling its holds with the player's credits */
+function tradeLoad(ships, cid, qty, c){ let rem=qty;
+  for(const v of ships){ if(rem<=0) break; const add=Math.min(Math.floor(((v.hold||0)-shipUsed(v))/c.bulk), rem); if(add>0){ v.cargo[cid]=(v.cargo[cid]||0)+add; rem-=add; } } }
 function tradeBuy(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(t.buySys,t.buySlot);
-  if(!w||!c||!canBuyHere(w,c)) return;
-  const ships=shipsByIds(f.shipIds), free=ships.reduce((s,v)=>s+Math.max(0,(v.hold||0)-shipUsed(v)),0), p=commodityBuy(w,c);
-  let qty=Math.min(Math.floor(free/c.bulk), Math.floor(state.credits/p)); if(!(qty>0)){ t.lastBuy=0; return; }
-  state.credits-=qty*p; t.lastBuy=qty*p; let rem=qty;
-  for(const v of ships){ if(rem<=0) break; const add=Math.min(Math.floor(((v.hold||0)-shipUsed(v))/c.bulk), rem); if(add>0){ v.cargo[t.commodity]=(v.cargo[t.commodity]||0)+add; rem-=add; } } }
+  if(!w||!c) return;
+  const ships=shipsByIds(f.shipIds); let free=ships.reduce((s,v)=>s+Math.max(0,(v.hold||0)-shipUsed(v)),0);
+  t.lastBuy=0; t.lastFree=0;
+  // load from YOUR own stockpile for free where you have holdings — you already produced these goods
+  const E=state.empire;
+  if(E && hasHolding(t.buySys,t.buySlot) && (E.stock[t.commodity]||0)>0){
+    const take=Math.min(Math.floor(free/c.bulk), E.stock[t.commodity]);
+    if(take>0){ E.stock[t.commodity]-=take; tradeLoad(ships, t.commodity, take, c); free-=take*c.bulk; t.lastFree=take; }
+  }
+  // buy the rest with credits, if this world actually sells it
+  if(canBuyHere(w,c)){ const p=commodityBuy(w,c);
+    const qty=Math.min(Math.floor(free/c.bulk), Math.floor(state.credits/p));
+    if(qty>0){ state.credits-=qty*p; t.lastBuy=qty*p; tradeLoad(ships, t.commodity, qty, c); }
+  } }
 /* and sells it all at the sell world */
 function tradeSell(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(t.sellSys,t.sellSlot);
   if(!w||!c||!canSellHere(w,c)) return;
