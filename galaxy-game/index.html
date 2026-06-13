@@ -1820,6 +1820,7 @@ function advanceTime(n){
   n=n||1;
   state.actions=(state.actions||0)+n;
   tickTrades(n);                          // automated trade fleets bank their profit as time passes
+  if(state.tradeRaid){ UI.render("traderaid"); return true; }   // raiders jumped a fleet — demand the player's call before time moves on
   // natural healing between actions — faster for high Recovery, doubled at home
   if(state.hp < Game.effMaxHp()){
     const heal=Math.round(n*Game.bio("recovery")*0.3*(Game.atHome()?2:1));
@@ -2128,7 +2129,7 @@ const UI = {
     const sameScreen = screen===this.current;
     const keepY = sameScreen ? (window.scrollY||window.pageYOffset||0) : 0;
     this.current=screen;
-    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive"||screen==="meet"||screen==="voidmeet"||screen==="shipbattle";
+    const noNav = !state||screen==="title"||screen==="create"||screen==="epilogue"||screen==="arrive"||screen==="meet"||screen==="voidmeet"||screen==="shipbattle"||screen==="traderaid";
     $("#nav").classList.toggle("hidden", noNav);
     const navScreen = screen.indexOf("cx_")===0?"codex":screen;
     [...$("#nav").children].forEach(b=>b.classList.toggle("on",b.dataset.screen===navScreen));
@@ -2596,6 +2597,36 @@ const UI = {
       ${c.wing&&c.wing.length?`<button id="sbWing" class="${c.wingOut?'ghost':''}">${c.wingOut?'&#9992; Recall wing':'&#9992; Launch wing'}</button>`:""}
       <button id="sbRetreat" class="ghost">&#127756; Retreat</button>
       </div><p class="small dim" style="margin-top:6px">Retreating lets the enemy fire one parting volley before you jump clear.</p></div>`}`;
+  },
+
+  /* ---------- TRADE-FLEET AMBUSH (raiders hit a run — fight or flee) ---------- */
+  screen_traderaid(){
+    const r=state.tradeRaid; if(!r) return this.screen_crew();
+    const f=fleetById(r.fleetId);
+    const escorts=f?shipsByIds(f.shipIds).filter(v=>v.hp>0&&shipPower(v)>1):[];
+    const ratio=r.power/Math.max(1,r.raiderPower);
+    const fightOdds=clamp(ratio/(ratio+0.85),0.04,0.96);
+    const armed=r.power>=r.raiderPower*0.6;
+    const fleeOdds=clamp(0.72 - r.threat*0.07 + (armed?0.12:0), 0.18, 0.85);
+    const odds=p=>{ const c=p>=0.66?"green":p>=0.4?"gold":"red"; return `<span class="${c}">${Math.round(p*100)}%</span>`; };
+    return `
+    <div class="rarity-banner" style="border-color:#c0392b">
+      <div class="rn" style="color:#e74c3c">&#9876; RAIDERS</div>
+      <div class="odds">${r.name} is jumped near ${r.sysName}</div>
+    </div>
+    <div class="card sheet">
+      <p class="small dim">A raider pack drops out of the dark across your trade lane and moves to board. Your captain holds for orders.</p>
+      ${krow("Threat", `<b class="red">${"&#9876;".repeat(r.threat)}</b> <span class="dim small">level ${r.threat}</span>`)}
+      ${krow("Raider strength", `<b class="red">${commas(r.raiderPower)}</b>`)}
+      ${krow("Your firepower", `<b class="${r.power>=r.raiderPower?'green':r.power>1?'gold':'red'}">${commas(r.power)}</b> ${escorts.length?`<span class="dim small">&middot; ${escorts.length} escort${escorts.length>1?"s":""}</span>`:`<span class="red small">&middot; no escort!</span>`}`)}
+      ${krow("Cargo at risk", r.cargo?`<b class="gold">${commas(r.cargo)}</b> units`:`<span class="dim">empty holds</span>`)}
+    </div>
+    <div class="card">
+      <button class="primary full center" id="raidFight">&#9876; Stand and fight <span class="dim small">(${odds(fightOdds)} to win)</span></button>
+      <p class="small dim" style="margin:6px 0 12px">Commit your escorts head-on. Win and they strip the wrecks for salvage; lose and the holds are plundered, hulls mauled.</p>
+      <button class="full center" id="raidFlee">&#128640; Run for it <span class="dim small">(${odds(fleeOdds)} to escape)</span></button>
+      <p class="small dim" style="margin-top:6px">Burn for the horizon. Slip away light, or get run down and hit hard from astern.</p>
+    </div>`;
   },
 
   /* ---------- TRAVEL / MOVE (a ship or a whole fleet) ---------- */
@@ -3771,6 +3802,10 @@ const UI = {
       const a=$("#voidAttack"); if(a) a.onclick=()=>startShipBattle();
       const e=$("#voidEvade"); if(e) e.onclick=()=>voidEvade();
       const g=$("#voidGo"); if(g) g.onclick=()=>voidLeave();
+    }
+    if(screen==="traderaid"){
+      const f=$("#raidFight"); if(f) f.onclick=()=>raidFight();
+      const e=$("#raidFlee"); if(e) e.onclick=()=>raidFlee();
     }
     if(screen==="shipbattle"){
       const f=$("#sbFire"); if(f) f.onclick=()=>shipFire();
@@ -5214,21 +5249,68 @@ function fleetFirepower(f){ return shipsByIds(f.shipIds).reduce((s,v)=>s+(v.hp>0
    out on the lawless rim. Always a slim chance. */
 function ambushChance(f){ const sys=state.galaxy&&state.galaxy.systems[f.trade.pos.sysId]; if(!sys) return 0.025;
   let ch=0.018+(1-centralFactor(sys.x,sys.y))*0.05; const gov=systemGov(sys); if(gov&&govStance(gov)==="friendly") ch*=0.4; return ch; }
-/* resolve a raider ambush on an unattended trade fleet automatically: escorts decide the outcome */
-function tradeAmbush(f){ const t=f.trade, ships=shipsByIds(f.shipIds).filter(v=>v.hp>0); if(!ships.length) return;
-  const sys=state.galaxy.systems[t.pos.sysId]||state.galaxy.systems[t.buySys], cf=sys?centralFactor(sys.x,sys.y):0.5;
-  const threat=1+Math.round((1-cf)*4), raider=threat*1700*rndF(0.7,1.3), power=fleetFirepower(f), ratio=power/Math.max(1,raider);
-  if(ratio>=1.6){ Game.logMsg(`&#9876; Raiders jumped your trade fleet <b>${f.name}</b> — its escorts drove them off clean.`,"good"); return; }
-  const heavy = ratio<0.7, cargoFrac = heavy?rndF(0.6,0.9):rndF(0.2,0.45), hullFrac = heavy?rndF(0.3,0.55):rndF(0.08,0.18);
+/* raiders intercept a trade fleet — instead of resolving it silently, freeze the run and hand the
+   call to the player: stand and fight with the escorts, or burn for the horizon and try to run. */
+function beginTradeRaid(f){
+  const t=f.trade, sys=state.galaxy.systems[t.pos.sysId]||state.galaxy.systems[t.buySys], cf=sys?centralFactor(sys.x,sys.y):0.5;
+  const threat=1+Math.round((1-cf)*4);
+  const raiderPower=Math.round(threat*1700*rndF(0.8,1.25));
+  let cargo=0; shipsByIds(f.shipIds).forEach(v=>{ for(const id in (v.cargo||{})) cargo+=v.cargo[id]; });
+  state.tradeRaid={ fleetId:f.id, name:f.name, sysName:sys?sys.name:"deep space",
+    threat, raiderPower, power:Math.round(fleetFirepower(f)), cargo,
+    back:(typeof UI!=="undefined"&&UI.current&&UI.current!=="traderaid")?UI.current:"crew" };
+}
+/* apply cargo plunder + hull damage across a fleet's living ships; returns units of cargo lost */
+function raidMaul(f, cargoFrac, hullFrac){
   let lost=0;
-  ships.forEach(v=>{ for(const id in (v.cargo||{})){ const take=Math.round(v.cargo[id]*cargoFrac); if(take>0){ v.cargo[id]=Math.max(0,v.cargo[id]-take); if(v.cargo[id]<=0) delete v.cargo[id]; lost+=take; } }
-    v.hp=Math.max(1, Math.round(v.hp*(1-hullFrac))); });   // battered, never destroyed while you're away
-  Game.logMsg(`&#9876; Raiders struck <b>${f.name}</b> near ${sys?sys.name:"deep space"}!${power<=1?" It rode with NO escort.":""} ${heavy?"Mauled":"Bloodied"} — ${lost?commas(lost)+" units of cargo plundered, ":""}hulls battered.${power<raider?" Add a starfighter or two to ride shotgun.":""}`,"bad");
+  shipsByIds(f.shipIds).filter(v=>v.hp>0).forEach(v=>{
+    for(const id in (v.cargo||{})){ const take=Math.round(v.cargo[id]*cargoFrac); if(take>0){ v.cargo[id]=Math.max(0,v.cargo[id]-take); if(v.cargo[id]<=0) delete v.cargo[id]; lost+=take; } }
+    v.hp=Math.max(1, Math.round(v.hp*(1-hullFrac)));        // battered, never destroyed in absentia
+  });
+  return lost;
+}
+function endTradeRaid(){ const r=state.tradeRaid; state.tradeRaid=null; Game.save();
+  if(typeof UI!=="undefined") UI.render(r&&r.back?r.back:"crew"); if(typeof UI!=="undefined"&&UI.flashLog) UI.flashLog(); }
+/* STAND AND FIGHT — committing your escorts beats being caught flat-footed: better odds than fleeing,
+   and a clean win lets the escorts strip the raider wrecks for salvage. */
+function raidFight(){
+  const r=state.tradeRaid; if(!r) return;
+  const f=fleetById(r.fleetId);
+  if(!f||!f.trade){ endTradeRaid(); return; }
+  const power=fleetFirepower(f), ratio=power/Math.max(1,r.raiderPower);
+  const win=chance(clamp(ratio/(ratio+0.85),0.04,0.96));
+  if(win){
+    const hullFrac=rndF(0.03,0.13); raidMaul(f, 0, hullFrac);
+    const salvage=Math.round(r.raiderPower*rndF(0.3,0.65));
+    state.credits=(state.credits||0)+salvage; if(f.trade) f.trade.earned=(f.trade.earned||0)+salvage;
+    Game.logMsg(`&#9876; <b>${f.name}</b> stood and fought off ${r.sysName} — its escorts broke the raiders and stripped the wrecks for ${commas(salvage)}c salvage.`,"good");
+  } else {
+    const cargoFrac=rndF(0.35,0.65), hullFrac=rndF(0.28,0.5), lost=raidMaul(f, cargoFrac, hullFrac);
+    Game.logMsg(`&#9876; <b>${f.name}</b> fought near ${r.sysName} but was outgunned — ${lost?commas(lost)+" units plundered, ":""}hulls badly mauled.${power<=1?" It had NO escort to fight with.":" Heavier escort would even the odds."}`,"bad");
+  }
+  endTradeRaid();
+}
+/* RUN FOR IT — light, fast fleets slip the net; if the raiders run you down they hit you from astern,
+   worse than a lost stand-up fight. */
+function raidFlee(){
+  const r=state.tradeRaid; if(!r) return;
+  const f=fleetById(r.fleetId);
+  if(!f||!f.trade){ endTradeRaid(); return; }
+  const armed=fleetFirepower(f)>=r.raiderPower*0.6;
+  const esc=clamp(0.72 - r.threat*0.07 + (armed?0.12:0), 0.18, 0.85);
+  if(chance(esc)){
+    const lost=raidMaul(f, rndF(0.04,0.16), 0);            // jettison a little to run light
+    Game.logMsg(`&#128640; <b>${f.name}</b> burned hard and slipped the ambush near ${r.sysName}${lost?` — ${commas(lost)} units jettisoned to run light`:""}.`,"good");
+  } else {
+    const cargoFrac=rndF(0.5,0.85), hullFrac=rndF(0.2,0.42), lost=raidMaul(f, cargoFrac, hullFrac);
+    Game.logMsg(`&#128640; <b>${f.name}</b> tried to run but the raiders ran it down near ${r.sysName} — ${lost?commas(lost)+" units plundered, ":""}struck hard from astern.`,"bad");
+  }
+  endTradeRaid();
 }
 /* advance one fleet's route by a single action — a same-system hop arrives at once; a jump between
    systems takes one action per jump (distance / jump range) before it arrives and trades */
 function tradeStep(f){ const t=f.trade; if(!t||!fleetAllCrewed(f)) return;
-  if(chance(ambushChance(f))){ tradeAmbush(f); if(!f.trade) return; }   // raiders may strike a run; escorts fend them off
+  if(chance(ambushChance(f))){ beginTradeRaid(f); return; }   // raiders strike — freeze the run for the player's call
   const tgt = t.phase==="toSell" ? {s:t.sellSys,p:t.sellSlot} : {s:t.buySys,p:t.buySlot};
   if(t.pos.sysId!==tgt.s){                                  // crossing to another system — count down the jumps
     if(t.legLeft==null){ const jump=Math.max(1, groupCaps(f.shipIds).jump);
@@ -5259,7 +5341,8 @@ function clearFleetTrade(fid){ const f=fleetById(fid); if(!f||!f.trade) return;
   Game.logMsg(`${f.name} comes off its trade run (${f.trade.runs||0} runs, +${commas(f.trade.earned||0)}c net).`,"sys");
   f.trade=null; Game.save(); UI.render("crew"); }
 /* called from advanceTime — every trading fleet takes one route step per player action */
-function tickTrades(n){ for(let i=0;i<n;i++) (state.fleets||[]).forEach(f=>{ if(f.trade) tradeStep(f); }); }
+function tickTrades(n){ for(let i=0;i<n;i++){ if(state.tradeRaid) return;   // a pending ambush freezes all runs until you call it
+  (state.fleets||[]).forEach(f=>{ if(f.trade && !state.tradeRaid) tradeStep(f); }); } }
 
 /* ---- bounty hunting: duel a Wanted person, then kill or restrain them ---- */
 function startDuel(i){
