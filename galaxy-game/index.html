@@ -5533,16 +5533,16 @@ function tickTrades(n){ for(let i=0;i<n;i++){ if(state.tradeRaid) return;   // a
    action; owned worlds pay yearly taxes; holdings cost upkeep. */
 const BUILDINGS=[
   // —— producers: turn a world into a source of a raw good ——
-  { id:"farm",     name:"Farm",         icon:"&#127806;", cost:9000,   upkeep:700,  out:{grain:12},                tag:"Food",  blurb:"open fields — steady grain" },
-  { id:"ranch",    name:"Ranch",        icon:"&#128004;", cost:15000,  upkeep:1100, out:{livestock:5},             tag:"Food",  blurb:"grazing stock for the inner worlds" },
-  { id:"mine",     name:"Mine",         icon:"&#9935;",   cost:20000,  upkeep:1500, out:{ore:9},                   tag:"Raw",   blurb:"strips raw ore from the crust" },
-  { id:"well",     name:"Fuel Well",    icon:"&#9981;",   cost:24000,  upkeep:1800, out:{fuel:7},                  tag:"Raw",   blurb:"pumps refined fuel" },
+  { id:"farm",     name:"Farm",         icon:"&#127806;", cost:120000,  upkeep:2200,  out:{grain:12},                tag:"Food",  blurb:"open fields — steady grain" },
+  { id:"ranch",    name:"Ranch",        icon:"&#128004;", cost:210000,  upkeep:3400,  out:{livestock:5},             tag:"Food",  blurb:"grazing stock for the inner worlds" },
+  { id:"mine",     name:"Mine",         icon:"&#9935;",   cost:300000,  upkeep:4800,  out:{ore:9},                   tag:"Raw",   blurb:"strips raw ore from the crust" },
+  { id:"well",     name:"Fuel Well",    icon:"&#9981;",   cost:360000,  upkeep:5600,  out:{fuel:7},                  tag:"Raw",   blurb:"pumps refined fuel" },
   // —— converters: feed on the stockpile to make higher-value goods (a supply chain) ——
-  { id:"refinery", name:"Refinery",     icon:"&#127981;", cost:48000,  upkeep:3400, inp:{ore:7},   out:{alloys:5},     tag:"Industry", blurb:"smelts ore into refined alloys (needs ore in the pool)" },
-  { id:"factory",  name:"Factory",      icon:"&#9881;",   cost:95000,  upkeep:6200, inp:{alloys:4},out:{machinery:3},  tag:"Industry", blurb:"works alloys into machinery (needs alloys)" },
-  { id:"fab",      name:"Fabricator",   icon:"&#128268;", cost:165000, upkeep:9500, inp:{alloys:2},out:{circuitry:4},  tag:"Industry", blurb:"prints electronic components (needs alloys)" },
+  { id:"refinery", name:"Refinery",     icon:"&#127981;", cost:700000,  upkeep:10000, inp:{ore:7},   out:{alloys:5},     tag:"Industry", blurb:"smelts ore into refined alloys (needs ore in the pool)" },
+  { id:"factory",  name:"Factory",      icon:"&#9881;",   cost:1400000, upkeep:18000, inp:{alloys:4},out:{machinery:3},  tag:"Industry", blurb:"works alloys into machinery (needs alloys)" },
+  { id:"fab",      name:"Fabricator",   icon:"&#128268;", cost:2500000, upkeep:28000, inp:{alloys:2},out:{circuitry:4},  tag:"Industry", blurb:"prints electronic components (needs alloys)" },
   // —— outpost: no production, but garrisons the world and is your foothold to ANNEX it ——
-  { id:"outpost",  name:"Outpost",      icon:"&#128737;", cost:32000,  upkeep:2600, defense:9, claim:true,         tag:"Military", blurb:"a garrison & shield — needed to take the world, and to hold it" },
+  { id:"outpost",  name:"Outpost",      icon:"&#128737;", cost:500000,  upkeep:8000,  defense:9, claim:true,         tag:"Military", blurb:"a garrison & shield — needed to take the world, and to hold it" },
 ];
 const buildingDef=id=>BUILDINGS.find(b=>b.id===id)||null;
 const MAX_HOLDINGS_PER_WORLD=4;
@@ -5605,7 +5605,7 @@ function sellStock(cid){
   Game.logMsg(`Sold ${commas(have)} ${c.name} from your stockpile at ${w.name} for ${commas(gross)}c.`,"good");
   Game.save(); UI.render("empire");
 }
-function annexCost(w){ return Math.round(((w?w.wealth:4)+1)*((w?w.tech:4)+1)*1400 + 40000); }
+function annexCost(w){ return Math.round(((w?w.wealth:4)+1)*((w?w.tech:4)+1)*55000 + 2500000); }
 function addEstate(sysId,slot){ const E=ensureEmpire(); if(ownsPlanet(sysId,slot)) return;
   E.estates.push({ sysId, slot, loyalty:35, founded:state.actions||0 });
   if(!E.name) E.name=(state.name?state.name.split(" ")[0]+"'s Domain":"Your Domain"); }
