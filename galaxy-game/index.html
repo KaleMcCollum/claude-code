@@ -2448,6 +2448,9 @@ const UI = {
           </div>
         </div>`; }).join("")}
     </div>
+    ${(()=>{ const dmg=damagedShipsHere(), tot=repairTotalHere(); return dmg.length?`<div class="card"><div class="row between"><h3>&#128295; Repairs</h3>
+      <button class="small" id="depRepairAll" ${state.credits<tot?"disabled":""}>Repair all (${dmg.length}) &middot; ${commas(tot)}c</button></div>
+      <p class="small dim">The depot's hands will patch the hulls of every ship docked here.</p></div>`:""; })()}
     <div class="card"><button id="depBack" class="ghost full center">&larr; Back outside</button></div>`;
   },
 
@@ -3816,6 +3819,7 @@ const UI = {
       app.querySelectorAll("[data-buyallc]").forEach(b=> b.onclick=()=>buyCommodity(b.dataset.buyallc,true));
       app.querySelectorAll("[data-sellc]").forEach(b=> b.onclick=()=>sellCommodity(b.dataset.sellc));
       app.querySelectorAll("[data-sellallc]").forEach(b=> b.onclick=()=>sellCommodity(b.dataset.sellallc,true));
+      const dr=$("#depRepairAll"); if(dr) dr.onclick=()=>repairAll();
       $("#depBack").onclick=()=>UI.render("hub");
     }
     if(screen==="shipyard"){
@@ -4888,7 +4892,20 @@ function repairAll(){
   if(state.credits<total){ toast(`Repairing all costs ${commas(total)}c`); return; }
   state.credits-=total; dmg.forEach(v=>v.hp=v.maxHp);
   Game.logMsg(`You patch up ${dmg.length} ship${dmg.length>1?"s":""} for ${commas(total)}c.`,"sys");
-  toast(`Repaired ${dmg.length} ship${dmg.length>1?"s":""}`); Game.save(); UI.render("shipyard"); }
+  toast(`Repaired ${dmg.length} ship${dmg.length>1?"s":""}`); Game.save(); UI.render(UI.current==="depot"?"depot":"shipyard"); }
+/* a trade fleet patches up at its docking depot — quietly, paid from your credits if you can afford it */
+function tradeRepair(f){ const here=worldAt(f.trade.pos.sysId, f.trade.pos.slot);
+  if(!here || !settleAmen(here).includes("depot")) return;           // only where there's a depot to do the work
+  const dmg=shipsByIds(f.shipIds).filter(v=>(v.hp||0)<(v.maxHp||0)); if(!dmg.length) return;
+  let total=dmg.reduce((s,v)=>s+repairCost(v),0); if(total<=0) return;
+  if(state.credits<total){ // can't cover it all — patch what you can afford, cheapest first
+    dmg.sort((a,b)=>repairCost(a)-repairCost(b)); let done=0;
+    for(const v of dmg){ const c=repairCost(v); if(state.credits<c) break; state.credits-=c; v.hp=v.maxHp; done++; }
+    if(done) Game.logMsg(`${f.name} repairs ${done} hull${done>1?"s":""} at the ${here.name} depot — couldn't cover the rest.`,"sys");
+    return;
+  }
+  state.credits-=total; dmg.forEach(v=>v.hp=v.maxHp);
+  Game.logMsg(`${f.name} patches up at the ${here.name} depot for ${commas(total)}c.`,"sys"); }
 /* buy a weapon and mount it on a hardpoint (slot index) in one step */
 function mountWeapon(id, slot, wid){ const v=(state.vehicles||[]).find(x=>x.id===id), w=weaponById(wid); if(!v||!w) return;
   if(state.world && w.minTech>state.world.tech){ toast("Not sold at this shipyard"); return; }
@@ -5222,8 +5239,9 @@ function tradeStep(f){ const t=f.trade; if(!t||!fleetAllCrewed(f)) return;
   } else if(t.pos.slot!==tgt.p){                            // same system, different planet — one hop
     t.pos={sysId:tgt.s, slot:tgt.p}; shipsByIds(f.shipIds).forEach(v=>{ v.sysId=tgt.s; v.slot=tgt.p; });
   }
-  if(t.pos.sysId===tgt.s && t.pos.slot===tgt.p){            // arrived — buy or sell, then turn around
+  if(t.pos.sysId===tgt.s && t.pos.slot===tgt.p){            // arrived — buy or sell, patch up, then turn around
     if(t.phase==="toSell"){ tradeSell(f); t.phase="toBuy"; } else { tradeBuy(f); t.phase="toSell"; }
+    tradeRepair(f);                                         // depots mend the fleet's battle scars
   }
 }
 function setFleetTrade(fid, route){
