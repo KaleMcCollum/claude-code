@@ -3579,10 +3579,11 @@ const UI = {
         ${withYou?"":'<p class="small dim" style="margin-top:6px">Add or remove ships from anywhere; be with the fleet to disband it.</p>'}
       </div>
       <div class="card sheet"><h3>Ships in fleet</h3>
-        ${shipsByIds(f.shipIds).map(v=>{ const a=v.id===state.activeShip, ok=Game.operational(v);
+        ${f.trade&&f.trade.legLeft!=null?'<p class="small dim" style="margin:0 0 8px">In transit between systems — ships can be dropped once it reaches its next stop.</p>':""}
+        ${shipsByIds(f.shipIds).map(v=>{ const a=v.id===state.activeShip, ok=Game.operational(v), midJump=f.trade&&f.trade.legLeft!=null;
           return `<div class="frow"><div class="finfo"><div class="nm">${a?'&#9654; ':''}${v.name}</div>
             <div class="chips" style="margin-top:4px"><span class="chip">${RANGE_LABEL[v.range]}</span>${ok?'<span class="chip g">crewed</span>':'<span class="chip r">no crew</span>'}</div></div>
-            <button class="small ghost" data-fleetremove="${f.id}:${v.id}">Remove</button></div>`; }).join("")}
+            <button class="small ghost" data-fleetremove="${f.id}:${v.id}" ${midJump?"disabled":""}>Remove</button></div>`; }).join("")}
       </div>
       ${this.fleetTradeCard(f)}
       ${addable.length?`<div class="card sheet"><h3>Add a ship <span class="dim small">&middot; in ${fsys?fsys.name:"system"}</span></h3>
@@ -5202,11 +5203,14 @@ function addToFleet(fid, shipId){
     Game.logMsg(`${v.name} falls in with ${f.name} on its trade run.`,"good"); }
   Game.save(); UI.render("crew");
 }
-/* remove a ship from a fleet (allowed from anywhere) */
+/* remove a ship from a fleet (from anywhere). A trading fleet can drop a ship too — but only while it's
+   parked at a waypoint, not mid-jump between systems (it can't leave a ship adrift in deep space). */
 function removeFromFleet(fid, shipId){
   const f=fleetById(fid), v=(state.vehicles||[]).find(x=>x.id===shipId); if(!f) return;
-  if(f.trade){ toast("Call the fleet off its trade run first"); return; }
+  if(f.trade && f.trade.legLeft!=null){ toast("It's mid-jump — wait until the fleet reaches a stop"); return; }
   f.shipIds=f.shipIds.filter(id=>id!==shipId); if(v) v.fleetId=null;
+  if(f.trade && v){ const w=worldAt(f.trade.pos.sysId, f.trade.pos.slot);   // it stays put at the fleet's current stop
+    Game.logMsg(`${v.name} drops out of ${f.name}${w?`, left at ${w.name}`:""}.`,"sys"); }
   if(!f.shipIds.length){ disbandFleet(fid, true); return; }
   Game.save(); UI.render("crew");
 }
