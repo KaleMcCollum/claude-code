@@ -4095,27 +4095,6 @@ const UI = {
         let slot=sys.planets.findIndex(p=>p&&p.discovered); if(slot<0) slot=0;
         moveGroupTo(playerGroupIds(), sid, slot, "map"); });
       app.querySelectorAll("[data-mapgo]").forEach(b=> b.onclick=()=>{ const [s,p]=b.dataset.mapgo.split(":").map(Number); moveGroupTo(playerGroupIds(), s, p, "map"); });
-      // drag-to-pan, wheel-zoom and pinch-zoom directly on the chart
-      const svg=app.querySelector("svg.gmap");
-      if(svg && mapView){
-        const clampSpan=s=>Math.max(6, Math.min(GALAXY.radius*2.4, s));
-        const lyPerPx=()=>mapView.span/Math.max(1, svg.getBoundingClientRect().width);
-        let down=false, sx0=0, sy0=0, moved=false, pinchD=0, pinchSpan=0;
-        svg.addEventListener("pointerdown", e=>{ if(e.pointerType==="touch"&&pinchD>0) return; down=true; moved=false; sx0=e.clientX; sy0=e.clientY; });
-        svg.addEventListener("pointermove", e=>{ if(!down) return; const dx=e.clientX-sx0, dy=e.clientY-sy0;
-          if(moved||Math.abs(dx)+Math.abs(dy)>5){ moved=true; svg.style.transform=`translate(${dx}px,${dy}px)`; } });
-        const end=e=>{ if(!down) return; down=false; svg.style.transform=""; if(!moved) return;
-          const dx=(e.clientX||sx0)-sx0, dy=(e.clientY||sy0)-sy0, k=lyPerPx();
-          mapView.cx-=dx*k; mapView.cy+=dy*k; UI.render("map"); };
-        svg.addEventListener("pointerup", end); svg.addEventListener("pointerleave", end);
-        svg.addEventListener("click", e=>{ if(moved){ e.stopPropagation(); e.preventDefault(); moved=false; } }, true);
-        svg.addEventListener("wheel", e=>{ e.preventDefault(); mapView.span=clampSpan(mapView.span*(e.deltaY>0?1.18:0.85)); UI.render("map"); }, {passive:false});
-        svg.addEventListener("touchstart", e=>{ if(e.touches.length===2){ down=false; pinchD=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); pinchSpan=mapView.span; } }, {passive:true});
-        svg.addEventListener("touchmove", e=>{ if(e.touches.length===2 && pinchD>0){ e.preventDefault();
-          const nd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY), ratio=nd/pinchD;
-          mapView.span=clampSpan(pinchSpan/ratio); svg.style.transformOrigin="center"; svg.style.transform=`scale(${ratio})`; } }, {passive:false});
-        svg.addEventListener("touchend", e=>{ if(pinchD>0 && e.touches.length<2){ pinchD=0; svg.style.transform=""; UI.render("map"); } });
-      }
     }
     if(screen==="codex"){
       app.querySelectorAll("[data-cx]").forEach(b=> b.onclick=()=>UI.render("cx_"+b.dataset.cx));
