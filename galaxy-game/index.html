@@ -4469,8 +4469,15 @@ function seedPolitics(galaxy){
   if(!galaxy || galaxy.governments) return;
   const govs=genGovernments();
   galaxy.governments=govs; galaxy.factions=genFactions(govs);
-  (galaxy.systems||[]).forEach(s=>{ s.govId=govAt(s.x,s.y,govs); });
-  assignCapitals(galaxy);
+  galaxy.systems=galaxy.systems||[];
+  // plant a real capital system at each power's seat of power up front, so the political map has
+  // anchors (and core-ward landmarks to sail toward) even in a lazily-generated galaxy
+  govs.forEach(g=>{ const cx=+(g.center.x+rndF(-7,7)).toFixed(1), cy=+(g.center.y+rndF(-7,7)).toFixed(1);
+    const sid=galaxy.systems.length;
+    galaxy.systems.push({ id:sid, name:genName("system"), x:cx, y:cy, size:rollSystemSize(centralFactor(cx,cy)),
+      discovered:false, planets:null, govId:g.id, capital:g.id, capitalSlot:0 });
+    g.capitalSys=sid; g.capitalName=galaxy.systems[sid].name; });
+  galaxy.systems.forEach(s=>{ if(s && s.govId===undefined) s.govId=govAt(s.x,s.y,govs); });
 }
 /* plant each government's capital on the real system nearest its seat of power (these sit core-ward,
    since government centres are seeded within the inner half of the disc). Idempotent. */
@@ -4560,29 +4567,23 @@ function makeNeighborSystems(hx, hy, startId){
 /* Fill out the WHOLE galaxy disc with star systems — a rich local neighborhood around home, then a
    scatter across the entire disc whose density follows the core (packed) -> rim (sparse) gradient,
    so wherever you sail there are stars, thinning as you head for the rim. Idempotent (galaxy.full). */
+/* Seed a LAZY galaxy: only a dense home neighborhood up front. The rest of the disc is generated on
+   demand by ensureSystemsAround() as you actually travel, so the galaxy keeps unfolding the further
+   you roam, packed toward the core and thinning to the rim. Idempotent (galaxy.full). */
 function populateGalaxy(galaxy, spawn){
   if(!galaxy || galaxy.full) return;
   const sys=galaxy.systems||[]; let id=sys.reduce((m,s)=>Math.max(m,s.id),0)+1;
   const home=sys[0]||{x:(spawn&&spawn.x)||0, y:(spawn&&spawn.y)||0};
   const add=(x,y,cf)=>sys.push({ id:id++, name:genName("system"), x:+x.toFixed(1), y:+y.toFixed(1),
     size:rollSystemSize(cf), discovered:false, planets:null });
-  // 1) a dense home neighborhood (so early exploration always has reachable stars), if not already there
-  if(sys.filter(s=>s.id!==0 && Math.hypot(s.x-home.x,s.y-home.y)<=55).length < 6){
+  // a dense home neighborhood so early exploration always has reachable stars
+  if(sys.filter(s=>s&&s.id!==0 && Math.hypot(s.x-home.x,s.y-home.y)<=55).length < 6){
     const cf=centralFactor(home.x,home.y), n=clamp(Math.round((8+30*cf)*rndF(0.8,1.2)),6,44);
     for(let i=0;i<n;i++){ const ang=Math.random()*Math.PI*2, r=i<3?rndF(4.5,7.5):rndF(4,55);
       const x=home.x+Math.cos(ang)*r, y=home.y+Math.sin(ang)*r; add(x,y,centralFactor(x,y)); }
   }
-  // 2) scatter the broad galaxy across the disc, accepting points far more readily toward the core
-  // so the inner galaxy is densely packed and the outer rim thins to scattered lonely stars
-  const target=Math.max(sys.length+550, 820); let tries=0;
-  while(sys.length<target && tries<target*16){ tries++;
-    const ang=Math.random()*Math.PI*2, r=GALAXY.radius*Math.sqrt(Math.random());
-    const x=Math.cos(ang)*r, y=Math.sin(ang)*r, cf=centralFactor(x,y);
-    if(Math.random() > Math.pow(cf, 0.85)) continue;     // steep falloff: thick core, sparse rim
-    add(x,y,cf);
-  }
-  galaxy.systems=sys; galaxy.full=true;
-  if(galaxy.governments) sys.forEach(s=>{ if(s.govId===undefined) s.govId=govAt(s.x,s.y,galaxy.governments); });
+  galaxy.systems=sys; galaxy.full=true; galaxy.lazy=true;
+  if(galaxy.governments) sys.forEach(s=>{ if(s&&s.govId===undefined) s.govId=govAt(s.x,s.y,galaxy.governments); });
 }
 /* Keep the galaxy alive as you roam: wherever the fleet is, make sure there are enough stars within
    jump-reach to keep exploring. Density is sharply core-weighted (cf^2) so the inner galaxy stays
@@ -4591,7 +4592,7 @@ function ensureSystemsAround(x,y,reach){
   const g=state.galaxy; if(!g||!g.systems) return; reach=reach||66;
   let near=g.systems.filter(s=>Math.hypot(s.x-x,s.y-y)<=reach).length;
   const cf=centralFactor(x,y);
-  const want=clamp(Math.round((1.2 + 11*cf*cf) * Math.pow(reach/55,2)), 2, 34);   // packed core, thin rim
+  const want=clamp(Math.round((0.5 + 11*cf*cf) * Math.pow(reach/55,2)), 1, 34);   // packed core, thin rim, near-empty deep space
   if(near>=want) return;
   let id=g.systems.reduce((m,s)=>Math.max(m,s.id),0)+1, tries=0;
   while(near<want && tries<70){ tries++;
@@ -6097,8 +6098,9 @@ function departFirstFlight(){
   const home={ id:0, name:genName("system"), x:sp.x, y:sp.y, size, discovered:true, reported:true, planets };
   // scatter the rest of the galaxy on the flat 2D plane around the home star
   const galaxy={ name:state.galaxyName, systems:[home] };
-  populateGalaxy(galaxy, sp);                        // fill the whole disc: dense core, sparse rim
-  seedPolitics(galaxy);                              // carve the galaxy into governments & factions
+  seedPolitics(galaxy);                              // powers + their capital systems (core-ward anchors)
+  populateGalaxy(galaxy, sp);                        // a dense home neighborhood; the rest unfolds as you roam
+  ensureSystemsAround(sp.x, sp.y, 70);              // make sure there are stars within reach to set out toward
   state.galaxy=galaxy; state.sysId=0; state.system=home; state.atSlot=0;
   const hg=systemGov(home);
   if(hg) Game.logMsg(`Your home star lies within the territory of ${hg.name}.`,"sys");
