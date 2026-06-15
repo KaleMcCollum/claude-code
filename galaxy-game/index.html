@@ -1672,7 +1672,7 @@ const Game = {
 
   /* ---- assemble a new life from the generated (and now named) pieces ---- */
   begin(){
-    const sp=creating.species, world=creating.world, veh=creating.vehicle;
+    const sp=creating.species, world=creating.world;
     // starting skills derive from the species, not a chosen class
     const skills=new Set(["Strike","Focus"]);
     const sig={ strength:"Heavy Strike", agility:"Steady Shot", endurance:"Heavy Strike",
@@ -1709,7 +1709,7 @@ const Game = {
     state={
       v:4, created:Date.now(), updated:Date.now(),
       galaxyName:creating.galaxy, codex, achievements,
-      name:creating.name, species:sp, world, vehicles:[veh],
+      name:creating.name, species:sp, world, vehicles:[],
       level:1, xp:0, xpNext:50, stats,
       maxHp, hp:maxHp, maxEnergy, energy:maxEnergy,
       credits:0, skills:[...skills],
@@ -1720,10 +1720,9 @@ const Game = {
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
       allegiance:{ govId:null, factionIds:[], align:0 },   // start Independent & Neutral; earn it in play
-      activeShip:veh.id, bounties:[], contracts:[], gear:[], crew:[], lastBillYear:0, job:null,
+      activeShip:null, bounties:[], contracts:[], gear:[], crew:[], lastBillYear:0, job:null,
       stimReady:false, log:[],
     };
-    veh.slot=0; veh.sysId=0;      // your inherited craft is docked on your homeworld
     state.world.occupied=true;   // your homeworld is inhabited (your own kind live here)
     state.world.settle="colony"; // a working spaceport — always has a yard so you can leave
     state.lastStage=Game.stage();
@@ -2291,7 +2290,7 @@ const UI = {
     }
 
     // step 5 review
-    const sp=creating.species, w=creating.world, v=creating.vehicle;
+    const sp=creating.species, w=creating.world;
     return `
     <div class="card reveal">
       <h2>The galaxy has decided.</h2>
@@ -2300,13 +2299,12 @@ const UI = {
          <span class="small" style="color:${RARITY.byId(sp.tier).color}">(${RARITY.byId(sp.tier).name})</span></p>
       <p><span class="dim">Born on</span> <b class="blue">${w.name}</b>,
          a ${w.biomeName} <span class="small" style="color:${RARITY.byId(w.tier).color}">(${RARITY.byId(w.tier).name})</span></p>
-      <p><span class="dim">Flying</span> <b class="gold">${v.name}</b>,
-         ${article(v.clsName)} ${v.clsName} <span class="small" style="color:${RARITY.byId(v.tier).color}">(${RARITY.byId(v.tier).name})</span></p>
+      <p><span class="dim">You own</span> <b class="gold">no ship</b> — just the clothes on your back and your wits. Earn your way off this rock.</p>
       <div class="divider"></div>
       <p class="small dim">You will begin as a <b class="blue">young child</b> — barely a fraction of your
       potential — and grow into your genetics as the years pass. There are no second rolls. This life is yours.</p>
       <div class="row between">
-        <button class="ghost" id="backStep4">&larr; Back</button>
+        <button class="ghost" id="backStep3rev">&larr; Back</button>
         <button class="primary" id="beginGame">&#9654; Be born</button>
       </div>
     </div>`;
@@ -2343,10 +2341,31 @@ const UI = {
         ${amen.includes("broker")?`<button id="vBroker">&#128225; Info Broker</button>`:""}
         ${amen.includes("talk")?`<button id="vTalk">&#128483; Talk to a stranger</button>`:""}
         ${amen.includes("shipyard")?`<button id="vShipyard">&#128736; Shipyard</button>`:""}
+        ${isInhabited(w)?`<button id="vWork">&#128170; Work a shift</button>`:""}
+        ${isInhabited(w)?`<button id="vRaces">&#127937; Speeder races</button>`:""}
         <button id="vWilds" class="primary">${worldCivility(w)>=0.7?"&#127961; ":"&#127807; "}${exploreLabel(w)}</button>
         <button id="vRest">&#9789; Rest</button>
       </div>`; })()}
     </div>`;
+  },
+
+  /* ---------- SPEEDER RACES (an early-game odd job: buy a speeder, win purses) ---------- */
+  screen_races(){
+    const w=state.world, v=bestRacer(), wm=raceWealthMult();
+    return `${this.statHeader()}
+    <div class="card"><h2>&#127937; ${w.name} Speedway</h2>
+      <p class="small dim">Strap into a speeder and tear around the local circuit for prize money — the odd job that's launched many a pilot off their homeworld.</p>
+      ${v?`<div class="chips" style="margin-top:6px"><span class="chip b">&#128663; ${v.name}</span><span class="chip">speed ${raceSpeedOf(v)}</span><span class="chip g">piloting ${Game.selfPiloting()}/10</span></div>`
+         :`<p class="small gold" style="margin-top:8px">&#9888; You have no speeder here to race. A <b>Speeder</b> is the cheapest ride at the <b>Shipyard</b> (about 600c) — earn it with a few work shifts, then come win it back on the track.</p>`}
+    </div>
+    ${v?`<div class="card sheet"><h3>Today's card</h3>
+      ${RACE_CLASSES.map(c=>{ const entry=Math.round(c.entry*wm), purse=Math.round(c.purse*wm), odds=raceOdds(c,v), can=(state.credits||0)>=entry;
+        return `<div class="frow"><div class="finfo"><div class="nm">${c.name}</div>
+          <div class="sub">${c.blurb}</div>
+          <div class="chips" style="margin-top:4px"><span class="chip">entry ${commas(entry)}c</span><span class="chip gold">purse ${commas(purse)}c</span><span class="chip ${odds>=0.6?'g':odds>=0.35?'gold':'r'}">${Math.round(odds*100)}% to win</span></div></div>
+          <button class="small ${can?'primary':''}" data-race="${c.id}" ${can?'':'disabled'}>Enter</button></div>`; }).join("")}
+      <p class="small dim" style="margin-top:6px">Win odds rise with your speeder's speed and your piloting skill. Each race takes a turn; a faster machine pays off.</p></div>`:""}
+    <div class="card"><button class="ghost full center" id="racesBack">&larr; Back outside</button></div>`;
   },
 
   /* ---------- TAVERN ---------- */
@@ -4025,10 +4044,16 @@ const UI = {
       const vb=$("#vBroker"); if(vb) vb.onclick=()=>UI.render("broker");
       const vm=$("#vMarket"); if(vm) vm.onclick=()=>UI.render("market");
       const vk=$("#vTalk"); if(vk) vk.onclick=()=>startMeeting("Out among the crowds you fall into talk with a passing stranger.","hub");
+      const vwk=$("#vWork"); if(vwk) vwk.onclick=()=>workShift();
+      const vrc=$("#vRaces"); if(vrc) vrc.onclick=()=>UI.render("races");
       $("#vRest").onclick=()=>{
         if(advanceTime()) return;                     // resting is one action
         state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
         Game.logMsg("You make camp and rest. HP and energy restored.","sys"); Game.save(); UI.render("hub"); UI.flashLog(); };
+    }
+    if(screen==="races"){
+      app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>runRace(b.dataset.race));
+      const bk=$("#racesBack"); if(bk) bk.onclick=()=>UI.render("hub");
     }
     if(screen==="voidmeet"){
       const s=$("#voidSalvage"); if(s) s.onclick=()=>voidSalvage();
@@ -4275,16 +4300,14 @@ const UI = {
     if(s===3){
       $("#backStep2").onclick=()=>{ creating.step=2; UI.render("create"); };
       $("#rollShip").onclick=()=>{ const v=$("#wNameInput").value.trim();
-        if(!v){ toast("Name your world"); return; } creating.world.name=v;
-        if(!creating.vehicle) creating.vehicle=Gen.vehicle(true); creating.step=4; UI.render("create"); };
+        if(!v){ toast("Name your world"); return; } creating.world.name=v; creating.step=5; UI.render("create"); };
     }
-    if(s===4){
-      $("#backStep3").onclick=()=>{ creating.step=3; UI.render("create"); };
-      $("#toReview").onclick=()=>{ const v=$("#vNameInput").value.trim();
-        if(!v){ toast("Name your craft"); return; } creating.vehicle.name=v; creating.step=5; UI.render("create"); };
+    if(s===4){   // legacy step — no longer used (you start with no craft); fall through to review
+      const b=$("#backStep3"); if(b) b.onclick=()=>{ creating.step=3; UI.render("create"); };
+      const t=$("#toReview"); if(t) t.onclick=()=>{ creating.step=5; UI.render("create"); };
     }
     if(s===5){
-      $("#backStep4").onclick=()=>{ creating.step=4; UI.render("create"); };
+      const b=$("#backStep3rev"); if(b) b.onclick=()=>{ creating.step=3; UI.render("create"); };
       $("#beginGame").onclick=()=>{ Game.begin(); creating={}; UI.render("hub"); };
     }
   },
@@ -5407,6 +5430,47 @@ function askForJob(p, rerender){
 }
 function quitJob(){ if(!state.job) return; const c=careerName(state.job.career);
   state.job=null; Game.logMsg(`You leave your work as ${article(c)} ${c}.`,"sys"); Game.save(); UI.render(UI.current); }
+/* ---- early-game odd jobs: day labor (no investment) and speeder racing (buy a speeder, win purses) ---- */
+function workShift(){
+  const w=state.world; if(!isInhabited(w)){ toast("No work to be found out in the wilds"); return; }
+  if((state.energy||0) < 8){ toast("You're too worn out to work — rest first"); return; }
+  if(advanceTime()) return;                                   // a shift is one action
+  state.energy=Math.max(0,(state.energy||0)-8);
+  const pay=Math.round(rndF(18,46)*(1+w.wealth*0.12)*(1+(state.level||1)*0.03));
+  state.credits=(state.credits||0)+pay; Game.gainXp(3);
+  Game.logMsg(`You put in a shift of dock-work and odd jobs on ${w.name} — ${commas(pay)}c earned.`,"good");
+  Game.save(); UI.render("hub"); UI.flashLog();
+}
+const RACE_CLASSES=[
+  { id:"rookie",  name:"Rookie Circuit", entry:60,  purse:240,  field:130, blurb:"local amateurs in clapped-out runabouts" },
+  { id:"amateur", name:"Amateur League", entry:240, purse:980,  field:320, blurb:"serious hobbyists with tuned machines" },
+  { id:"pro",     name:"Pro Grand Prix",  entry:900, purse:4200, field:680, blurb:"sponsored pilots in purpose-built racers" },
+];
+function raceWealthMult(){ return 1+((state.world?state.world.wealth:4)-4)*0.05; }
+function raceSpeedOf(v){ const c=shipClass(v); if(!c) return 60; const p=c.power||{}; return Math.max(p.ground||0, p.flight||0, 60); }
+/* the best ride you have parked at this world to race with */
+function bestRacer(){ const here=(state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)&&v.hp>0);
+  return here.length ? here.reduce((a,b)=>raceSpeedOf(a)>=raceSpeedOf(b)?a:b) : null; }
+function racePower(v){ return raceSpeedOf(v) + Game.selfPiloting()*14; }
+function raceOdds(cls, v){ return clamp(racePower(v)/(racePower(v)+cls.field*raceWealthMult()), 0.06, 0.95); }
+function runRace(clsId){
+  const cls=RACE_CLASSES.find(c=>c.id===clsId); if(!cls) return;
+  const v=bestRacer(); if(!v){ toast("You need a speeder here to race — buy one at the Shipyard"); return; }
+  const wm=raceWealthMult(), entry=Math.round(cls.entry*wm), purse=Math.round(cls.purse*wm);
+  if((state.credits||0)<entry){ toast(`The entry fee is ${commas(entry)}c`); return; }
+  if(advanceTime()) return;                                   // a race is one action
+  state.credits-=entry; state.energy=Math.max(0,(state.energy||0)-5);
+  if(chance(raceOdds(cls,v))){
+    state.credits+=purse; Game.gainXp(Math.round(purse*0.03)+5);
+    Game.logMsg(`&#127937; You take the chequered flag in the ${cls.name} aboard ${v.name}! Purse +${commas(purse)}c (entry ${commas(entry)}c).`,"good"); toast("+"+commas(purse)+"c");
+  } else {
+    const podium=chance(0.4), cons=podium?Math.round(purse*0.15):0; if(cons) state.credits+=cons;
+    if(v.maxHp) v.hp=Math.max(1, Math.round(v.hp - v.maxHp*rndF(0.02,0.08)));   // a few scrapes
+    Game.gainXp(4);
+    Game.logMsg(`You run the ${cls.name}${podium?` and scrape a podium for ${commas(cons)}c`:` but finish out of the money`} — entry ${commas(entry)}c.`, podium?"sys":"bad");
+  }
+  Game.save(); UI.render("races"); UI.flashLog();
+}
 function hireCrew(i){
   const p=(state.codex.people||[])[i]; if(!p) return;
   if(p.hired){ toast("Already in your crew"); return; }
