@@ -922,7 +922,12 @@ const MAP_SIGHT=50;
 function nearestDiscoveredDist(sys){ let best=Infinity;
   (state.galaxy?state.galaxy.systems:[]).forEach(s=>{ if(s.discovered) best=Math.min(best, Math.hypot(s.x-sys.x, s.y-sys.y)); });
   return best; }
-function systemVisible(sys){ return sys.discovered || nearestDiscoveredDist(sys)<=MAP_SIGHT; }
+function systemVisible(sys){
+  if(sys.discovered) return true;
+  if(nearestDiscoveredDist(sys)<=MAP_SIGHT) return true;
+  const p=playerXY();                                   // your own sensors reveal nearby stars — even adrift, never landed
+  return !!p && Math.hypot(sys.x-p.x, sys.y-p.y)<=MAP_SIGHT;
+}
 function visibleSystems(){ return state.galaxy ? state.galaxy.systems.filter(systemVisible) : []; }
 /* Ship rarity scales a hull's size/power. Common is the smallest; rarer hulls are much
    bigger — an Epic Cargo Hauler dwarfs a Common one. */
