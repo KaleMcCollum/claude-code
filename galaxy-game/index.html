@@ -1029,6 +1029,9 @@ function genShipStock(w){
   if(!avail.length) return [];
   const count=clamp(Math.round((w.tech+w.wealth)/3)+rnd(-1,1), 0, 8);
   const stock=[];
+  // always stock a cheap Speeder — the surface runabout you race (and get around on) early game
+  const sp=shipClass("speeder");
+  if(sp) stock.push(shipOfferFrom(sp, "common", (1.2-w.wealth*0.03)*rndF(0.92,1.08)));
   for(let i=0;i<count;i++){
     const c=weightedPick(avail), t=rollShipTier(w.tech);
     stock.push(shipOfferFrom(c, t.id, (1.35-w.wealth*0.04)*rndF(0.92,1.1)));
