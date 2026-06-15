@@ -701,6 +701,11 @@ const JOBS={
   shipwright:{ chance:0.10, pay:14000 },
 };
 const jobOf=career=>JOBS[career]||null;
+/* skilled trades pay extra on high-TECH worlds; everyone earns more on WEALTHY ones */
+const SKILLED_JOBS=new Set(["mechanic","pilot","gunner","medic","scholar","smuggler","shipwright","merchant","courier"]);
+function jobPayHere(career, w){ const j=jobOf(career); if(!j) return 0; w=w||state.world||{wealth:4,tech:4};
+  let mult=0.55 + (w.wealth||4)*0.11; if(SKILLED_JOBS.has(career)) mult += (w.tech||4)*0.04;
+  return Math.round(j.pay*mult); }
 /* Yearly upkeep: spaceworthy ships cost ~30% of value/yr; surface craft are cheap to keep. */
 /* Annual ship maintenance as a share of the hull's worth, by family. Warships bleed money just
    sitting idle (an army you must fund); freighters run leaner so trade profit can outpace upkeep. */
@@ -2363,7 +2368,12 @@ const UI = {
           <div class="sub">${c.blurb}</div>
           <div class="chips" style="margin-top:4px"><span class="chip">entry ${commas(entry)}c</span><span class="chip gold">purse ${commas(purse)}c</span><span class="chip ${odds>=0.6?'g':odds>=0.35?'gold':'r'}">${Math.round(odds*100)}% to win</span></div></div>
           <button class="small ${can?'primary':''}" data-race="${c.id}" ${can?'':'disabled'}>Enter</button></div>`; }).join("")}
-      <p class="small dim" style="margin-top:6px">Win odds rise with your speeder's speed and your piloting skill. Each race takes a turn; a faster machine pays off.</p></div>`:""}
+      <p class="small dim" style="margin-top:6px">Win odds rise with your speeder's speed and your piloting skill. Each race takes a turn; a faster machine pays off.</p></div>
+    <div class="card sheet"><h3>&#128295; Tune your speeder</h3>
+      <p class="small dim">Pour your winnings back into the machine — every tune adds top speed and lifts your odds in every class.</p>
+      <div class="row between" style="margin-top:5px"><span class="small">${v.name} &middot; tune <b>${(v.tune||0)}/${TUNE_MAX}</b> &middot; speed <b class="gold">${raceSpeedOf(v)}</b></span>
+        ${(v.tune||0)<TUNE_MAX?`<button class="small ${(state.credits||0)>=tuneCost(v)?'primary':''}" id="tuneSpeeder" ${(state.credits||0)>=tuneCost(v)?'':'disabled'}>Tune &middot; ${commas(tuneCost(v))}c</button>`:'<span class="chip g">fully tuned</span>'}</div>
+    </div>`:""}
     <div class="card"><button class="ghost full center" id="racesBack">&larr; Back outside</button></div>`;
   },
 
@@ -2423,6 +2433,13 @@ const UI = {
         <button class="full primary" id="bSell">Sell it all &middot; +${commas(u.total)}c</button>`
         :`<p class="small dim">"Nothing new from you today. Come back when you've seen more of the galaxy."</p>`}
     </div>
+    ${(()=>{ ensureJobBoard(); const b=state.jobBoard;
+      return `<div class="card sheet"><h3>&#128188; Job board <span class="dim small">&middot; ${w.name}</span></h3>
+        ${state.job?`<p class="small dim">You currently work as <b>${cap(careerName(state.job.career))}</b> (+${commas(state.job.pay)}c/yr) — taking a posting replaces it.</p>`:`<p class="small dim">"Honest work, posted fresh. Sign on and you'll draw a yearly wage."</p>`}
+        ${(b&&b.list.length)?b.list.map((p,i)=>`<div class="frow"><div class="finfo"><div class="nm">${cap(careerName(p.career))}</div>
+            <div class="sub">${p.who} is hiring &middot; <span class="gold">${commas(p.pay)}c/yr</span></div></div>
+            <button class="small primary" data-takejob="${i}">Take</button></div>`).join("")
+          :`<p class="small dim">Nothing pinned up today — check back another time.</p>`}</div>`; })()}
     <div class="card"><h3>&#128101; Looking for crew?</h3>
       <p class="small dim">"Need hands? A few tradesfolk drink here between berths — say the word and I'll point you to one."</p>
       <div class="grid">
@@ -3159,7 +3176,7 @@ const UI = {
       <div class="card">
         ${!known?`<p class="small">Name this new race:</p>${nameField("meetRace","Name this race","race",race.name)}<div style="height:8px"></div>`:""}
         <div class="row">
-          ${jobOf(person.career)&&!person.askedJob&&!isHostile(person)?`<button id="meetJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(person.career).chance*100)}% &middot; ${commas(jobOf(person.career).pay)}c/yr)</span></button>`:""}
+          ${jobOf(person.career)&&!person.askedJob&&!isHostile(person)?`<button id="meetJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(person.career).chance*100)}% &middot; ${commas(jobPayHere(person.career))}c/yr)</span></button>`:""}
           ${HIRE_ROLES[person.career]&&!isHostile(person)?`<button id="meetHire" class="primary">Offer a job &middot; ${careerName(person.career)} &middot; ${commas(HIRE_ROLES[person.career].fee)}c</button>`:""}
           ${isHostile(person)?`<button id="meetAttack" class="primary">&#9876; Attack &amp; claim the bounty</button>`:""}
           <button id="meetMore" class="ghost">${personExpand?"Show less":"Learn more"}</button>
@@ -3249,7 +3266,7 @@ const UI = {
       ${p.captured?`<p class="small">Bounty claimed — you ${p.captureAlive?"restrained":"killed"} them.</p>`
        : p.hired?`<p class="small green">In your crew${crewShip?`, piloting the <b>${crewShip.name}</b>`:` — idle, awaiting a ship (assign from your Fleet)`}.</p>`
        : here?`<div class="row">
-            ${jobOf(p.career)&&!p.askedJob&&!isHostile(p)?`<button id="askJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(p.career).chance*100)}% &middot; ${commas(jobOf(p.career).pay)}c/yr)</span></button>`:""}
+            ${jobOf(p.career)&&!p.askedJob&&!isHostile(p)?`<button id="askJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(p.career).chance*100)}% &middot; ${commas(jobPayHere(p.career))}c/yr)</span></button>`:""}
             ${HIRE_ROLES[p.career]?`<button id="hire" class="primary">Offer a job &middot; ${careerName(p.career)} &middot; ${HIRE_ROLES[p.career].fee}c</button>`:""}
             ${isHostile(p)?`<button id="attack" class="primary">&#9876; Attack</button>`:""}
             ${p.career==="shipwright"?`<button id="buyOldShip" class="primary">Buy their old ship &middot; ${commas(YARDER_SHIP.price)}c</button>`:""}
@@ -4051,6 +4068,7 @@ const UI = {
     }
     if(screen==="races"){
       app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>runRace(b.dataset.race));
+      const tn=$("#tuneSpeeder"); if(tn) tn.onclick=()=>tuneSpeeder();
       const bk=$("#racesBack"); if(bk) bk.onclick=()=>UI.render("hub");
     }
     if(screen==="voidmeet"){
@@ -4096,6 +4114,7 @@ const UI = {
     }
     if(screen==="bartender"){
       const bs=$("#bSell"); if(bs) bs.onclick=()=>sellInformation();
+      app.querySelectorAll("[data-takejob]").forEach(b=> b.onclick=()=>takeBoardJob(+b.dataset.takejob));
       const cp=$("#bCrewPilot"); if(cp) cp.onclick=()=>askBartenderCrew("pilot");
       const cg=$("#bCrewGunner"); if(cg) cg.onclick=()=>askBartenderCrew("gunner");
       const cm=$("#bCrewMech"); if(cm) cm.onclick=()=>askBartenderCrew("mechanic");
@@ -5420,11 +5439,11 @@ function sayHi(i){
 function askForJob(p, rerender){
   const j=jobOf(p.career);
   if(!j){ toast("They've no work to offer"); return; }
-  p.askedJob=true;
+  p.askedJob=true; const pay=jobPayHere(p.career);
   if(chance(j.chance)){
-    state.job={ career:p.career, pay:j.pay, where:p.where||(state.world?state.world.name:"the stars"), who:p.name };
-    Game.logMsg(`${p.name} takes you on as ${article(careerName(p.career))} ${careerName(p.career)} — ${commas(j.pay)}c a year. Paid each year.`,"good");
-    toast(`Hired! +${commas(j.pay)}c/yr`);
+    state.job={ career:p.career, pay, where:p.where||(state.world?state.world.name:"the stars"), who:p.name };
+    Game.logMsg(`${p.name} takes you on as ${article(careerName(p.career))} ${careerName(p.career)} — ${commas(pay)}c a year. Paid each year.`,"good");
+    toast(`Hired! +${commas(pay)}c/yr`);
   } else {
     Game.logMsg(`${p.name} hasn't any work for you right now.`,"sys");
     toast("Turned down");
@@ -5433,6 +5452,32 @@ function askForJob(p, rerender){
 }
 function quitJob(){ if(!state.job) return; const c=careerName(state.job.career);
   state.job=null; Game.logMsg(`You leave your work as ${article(c)} ${c}.`,"sys"); Game.save(); UI.render(UI.current); }
+/* ---- the pub job board: advertised openings you can take on the spot, scaled to this world ---- */
+const SETTLE_JOBS={
+  colony:    ["laborer","dockhand","courier","mechanic","pilot"],
+  capital:   ["merchant","mechanic","pilot","medic","scholar","courier","dockhand"],
+  trade:     ["merchant","courier","dockhand","pilot","laborer"],
+  industrial:["factory","mechanic","dockhand","laborer","pilot"],
+  agri:      ["farmer","rancher","laborer","courier"],
+  mining:    ["miner","laborer","mechanic","dockhand"],
+  scrap:     ["mechanic","dockhand","laborer","smuggler"],
+  frontier:  ["laborer","hunter","courier","miner"],
+};
+function jobCareersFor(w){ const pool=(SETTLE_JOBS[w.settle]||["laborer","dockhand","courier"]).slice();
+  pool.sort(()=>Math.random()-0.5); return pool.slice(0, rnd(3, Math.min(4,pool.length))); }
+/* regenerate the board when you reach a new world (postings are local to where you are) */
+function ensureJobBoard(){ const w=state.world;
+  if(!w||!isInhabited(w)){ state.jobBoard=null; return; }
+  const b=state.jobBoard;
+  if(b && b.sysId===state.sysId && b.slot===state.atSlot) return;
+  state.jobBoard={ sysId:state.sysId, slot:state.atSlot,
+    list:jobCareersFor(w).map(c=>({ career:c, who:genName("person"), pay:jobPayHere(c,w) })) };
+}
+function takeBoardJob(i){ ensureJobBoard(); const b=state.jobBoard, post=b&&b.list[i]; if(!post) return;
+  state.job={ career:post.career, pay:post.pay, where:state.world.name, who:post.who };
+  b.list.splice(i,1);
+  Game.logMsg(`You sign on as ${article(careerName(post.career))} ${careerName(post.career)} for ${post.who} — ${commas(post.pay)}c a year.`,"good");
+  toast(`Hired! +${commas(post.pay)}c/yr`); Game.save(); UI.render("bartender"); }
 /* ---- early-game odd job: speeder racing (buy a speeder, win purses) ---- */
 const RACE_CLASSES=[
   { id:"rookie",  name:"Rookie Circuit", entry:60,  purse:240,  field:130, blurb:"local amateurs in clapped-out runabouts" },
@@ -5440,7 +5485,15 @@ const RACE_CLASSES=[
   { id:"pro",     name:"Pro Grand Prix",  entry:900, purse:4200, field:680, blurb:"sponsored pilots in purpose-built racers" },
 ];
 function raceWealthMult(){ return 1+((state.world?state.world.wealth:4)-4)*0.05; }
-function raceSpeedOf(v){ const c=shipClass(v); if(!c) return 60; const p=c.power||{}; return Math.max(p.ground||0, p.flight||0, 60); }
+const TUNE_MAX=5;
+function raceSpeedOf(v){ const c=shipClass(v); const p=c?c.power||{}:{}; return Math.max(p.ground||0, p.flight||0, 60) + (v.tune||0)*18; }
+function tuneCost(v){ return Math.round(400*((v.tune||0)+1)*(1+(state.world?state.world.wealth:4)*0.05)); }
+function tuneSpeeder(){ const v=bestRacer(); if(!v){ toast("No speeder here to tune"); return; }
+  if((v.tune||0)>=TUNE_MAX){ toast(`${v.name} is fully tuned`); return; }
+  const cost=tuneCost(v); if((state.credits||0)<cost){ toast(`Tuning costs ${commas(cost)}c`); return; }
+  state.credits-=cost; v.tune=(v.tune||0)+1;
+  Game.logMsg(`You tune up ${v.name} — sharper handling and more top speed (tune ${v.tune}/${TUNE_MAX}, speed ${raceSpeedOf(v)}).`,"good");
+  Game.save(); UI.render("races"); }
 /* the best ride you have parked at this world to race with */
 function bestRacer(){ const here=(state.vehicles||[]).filter(v=>atHere(v)&&!shipBusy(v)&&v.hp>0);
   return here.length ? here.reduce((a,b)=>raceSpeedOf(a)>=raceSpeedOf(b)?a:b) : null; }
