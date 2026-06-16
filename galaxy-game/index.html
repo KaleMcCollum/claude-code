@@ -684,9 +684,26 @@ function rollCrewSkills(career, p){
   if(career==="gunner") skills.gunnery=skew(7, (ag-10)*0.12+(per-10)*0.1);
   if(career==="pilot"){ skills.piloting=skew(7, (ag-10)*0.12+(intel-10)*0.1);
     skills.gunnery=skew(6, (ag-10)*0.1); }   // pilots run the pilot-mounts too, a touch under a dedicated gunner
-  return skills;                              // mechanics / laborers / medics etc. have neither
+  if(career==="mechanic") skills.repair=skew(7, (intel-10)*0.14+(per-10)*0.06);   // keeps ships from wearing out
+  return skills;                              // laborers / dockhands etc. carry no rated skill
 }
 const crewSkill=(c,which)=>(c&&c.skills&&c.skills[which]!=null)?c.skills[which]:0;
+/* a crewmate's headline rated skill (the one that defines their trade), if any */
+function crewPrimary(c){ if(!c) return null;
+  if(c.career==="pilot")   return { key:"piloting", label:"piloting", val:crewSkill(c,"piloting") };
+  if(c.career==="gunner")  return { key:"gunnery",  label:"gunnery",  val:crewSkill(c,"gunnery")  };
+  if(c.career==="mechanic")return { key:"repair",   label:"repair",   val:crewSkill(c,"repair")   };
+  return null; }
+/* map a 0-10 skill to a rarity tier — Common up to Legendary (the goal: a crew of legends) */
+function skillTier(skill){ const i = skill>=9?4 : skill>=8?3 : skill>=7?2 : skill>=6?1 : 0; return RARITY.tiers[i]; }
+function crewTier(c){ const p=crewPrimary(c); return p?skillTier(p.val):null; }
+/* how well a ship is maintained by its mechanics (0 none .. 1 expertly kept) — slows hull wear */
+function maintFactor(v){ const mechs=(state.crew||[]).filter(c=>c.shipId===v.id && c.career==="mechanic");
+  if(!mechs.length) return 0; return clamp(mechs.reduce((s,c)=>s+crewSkill(c,"repair"),0)/mechs.length/10, 0, 1); }
+/* wear-and-tear from a trip: ships lose a little hull as you use them — skilled mechanics keep it low */
+function applyWear(ids, mult){ (ids||[]).forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id);
+  if(!v||!v.maxHp||v.hp<=0||v.carrier) return;
+  const loss=Math.round(v.maxHp*0.02*(mult||1)*(1-maintFactor(v))); if(loss>0) v.hp=Math.max(1, v.hp-loss); }); }
 const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
 /* Jobs you can ASK a person for when you meet them. chance = odds they take you on (rarer
    work is harder to land); pay = the yearly salary you then earn. Hostile careers aren't here
@@ -3637,10 +3654,14 @@ const UI = {
         <div class="shipcat">Ships</div>${ships.length?shipRows:'<p class="small dim">No ships.</p>'}
         <button class="small ghost full center" data-recmode="menu" style="margin-top:6px">&larr; Back</button>`;
     } else if(m==="upgrade"){
-      const shipRows=ships.map(v=>{ const has=Game.shipCrew(v).some(c=>c.career==="pilot"||c.career==="gunner");
-        return `<div class="krow"><span class="lbl">${v.name}</span><span class="kv"><button class="small ${has?'':''}" data-recupship="${v.id}" ${has?'':'disabled'}>Headhunt</button></span></div>`; }).join("");
-      body=`<p class="small dim">Scout a sharper pilot or gunner to replace the weakest aboard a ship (a one-off signing fee).</p>
-        ${ships.length?shipRows:'<p class="small dim">No ships.</p>'}
+      const roleRows=[["pilot","piloting"],["gunner","gunnery"],["mechanic","repair"]].map(([r,which])=>{
+        const cs=(state.crew||[]).filter(c=>c.career===r && c.shipId);
+        if(!cs.length) return `<div class="krow"><span class="lbl">${cap(careerName(r))}s <span class="dim small">&middot; none aboard</span></span><span class="kv"><button class="small" disabled>Headhunt</button></span></div>`;
+        const weak=Math.min(...cs.map(c=>crewSkill(c,which))), t=skillTier(weak);
+        return `<div class="krow"><span class="lbl">${cap(careerName(r))}s <span class="dim small">&middot; ${cs.length} aboard, weakest <span style="color:${t.color}">${t.name} ${weak}/10</span></span></span>
+          <span class="kv"><button class="small primary" data-recuprole="${r}">Headhunt</button></span></div>`; }).join("");
+      body=`<p class="small dim">Scout a sharper recruit of a trade — the recruiter replaces your <b>weakest</b> of that role anywhere in the crew (one-off fee).</p>
+        ${roleRows}
         <button class="small ghost full center" data-recmode="menu" style="margin-top:6px">&larr; Back</button>`;
     } else {
       body=`<div class="grid">
@@ -3670,9 +3691,11 @@ const UI = {
           ${open?this.recruiterPanel(c):""}
           <div class="row" style="margin-top:8px"><button class="small ghost" data-dismiss="${ci}">Dismiss</button></div>
         </div>`; }
+      const tr=crewTier(c), pr=crewPrimary(c);
       return head+`<div class="shipcard">
-        <div class="top"><span class="nm">${c.name}</span><span class="tag">${careerName(c.career)}</span></div>
+        <div class="top"><span class="nm"${tr?` style="color:${tr.color}"`:""}>${c.name}</span><span class="tag">${careerName(c.career)}</span></div>
         <div class="chips">
+          ${tr?`<span class="chip" style="color:${tr.color};border-color:${tr.color}88">&#9733; ${tr.name} &middot; ${pr.label} ${pr.val}/10</span>`:'<span class="chip dim">unrated</span>'}
           ${sh?`<span class="chip g">&#9863; ${sh.name} &middot; seat ${(c.seat||0)+1}</span>`:'<span class="chip">idle &middot; travels with you</span>'}
           <span class="chip gold">${commas(careerSalary(c.career))}c/yr</span>
         </div>
@@ -3681,7 +3704,7 @@ const UI = {
           <button class="small ghost" data-dismiss="${ci}">Dismiss</button>
         </div></div>`; }).join("");
     return `<div class="card"><div class="row between"><h3>Your crewmates <span class="dim small">&middot; ${crew.length}</span></h3>${crew.length?`<span class="small gold">${commas(wages)}c/yr</span>`:""}</div>
-      ${crew.length?rows:'<p class="small dim">No crewmates yet. Meet crew out in the galaxy (ask the bartender) and hire them.</p>'}</div>`;
+      ${crew.length?`<p class="small dim">Pilots, gunners and mechanics carry a rated skill (Common &rarr; <span style="color:${RARITY.byId('legendary').color}">Legendary</span>). Aim for a crew of legends.</p>${rows}`:'<p class="small dim">No crewmates yet. Meet crew out in the galaxy and hire the skilled ones.</p>'}</div>`;
   },
   /* a carrier's hangar: the fighters stowed inside, plus a picker to stow more (when docked) */
   hangarCard(v, here){
@@ -4299,7 +4322,7 @@ const UI = {
       app.querySelectorAll("[data-recmode]").forEach(b=> b.onclick=()=>{ recruiterMode=b.dataset.recmode; UI.render("crew"); });
       app.querySelectorAll("[data-recship]").forEach(b=> b.onclick=()=>recruiterHireShip(+b.dataset.recship));
       app.querySelectorAll("[data-recfleet]").forEach(b=> b.onclick=()=>recruiterHireFleet(b.dataset.recfleet));
-      app.querySelectorAll("[data-recupship]").forEach(b=> b.onclick=()=>recruiterHeadhunt([+b.dataset.recupship]));
+      app.querySelectorAll("[data-recuprole]").forEach(b=> b.onclick=()=>recruiterHeadhunt(b.dataset.recuprole));
       const ra=$("[data-recauto]"); if(ra) ra.onclick=()=>toggleRecruiterAuto();
       app.querySelectorAll("[data-selshipview]").forEach(b=> b.onclick=()=>{ viewingShip=b.dataset.selshipview; UI.render("crew"); });
       const sb=$("#shipsBack"); if(sb) sb.onclick=()=>{ viewingShip=null; UI.render("crew"); };
@@ -4783,6 +4806,7 @@ function moveGroupTo(ids, destSys, destSlot, backTo){
   if(advanceTime()) return;                       // a move is one action
   if(p.discovered){
     relocateGroup(ids, destSys, destSlot);
+    applyWear(ids, crossSys?1:0.4);                 // travel wears the hulls; mechanics keep it down
     Game.logMsg(crossSys?`The fleet jumps to ${p.world.name}, in the ${sys.name} system.`
                         :`The fleet sets down on ${p.world.name}.`,"sys");
     if(crossSys && playerIn && travelEncounter(sys)){ Game.save(); UI.flashLog(); return; }   // a local patrol crosses your path
@@ -4812,6 +4836,7 @@ function finishArrival(){
   const ws=worldSummary(a.world); ws.reported=false; ws.sysName=sys.name; state.codex.worlds.push(ws);
   if(a.draw && a.draw.isNew){ state.codex.races[a.draw.id]=a.draw.race; }
   relocateGroup(a.shipIds||[state.activeShip], sid, slot);   // you + your group arrive together
+  applyWear(a.shipIds||[state.activeShip], a.crossSys?1:0.4);
   if(a.occupied){
     recordMeeting(a.person, a.draw.race, a.world.name);   // the local who greets you
     if(settleHasShipyard(a.world)){ state.yarders=state.yarders||{}; state.yarders[sid+":"+slot]=state.codex.people.length-1; }
@@ -5646,7 +5671,7 @@ function runRecruiter(){
   let hired=0, fee=0;
   (state.vehicles||[]).forEach(v=>{ const r=crewShip(v); hired+=r.hired; fee+=r.fee; });
   if(hired) Game.logMsg(`Your recruiter crews up ${hired} berth${hired>1?"s":""} across the fleet (${commas(fee)}c in signing fees).`,"sys");
-  if(chance(0.05)) recruiterHeadhunt((state.vehicles||[]).map(v=>v.id), true);
+  if(chance(0.05)) recruiterHeadhunt(null, true);
 }
 /* directed: crew up a single ship */
 function recruiterHireShip(id){ if(!hasRecruiter()){ toast("Hire a Recruiter first"); return; }
@@ -5660,19 +5685,21 @@ function recruiterHireFleet(fid){ if(!hasRecruiter()){ toast("Hire a Recruiter f
   Game.logMsg(H?`Recruiter crews the ${f.name}: ${H} berth${H>1?"s":""} across the fleet (${commas(F)}c).`:`${f.name} is already fully crewed.`, H?"good":"sys");
   toast(H?`Crewed ${f.name}`:"Already crewed"); Game.save(); UI.render("crew"); }
 /* headhunt a sharper pilot or gunner among the given ships, replacing the weakest of that trade */
-function recruiterHeadhunt(ids, silent){
-  const set=new Set(ids); const pickRole=chance(0.5)?"pilot":"gunner";
-  let role=pickRole, which=role==="pilot"?"piloting":"gunnery";
-  let cands=(state.crew||[]).filter(c=>c.career===role && set.has(c.shipId));
-  if(!cands.length){ role=role==="pilot"?"gunner":"pilot"; which=role==="pilot"?"piloting":"gunnery";
-    cands=(state.crew||[]).filter(c=>c.career===role && set.has(c.shipId)); }
-  if(!cands.length){ if(!silent) toast("No pilots or gunners to upgrade there"); return; }
+const SKILL_OF={pilot:"piloting",gunner:"gunnery",mechanic:"repair"};
+/* headhunt a sharper recruit of a specific TRADE (pilot/gunner/mechanic), replacing your weakest of
+   that role anywhere in your crew. With no role given (auto), picks a trade you employ. */
+function recruiterHeadhunt(role, silent){
+  if(!role){ const have=["pilot","gunner","mechanic"].filter(r=>(state.crew||[]).some(c=>c.career===r && c.shipId));
+    if(!have.length) return; role=pick(have); }
+  const which=SKILL_OF[role]; if(!which) return;
+  const cands=(state.crew||[]).filter(c=>c.career===role && c.shipId);
+  if(!cands.length){ if(!silent) toast(`You've no ${careerName(role)} aboard to upgrade`); return; }
   const weakest=cands.reduce((a,b)=>crewSkill(a,which)<=crewSkill(b,which)?a:b), better=rollCrewSkills(role,null), fee=HIRE_ROLES[role].fee;
-  if((better[which]||0) <= crewSkill(weakest,which)+1){ if(!silent) toast("No sharper candidate turned up this time"); return; }
-  if((state.credits||0)<fee){ if(!silent) toast(`Headhunting costs ${commas(fee)}c`); return; }
+  if((better[which]||0) <= crewSkill(weakest,which)+1){ if(!silent) toast(`No sharper ${careerName(role)} turned up — try again`); return; }
+  if((state.credits||0)<fee){ if(!silent) toast(`Headhunting a ${careerName(role)} costs ${commas(fee)}c`); return; }
   state.credits-=fee; weakest.name=genName("person"); weakest.raceName=genName("race"); weakest.skills=better; weakest.recruited=true;
-  Game.logMsg(`Recruiter headhunts a sharper ${careerName(role)} (${which} ${better[which]}) — ${commas(fee)}c.`,"good");
-  if(!silent){ toast("Upgraded a berth"); Game.save(); UI.render("crew"); }
+  Game.logMsg(`Recruiter headhunts a ${skillTier(better[which]).name} ${careerName(role)} (${which} ${better[which]}) for ${commas(fee)}c.`,"good");
+  if(!silent){ toast(`Upgraded your weakest ${careerName(role)}`); Game.save(); UI.render("crew"); }
 }
 function toggleRecruiterAuto(){ const o=getRecruiter(); if(!o) return;
   o.auto=o.auto===false; toast(o.auto===false?"Auto-crew off":"Auto-crew on"); Game.save(); UI.render("crew"); }
@@ -5942,6 +5969,7 @@ function tradeStep(f){ const t=f.trade; if(!t||!fleetAllCrewed(f)) return;
     if(--t.legLeft>0) return;                               // still in transit this action
     t.legLeft=null; t.pos={sysId:tgt.s, slot:tgt.p};
     shipsByIds(f.shipIds).forEach(v=>{ v.sysId=tgt.s; v.slot=tgt.p; });
+    applyWear(f.shipIds, 1);                                 // the long lanes wear the fleet (depots mend it on arrival)
   } else if(t.pos.slot!==tgt.p){                            // same system, different planet — one hop, no raiders
     t.pos={sysId:tgt.s, slot:tgt.p}; shipsByIds(f.shipIds).forEach(v=>{ v.sysId=tgt.s; v.slot=tgt.p; });
   }
