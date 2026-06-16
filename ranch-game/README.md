@@ -37,18 +37,16 @@ feeder calves ~$280/cwt, fed cattle ~$192/cwt live, cull cows ~$116/cwt, bred co
 hay ~$160/ton. All tunable in the `CONFIG` object at the top of the `<script>` in `index.html`.
 
 ## You play from the map
-Once your ranch is set up, the **home screen is your land** — a procedurally generated terrain map
-with grassland, forests, a river, a lake/pond, and a road to a nearby town. You interact with the
-world directly:
-- **Click the 🏪 Stockyard & Store** in town to open the market (buy/sell cattle, hay).
+Once your ranch is set up, the **home screen is your land** — an illustrated terrain map with
+grassland, patchwork fields, forests, a meandering river, a lake/pond, and a road to a nearby town.
+Property lines are organic (not square); each parcel is a **160-acre quarter-section**. You interact
+with the world directly:
+- **Click the 🏪 Stockyard & Store** in town (or the **🏪 Shop** button) to buy/sell cattle & hay,
+  and to **buy adjoining land** from the Land Agent.
+- **Click a parcel you own** to build on it or fence it: **Barn** (shelter), **House** (lets you hire
+  more hands), **Stables** (horses), or **Fence** (cross-fencing → rotational grazing → more capacity).
 - **Click your 🏠 house** to manage crew & equipment.
-- **Tool palette (left):** pick **Manage / Buy land / House / Barn / Stables / Fence**, then click
-  land. Property lines are organic (not square); each parcel is a **160-acre quarter-section**.
-  - *Buy land* — gold parcels touching your ranch expand your acreage (and herd capacity).
-  - *House / Barn / Stables* — place buildings on empty owned parcels. Barns add shelter, houses let
-    you hire more hands, stables add horses.
-  - *Fence* — cross-fencing pastures enables rotational grazing and raises carrying capacity.
-- **Top-right buttons:** zoom ➕/➖, 🐄 Herd, 👷 Crew, 📜 Log, 💾 Save, ❓ help.
+- **Top-right:** zoom ➕/➖, 🏪 Shop, and ☰ Menu (Herd, Crew, Log, Save, Help).
 - The **weekly decision** appears as a card overlaid on the map; resolve it and advance the week.
 
 ## Saving
