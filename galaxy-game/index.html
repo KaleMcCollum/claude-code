@@ -3768,6 +3768,7 @@ const UI = {
       ${v.bays>0?this.hangarCard(v, here):""}
       <div class="card"><div class="row">
         ${!active&&here?`<button class="small" data-selship="${v.id}">Pilot this</button>`:""}
+        ${active&&!adrift()?`<button class="small ghost" data-disembark="1">&#128694; Disembark</button>`:""}
         <button class="small ghost" data-renship="${v.id}">Rename</button>
         <button class="ghost" id="shipsBack">&larr; All ships</button>
       </div></div>`;
@@ -3794,7 +3795,10 @@ const UI = {
     let lastCat=null;
     const restRows=rest.map(v=>{ const cat=shipCat(v), head=(cat!==lastCat?(lastCat=cat, `<div class="shipcat">${cat?shipCatName(cat):"Other craft"}</div>`):""); return head+shipCard(v); }).join("");
     const rows=(active?`<div class="shipcat" style="color:var(--green)">&#9654; Now commanding</div>${shipCard(active)}`:"")+restRows;
-    return `<div class="card"><div class="row between"><h3>Your ships <span class="dim small">&middot; ${shown.length}</span></h3>${state.activeShip?'<span class="small dim">&#9654; piloting</span>':""}</div>
+    const headRight = active ? (adrift()?'<span class="small dim">&#9654; piloting</span>':'<button class="small ghost" data-disembark="1">&#128694; Disembark</button>')
+                             : (shown.length?'<span class="small dim">&#128694; on foot</span>':"");
+    return `<div class="card"><div class="row between"><h3>Your ships <span class="dim small">&middot; ${shown.length}</span></h3>${headRight}</div>
+      ${(!active&&shown.length)?`<p class="small dim">On foot — open a ship docked here and tap <b>Pilot this</b> to take the helm.</p>`:""}
       ${shown.length?rows:'<p class="small dim">No ships yet. Buy one at a shipyard or off a trader you meet.</p>'}
     </div>`;
   },
@@ -4210,6 +4214,7 @@ const UI = {
       app.querySelectorAll("[data-ship]").forEach(b=> b.onclick=()=>buyShip(+b.dataset.ship));
       app.querySelectorAll("[data-sellship]").forEach(b=> b.onclick=()=>sellShip(b.dataset.sellship));
       app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
+      app.querySelectorAll("[data-disembark]").forEach(b=> b.onclick=()=>disembark());
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
       app.querySelectorAll("[data-outfit]").forEach(b=> b.onclick=()=>{ outfitShip=b.dataset.outfit; mountPick=null; UI.render("outfit"); });
       const yd=$("#yarder"); if(yd) yd.onclick=()=>talkToYarder();
@@ -4326,6 +4331,7 @@ const UI = {
       app.querySelectorAll("[data-unseat]").forEach(b=> b.onclick=()=>unassignCrew(+b.dataset.unseat));
       app.querySelectorAll("[data-dismiss]").forEach(b=> b.onclick=()=>dismissCrew(+b.dataset.dismiss));
       app.querySelectorAll("[data-selship]").forEach(b=> b.onclick=()=>selectShip(b.dataset.selship));
+      app.querySelectorAll("[data-disembark]").forEach(b=> b.onclick=()=>disembark());
       app.querySelectorAll("[data-renship]").forEach(b=> b.onclick=()=>renameShip(b.dataset.renship));
       app.querySelectorAll("[data-takeoff]").forEach(b=> b.onclick=()=>departFirstFlight());
       app.querySelectorAll("[data-moveship]").forEach(b=> b.onclick=()=>moveShip(b.dataset.moveship));
@@ -5385,6 +5391,14 @@ function selectShip(id){
   if(shipBusy(v)){ toast("That ship is away on a trade run"); return; }
   if(!atHere(v)){ toast("That ship is docked elsewhere"); return; }
   state.activeShip=id; toast(`Now piloting ${v.name}`); Game.save(); UI.render(UI.current);
+}
+/* step off your ship and go on foot — you keep all your ships, you just aren't piloting any */
+function disembark(){
+  if(!state.activeShip){ toast("You're already on foot"); return; }
+  if(adrift()){ toast("You can't step off out in deep space"); return; }
+  const v=Game.ship(); state.activeShip=null;
+  Game.logMsg(`You step off the ${v?v.name:"ship"} — you're on foot now. Pilot a docked ship when you want to fly again.`,"sys");
+  toast("On foot"); Game.save(); UI.render(UI.current);
 }
 function renameShip(id){
   const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
