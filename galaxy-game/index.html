@@ -2556,7 +2556,7 @@ const UI = {
             ${active?'<span class="small green">piloting</span>':`<button class="small" data-selship="${v.id}">Pilot this</button>`}
             <button class="small" data-outfit="${v.id}">&#128295; Outfit</button>
             <button class="small ghost" data-renship="${v.id}">Rename</button>
-            ${state.vehicles.length>1&&!active?`<button class="small ghost" data-sellship="${v.id}">Sell &middot; ${shipSell(v)}c</button>`:""}
+            <button class="small ghost" data-sellship="${v.id}">Sell &middot; ${shipSell(v)}c</button>
           </div></div>`; }).join("")}
     </div>
     <div class="card"><p class="small dim">To move ships or travel between worlds, use the <b>Crew &rarr; Ships / Fleets</b> tab.</p></div>
@@ -5253,15 +5253,23 @@ function buyPersonShip(person, amount, onDone){
   Game.save(); if(onDone) onDone();
 }
 function sellShip(id){
-  if(state.vehicles.length<=1){ toast("That's your only craft"); return; }
-  if(id===state.activeShip){ toast("Pilot another ship first"); return; }
-  if(carriedShips(id).length){ toast("Launch its fighters from the hangar first"); return; }
   const i=state.vehicles.findIndex(v=>v.id===id); if(i<0) return;
   const v=state.vehicles[i], p=shipSell(v);
+  if(carriedShips(id).length){ toast("Launch its fighters from the hangar first"); return; }
+  if(shipBusy(v)){ toast("It's away on a trade run — call the fleet off first"); return; }
+  if(adrift()){ toast("You can't sell a ship while adrift in deep space"); return; }
+  const isActive=id===state.activeShip, isOnly=state.vehicles.length<=1;
+  // confirm — guard against an accidental sale, especially of your last ship
+  const msg = isOnly ? `Sell your ONLY ship, the ${v.name}, for ${commas(p)}c? You'll be left on foot until you buy another.`
+            : isActive ? `Sell the ${v.name}, the ship you're commanding, for ${commas(p)}c?`
+            : `Sell the ${v.name} for ${commas(p)}c?`;
+  if(!confirm(msg)) return;
   if(v.fleetId){ const fl=fleetById(v.fleetId); if(fl){ fl.shipIds=fl.shipIds.filter(x=>x!==v.id);
     if(!fl.shipIds.length) state.fleets=(state.fleets||[]).filter(x=>x.id!==fl.id); } }   // don't orphan the fleet
   state.vehicles.splice(i,1); state.credits+=p;
-  Game.logMsg(`You sell the ${v.name} for ${p}c.`,"sys"); Game.save(); UI.render("shipyard");
+  if(isActive) state.activeShip=(state.vehicles.find(x=>spaceworthy(x)&&atHere(x))||state.vehicles.find(x=>atHere(x))||state.vehicles[0]||{}).id||null;
+  Game.logMsg(`You sell the ${v.name} for ${commas(p)}c${state.vehicles.length?"":" — you're now on foot"}.`,"sys");
+  Game.save(); UI.render("shipyard");
 }
 
 /* ---- Depot: buy/sell commodities across your active fleet docked here ---- */
