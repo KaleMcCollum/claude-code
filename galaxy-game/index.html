@@ -660,7 +660,7 @@ const HIRE_ROLES={
   mercenary:{ fee:2200, salary:4000, role:"hired muscle — fights for you (combat coming soon)" },
   gunner:   { fee:2200, salary:4000, role:"mans the guns (ship combat coming soon)" },
   medic:    { fee:2800, salary:4500, role:"tends the crew (healing coming soon)" },
-  recruiter:{ fee:8000, salary:6000, role:"a fleet recruiter — keeps your ships crewed and headhunts sharper pilots & gunners" },
+  recruiter:{ fee:8000, salary:60000, role:"a fleet recruiter — keeps your ships crewed and scouts fresh talent (a hefty salary, but runs your whole fleet's hiring)" },
 };
 /* careers that can fill a ship's LABOR seats (grunt work in the holds) */
 const LABOR_CAREERS=["drifter","laborer","dockhand","factory"];
@@ -705,6 +705,11 @@ function applyWear(ids, mult){ (ids||[]).forEach(id=>{ const v=(state.vehicles||
   if(!v||!v.maxHp||v.hp<=0||v.carrier) return;
   const loss=Math.round(v.maxHp*0.02*(mult||1)*(1-maintFactor(v))); if(loss>0) v.hp=Math.max(1, v.hp-loss); }); }
 const careerSalary=c=>HIRE_ROLES[c]?HIRE_ROLES[c].salary:0;
+/* a crewmate's yearly wage — scales sharply with their skill tier: an Uncommon pilot is base pay,
+   a Legendary one commands ~4x. Unrated trades (laborers, the recruiter) just draw their base. */
+const TIER_SALARY_MULT=[0.7, 1.0, 1.7, 2.6, 4.0];   // Common .. Legendary
+function crewSalary(c){ const base=careerSalary(c&&c.career); const t=crewTier(c);
+  return t ? Math.round(base*(TIER_SALARY_MULT[RARITY.index(t.id)]||1)) : base; }
 /* Jobs you can ASK a person for when you meet them. chance = odds they take you on (rarer
    work is harder to land); pay = the yearly salary you then earn. Hostile careers aren't here
    — you don't ask an outlaw for a day job. */
@@ -744,7 +749,7 @@ function shipMaint(v){ if(!spaceworthy(v)) return Math.round((v.value||0)*0.04);
   return Math.round(m); }
 /* what it costs to fully repair a ship's hull right now */
 function repairCost(v){ const miss=(v.maxHp||0)-(v.hp||0); return miss<=0?0:Math.round(miss*3*(1+(state.world?state.world.wealth:4)*0.03)); }
-function annualWages(){ return (state.crew||[]).reduce((s,c)=>s+careerSalary(c.career),0); }
+function annualWages(){ return (state.crew||[]).reduce((s,c)=>s+crewSalary(c),0); }
 function annualMaint(){ return (state.vehicles||[]).reduce((s,v)=>s+shipMaint(v),0); }
 const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
 /* Generic things people say when you greet them. */
@@ -3661,8 +3666,9 @@ const UI = {
       let cands="";
       if(recruitPool && recruitPool.list.length){
         cands=`<div class="shipcat">Candidates &middot; ${cap(careerName(recruitPool.role))}s</div>` + recruitPool.list.map((c,i)=>{ const t=crewTier(c), p=crewPrimary(c), fee=HIRE_ROLES[c.career].fee;
-          return `<div class="krow"><span class="lbl"${t?` style="color:${t.color}"`:""}>${c.name} <span class="dim small">&middot; ${t?t.name:""} ${p?`${p.label} ${p.val}/10`:""}</span></span>
-            <span class="kv"><button class="small ${(state.credits||0)>=fee?'primary':''}" data-hirecand="${i}" ${(state.credits||0)>=fee?'':'disabled'}>Hire &middot; ${commas(fee)}c</button></span></div>`; }).join("");
+          return `<div class="frow"><div class="finfo"><div class="nm"${t?` style="color:${t.color}"`:""}>${c.name}</div>
+            <div class="chips" style="margin-top:3px">${t?`<span class="chip" style="color:${t.color};border-color:${t.color}88">&#9733; ${t.name} &middot; ${p.label} ${p.val}/10</span>`:""}<span class="chip gold">${commas(crewSalary(c))}c/yr</span></div></div>
+            <button class="small ${(state.credits||0)>=fee?'primary':''}" data-hirecand="${i}" ${(state.credits||0)>=fee?'':'disabled'}>Hire &middot; ${commas(fee)}c</button></div>`; }).join("");
       } else if(recruitPool){ cands=`<p class="small dim">You hired everyone worth taking from that batch. Scout again for fresh faces.</p>`; }
       else cands=`<p class="small dim">Pick a trade and the recruiter will round up some candidates to look over.</p>`;
       body=`<p class="small dim">Your recruiter finds fresh talent. Look them over and hire whoever you want — nobody's replaced unless you say so.</p>
@@ -3692,7 +3698,7 @@ const UI = {
         return head+`<div class="shipcard">
           <button class="small ghost" data-recopen="${ci}" style="padding:0;width:100%;text-align:left">
             <div class="top"><span class="nm">${open?'&#9662;':'&#9656;'} ${c.name}</span><span class="tag">${careerName(c.career)}</span></div></button>
-          <div class="chips"><span class="chip">management &middot; tap to direct</span><span class="chip gold">${commas(careerSalary(c.career))}c/yr</span></div>
+          <div class="chips"><span class="chip">management &middot; tap to direct</span><span class="chip gold">${commas(crewSalary(c))}c/yr</span></div>
           ${open?this.recruiterPanel(c):""}
           <div class="row" style="margin-top:8px"><button class="small ghost" data-dismiss="${ci}">Dismiss</button></div>
         </div>`; }
@@ -3702,7 +3708,7 @@ const UI = {
         <div class="chips">
           ${tr?`<span class="chip" style="color:${tr.color};border-color:${tr.color}88">&#9733; ${tr.name} &middot; ${pr.label} ${pr.val}/10</span>`:'<span class="chip dim">unrated</span>'}
           ${sh?`<span class="chip g">&#9863; ${sh.name} &middot; seat ${(c.seat||0)+1}</span>`:'<span class="chip">idle &middot; travels with you</span>'}
-          <span class="chip gold">${commas(careerSalary(c.career))}c/yr</span>
+          <span class="chip gold">${commas(crewSalary(c))}c/yr</span>
         </div>
         <div class="row" style="margin-top:8px">
           ${sh?`<button class="small ghost" data-unseat="${ci}">Unassign</button>`:""}
@@ -6362,7 +6368,7 @@ function chargeUpkeep(){
   // unpaid crew quit (highest-paid first) until the saved wages would have covered the gap
   let saved=0;
   while(saved<shortfall && (state.crew||[]).length){
-    let bi=0,bs=-1; state.crew.forEach((c,i)=>{ const s=careerSalary(c.career); if(s>bs){bs=s;bi=i;} });
+    let bi=0,bs=-1; state.crew.forEach((c,i)=>{ const s=crewSalary(c); if(s>bs){bs=s;bi=i;} });
     const c=state.crew[bi];
     if(c.personIdx>=0 && state.codex.people[c.personIdx]) state.codex.people[c.personIdx].hired=false;
     state.crew.splice(bi,1); saved+=bs;
