@@ -46,6 +46,18 @@
   .pin:hover circle.ring{fill:#ffce5e}
   .pin.pinsel circle.ring{fill:#fff3cf;stroke:#4d3018;stroke-width:1.6}
   .loccard.flash{outline:3px solid var(--accent)}
+  /* land parcels */
+  .parcel rect{stroke:#cdb791;stroke-width:1.2}
+  .parcel.empty rect{fill:#efe4cc}
+  .parcel.owned rect{fill:var(--brown);stroke:#4d3018}
+  .parcel.buy{cursor:pointer}
+  .parcel.buy rect{fill:#fbeec4;stroke:var(--accent);stroke-width:2;stroke-dasharray:4 3}
+  .parcel.buy:hover rect{fill:var(--accent)}
+  .plabel{font-size:20px;text-anchor:middle;pointer-events:none}
+  .pbuy{font-size:12px;font-weight:700;fill:#9a6a0c;text-anchor:middle;pointer-events:none}
+  /* toast */
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--brown);color:#fff;padding:10px 18px;border-radius:999px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:.25s;z-index:80}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .legend{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:8px 0;font-size:.85rem}
   .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:5px}
   /* dashboard */
@@ -80,7 +92,8 @@
     <div class="hero">
       <h1>🐄 Ranch Tycoon</h1>
       <p class="muted">A week-by-week cattle ranching life sim. Pick your land, run a real operation,<br>survive the seasons and the markets. Get smart or go broke.</p>
-      <button class="btn" onclick="go('map')">Start a New Ranch →</button>
+      <button class="btn" onclick="newGameConfirm()">Start a New Ranch →</button>
+      <button class="btn ghost" id="continueBtn" style="display:none" onclick="loadGame()">▶ Continue Saved Game</button>
     </div>
     <div class="card">
       <h3>How it works</h3>
@@ -148,7 +161,9 @@
           <h3>Manage</h3>
           <div class="toolbar">
             <button class="btn" onclick="openMarket()">🛒 Market</button>
+            <button class="btn" onclick="openLandMap()">🗺️ My Land</button>
             <button class="btn" onclick="openRanchUpgrades()">🏗️ Ranch</button>
+            <button class="btn ghost" onclick="saveGame()">💾 Save</button>
             <button class="btn ghost" onclick="openHelp()">❓ Industry 101</button>
           </div>
         </div>
@@ -158,6 +173,7 @@
 </div>
 
 <div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<div id="toast"></div>
 
 <script>
 /* =========================================================================
@@ -243,6 +259,7 @@ function newGameState(loc, stateKey){
     op: null,
     herds: [],            // [{kind:'cow'|'bull'|'calf'|'feeder', breed, head, wt}]
     land: 0, barnCap: 0, houses: 1, hands: 1, equipment: 1, horses: 1,
+    parcels: [], buildings: {}, fences: [], // spatial land model
     market: { feederCalf:1, fedSteer:1, cullCow:1, feederBuy:1, hay:1 }, // multipliers (random walk)
     firedThisYear: {},    // seasonal events fired
     log: [],
@@ -269,7 +286,11 @@ function isWinterFeeding(){ // region-driven: first/last N/2 weeks of year are "
   return (w <= half) || (w >= 52 - half);
 }
 function totalHead(){ return S.herds.reduce((a,h)=>a+h.head,0); }
-function carryingCapacity(){ return Math.floor(S.land / S.loc.acresPerCow); }
+function carryingCapacity(){
+  const base = S.land / S.loc.acresPerCow;
+  const fencedFrac = (S.fences && S.parcels && S.parcels.length) ? S.fences.length / S.parcels.length : 0;
+  return Math.floor(base * (1 + 0.15*fencedFrac)); // cross-fencing => rotational grazing bonus
+}
 function herd(kind){ return S.herds.find(h=>h.kind===kind); }
 function addHead(kind, breed, head, wt){
   let h = S.herds.find(x=>x.kind===kind && x.breed===breed);
@@ -312,23 +333,16 @@ function geoCentroid(f, proj){
   return [x/r.length, y/r.length];
 }
 function buildMap(){
-  const feats=US_GEO.features.filter(f=>US_ABBR[f.properties.name]); // drop Puerto Rico
-  const isCont=f=>!['Alaska','Hawaii'].includes(f.properties.name);
-  const cont=feats.filter(isCont);
-  const ak=feats.filter(f=>f.properties.name==='Alaska');
-  const hi=feats.filter(f=>f.properties.name==='Hawaii');
-  const W=960,H=600;
-  const pCont=geoFit(cont,{x:0,y:0,w:W,h:H-70});
-  const pAk=geoFit(ak,{x:8,y:H-150,w:150,h:140});
-  const pHi=geoFit(hi,{x:165,y:H-92,w:95,h:80});
+  // contiguous US only (no Alaska/Hawaii/PR)
+  const cont=US_GEO.features.filter(f=>US_ABBR[f.properties.name] && !['Alaska','Hawaii'].includes(f.properties.name));
+  const W=960,H=560;
+  const pCont=geoFit(cont,{x:0,y:0,w:W,h:H},10);
   let body='', labels='';
-  function add(f,proj){
+  cont.forEach(f=>{
     const ab=US_ABBR[f.properties.name], avail=!!LOCATIONS[ab];
-    body+=`<path data-st="${ab}" class="st${avail?' avail':''}" d="${geoPath(f,proj)}"><title>${f.properties.name}${avail?'':' — coming soon'}</title></path>`;
-    if(avail){ const c=geoCentroid(f,proj); labels+=`<text class="stlabel" x="${c[0].toFixed(0)}" y="${(c[1]+4).toFixed(0)}">${ab}</text>`; }
-  }
-  cont.forEach(f=>add(f,pCont)); ak.forEach(f=>add(f,pAk)); hi.forEach(f=>add(f,pHi));
-  labels+=`<text class="insetlabel" x="83" y="${H-8}">Alaska</text><text class="insetlabel" x="212" y="${H-6}">Hawaii</text>`;
+    body+=`<path data-st="${ab}" class="st${avail?' avail':''}" d="${geoPath(f,pCont)}"><title>${f.properties.name}${avail?'':' — coming soon'}</title></path>`;
+    if(avail){ const c=geoCentroid(f,pCont); labels+=`<text class="stlabel" x="${c[0].toFixed(0)}" y="${(c[1]+4).toFixed(0)}">${ab}</text>`; }
+  });
   // Ranch-location pins (all playable states are in the continental projection).
   let pins='';
   for(const st of Object.keys(LOCATIONS)){
@@ -390,18 +404,27 @@ function chooseOp(op){
   S.op = op;
   const b = S.breedDefault;
   if(op==='cowcalf'){
-    S.cash = 28000;
-    S.land = 480; S.barnCap = 60; S.equipment = 1;
+    S.cash = 35000;
+    S.barnCap = 60; S.equipment = 1;
+    // size the home place to comfortably carry the starting herd at this location's stocking rate
+    const need = Math.ceil(32 * S.loc.acresPerCow / PARCEL_ACRES) + 1;
+    S.parcels = makeInitialParcels(need); recomputeLand();
     addHead('cow', b, 32, 1150);
     addHead('bull', b, 1, 1900);
     logE(`You inherited a small cow-calf outfit near ${S.loc.name}: <b>32 ${BREEDS[b].name} cows</b>, 1 bull, ${S.land} acres, a small barn, an old truck and a good horse.`,'acc');
   } else {
-    S.cash = 36000;
-    S.land = 240; S.barnCap = 140; S.equipment = 1;
+    S.cash = 50000;
+    S.barnCap = 140; S.equipment = 1;
+    S.parcels = makeInitialParcels(4); recomputeLand();
     addHead('feeder', b, 48, 720);
     logE(`You set up a small finishing yard near ${S.loc.name}: <b>48 ${BREEDS[b].name} feeders</b> at ~720 lb, ${S.land} acres of pens & traps, feed equipment and a horse.`,'acc');
   }
+  // place the starting house & barn on the map
+  S.buildings = {}; S.fences = [];
+  S.buildings[S.parcels[0]] = 'house';
+  if(S.parcels[1]) S.buildings[S.parcels[1]] = 'barn';
   startWeekScenario();
+  saveGame(true);
   go('game');
   render();
 }
@@ -450,6 +473,7 @@ function nextWeek(){
   // broke check
   if(S.cash < CONFIG.brokeFloor){ return brokeEvent(); }
   startWeekScenario();
+  saveGame(true);
   render();
 }
 
@@ -629,16 +653,16 @@ const SCENARIOS = [
           }},
         ]};
     }},
-  { id:"land_offer", once:false, when:s=> chance(0.35),
+  { id:"land_offer", once:false, when:s=> chance(0.32) && buyableParcels().length>0,
     build(){
-      const acres = [80,120,160,240][Math.floor(Math.random()*4)];
-      const cost = Math.round(acres*S.loc.land);
-      return { title:"🤝 Neighbor selling land", icon:"",
-        text:`The neighbor is selling <b>${acres} acres</b> of grass at $${S.loc.land.toLocaleString()}/acre — <b>${$money(cost)}</b>. More land = more cattle you can carry (currently ${carryingCapacity()} head capacity on ${S.land} acres).`,
+      const cost = parcelPrice();
+      return { title:"🤝 Neighbor selling a parcel", icon:"",
+        text:`The neighbor is selling an adjoining <b>${PARCEL_ACRES}-acre quarter-section</b> at $${S.loc.land.toLocaleString()}/acre — <b>${$money(cost)}</b>. (You can also buy land & build any time on the 🗺️ My Land map.) You currently run ${S.land} acres — capacity ${carryingCapacity()} head.`,
         choices:[
-          {label:`Buy the ${acres} acres (${$money(cost)})`, tip:"Expands your carrying capacity. The #1 way to grow a cow herd.", apply(){
+          {label:`Buy the parcel (${$money(cost)})`, tip:"Adds 160 acres next to your ranch.", apply(){
             if(S.cash<cost) return `You can't cover ${$money(cost)} right now.`;
-            S.cash-=cost; S.land+=acres; return `Bought ${acres} acres (-${$money(cost)}). You can now carry <b>${carryingCapacity()} head</b>.`;
+            const k=buyableParcels()[0]; addParcel(k); S.cash-=cost;
+            return `Bought the ${PARCEL_ACRES}-acre parcel (-${$money(cost)}). You now run <b>${S.land} acres</b> — capacity ${carryingCapacity()} head.`;
           }},
           {label:"Pass for now", tip:"Keep your cash.", apply(){ return `You let it go. Land comes up again — when you're ready.`; }},
         ]};
@@ -684,6 +708,7 @@ function chooseScenario(i){
   const outcome=ch.apply();
   CURRENT.resolved=true; CURRENT.outcome=outcome;
   logE(`<b>${CURRENT.title.replace(/^[^A-Za-z]+/,'')}:</b> ${outcome.replace(/<[^>]+>/g,'')}`);
+  saveGame(true);
   render();
 }
 
@@ -746,29 +771,145 @@ function openMarket(){
   html+=`</div><button class="btn ghost" onclick="closeModal()">Close</button>`;
   modal(html);
 }
-function buyFeeders(n,wt){ const cost=Math.round((wt/100)*price('feederBuy')*n); if(S.cash<cost){ alert("Not enough cash."); return; } S.cash-=cost; addHead('feeder',S.breedDefault,n,wt); logE(`Bought ${n} feeders @ ${wt} lb (-${$money(cost)}).`); openMarket(); }
-function buyCows(n){ const cost=Math.round(price('bredCow')*n); if(S.cash<cost){ alert("Not enough cash."); return; } S.cash-=cost; addHead('cow',S.breedDefault,n,1150); logE(`Bought ${n} bred cows (-${$money(cost)}).`); openMarket(); }
-function sellCull(n){ const cow=herd('cow'); if(!cow){return;} const k=Math.min(n,cow.head); const gross=Math.round((1150/100)*price('cullCow')*k); removeHead('cow',k); S.cash+=gross; logE(`Sold ${k} cull cows (+${$money(gross)}).`); openMarket(); }
+function buyFeeders(n,wt){ const cost=Math.round((wt/100)*price('feederBuy')*n); if(S.cash<cost){ toast("Not enough cash."); return; } S.cash-=cost; addHead('feeder',S.breedDefault,n,wt); logE(`Bought ${n} feeders @ ${wt} lb (-${$money(cost)}).`); saveGame(true); openMarket(); }
+function buyCows(n){ const cost=Math.round(price('bredCow')*n); if(S.cash<cost){ toast("Not enough cash."); return; } S.cash-=cost; addHead('cow',S.breedDefault,n,1150); logE(`Bought ${n} bred cows (-${$money(cost)}).`); saveGame(true); openMarket(); }
+function sellCull(n){ const cow=herd('cow'); if(!cow){return;} const k=Math.min(n,cow.head); const gross=Math.round((1150/100)*price('cullCow')*k); removeHead('cow',k); S.cash+=gross; logE(`Sold ${k} cull cows (+${$money(gross)}).`); saveGame(true); openMarket(); }
 
 function openRanchUpgrades(){
-  let html=`<h2>🏗️ Build & Grow</h2><p class="muted">Reinvest profits to carry more cattle and survive weather.</p><div class="card" style="background:var(--panel2)">`;
-  const barnCost=18000, houseCost=24000, equipCost=22000;
-  html+=`<div class="row"><span>Bigger barn (+80 head shelter) — protects against blizzards</span><button class="btn" onclick="upgrade('barn',${barnCost})">${$money(barnCost)}</button></div>
-    <div class="row"><span>Hire a ranch hand (+labor, +$900/wk wages) — handle more cattle</span><button class="btn" onclick="upgrade('hand',12000)">${$money(12000)} hire</button></div>
-    <div class="row"><span>Build hand housing (needed before 3rd hand)</span><button class="btn" onclick="upgrade('house',${houseCost})">${$money(houseCost)}</button></div>
-    <div class="row"><span>Upgrade equipment (lowers feed waste & breakdowns)</span><button class="btn" onclick="upgrade('equip',${equipCost})">${$money(equipCost)}</button></div>`;
+  const equipCost=22000, handCost=12000;
+  let html=`<h2>🏗️ Crew & Equipment</h2><p class="muted">Barns, houses, stables and fencing are now placed on the 🗺️ <b>My Land</b> map. Here you manage people & machinery.</p><div class="card" style="background:var(--panel2)">`;
+  html+=`<div class="row"><span>Hire a ranch hand <span class="muted">(needs a house to live in: ${S.hands}/${S.houses} housed)</span></span><button class="btn" onclick="upgrade('hand',${handCost})">${$money(handCost)} hire</button></div>
+    <div class="row"><span>Upgrade equipment (lowers feed waste & breakdowns) — now Lv ${S.equipment}</span><button class="btn" onclick="upgrade('equip',${equipCost})">${$money(equipCost)}</button></div>`;
   html+=`</div><button class="btn ghost" onclick="closeModal()">Close</button>`;
   modal(html);
 }
 function upgrade(kind,cost){
-  if(S.cash<cost){ alert("Not enough cash."); return; }
+  if(kind==='hand' && S.hands>=S.houses){ toast("Build another house on your land first — nowhere to house them."); return; }
+  if(S.cash<cost){ toast("Not enough cash."); return; }
   S.cash-=cost;
-  if(kind==='barn'){ S.barnCap+=80; logE(`Built a bigger barn (+80 head shelter).`,'ok'); }
   if(kind==='hand'){ S.hands++; logE(`Hired a ranch hand. Wages now +$900/wk.`,'ok'); }
-  if(kind==='house'){ S.houses++; logE(`Built hand housing.`,'ok'); }
   if(kind==='equip'){ S.equipment++; logE(`Upgraded equipment.`,'ok'); }
-  openRanchUpgrades();
+  saveGame(true); openRanchUpgrades();
 }
+
+/* ---------------- Land: parcels, building & the map-view ---------------- */
+const PARCEL_ACRES = 160; // a quarter-section — the classic US land unit
+const BUILD = {
+  house:   {cost:24000, emoji:"🏠", name:"House",   note:"Houses you & your hands"},
+  barn:    {cost:18000, emoji:"🏚️", name:"Barn",    note:"+80 head of shelter"},
+  stables: {cost:9000,  emoji:"🐴", name:"Stables", note:"+2 horses"},
+};
+const FENCE_COST = 5000; // per quarter-section, cross-fencing for rotational grazing
+let landZoom = 1;
+let buildTool = 'buy';
+
+function makeInitialParcels(n){ const w=Math.ceil(Math.sqrt(n)); const out=[]; for(let i=0;i<n;i++) out.push((i%w)+','+Math.floor(i/w)); return out; }
+function recomputeLand(){ S.land = S.parcels.length * PARCEL_ACRES; }
+function parcelNeighbors(k){ const [c,r]=k.split(',').map(Number); return [(c+1)+','+r,(c-1)+','+r,c+','+(r+1),c+','+(r-1)]; }
+function buyableParcels(){ const owned=new Set(S.parcels), out=new Set(); S.parcels.forEach(k=>parcelNeighbors(k).forEach(n=>{ if(!owned.has(n)) out.add(n); })); return [...out]; }
+function addParcel(k){ if(!S.parcels.includes(k)){ S.parcels.push(k); recomputeLand(); } }
+function parcelPrice(){ return Math.round(PARCEL_ACRES * S.loc.land); }
+
+function setTool(t){ buildTool=t; openLandMap(); }
+function buyParcel(k){ const cost=parcelPrice(); if(S.cash<cost){ toast("Not enough cash for that parcel."); return; } S.cash-=cost; addParcel(k); logE(`Bought a ${PARCEL_ACRES}-acre parcel (-${$money(cost)}). Now ${S.land} acres.`,'ok'); saveGame(true); openLandMap(); render(); }
+function placeBuilding(k,type){
+  if(!S.parcels.includes(k)){ toast("You don't own that parcel yet."); return; }
+  if(S.buildings[k]){ toast("That parcel already has a building."); return; }
+  const b=BUILD[type]; if(S.cash<b.cost){ toast("Not enough cash for that "+b.name+"."); return; }
+  S.cash-=b.cost; S.buildings[k]=type;
+  if(type==='barn') S.barnCap+=80;
+  if(type==='house') S.houses++;
+  if(type==='stables') S.horses+=2;
+  logE(`Built a ${b.name} on your land (-${$money(b.cost)}). ${b.note}.`,'ok');
+  saveGame(true); openLandMap(); render();
+}
+function toggleFence(k){
+  if(!S.parcels.includes(k)){ toast("You can only fence land you own."); return; }
+  const i=S.fences.indexOf(k);
+  if(i>=0){ S.fences.splice(i,1); logE(`Pulled the fence off a parcel.`); }
+  else { if(S.cash<FENCE_COST){ toast("Not enough cash to fence that parcel."); return; } S.cash-=FENCE_COST; S.fences.push(k); logE(`Fenced a ${PARCEL_ACRES}-acre pasture (-${$money(FENCE_COST)}). Cross-fencing boosts grazing capacity.`,'ok'); }
+  saveGame(true); openLandMap(); render();
+}
+function onParcelClick(k){
+  const owned=S.parcels.includes(k), buyable=buyableParcels().includes(k);
+  if(buildTool==='buy'){ if(buyable) buyParcel(k); else if(!owned) toast("You can only buy land touching your ranch."); return; }
+  if(buildTool==='fence'){ toggleFence(k); return; }
+  if(BUILD[buildTool]){ placeBuilding(k,buildTool); return; }
+}
+
+function openLandMap(){
+  if(!S.parcels||!S.parcels.length){ S.parcels=makeInitialParcels(Math.max(1,Math.round(S.land/PARCEL_ACRES))); recomputeLand(); }
+  if(!S.buildings) S.buildings={}; if(!S.fences) S.fences=[];
+  const owned=new Set(S.parcels), buy=new Set(buyableParcels());
+  let mnC=Infinity,mxC=-Infinity,mnR=Infinity,mxR=-Infinity;
+  [...owned,...buy].forEach(k=>{const [c,r]=k.split(',').map(Number);mnC=Math.min(mnC,c);mxC=Math.max(mxC,c);mnR=Math.min(mnR,r);mxR=Math.max(mxR,r);});
+  mnC--;mxC++;mnR--;mxR++;
+  const cols=mxC-mnC+1, rows=mxR-mnR+1, cell=Math.round(48*landZoom), gap=3;
+  const w=cols*(cell+gap)+gap, h=rows*(cell+gap)+gap, price=parcelPrice();
+  let g='';
+  for(let r=mnR;r<=mxR;r++) for(let c=mnC;c<=mxC;c++){
+    const k=c+','+r, x=(c-mnC)*(cell+gap)+gap, y=(r-mnR)*(cell+gap)+gap;
+    const isOwned=owned.has(k), isBuy=buy.has(k);
+    let cls='parcel empty';
+    if(isOwned) cls='parcel owned'; else if(isBuy) cls='parcel buy';
+    const clickable=isOwned||isBuy;
+    g+=`<g class="${cls}" ${clickable?`onclick="onParcelClick('${k}')"`:''}>`;
+    g+=`<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="5"/>`;
+    if(isOwned && S.fences.includes(k)) g+=`<rect x="${x+3}" y="${y+3}" width="${cell-6}" height="${cell-6}" rx="3" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="5 3"/>`;
+    if(isOwned && S.buildings[k]) g+=`<text x="${x+cell/2}" y="${y+cell/2+cell*0.2}" class="plabel" style="font-size:${Math.round(cell*0.5)}px">${BUILD[S.buildings[k]].emoji}</text>`;
+    else if(isOwned) g+=`<text x="${x+cell/2}" y="${y+cell/2+cell*0.16}" class="plabel" style="font-size:${Math.round(cell*0.42)}px;opacity:.45">🌿</text>`;
+    else if(isBuy) g+=`<text x="${x+cell/2}" y="${y+cell/2+4}" class="pbuy">$${(price/1000).toFixed(0)}k</text>`;
+    g+=`</g>`;
+  }
+  const tool=(id,emoji,label,sub)=>`<button class="btn ${buildTool===id?'':'ghost'}" style="flex-direction:column;line-height:1.1" onclick="setTool('${id}')">${emoji} ${label}<br><small style="font-weight:400;opacity:.8">${sub}</small></button>`;
+  let html=`<h2>🗺️ My Land — near ${S.loc.name.split('(')[0].trim()}, ${S.stateKey}</h2>
+    <p class="muted">Each square is a <b>${PARCEL_ACRES}-acre quarter-section</b>. You own <b>${S.parcels.length}</b> (${S.land} acres) · capacity <b>${carryingCapacity()} head</b> · shelter ${S.barnCap} · houses ${S.houses} · 🐎 ${S.horses}. Pick a tool, then click a parcel.</p>
+    <div class="toolbar" style="margin-bottom:6px">
+      ${tool('buy','🟨','Buy land', $money(price))}
+      ${tool('house','🏠','House', $money(BUILD.house.cost))}
+      ${tool('barn','🏚️','Barn', $money(BUILD.barn.cost))}
+      ${tool('stables','🐴','Stables', $money(BUILD.stables.cost))}
+      ${tool('fence','🚧','Fence', $money(FENCE_COST))}
+    </div>
+    <div class="toolbar" style="margin-bottom:8px">
+      <button class="btn ghost" onclick="zoomLand(-1)">➖</button>
+      <button class="btn ghost" onclick="zoomLand(1)">➕</button>
+      <span class="pill">Cash: ${$money(S.cash)}</span>
+      <span class="pill">${toolHint()}</span>
+    </div>
+    <div style="overflow:auto;max-height:48vh;border:1px solid var(--line);border-radius:10px;background:#eef4ea;padding:4px">
+      <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;margin:auto">${g}</svg>
+    </div>
+    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Close</button>`;
+  modal(html);
+}
+function toolHint(){
+  if(buildTool==='buy') return "Click a 🟨 gold parcel to buy adjacent land";
+  if(buildTool==='fence') return "Click your land to fence/unfence it (boosts capacity)";
+  if(BUILD[buildTool]) return `Click an empty owned parcel to build a ${BUILD[buildTool].name}`;
+  return "";
+}
+function zoomLand(d){ landZoom=clamp(landZoom + d*0.3, 0.6, 2.2); openLandMap(); }
+
+/* ---------------- Save / load (localStorage) ---------------- */
+const SAVE_KEY='ranchTycoonSave_v1';
+function saveGame(silent){
+  if(!S) return;
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); if(!silent) toast('💾 Game saved'); }
+  catch(e){ if(!silent) toast('Save failed'); }
+}
+function hasSave(){ try{ return !!localStorage.getItem(SAVE_KEY); }catch(e){ return false; } }
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY); if(!raw){ toast('No saved game found.'); return; }
+    S=JSON.parse(raw);
+    if(!S.parcels||!S.parcels.length){ S.parcels=makeInitialParcels(Math.max(1,Math.round((S.land||320)/PARCEL_ACRES))); recomputeLand(); }
+    if(!S.buildings) S.buildings={}; if(!S.fences) S.fences=[];
+    startWeekScenario(); go('game'); render(); toast('Game loaded');
+  }catch(e){ toast('Load failed'); }
+}
+function newGameConfirm(){ if(hasSave() && !confirm('Start a new ranch? This overwrites your saved game.')) return; go('map'); }
+function toast(msg){ const t=$('toast'); if(!t) return; t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),1900); }
 
 function openHelp(){
   modal(`<h2>📚 Cattle Industry 101</h2>
@@ -833,6 +974,7 @@ function render(){
 
 /* ---------------- boot ---------------- */
 buildMap();
+if(hasSave()){ const b=$('continueBtn'); if(b) b.style.display='inline-block'; }
 </script>
 </body>
 </html>

@@ -36,14 +36,38 @@ Prices are quoted per cwt and drift weekly. Baselines reflect the recent high-ca
 feeder calves ~$280/cwt, fed cattle ~$192/cwt live, cull cows ~$116/cwt, bred cows ~$2,300/head,
 hay ~$160/ton. All tunable in the `CONFIG` object at the top of the `<script>` in `index.html`.
 
+## The 🗺️ My Land map (build your ranch)
+Open **My Land** in-game to manage your property visually. Each square is a **160-acre
+quarter-section**. Pick a tool, then click a parcel:
+- **Buy land** — gold squares touching your ranch can be purchased to expand acreage (and herd capacity).
+- **House / Barn / Stables** — place buildings on empty owned parcels. Barns add shelter (blizzard
+  protection), houses let you hire more hands, stables add horses.
+- **Fence** — fencing/cross-fencing your pastures enables rotational grazing and raises your carrying
+  capacity. Zoom in/out with ➕ / ➖.
+
+## Saving
+The game **auto-saves** to your browser every week and after major actions. Use **💾 Save** to save
+manually, and **▶ Continue Saved Game** on the title screen to pick up where you left off. (Saves live
+in your browser's localStorage, so they're tied to that browser/device.)
+
 ## This is a vertical slice
-Working now: clickable geographic US map with real state outlines (TX/MT/CO playable, Alaska &
-Hawaii drawn as insets) and a 📍 pin at each ranch's real-world location you can click to pick it,
-operation choice, starting herd/horse/barn/house, the weekly
-loop with a full first-year arc (calving → breeding → drought → weaning sale → preg-check/cull →
-winter blizzard), markets, buying/selling cattle, land/barn/labor upgrades, and the broke→bailout→
-bankruptcy path.
+Working now: clickable geographic map of the contiguous US with real state outlines (TX/MT/CO
+playable) and a 📍 pin at each ranch's real-world location, operation choice, starting
+herd/horse/barn/house, the weekly loop with a full first-year arc (calving → breeding → drought →
+weaning sale → preg-check/cull → winter blizzard), markets, buying/selling cattle, the interactive
+land-building map, crew/equipment upgrades, save/load, and the broke→bailout→bankruptcy path.
 
 Natural next steps: more states & breeds, multi-herd management, longer-term contracts (selling to a
-specific buyer/restaurant chain), banking/loans for expansion, hay inventory you grow yourself,
-employee skills, and saving your game.
+specific buyer/restaurant chain), banking/loans for expansion, hay inventory you grow yourself, and
+employee skills.
+
+## Playing online (auto-updating link)
+This repo is set up for **GitHub Pages**. Once enabled (Settings → Pages → Source: *Deploy from a
+branch* → pick this branch, folder `/root`), the game lives at a stable URL that updates on every
+push:
+
+```
+https://kalemccollum.github.io/claude-code/ranch-game/
+```
+
+(Requires the repository to be public, or GitHub Pro for private Pages.)
