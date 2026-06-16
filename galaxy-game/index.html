@@ -3631,8 +3631,15 @@ const UI = {
       return `${this.statHeader()}
       <div class="card"><h2>Assign &middot; <span class="${SEAT_COLOR[role]||'dim'}">${seatLabel(seat)}</span> &middot; ${v?v.name:"ship"}</h2>
         <p class="small dim">${role==="gunner"?"A gunner mans this weapon mount in a fight. ":role==="pilot"||role==="captain"?"Pilots fly the ship. ":role==="mechanic"?"Mechanics keep it running. ":role==="open"?"An empty mount — anyone can ride here until you install a gun. ":""}Idle crewmates travel with you, so any of them can take this seat.</p>
-        ${idle.length?idle.map(c=>`<button class="full" data-putcrew="${state.crew.indexOf(c)}">${c.name} <span class="dim small">&middot; ${careerName(c.career)}</span></button>`).join("")
-          :`<p class="small dim">No idle crewmates. Hire Pilots from people you've met.</p>`}
+        ${(()=>{ const relKey={gunner:"gunnery",pilot:"piloting",captain:"piloting",mechanic:"repair"}[role];
+          const score=c=>(c.career===role?1000:0)+(relKey?crewSkill(c,relKey):0)+((crewPrimary(c)||{}).val||0)*0.1;
+          const sorted=idle.slice().sort((a,b)=>score(b)-score(a));
+          return sorted.length?`<p class="small dim">Your best for this seat are listed first.</p>`+sorted.map(c=>{ const p=crewPrimary(c);
+            const key=(relKey&&crewSkill(c,relKey)>0)?relKey:(p?p.key:null), val=key?crewSkill(c,key):0, st=key?skillTier(val):null;
+            return `<button class="full" data-putcrew="${state.crew.indexOf(c)}" style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+              <span><span${st?` style="color:${st.color}"`:""}>${c.name}</span> <span class="dim small">&middot; ${careerName(c.career)}</span></span>
+              ${st?`<span class="chip" style="color:${st.color};border-color:${st.color}88">&#9733; ${st.name} &middot; ${key} ${val}/10</span>`:'<span class="chip dim">unrated</span>'}</button>`; }).join("")
+            :`<p class="small dim">No idle crewmates. Meet people out in the galaxy and hire the skilled ones.</p>`; })()}
         <div class="divider"></div><button class="ghost full center" id="seatCancel">Cancel</button>
       </div>`;
     }
