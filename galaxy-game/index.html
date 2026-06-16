@@ -922,7 +922,9 @@ const MAP_SIGHT=64;
 function nearestDiscoveredDist(sys){ let best=Infinity;
   (state.galaxy?state.galaxy.systems:[]).forEach(s=>{ if(s.discovered) best=Math.min(best, Math.hypot(s.x-sys.x, s.y-sys.y)); });
   return best; }
+const REVEAL_ALL=true;   // whole galaxy visible from the start — set false to re-enable fog-of-war discovery
 function systemVisible(sys){
+  if(REVEAL_ALL) return true;                             // the entire galaxy is charted from the off
   if(sys.discovered || sys.seen) return true;             // charted, or once spotted on sensors — stays on the map
   if(nearestDiscoveredDist(sys)<=MAP_SIGHT) return true;
   const p=playerXY();                                     // your own sensors reveal nearby stars — even adrift, never landed
@@ -3021,10 +3023,10 @@ const UI = {
     // ---- system browser ----
     const filt=mapFilter;
     let list=vis.filter(s=>!(s.id===state.sysId&&!adrift()));
-    if(filt==="fav") list=list.filter(s=>s.fav&&s.discovered);
+    if(filt==="fav") list=list.filter(s=>s.fav);
     else if(filt==="mine") list=list.filter(s=>ownedSystems().includes(s.id));
     else if(filt==="contacts") list=list.filter(s=>!s.discovered);
-    else list=list.filter(s=>s.discovered);   // "all" = charted
+    // "all" → the whole galaxy (no filter)
     list=list.map(s=>({s,d:distOf(s)})).sort((a,b)=>a.d-b.d);
     const fchip=(id,lbl)=>`<button class="small ${filt===id?'sel':''}" data-mapfilter="${id}">${lbl}</button>`;
     const row=({s,d})=>{ const ch=s.discovered, g=ch?systemGov(s):null, reach=reachOf(s), full=controlsSystem(s.id), ownHere=ownedSystems().includes(s.id);
@@ -3046,7 +3048,7 @@ const UI = {
     return `${this.statHeader()}
     <div class="card"><div class="row between"><h2>&#128506; Galaxy Map</h2>
       <span class="tag" style="color:${galaxyZone(pos.x,pos.y).color}">${galaxyZone(pos.x,pos.y).name}</span></div>
-      <p class="small dim">You are ${cur?`in <b class="blue">${cur.name}</b>`:`<b class="gold">adrift in deep space</b>`} &middot; <b style="color:${galaxyZone(pos.x,pos.y).color}">${galaxyZone(pos.x,pos.y).name}</b>, ${core} ly from core &middot; ${charted} charted, ${vis.length-charted} contact${(vis.length-charted)!==1?"s":""} in range${jumpable?` &middot; reach <b class="gold">${caps.jump.toFixed(1)} ly</b>`:''}.</p>
+      <p class="small dim">You are ${cur?`in <b class="blue">${cur.name}</b>`:`<b class="gold">adrift in deep space</b>`} &middot; <b style="color:${galaxyZone(pos.x,pos.y).color}">${galaxyZone(pos.x,pos.y).name}</b>, ${core} ly from core &middot; <b>${vis.length}</b> systems charted${charted?` &middot; ${charted} visited`:''}${jumpable?` &middot; reach <b class="gold">${caps.jump.toFixed(1)} ly</b>`:''}.</p>
       <p class="small dim">${hg?`Held by <b style="color:${hg.color}">${hg.name}</b> &middot; they regard you as <b class="${sCol[govStance(hg)]||'dim'}">${govStance(hg)}</b>.`:`<span class="gold">Unclaimed space</span> — no power holds sway here.`}${owned?` <span style="color:${empireColor()}">&middot; your domain: ${owned} world${owned!==1?'s':''}${ctrlN?`, ${ctrlN} system${ctrlN!==1?'s':''} held`:''}</span>`:''}</p>
       ${this.mapSvg(undefined, adrift()?{originXY:pos, pick:true}:{pick:true})}
       <p class="small dim center" style="margin-top:-2px">Tap any star to inspect it.</p>
@@ -3065,7 +3067,7 @@ const UI = {
     ${powersCard}
     <div class="card sheet"><div class="row between"><h3>Systems</h3><span class="dim small">${list.length} shown</span></div>
       <div class="row" style="gap:5px;margin:4px 0 8px;flex-wrap:wrap">
-        ${fchip("all","Charted")}${fchip("fav","&#9733; Favourites")}${fchip("mine","&#9873; My domain")}${fchip("contacts","&#128225; Contacts")}</div>
+        ${fchip("all","All")}${fchip("fav","&#9733; Favourites")}${fchip("mine","&#9873; My domain")}${fchip("contacts","&#128225; Unvisited")}</div>
       ${list.length?list.slice(0,40).map(row).join("")+(list.length>40?`<p class="small dim center" style="margin-top:4px">+${list.length-40} more — zoom/pan or filter.</p>`:""):`<p class="small dim">Nothing here yet. ${filt==="fav"?"Favourite systems with the &#9734; button.":filt==="mine"?"Take worlds from the Empire tab to build your domain.":filt==="contacts"?"No uncharted contacts in sensor range.":"Chart systems by traveling to them."}</p>`}
     </div>`;
   },
