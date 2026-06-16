@@ -652,13 +652,13 @@ function shipwrightWorth(tech){ return Math.round(72000*(1+(tech||0)*0.9+(tech||
    (Pilots fly; the rest are seated now and gain mechanical roles as the game grows.) */
 const HIRE_ROLES={
   pilot:    { fee:2500, salary:5000, role:"flies the ship — needed for it to follow you" },
-  mechanic: { fee:2000, salary:3500, role:"keeps the ship running (larger ships need several)" },
+  mechanic: { fee:2000, salary:3000, role:"keeps the ship running (larger ships need several)" },
   drifter:  { fee:500,  salary:1000, role:"an out-of-work drifter glad of any berth — works a ship's holds" },
   laborer:  { fee:800,  salary:1500, role:"works the holds — big freighters can't run without a labor gang" },
   dockhand: { fee:700,  salary:1300, role:"dock worker — handy crewing a cargo hold" },
   factory:  { fee:700,  salary:1300, role:"factory hand — works a ship's holds" },
   mercenary:{ fee:2200, salary:4000, role:"hired muscle — fights for you (combat coming soon)" },
-  gunner:   { fee:2200, salary:4000, role:"mans the guns (ship combat coming soon)" },
+  gunner:   { fee:2200, salary:4500, role:"mans the guns" },
   medic:    { fee:2800, salary:4500, role:"tends the crew (healing coming soon)" },
   recruiter:{ fee:8000, salary:60000, role:"a fleet recruiter — keeps your ships crewed and scouts fresh talent (a hefty salary, but runs your whole fleet's hiring)" },
 };
