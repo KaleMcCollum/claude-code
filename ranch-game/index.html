@@ -46,15 +46,15 @@
   .pin:hover circle.ring{fill:#ffce5e}
   .pin.pinsel circle.ring{fill:#fff3cf;stroke:#4d3018;stroke-width:1.6}
   .loccard.flash{outline:3px solid var(--accent)}
-  /* land parcels */
-  .parcel rect{stroke:#cdb791;stroke-width:1.2}
-  .parcel.empty rect{fill:#efe4cc}
-  .parcel.owned rect{fill:var(--brown);stroke:#4d3018}
-  .parcel.buy{cursor:pointer}
-  .parcel.buy rect{fill:#fbeec4;stroke:var(--accent);stroke-width:2;stroke-dasharray:4 3}
-  .parcel.buy:hover rect{fill:var(--accent)}
-  .plabel{font-size:20px;text-anchor:middle;pointer-events:none}
-  .pbuy{font-size:12px;font-weight:700;fill:#9a6a0c;text-anchor:middle;pointer-events:none}
+  /* land map (organic property lines over terrain) */
+  .land-line{fill:none;stroke:#6f5234;stroke-opacity:.22;stroke-width:1.2}
+  .land-owned{stroke:#3f2a16;stroke-width:2.6;stroke-linejoin:round;cursor:pointer}
+  .land-owned:hover{fill:rgba(63,42,22,.20)}
+  .land-buy{stroke:var(--accent);stroke-width:2.6;stroke-dasharray:7 4;stroke-linejoin:round;cursor:pointer}
+  .land-buy:hover{fill:rgba(224,166,41,.42)}
+  .land-fence{fill:none;stroke:#5a3c1e;stroke-width:2.6;stroke-dasharray:2 4;stroke-linejoin:round;pointer-events:none}
+  .plabel{text-anchor:middle;pointer-events:none}
+  .pbuy{font-weight:700;fill:#6e4a0c;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:#fff;stroke-width:3px}
   /* toast */
   #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--brown);color:#fff;padding:10px 18px;border-radius:999px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:.25s;z-index:80}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -260,6 +260,7 @@ function newGameState(loc, stateKey){
     herds: [],            // [{kind:'cow'|'bull'|'calf'|'feeder', breed, head, wt}]
     land: 0, barnCap: 0, houses: 1, hands: 1, equipment: 1, horses: 1,
     parcels: [], buildings: {}, fences: [], // spatial land model
+    mapSeed: null, mapAnchor: null, townName: '', // terrain generation
     market: { feederCalf:1, fedSteer:1, cullCow:1, feederBuy:1, hay:1 }, // multipliers (random walk)
     firedThisYear: {},    // seasonal events fired
     log: [],
@@ -423,6 +424,7 @@ function chooseOp(op){
   S.buildings = {}; S.fences = [];
   S.buildings[S.parcels[0]] = 'house';
   if(S.parcels[1]) S.buildings[S.parcels[1]] = 'barn';
+  initMap();
   startWeekScenario();
   saveGame(true);
   go('game');
@@ -837,33 +839,77 @@ function onParcelClick(k){
   if(BUILD[buildTool]){ placeBuilding(k,buildTool); return; }
 }
 
+function initMap(){
+  S.mapSeed = Math.floor(Math.random()*90000)+10;
+  const cs=S.parcels.map(k=>k.split(',').map(Number));
+  S.mapAnchor = { c:Math.round(cs.reduce((s,p)=>s+p[0],0)/cs.length), r:Math.round(cs.reduce((s,p)=>s+p[1],0)/cs.length) };
+  const names=["Dry Creek","Junction","Cedar Bend","Lone Pine","Pratt","Willow Gap","Stockman's Flat","Red Bluff","Antelope","Mesa Springs"];
+  S.townName = names[S.mapSeed % names.length];
+}
 function openLandMap(){
   if(!S.parcels||!S.parcels.length){ S.parcels=makeInitialParcels(Math.max(1,Math.round(S.land/PARCEL_ACRES))); recomputeLand(); }
   if(!S.buildings) S.buildings={}; if(!S.fences) S.fences=[];
+  if(S.mapSeed==null) initMap();
   const owned=new Set(S.parcels), buy=new Set(buyableParcels());
   let mnC=Infinity,mxC=-Infinity,mnR=Infinity,mxR=-Infinity;
   [...owned,...buy].forEach(k=>{const [c,r]=k.split(',').map(Number);mnC=Math.min(mnC,c);mxC=Math.max(mxC,c);mnR=Math.min(mnR,r);mxR=Math.max(mxR,r);});
-  mnC--;mxC++;mnR--;mxR++;
-  const cols=mxC-mnC+1, rows=mxR-mnR+1, cell=Math.round(48*landZoom), gap=3;
-  const w=cols*(cell+gap)+gap, h=rows*(cell+gap)+gap, price=parcelPrice();
-  let g='';
-  for(let r=mnR;r<=mxR;r++) for(let c=mnC;c<=mxC;c++){
-    const k=c+','+r, x=(c-mnC)*(cell+gap)+gap, y=(r-mnR)*(cell+gap)+gap;
-    const isOwned=owned.has(k), isBuy=buy.has(k);
-    let cls='parcel empty';
-    if(isOwned) cls='parcel owned'; else if(isBuy) cls='parcel buy';
-    const clickable=isOwned||isBuy;
-    g+=`<g class="${cls}" ${clickable?`onclick="onParcelClick('${k}')"`:''}>`;
-    g+=`<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="5"/>`;
-    if(isOwned && S.fences.includes(k)) g+=`<rect x="${x+3}" y="${y+3}" width="${cell-6}" height="${cell-6}" rx="3" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="5 3"/>`;
-    if(isOwned && S.buildings[k]) g+=`<text x="${x+cell/2}" y="${y+cell/2+cell*0.2}" class="plabel" style="font-size:${Math.round(cell*0.5)}px">${BUILD[S.buildings[k]].emoji}</text>`;
-    else if(isOwned) g+=`<text x="${x+cell/2}" y="${y+cell/2+cell*0.16}" class="plabel" style="font-size:${Math.round(cell*0.42)}px;opacity:.45">🌿</text>`;
-    else if(isBuy) g+=`<text x="${x+cell/2}" y="${y+cell/2+4}" class="pbuy">$${(price/1000).toFixed(0)}k</text>`;
-    g+=`</g>`;
+  const M=2, g0c=mnC-M,g1c=mxC+M,g0r=mnR-M,g1r=mxR+M;
+  const cell=Math.round(72*landZoom), pad=Math.round(cell*0.7);
+  const w=(g1c-g0c+1)*cell+pad*2, h=(g1r-g0r+1)*cell+pad*2, price=parcelPrice();
+  const proj=(gx,gy)=>[ (gx-g0c)*cell+pad, (gy-g0r)*cell+pad ];
+  const P=a=>a[0].toFixed(1)+','+a[1].toFixed(1);
+  // deterministic value-noise hash (stable per game via mapSeed)
+  const H=(i,j,s)=>{ const x=Math.sin(i*127.1+j*311.7+s*74.7+S.mapSeed*0.137)*43758.5453; return x-Math.floor(x); };
+  const vtx=(i,j)=>proj(i+(H(i,j,1)-0.5)*0.46, j+(H(i,j,2)-0.5)*0.46);
+  const eH=(i,j)=>proj(i+0.5, j+(H(i,j,3)-0.5)*0.40);
+  const eV=(i,j)=>proj(i+(H(i,j,4)-0.5)*0.40, j+0.5);
+  const parcelD=(c,r)=>{ const A=vtx(c,r),B=vtx(c+1,r),C=vtx(c+1,r+1),D=vtx(c,r+1),T=eH(c,r),R=eV(c+1,r),Bo=eH(c,r+1),L=eV(c,r);
+    return `M${P(A)} Q${P(T)} ${P(B)} Q${P(R)} ${P(C)} Q${P(Bo)} ${P(D)} Q${P(L)} ${P(A)} Z`; };
+
+  // ---------- terrain background ----------
+  const a=S.mapAnchor; let bg='';
+  const tl=proj(g0c-1,g0r-1), brc=proj(g1c+2,g1r+2);
+  bg+=`<rect x="${tl[0]}" y="${tl[1]}" width="${brc[0]-tl[0]}" height="${brc[1]-tl[1]}" fill="#cfe2a3"/>`; // grassland
+  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){ // mottling
+    if(H(c,r,9)>0.6){ const p=proj(c+H(c,r,11), r+H(c,r,12)); bg+=`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${(cell*0.5).toFixed(1)}" fill="#c4db93" opacity="0.5"/>`; }
   }
+  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){ // forests
+    if(H(c,r,7)>0.73){
+      const ctr=proj(c+0.5,r+0.5);
+      bg+=`<circle cx="${ctr[0].toFixed(1)}" cy="${ctr[1].toFixed(1)}" r="${(cell*0.5).toFixed(1)}" fill="#7ba65d"/>`;
+      for(let kk=0;kk<7;kk++){ const ang=H(c,r,20+kk)*6.283, rad=H(c,r,30+kk)*cell*0.42; bg+=`<circle cx="${(ctr[0]+Math.cos(ang)*rad).toFixed(1)}" cy="${(ctr[1]+Math.sin(ang)*rad).toFixed(1)}" r="${(cell*0.12).toFixed(1)}" fill="#52803a"/>`; }
+    }
+  }
+  // river meandering across the map
+  const yr=x=> a.r + 2.4 + 1.7*Math.sin((x-a.c)*0.5 + (S.mapSeed%6));
+  let rv=[]; for(let x=g0c-1;x<=g1c+2;x+=0.25) rv.push(proj(x, yr(x)));
+  bg+=`<polyline points="${rv.map(P).join(' ')}" fill="none" stroke="#7cb6da" stroke-width="${(cell*0.24).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  bg+=`<polyline points="${rv.map(P).join(' ')}" fill="none" stroke="#a7d2ea" stroke-width="${(cell*0.09).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>`;
+  // lake + pond (irregular blobs)
+  const blob=(gx,gy,rg,salt)=>{ let pts=[]; for(let kk=0;kk<14;kk++){ const ang=kk/14*6.283, rr=rg*(0.65+0.55*H(Math.round(gx*3),Math.round(gy*3),salt+kk)); pts.push(proj(gx+Math.cos(ang)*rr, gy+Math.sin(ang)*rr)); } return `<polygon points="${pts.map(P).join(' ')}" fill="#7cb6da" stroke="#5b97be" stroke-width="1.5"/>`; };
+  bg+=blob(a.c-2.2, a.r+3.0, 1.0, 50);
+  bg+=blob(a.c+3.3, a.r+0.6, 0.45, 70);
+  // road from the ranch to a nearby town
+  const tc=a.c+5, tr=a.r-3, home=S.parcels[0].split(',').map(Number);
+  const hp=proj(home[0]+0.5,home[1]+0.5), tp=proj(tc+0.5,tr+0.6), midp=proj((home[0]+tc)/2+0.6,(home[1]+tr)/2);
+  bg+=`<path d="M${P(hp)} Q${P(midp)} ${P(tp)}" fill="none" stroke="#b9a07a" stroke-width="${(cell*0.15).toFixed(1)}" stroke-linecap="round"/>`;
+  bg+=`<path d="M${P(hp)} Q${P(midp)} ${P(tp)}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 6" opacity="0.7"/>`;
+  for(let kk=0;kk<6;kk++){ const bp=proj(tc+(kk%3)*0.34, tr+Math.floor(kk/3)*0.4); bg+=`<rect x="${(bp[0]-cell*0.09).toFixed(1)}" y="${(bp[1]-cell*0.09).toFixed(1)}" width="${(cell*0.18).toFixed(1)}" height="${(cell*0.18).toFixed(1)}" rx="2" fill="#caa46e" stroke="#7a5a36"/>`; }
+  bg+=`<text x="${tp[0].toFixed(1)}" y="${(tp[1]-cell*0.32).toFixed(1)}" text-anchor="middle" font-size="${Math.round(cell*0.2)}" font-weight="700" fill="#5a3c1e" paint-order="stroke" stroke="#fff" stroke-width="3">${S.townName}</text>`;
+
+  // ---------- property lines (organic) ----------
+  let pc='';
+  for(let r=g0r;r<=g1r;r++) for(let c=g0c;c<=g1c;c++){ const k=c+','+r; if(!owned.has(k)&&!buy.has(k)) pc+=`<path class="land-line" d="${parcelD(c,r)}"/>`; }
+  buy.forEach(k=>{ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-buy" onclick="onParcelClick('${k}')" d="${parcelD(c,r)}" fill="rgba(224,166,41,0.16)"/>`;
+    const ctr=proj(c+0.5,r+0.5); pc+=`<text class="pbuy" x="${ctr[0].toFixed(1)}" y="${(ctr[1]+4).toFixed(1)}" style="font-size:${Math.round(cell*0.18)}px">$${(price/1000).toFixed(0)}k</text>`; });
+  owned.forEach(k=>{ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-owned" onclick="onParcelClick('${k}')" d="${parcelD(c,r)}" fill="rgba(120,86,46,0.10)"/>`; });
+  S.fences.forEach(k=>{ if(owned.has(k)){ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-fence" d="${parcelD(c,r)}"/>`; } });
+  let gl='';
+  owned.forEach(k=>{ if(S.buildings[k]){ const [c,r]=k.split(',').map(Number), ctr=proj(c+0.5,r+0.5); gl+=`<text class="plabel" x="${ctr[0].toFixed(1)}" y="${(ctr[1]+cell*0.16).toFixed(1)}" style="font-size:${Math.round(cell*0.42)}px">${BUILD[S.buildings[k]].emoji}</text>`; } });
+
   const tool=(id,emoji,label,sub)=>`<button class="btn ${buildTool===id?'':'ghost'}" style="flex-direction:column;line-height:1.1" onclick="setTool('${id}')">${emoji} ${label}<br><small style="font-weight:400;opacity:.8">${sub}</small></button>`;
   let html=`<h2>🗺️ My Land — near ${S.loc.name.split('(')[0].trim()}, ${S.stateKey}</h2>
-    <p class="muted">Each square is a <b>${PARCEL_ACRES}-acre quarter-section</b>. You own <b>${S.parcels.length}</b> (${S.land} acres) · capacity <b>${carryingCapacity()} head</b> · shelter ${S.barnCap} · houses ${S.houses} · 🐎 ${S.horses}. Pick a tool, then click a parcel.</p>
+    <p class="muted">Your property near <b>${S.townName}</b>. You own <b>${S.parcels.length}</b> parcels (${S.land} acres, ~160 ac each) · capacity <b>${carryingCapacity()} head</b> · shelter ${S.barnCap} · houses ${S.houses} · 🐎 ${S.horses}. Pick a tool, then click land.</p>
     <div class="toolbar" style="margin-bottom:6px">
       ${tool('buy','🟨','Buy land', $money(price))}
       ${tool('house','🏠','House', $money(BUILD.house.cost))}
@@ -877,8 +923,8 @@ function openLandMap(){
       <span class="pill">Cash: ${$money(S.cash)}</span>
       <span class="pill">${toolHint()}</span>
     </div>
-    <div style="overflow:auto;max-height:48vh;border:1px solid var(--line);border-radius:10px;background:#eef4ea;padding:4px">
-      <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;margin:auto">${g}</svg>
+    <div style="overflow:auto;max-height:48vh;border:1px solid var(--line);border-radius:10px;background:#cfe2a3;padding:0">
+      <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;margin:auto">${bg}${pc}${gl}</svg>
     </div>
     <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Close</button>`;
   modal(html);
@@ -905,6 +951,7 @@ function loadGame(){
     S=JSON.parse(raw);
     if(!S.parcels||!S.parcels.length){ S.parcels=makeInitialParcels(Math.max(1,Math.round((S.land||320)/PARCEL_ACRES))); recomputeLand(); }
     if(!S.buildings) S.buildings={}; if(!S.fences) S.fences=[];
+    if(S.mapSeed==null) initMap();
     startWeekScenario(); go('game'); render(); toast('Game loaded');
   }catch(e){ toast('Load failed'); }
 }
