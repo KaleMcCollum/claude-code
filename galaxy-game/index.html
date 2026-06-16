@@ -923,12 +923,16 @@ function nearestDiscoveredDist(sys){ let best=Infinity;
   (state.galaxy?state.galaxy.systems:[]).forEach(s=>{ if(s.discovered) best=Math.min(best, Math.hypot(s.x-sys.x, s.y-sys.y)); });
   return best; }
 function systemVisible(sys){
-  if(sys.discovered) return true;
+  if(sys.discovered || sys.seen) return true;             // charted, or once spotted on sensors — stays on the map
   if(nearestDiscoveredDist(sys)<=MAP_SIGHT) return true;
-  const p=playerXY();                                   // your own sensors reveal nearby stars — even adrift, never landed
+  const p=playerXY();                                     // your own sensors reveal nearby stars — even adrift, never landed
   return !!p && Math.hypot(sys.x-p.x, sys.y-p.y)<=MAP_SIGHT;
 }
-function visibleSystems(){ return state.galaxy ? state.galaxy.systems.filter(systemVisible) : []; }
+/* anything in sensor range of where you are NOW gets permanently logged as a contact (s.seen),
+   so a star you brush past stays charted on your map even if you never enter it */
+function scanSensors(){ const p=playerXY(); if(!p||!state.galaxy) return;
+  (state.galaxy.systems||[]).forEach(s=>{ if(s && !s.seen && !s.discovered && Math.hypot(s.x-p.x, s.y-p.y)<=MAP_SIGHT) s.seen=true; }); }
+function visibleSystems(){ if(!state.galaxy) return []; scanSensors(); return state.galaxy.systems.filter(systemVisible); }
 /* Ship rarity scales a hull's size/power. Common is the smallest; rarer hulls are much
    bigger — an Epic Cargo Hauler dwarfs a Common one. */
 const SHIP_RARITY_MULT=[1, 1.3, 1.7, 2.4, 3.2, 4.5, 6, 8];
@@ -4698,6 +4702,7 @@ function relocateGroup(ids, destSys, destSlot){
   const sys=state.galaxy.systems[destSys]; sys.discovered=true;
   if(set.has(state.activeShip)){ state.sysId=destSys; state.atSlot=destSlot; state.system=sys;
     state.world=sys.planets[destSlot].world; state.voidPos=null; }   // arriving at a star ends the drift
+  scanSensors();   // log every star now within sensor range as a permanent contact
 }
 /* move a group to (destSys,destSlot). Uncharted worlds need you aboard (you do the charting). */
 function moveGroupTo(ids, destSys, destSlot, backTo){
@@ -4821,6 +4826,7 @@ function enterVoid(ids, np){
   const set=new Set(ids);
   (state.vehicles||[]).forEach(v=>{ if(set.has(v.id)){ v.sysId=-1; v.slot=0; } });
   if(set.has(state.activeShip)){ state.sysId=-1; state.atSlot=0; state.system=null; state.world=null; state.voidPos=np; }
+  scanSensors();   // log stars your sensors sweep up while drifting as permanent contacts
 }
 /* hyperdrive one jump's distance in a cardinal direction (n/e/s/w). If a star is in range
    afterward, you can Jump in to it from the Deep Space view. */
