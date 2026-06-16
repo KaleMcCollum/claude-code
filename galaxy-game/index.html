@@ -662,6 +662,13 @@ const HIRE_ROLES={
 /* careers that can fill a ship's LABOR seats (grunt work in the holds) */
 const LABOR_CAREERS=["drifter","laborer","dockhand","factory"];
 const isLaborCareer=c=>LABOR_CAREERS.includes(c);
+/* ---- OFFICERS: management staff you put on salary to run things for you (not ship crew) ---- */
+const OFFICERS={
+  recruiter: { name:"Recruiter", icon:"&#128188;", fee:8000, salary:6000,
+    blurb:"Keeps every ship in your fleets fully crewed automatically, and headhunts sharper pilots & gunners over time." },
+};
+function hasOfficer(id){ return !!(state.officers && state.officers[id]); }
+function officerWages(){ return Object.keys(state.officers||{}).reduce((s,id)=>s+((OFFICERS[id]&&OFFICERS[id].salary)||0),0); }
 /* Crew combat skills (0-10). Gunnery turns a ship's raw gun power into effective damage; Piloting
    lets a nimble fighter dodge fire. Rolled from a recruit's genetics + trade when hired, and they
    sharpen with battle later. A Gunner starts strong at gunnery; a Pilot at piloting (and runs the
@@ -719,7 +726,7 @@ function shipMaint(v){ if(!spaceworthy(v)) return Math.round((v.value||0)*0.04);
   return Math.round(m); }
 /* what it costs to fully repair a ship's hull right now */
 function repairCost(v){ const miss=(v.maxHp||0)-(v.hp||0); return miss<=0?0:Math.round(miss*3*(1+(state.world?state.world.wealth:4)*0.03)); }
-function annualWages(){ return (state.crew||[]).reduce((s,c)=>s+careerSalary(c.career),0); }
+function annualWages(){ return (state.crew||[]).reduce((s,c)=>s+careerSalary(c.career),0) + officerWages(); }
 function annualMaint(){ return (state.vehicles||[]).reduce((s,v)=>s+shipMaint(v),0); }
 const careerName=id=>{ const c=CAREERS.find(x=>x.id===id); return c?c.name:"Drifter"; };
 /* Generic things people say when you greet them. */
@@ -1612,6 +1619,7 @@ const Game = {
     if(state.galaxy && state.galaxy.governments) assignCapitals(state.galaxy);          // ensure capitals sit on real systems
     if(!state.allegiance) state.allegiance={ govId:null, factionIds:[], align:0 };
     if(!state.allegiance.enemies) state.allegiance.enemies=[];
+    if(!state.officers) state.officers={};
     if(!state.empire) state.empire={ name:null, founded:state.actions||0, holdings:[], estates:[], stock:{}, threats:[] };
     else { state.empire.holdings=state.empire.holdings||[]; state.empire.estates=state.empire.estates||[]; state.empire.stock=state.empire.stock||{}; state.empire.threats=state.empire.threats||[]; }
     if(!state.contracts) state.contracts=[];
@@ -1743,7 +1751,7 @@ const Game = {
       // planetary structure is unknown until you buy a ship and leave: you are GROUNDED
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
       allegiance:{ govId:null, factionIds:[], align:0 },   // start Independent & Neutral; earn it in play
-      activeShip:null, bounties:[], contracts:[], gear:[], crew:[], lastBillYear:0, job:null,
+      activeShip:null, bounties:[], contracts:[], gear:[], crew:[], officers:{}, lastBillYear:0, job:null,
       stimReady:false, log:[],
     };
     state.world.occupied=true;   // your homeworld is inhabited (your own kind live here)
@@ -1862,6 +1870,7 @@ function advanceTime(n){
   tickTrades(n);                          // automated trade fleets bank their profit as time passes
   if(state.tradeRaid){ UI.render("traderaid"); return true; }   // raiders jumped a fleet — demand the player's call before time moves on
   tickEmpire(n);                          // your holdings produce goods (and rivals may stir)
+  runRecruiter();                         // your recruiter keeps the fleet crewed
   // natural healing between actions — faster for high Recovery, doubled at home
   if(state.hp < Game.effMaxHp()){
     const heal=Math.round(n*Game.bio("recovery")*0.3*(Game.atHome()?2:1));
@@ -3617,7 +3626,18 @@ const UI = {
       <div class="row"><button class="${tab==="crewmates"?"sel":""}" data-crewtab="crewmates">Crewmates</button>
         <button class="${tab==="ships"?"sel":""}" data-crewtab="ships">Ships</button>
         <button class="${tab==="fleets"?"sel":""}" data-crewtab="fleets">Fleets</button></div></div>
+    ${this.officersCard()}
     ${tab==="crewmates"?this.crewmatesView():tab==="fleets"?this.fleetsView():this.shipsView()}`;
+  },
+  officersCard(){
+    return `<div class="card sheet"><h3>&#128188; Officers <span class="dim small">&middot; management staff</span></h3>
+      <p class="small dim">Specialists you put on salary to run things for you — not ship crew.</p>
+      ${Object.entries(OFFICERS).map(([id,o])=>{ const have=hasOfficer(id);
+        return `<div class="frow"><div class="finfo"><div class="nm">${o.icon} ${o.name}${have?` <span class="dim small">&middot; ${state.officers[id].name}</span>`:''}</div>
+          <div class="sub">${o.blurb}</div>
+          <div class="chips" style="margin-top:4px">${have?'<span class="chip g">on staff</span>':`<span class="chip">fee ${commas(o.fee)}c</span>`}<span class="chip gold">${commas(o.salary)}c/yr</span></div></div>
+          ${have?`<button class="small ghost" data-fireoff="${id}">Dismiss</button>`:`<button class="small ${(state.credits||0)>=o.fee?'primary':''}" data-hireoff="${id}" ${(state.credits||0)>=o.fee?'':'disabled'}>Hire</button>`}</div>`; }).join("")}
+    </div>`;
   },
   crewmatesView(){
     const crew=state.crew||[], wages=annualWages();
@@ -4251,6 +4271,8 @@ const UI = {
     }
     if(screen==="crew"){
       app.querySelectorAll("[data-crewtab]").forEach(b=> b.onclick=()=>{ crewTab=b.dataset.crewtab; viewingShip=null; UI.render("crew"); });
+      app.querySelectorAll("[data-hireoff]").forEach(b=> b.onclick=()=>hireOfficer(b.dataset.hireoff));
+      app.querySelectorAll("[data-fireoff]").forEach(b=> b.onclick=()=>fireOfficer(b.dataset.fireoff));
       app.querySelectorAll("[data-selshipview]").forEach(b=> b.onclick=()=>{ viewingShip=b.dataset.selshipview; UI.render("crew"); });
       const sb=$("#shipsBack"); if(sb) sb.onclick=()=>{ viewingShip=null; UI.render("crew"); };
       app.querySelectorAll("[data-launch]").forEach(b=> b.onclick=()=>launchFighter(b.dataset.launch));
@@ -5577,6 +5599,48 @@ function hireCrew(i){
   Game.save(); UI.render("cx_person");
 }
 function idleHires(){ return (state.crew||[]).filter(c=>!c.shipId); }
+/* ---- officers: hire/fire management staff, and their automated effects ---- */
+function hireOfficer(id){ const o=OFFICERS[id]; if(!o) return; state.officers=state.officers||{};
+  if(state.officers[id]){ toast(`${o.name} already on staff`); return; }
+  if((state.credits||0)<o.fee){ toast(`Hiring a ${o.name} costs ${commas(o.fee)}c`); return; }
+  state.credits-=o.fee; state.officers[id]={ hired:true, name:genName("person") };
+  Game.logMsg(`You take on ${article(o.name)} ${o.name}, ${state.officers[id].name} — ${commas(o.salary)}c/yr.`,"good");
+  toast(`Hired ${o.name}`); Game.save(); UI.render("crew"); }
+function fireOfficer(id){ const o=OFFICERS[id]; if(!o||!hasOfficer(id)) return;
+  delete state.officers[id]; Game.logMsg(`You let your ${o.name} go.`,"sys"); Game.save(); UI.render("crew"); }
+/* a fresh recruit sourced by the recruiter — decent skills, not from the codex */
+function genCrewMember(career){ return { name:genName("person"), raceName:genName("race"), career, personIdx:-1,
+  shipId:null, seat:null, skills:rollCrewSkills(career, null), recruited:true }; }
+/* how many of each required role a ship is still missing */
+function crewNeeds(v){ const pilotsHave=Game.aboard(v,"pilot")+(v.id===state.activeShip?1:0);
+  return { pilot:Math.max(0,(v.reqPilots??1)-pilotsHave), mechanic:Math.max(0,(v.reqMech??0)-Game.aboard(v,"mechanic")),
+           gunner:Math.max(0,(v.reqGun??0)-Game.aboard(v,"gunner")), laborer:Math.max(0,(v.reqLabor??0)-Game.laborers(v)) }; }
+/* the Recruiter, ticked each action: fill empty berths across all your ships, then sometimes headhunt
+   a sharper pilot or gunner to replace your weakest */
+function runRecruiter(){
+  if(!hasOfficer("recruiter")) return;
+  let hired=0, fee=0;
+  (state.vehicles||[]).forEach(v=>{ if(v.carrier) return;             // stowed fighters get crewed when launched
+    const need=crewNeeds(v);
+    ["pilot","mechanic","gunner","laborer"].forEach(role=>{ const r=HIRE_ROLES[role]; if(!r) return;
+      for(let k=0;k<need[role];k++){ if((state.credits||0)<r.fee) return;   // out of money — stop hiring
+        state.credits-=r.fee; fee+=r.fee; state.crew=state.crew||[];
+        const m=genCrewMember(role); m.shipId=v.id; m.seat=Game.shipCrew(v).length; state.crew.push(m); hired++; } });
+  });
+  if(hired) Game.logMsg(`Your recruiter crews up ${hired} berth${hired>1?"s":""} across the fleet (${commas(fee)}c in signing fees).`,"sys");
+  if(chance(0.05)) recruiterUpgrade();
+}
+function recruiterUpgrade(){
+  const role=chance(0.5)?"pilot":"gunner", which=role==="pilot"?"piloting":"gunnery";
+  const cands=(state.crew||[]).filter(c=>c.career===role && c.shipId); if(!cands.length) return;
+  const weakest=cands.reduce((a,b)=>crewSkill(a,which)<=crewSkill(b,which)?a:b);
+  const better=rollCrewSkills(role,null);
+  if((better[which]||0) > crewSkill(weakest,which)+1 && (state.credits||0)>=HIRE_ROLES[role].fee){
+    state.credits-=HIRE_ROLES[role].fee;
+    weakest.name=genName("person"); weakest.raceName=genName("race"); weakest.skills=better; weakest.recruited=true;
+    Game.logMsg(`Your recruiter headhunts a sharper ${careerName(role)} (${which} ${better[which]}) for one of your berths.`,"good");
+  }
+}
 let seatPick=null, crewTab="crewmates", viewingShip=null;   // Crew-tab UI state
 let travelCtx=null;   // {ids:[shipId], title} — what the Travel screen is moving
 let mapView=null;     // {cx,cy,span} — galaxy-map viewport in light-years
