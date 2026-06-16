@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ranch Tycoon — a cattle ranching life sim</title>
+<style>
+  :root{
+    --bg:#1b1410; --panel:#2a211a; --panel2:#332821; --ink:#f3e9dc; --muted:#b9a890;
+    --accent:#d9a441; --good:#6fbf73; --bad:#e2705f; --line:#4a3b2e;
+    --premium:#c9a0dc; --commodity:#9bb7d4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+  button{font-family:inherit;cursor:pointer}
+  h1,h2,h3{margin:.2em 0;font-weight:700}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px}
+  .screen{display:none}
+  .screen.active{display:block}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:.82rem;margin:2px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:12px 0;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+  .btn{background:var(--accent);color:#241a0f;border:none;border-radius:8px;padding:10px 16px;font-weight:700;font-size:.95rem}
+  .btn:hover{filter:brightness(1.08)}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .choice{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0;transition:.12s}
+  .choice:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .choice .lbl{font-weight:700}
+  .choice .tip{display:block;color:var(--muted);font-size:.85rem;margin-top:3px}
+  /* intro */
+  .hero{text-align:center;padding:40px 0}
+  .hero h1{font-size:2.4rem;color:var(--accent)}
+  /* map */
+  #mapGrid{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:5px;max-width:760px;margin:10px auto}
+  .st{aspect-ratio:1;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;border:1px solid var(--line);background:#241d16;color:#6a5b4a;user-select:none}
+  .st.avail{background:#3a5a3f;color:#eafaea;cursor:pointer;border-color:#5f8a64}
+  .st.avail:hover{background:#4f7a55;transform:scale(1.06)}
+  .st.sel{outline:3px solid var(--accent)}
+  .legend{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:8px 0;font-size:.85rem}
+  .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:5px}
+  /* dashboard */
+  .topbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+  .stat{display:flex;flex-direction:column;line-height:1.1}
+  .stat b{font-size:1.05rem}
+  .stat small{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+  .grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}.wrap{padding:10px}}
+  .log{max-height:220px;overflow:auto;font-size:.86rem}
+  .log .e{padding:4px 0;border-bottom:1px dashed var(--line)}
+  .ok{color:var(--good)} .warn{color:var(--bad)} .acc{color:var(--accent)}
+  .row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dotted var(--line)}
+  .seasonchip{font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:.88rem}
+  td,th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal.active{display:flex}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:560px;width:100%;padding:20px;max-height:88vh;overflow:auto}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .toolbar .btn{padding:8px 12px;font-size:.85rem}
+  .help{cursor:help;border-bottom:1px dotted var(--muted)}
+  .outcome{background:var(--panel2);border-left:4px solid var(--accent);padding:10px 14px;border-radius:0 8px 8px 0;margin:10px 0}
+  .num{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===================== INTRO ===================== -->
+  <section id="intro" class="screen active">
+    <div class="hero">
+      <h1>🐄 Ranch Tycoon</h1>
+      <p class="muted">A week-by-week cattle ranching life sim. Pick your land, run a real operation,<br>survive the seasons and the markets. Get smart or go broke.</p>
+      <button class="btn" onclick="go('map')">Start a New Ranch →</button>
+    </div>
+    <div class="card">
+      <h3>How it works</h3>
+      <p class="muted">The year runs in <b>52 weeks</b> across four seasons. Every week brings a decision. Where you ranch
+      decides your weather, costs, and which markets you can reach. You start small — just you, a horse, a few head of
+      cattle and a barn — and grow from there. Money is real: cattle are priced by the
+      <span class="help" title="Hundredweight = 100 lbs. Cattle are sold by weight, quoted in dollars per cwt. A 550 lb calf at $280/cwt = 5.5 × $280 = $1,540.">hundredweight (cwt)</span>,
+      feed and weather will eat you alive if you aren't paying attention.</p>
+    </div>
+  </section>
+
+  <!-- ===================== MAP ===================== -->
+  <section id="map" class="screen">
+    <h2>Where do you want to ranch?</h2>
+    <p class="muted">Click a green state to see available starter ranches. (More states coming soon.)</p>
+    <div class="legend">
+      <span><span class="swatch" style="background:#3a5a3f"></span>Available now</span>
+      <span><span class="swatch" style="background:#241d16"></span>Coming soon</span>
+    </div>
+    <div id="mapGrid"></div>
+    <div id="locPicker"></div>
+  </section>
+
+  <!-- ===================== OPERATION ===================== -->
+  <section id="op" class="screen">
+    <h2 id="opTitle">Choose your operation</h2>
+    <p class="muted">Two classic ways to run cattle. This is the biggest decision you'll make.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>🐮 Cow-Calf</h3>
+        <p>You keep a permanent <b>breeding herd</b> of mama cows and a bull. Each spring the cows
+        <span class="help" title="Calving = giving birth. Most ranches calve once a year in late winter/spring.">calve</span>,
+        you raise the calves on grass, then <span class="help" title="Weaning = separating calves from cows, around 7 months / ~550 lbs, to sell.">wean</span> and sell them in the fall as
+        <span class="help" title="Feeder calves are young cattle (450–650 lb) sold to be 'grown out' and finished by someone else.">feeder calves</span>.</p>
+        <p class="muted"><b>Feel:</b> steady, grass-based, lower feed bills, slow money. The bedrock of the beef business.</p>
+        <button class="btn" onclick="chooseOp('cowcalf')">Run a Cow-Calf ranch</button>
+      </div>
+      <div class="card">
+        <h3>🥩 Finisher (Feedlot)</h3>
+        <p>You <b>buy feeder cattle</b> from cow-calf ranchers, then feed them a grain ration to put on weight fast and
+        <span class="help" title="Finishing = feeding cattle to ~1,300–1,400 lb slaughter weight, then selling to a meat packer ('fed cattle').">finish</span>
+        them to slaughter weight, selling
+        <span class="help" title="Fed/'fat' cattle sold to packers at ~1,350 lb live weight.">fed cattle</span> to packers.</p>
+        <p class="muted"><b>Feel:</b> fast cycles (~5 months), big feed bills, higher risk/reward, swings hard with corn &amp; beef prices.</p>
+        <button class="btn" onclick="chooseOp('finisher')">Run a Finisher ranch</button>
+      </div>
+    </div>
+    <button class="btn ghost" onclick="go('map')">← Back to map</button>
+  </section>
+
+  <!-- ===================== GAME ===================== -->
+  <section id="game" class="screen">
+    <div class="topbar" id="topbar"></div>
+    <div class="grid2" style="margin-top:14px">
+      <div>
+        <div class="card" id="scenarioCard"></div>
+        <div class="card">
+          <h3>📜 Ranch Log</h3>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card" id="ranchPanel"></div>
+        <div class="card">
+          <h3>Manage</h3>
+          <div class="toolbar">
+            <button class="btn" onclick="openMarket()">🛒 Market</button>
+            <button class="btn" onclick="openRanchUpgrades()">🏗️ Ranch</button>
+            <button class="btn ghost" onclick="openHelp()">❓ Industry 101</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+
+<script>
+/* =========================================================================
+   RANCH TYCOON — vertical slice
+   All tunable numbers live in CONFIG so the sim is easy to balance.
+   ========================================================================= */
+
+const CONFIG = {
+  startWeek: 1, startYear: 1,
+  livingCostWeek: 480,          // your own draw / household
+  graze$Head: 0.35,             // pasture upkeep $/head/day in grazing season
+  hay$Head: 2.60,               // hay feeding $/head/day in winter
+  feedlot$Head: 4.80,           // grain ration $/head/day for finishing cattle
+  feederGain: 3.0,              // lb/day gain for cattle on feed
+  calfGain: 1.9,                // lb/day gain for nursing/grazing calves
+  finishWeight: 1340,           // target sale weight for fed cattle
+  weanWeight: 560,              // typical weaning weight
+  // Markets are quoted $/cwt (per 100 lb) unless noted /head or /ton.
+  base: {
+    feederCalf: 280,   // $/cwt, 5–6 wt feeder calves
+    fedSteer: 192,     // $/cwt live, finished cattle
+    cullCow: 116,      // $/cwt, old/open cows to slaughter
+    feederBuy: 252,    // $/cwt, cost to BUY feeders (7–8 wt)
+    bredCow: 2300,     // $/head
+    bull: 4200,        // $/head
+    hayTon: 160,       // $/ton
+  },
+  bailoutLoan: 50000, loanInterestWeek: 0.0025, // ~13%/yr operating note
+  brokeFloor: -12000,
+};
+
+const BREEDS = {
+  angus:    {name:"Black Angus", mult:1.13, market:"premium",   note:"Marbles well; qualifies for Certified Angus Beef. Restaurants pay up."},
+  hereford: {name:"Hereford",    mult:1.02, market:"commodity", note:"Hardy, docile, efficient. The reliable workhorse breed."},
+  brangus:  {name:"Brangus",     mult:1.05, market:"commodity", note:"Angus×Brahman. Handles heat & humidity — built for the South."},
+  charolais:{name:"Charolais",   mult:1.06, market:"commodity", note:"Big, fast-growing French breed. Heavy weaning weights."},
+  holstein: {name:"Holstein",    mult:0.82, market:"commodity", note:"Dairy-beef. Cheap, uniform, sells to big commodity/box-store buyers."},
+};
+
+// US tile-grid map. [row,col]. Only avail:true states are playable in the slice.
+const STATES = {
+  AK:[8,0],HI:[8,1],
+  WA:[2,0],ID:[2,1],MT:[2,2],ND:[2,3],MN:[2,4],WI:[2,6],MI:[2,7],NY:[2,9],MA:[2,10],
+  ME:[0,10],VT:[1,9],NH:[1,10],
+  OR:[3,0],NV:[3,1],WY:[3,2],SD:[3,3],IA:[3,4],IL:[3,5],IN:[3,6],OH:[3,7],PA:[3,8],NJ:[3,9],CT:[3,10],RI:[3,11],
+  CA:[4,0],UT:[4,1],CO:[4,2],NE:[4,3],MO:[4,4],KY:[4,5],WV:[4,6],VA:[4,7],MD:[4,8],DE:[4,9],
+  AZ:[5,1],NM:[5,2],KS:[5,3],AR:[5,4],TN:[5,5],NC:[5,6],SC:[5,7],
+  OK:[6,3],LA:[6,4],MS:[6,5],AL:[6,6],GA:[6,7],
+  TX:[7,2],FL:[7,8],
+};
+
+// Playable locations. winterFeedWeeks=weeks/yr you must feed hay; heat/drought/blizzard 0..1;
+// land=$/acre; acresPerCow=stocking rate; feedlot=proximity bonus for finishing.
+const LOCATIONS = {
+  TX: { name:"Texas", defaultBreed:"brangus", locs:[
+    {id:"tx_south", name:"South Texas Brush Country (Cotulla)", land:2400, acresPerCow:13, winterFeedWeeks:8, heat:0.85, drought:0.18, blizzard:0, feedlot:0.4,
+      pros:["Long grazing season, short winters","Brahman-influenced cattle thrive in heat"], cons:["Brutal summer heat stress","Real drought risk","Thin brushy forage"]},
+    {id:"tx_pan", name:"Texas Panhandle (Amarillo)", land:1800, acresPerCow:18, winterFeedWeeks:14, heat:0.5, drought:0.14, blizzard:0.2, feedlot:0.95,
+      pros:["Heart of US feedlot country — best fed-cattle market","Cheap local corn for finishing"], cons:["Cold snaps & spring blizzards","Wind and dust"]},
+    {id:"tx_hill", name:"Texas Hill Country (Kerrville)", land:4200, acresPerCow:11, winterFeedWeeks:10, heat:0.6, drought:0.16, blizzard:0.02, feedlot:0.35,
+      pros:["Mild winters, scenic","Strong local/premium beef demand"], cons:["Expensive land","Rocky, limited stocking"]},
+  ]},
+  MT: { name:"Montana", defaultBreed:"angus", locs:[
+    {id:"mt_east", name:"Eastern Montana Rangeland (Miles City)", land:900, acresPerCow:25, winterFeedWeeks:26, heat:0.15, drought:0.12, blizzard:0.7, feedlot:0.3,
+      pros:["Cheap land — buy a LOT of acres","Excellent summer grass, low pests"], cons:["Long, brutal winters (big hay bills)","Blizzard death-loss risk","Low stocking rate"]},
+    {id:"mt_cen", name:"Central Montana (Lewistown)", land:1500, acresPerCow:18, winterFeedWeeks:24, heat:0.2, drought:0.12, blizzard:0.5, feedlot:0.35,
+      pros:["Mix of grass & grain ground","Strong, hardy Angus country"], cons:["Hard winters","Far from major packers"]},
+    {id:"mt_flat", name:"Flathead Valley NW (Kalispell)", land:5000, acresPerCow:14, winterFeedWeeks:20, heat:0.2, drought:0.08, blizzard:0.35, feedlot:0.3,
+      pros:["Milder mountain valley","Good water & forage"], cons:["Very expensive land","Limited acreage to expand"]},
+  ]},
+  CO: { name:"Colorado", defaultBreed:"angus", locs:[
+    {id:"co_plains", name:"Eastern Plains (Yuma)", land:2000, acresPerCow:20, winterFeedWeeks:20, heat:0.4, drought:0.16, blizzard:0.4, feedlot:0.9,
+      pros:["Big feedlots & corn nearby — great for finishing","Good fed-cattle market access"], cons:["Plains blizzards","Dry, drought-prone"]},
+    {id:"co_west", name:"Western Slope (Montrose)", land:3500, acresPerCow:16, winterFeedWeeks:22, heat:0.3, drought:0.14, blizzard:0.3, feedlot:0.4,
+      pros:["Mountain valley grazing","Good irrigated hay ground"], cons:["Pricey land","High-altitude, short season"]},
+    {id:"co_sanluis", name:"San Luis Valley (Alamosa)", land:1800, acresPerCow:22, winterFeedWeeks:24, heat:0.25, drought:0.13, blizzard:0.45, feedlot:0.45,
+      pros:["Affordable high valley land","Cool, low pest pressure"], cons:["Very cold high-altitude winters","Short growing season"]},
+  ]},
+};
+
+/* ---------------- Game State ---------------- */
+let S = null;
+
+function newGameState(loc, stateKey){
+  return {
+    stateKey, loc,
+    breedDefault: LOCATIONS[stateKey].defaultBreed,
+    week: CONFIG.startWeek, year: CONFIG.startYear,
+    cash: 0, loan: 0, bailoutsUsed: 0,
+    op: null,
+    herds: [],            // [{kind:'cow'|'bull'|'calf'|'feeder', breed, head, wt}]
+    land: 0, barnCap: 0, houses: 1, hands: 1, equipment: 1, horses: 1,
+    market: { feederCalf:1, fedSteer:1, cullCow:1, feederBuy:1, hay:1 }, // multipliers (random walk)
+    firedThisYear: {},    // seasonal events fired
+    log: [],
+    over: false,
+  };
+}
+
+/* ---------------- Helpers ---------------- */
+const $ = id => document.getElementById(id);
+function go(screen){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(screen).classList.add('active'); window.scrollTo(0,0); }
+function $money(n){ const neg = n<0; return (neg?'-$':'$') + Math.abs(Math.round(n)).toLocaleString(); }
+function clamp(x,a,b){ return Math.max(a,Math.min(b,x)); }
+function rnd(a,b){ return a + Math.random()*(b-a); }
+function chance(p){ return Math.random() < p; }
+
+function seasonOf(week){
+  if(week>=10 && week<=22) return {name:"Spring", icon:"🌱"};
+  if(week>=23 && week<=35) return {name:"Summer", icon:"☀️"};
+  if(week>=36 && week<=48) return {name:"Fall",   icon:"🍂"};
+  return {name:"Winter", icon:"❄️"};
+}
+function isWinterFeeding(){ // region-driven: first/last N/2 weeks of year are "winter feeding"
+  const w = S.week, half = Math.round(S.loc.winterFeedWeeks/2);
+  return (w <= half) || (w >= 52 - half);
+}
+function totalHead(){ return S.herds.reduce((a,h)=>a+h.head,0); }
+function carryingCapacity(){ return Math.floor(S.land / S.loc.acresPerCow); }
+function herd(kind){ return S.herds.find(h=>h.kind===kind); }
+function addHead(kind, breed, head, wt){
+  let h = S.herds.find(x=>x.kind===kind && x.breed===breed);
+  if(h){ h.wt = (h.wt*h.head + wt*head)/(h.head+head); h.head += head; }
+  else S.herds.push({kind, breed, head, wt});
+  S.herds = S.herds.filter(h=>h.head>0);
+}
+function removeHead(kind, n){
+  let h = herd(kind); if(!h) return 0;
+  const took = Math.min(h.head, n); h.head -= took;
+  S.herds = S.herds.filter(x=>x.head>0);
+  return took;
+}
+function logE(html, cls=''){ S.log.unshift({html, cls}); if(S.log.length>120) S.log.pop(); }
+function price(key){ return CONFIG.base[key] * S.market[mkKey(key)]; }
+function mkKey(k){ return ({feederCalf:'feederCalf',fedSteer:'fedSteer',cullCow:'cullCow',feederBuy:'feederBuy',hayTon:'hay'})[k]; }
+
+/* ---------------- Build map ---------------- */
+function buildMap(){
+  const grid = $('mapGrid'); grid.innerHTML='';
+  // place 11 cols * up to 9 rows
+  const cells = {};
+  for(const [abbr,[r,c]] of Object.entries(STATES)) cells[r+'-'+c]=abbr;
+  const maxRow = Math.max(...Object.values(STATES).map(v=>v[0]));
+  for(let r=0;r<=maxRow;r++){
+    for(let c=0;c<11;c++){
+      const abbr = cells[r+'-'+c];
+      const d=document.createElement('div');
+      if(abbr){
+        d.className='st'+(LOCATIONS[abbr]?' avail':'');
+        d.textContent=abbr; d.dataset.st=abbr;
+        if(LOCATIONS[abbr]) d.onclick=()=>selectState(abbr);
+        else d.title=abbr+" — coming soon";
+      } else { d.style.visibility='hidden'; d.className='st'; }
+      grid.appendChild(d);
+    }
+  }
+}
+let pendingState=null;
+function selectState(abbr){
+  pendingState=abbr;
+  document.querySelectorAll('.st').forEach(e=>e.classList.remove('sel'));
+  document.querySelector('.st[data-st="'+abbr+'"]').classList.add('sel');
+  const data=LOCATIONS[abbr];
+  let html=`<div class="card"><h3>${data.name} — choose a starter ranch</h3>`;
+  html+=`<p class="muted">Default cattle here: <b>${BREEDS[data.defaultBreed].name}</b>. Each location changes your costs and weather.</p>`;
+  data.locs.forEach((l,i)=>{
+    html+=`<div class="card" style="background:var(--panel2)">
+      <h3>${l.name}</h3>
+      <div>
+        <span class="pill">Land $${l.land.toLocaleString()}/ac</span>
+        <span class="pill">Stocking: ${l.acresPerCow} ac/cow</span>
+        <span class="pill">Winter feeding: ${l.winterFeedWeeks} wks/yr</span>
+        ${l.feedlot>0.6?'<span class="pill">🥩 Feedlot country</span>':''}
+      </div>
+      <p style="margin:8px 0 4px"><span class="ok">Pros:</span> ${l.pros.join(' · ')}</p>
+      <p style="margin:0 0 8px"><span class="warn">Cons:</span> ${l.cons.join(' · ')}</p>
+      <button class="btn" onclick="pickLocation('${abbr}',${i})">Ranch here →</button>
+    </div>`;
+  });
+  html+=`</div>`;
+  $('locPicker').innerHTML=html;
+  $('locPicker').scrollIntoView({behavior:'smooth'});
+}
+function pickLocation(abbr,i){
+  S = newGameState(LOCATIONS[abbr].locs[i], abbr);
+  $('opTitle').textContent = `Choose your operation — ${S.loc.name}`;
+  go('op');
+}
+
+/* ---------------- Operation / starting package ---------------- */
+function chooseOp(op){
+  S.op = op;
+  const b = S.breedDefault;
+  if(op==='cowcalf'){
+    S.cash = 28000;
+    S.land = 480; S.barnCap = 60; S.equipment = 1;
+    addHead('cow', b, 32, 1150);
+    addHead('bull', b, 1, 1900);
+    logE(`You inherited a small cow-calf outfit near ${S.loc.name}: <b>32 ${BREEDS[b].name} cows</b>, 1 bull, ${S.land} acres, a small barn, an old truck and a good horse.`,'acc');
+  } else {
+    S.cash = 36000;
+    S.land = 240; S.barnCap = 140; S.equipment = 1;
+    addHead('feeder', b, 48, 720);
+    logE(`You set up a small finishing yard near ${S.loc.name}: <b>48 ${BREEDS[b].name} feeders</b> at ~720 lb, ${S.land} acres of pens & traps, feed equipment and a horse.`,'acc');
+  }
+  startWeekScenario();
+  go('game');
+  render();
+}
+
+/* ---------------- Weekly economics ---------------- */
+function weeklyCosts(){
+  let feed=0;
+  for(const h of S.herds){
+    if(S.op==='finisher' && h.kind==='feeder'){ feed += h.head * CONFIG.feedlot$Head * 7; }
+    else { feed += h.head * (isWinterFeeding()?CONFIG.hay$Head:CONFIG.graze$Head) * 7; }
+  }
+  // overstocking penalty (cow-calf grazing only)
+  let over=0;
+  if(S.op==='cowcalf'){
+    const cap=carryingCapacity(), grazers=totalHead();
+    if(grazers>cap && !isWinterFeeding()) over = (grazers-cap)*1.2*7; // buy extra forage
+  }
+  const labor = CONFIG.livingCostWeek + (S.hands-1)*900;
+  const interest = S.loan * CONFIG.loanInterestWeek;
+  return { feed:Math.round(feed), over:Math.round(over), labor, interest:Math.round(interest), total:Math.round(feed+over+labor+interest) };
+}
+
+function growCattle(){
+  for(const h of S.herds){
+    if(h.kind==='feeder'){ h.wt += CONFIG.feederGain*7 * (1 - S.loc.heat*0.15*(seasonOf(S.week).name==='Summer'?1:0)); }
+    if(h.kind==='calf'){ h.wt += CONFIG.calfGain*7; }
+  }
+}
+function driftMarkets(){
+  for(const k of Object.keys(S.market)){
+    S.market[k] = clamp(S.market[k] + rnd(-0.04,0.04), 0.7, 1.4);
+  }
+}
+
+/* ---------------- Advance a week ---------------- */
+function nextWeek(){
+  if(S.over) return;
+  // settle costs
+  const c = weeklyCosts();
+  S.cash -= c.total;
+  growCattle();
+  driftMarkets();
+  // advance time
+  S.week++;
+  if(S.week>52){ S.week=1; S.year++; S.firedThisYear={}; logE(`<b>🎉 A new year begins (Year ${S.year}).</b> You made it through another one.`,'acc'); }
+  // broke check
+  if(S.cash < CONFIG.brokeFloor){ return brokeEvent(); }
+  startWeekScenario();
+  render();
+}
+
+/* ---------------- Scenario engine ----------------
+   Each scenario: {id, once, when(s), build()-> {title, text, choices:[{label,tip,apply()->outcomeHTML}]}}
+   "Fixed" seasonal scenarios fire once/year by week. Otherwise a small random/quiet event. */
+let CURRENT=null;
+
+const SCENARIOS = [
+  /* ---- COW-CALF seasonal arc ---- */
+  { id:"calving", once:true, when:s=> s.op==='cowcalf' && s.week>=11 && herd('cow'),
+    build(){
+      const cows=herd('cow').head;
+      return { title:"🐮 Calving season is here", icon:"🌱",
+        text:`Your ${cows} cows are calving. Cold, mud, and trouble births cause death loss — especially in hard-winter country like yours (winter severity here is ${Math.round(S.loc.blizzard*100)}%). How hands-on do you want to be?`,
+        choices:[
+          {label:"Check heifers around the clock", tip:"Costs labor & sleep, but saves calves. Best calf crop.", apply(){
+            const cost=1800; S.cash-=cost;
+            const rate=0.93 - S.loc.blizzard*0.05;
+            const calves=Math.round(cows*rate);
+            addHead('calf', S.breedDefault, calves, 85);
+            return `You pulled calves at 3am all month (-${$money(cost)} in supplies/help). <b>${calves} live calves</b> on the ground — a ${Math.round(calves/cows*100)}% calf crop. Excellent.`;
+          }},
+          {label:"Normal checks, let nature work", tip:"No extra cost. Average losses.", apply(){
+            const rate=0.86 - S.loc.blizzard*0.12;
+            const calves=Math.round(cows*rate);
+            addHead('calf', S.breedDefault, calves, 85);
+            return `<b>${calves} calves</b> survived (${Math.round(calves/cows*100)}% calf crop). A few losses to cold and bad births.`;
+          }},
+        ]};
+    }},
+  { id:"breeding", once:true, when:s=> s.op==='cowcalf' && s.week>=24 && herd('cow'),
+    build(){
+      return { title:"💞 Breeding season", icon:"☀️",
+        text:`Time to breed the cows back so they calve again next spring. Your genetics decide how much your calves are worth. What's the plan?`,
+        choices:[
+          {label:"Turn out the bull you own", tip:"Free. Keeps your current genetics.", apply(){ return `You turned the bull out with the cows. No cash spent — calves will sell at standard prices for your breed.`; }},
+          {label:"Buy a registered Angus bull ($6,500)", tip:"Upgrades calf value toward the premium market.", apply(){
+            if(S.cash<6500) return `You can't afford the $6,500 bull right now.`;
+            S.cash-=6500; // shift cows toward angus genetics
+            const cow=herd('cow'); cow.breed='angus';
+            logE("Upgraded herd genetics to Black Angus.","ok");
+            return `You bought a stout registered Angus bull (-$6,500). Future calves now carry <b>Angus genetics</b> — a path into the premium beef market.`;
+          }},
+          {label:"Use AI on your best cows ($2,200)", tip:"Artificial insemination = elite genetics, more work.", apply(){
+            if(S.cash<2200) return `Not enough cash for the AI program.`;
+            S.cash-=2200; const cow=herd('cow'); cow.breed='angus';
+            return `You ran an <span class="help" title="Artificial Insemination: breeding cows with semen from top proven bulls.">AI</span> program with top Angus sires (-$2,200). Your next calf crop should be your best yet.`;
+          }},
+        ]};
+    }},
+  { id:"weaning", once:true, when:s=> s.op==='cowcalf' && s.week>=37 && herd('calf') && herd('calf').head>0,
+    build(){
+      const calf=herd('calf'); const wt=Math.round(calf.wt);
+      const ppc = price('feederCalf')*BREEDS[calf.breed].mult;
+      const each = (wt/100)*ppc;
+      return { title:"🍂 Weaning & the fall calf sale", icon:"🍂",
+        text:`Your ${calf.head} calves average <b>${wt} lb</b>. Feeder calves are bringing <b>$${ppc.toFixed(0)}/cwt</b> (${BREEDS[calf.breed].name}). That's about <b>${$money(each)} a head</b> right now. The fall run floods the market — selling now is convenient but everyone's selling.`,
+        choices:[
+          {label:`Sell all calves now (${$money(each*calf.head)})`, tip:"Cash today at fall-run prices.", apply(){
+            const gross=Math.round(each*calf.head); S.cash+=gross; const n=calf.head; removeHead('calf', n);
+            return `Sold <b>${n} calves</b> at ${wt} lb for <b>${$money(gross)}</b>. Truck's loaded, check's in hand.`;
+          }},
+          {label:"Background them 60 days, sell heavier", tip:"Feed cost now for more weight + a post-run price bump. Risk: market could drop.", apply(){
+            // keep calves, they keep gaining; flag a later sale event next year-ish; simple: bump weight and sell at premium next visit
+            calf.kind='calf'; calf.wt+=110; S.cash-=calf.head*55; // feed cost
+            const np = price('feederCalf')*BREEDS[calf.breed].mult*1.04;
+            const each2=(calf.wt/100)*np; const gross=Math.round(each2*calf.head); const n=calf.head;
+            S.cash+=gross; removeHead('calf', n);
+            return `You held and fed them (-${$money(n*55)}). Sold ${n} head at <b>${Math.round(calf.wt)} lb</b> and a firmer market for <b>${$money(gross)}</b>. The added weight paid off.`;
+          }},
+        ]};
+    }},
+  { id:"pregcheck", once:true, when:s=> s.op==='cowcalf' && s.week>=44 && herd('cow'),
+    build(){
+      const cows=herd('cow').head; const open=Math.max(1,Math.round(cows*rnd(0.06,0.12)));
+      return { title:"🔎 Preg-check & culling", icon:"🍂",
+        text:`The vet preg-checks the herd. About <b>${open} cows came up open</b> (not pregnant). Open cows eat all winter and give you nothing. Cull cows are worth $${price('cullCow').toFixed(0)}/cwt.`,
+        choices:[
+          {label:`Cull the ${open} open cows`, tip:"Sell now, save a winter of feed. The disciplined move.", apply(){
+            const each=(1150/100)*price('cullCow'); const gross=Math.round(each*open); removeHead('cow',open); S.cash+=gross;
+            return `Shipped ${open} open cows for <b>${$money(gross)}</b> and trimmed your winter feed bill.`;
+          }},
+          {label:"Keep them, hope they breed next year", tip:"No income; you'll feed them all winter for nothing.", apply(){
+            return `You kept the open cows. They'll cost you feed all winter — hope it pays off.`;
+          }},
+        ]};
+    }},
+  /* ---- FINISHER arc ---- */
+  { id:"finish_sale", once:false, when:s=> s.op==='finisher' && herd('feeder') && herd('feeder').wt>=CONFIG.finishWeight,
+    build(){
+      const f=herd('feeder'); const wt=Math.round(f.wt);
+      const ppc=price('fedSteer')*BREEDS[f.breed].mult;
+      const each=(wt/100)*ppc;
+      return { title:"🥩 Cattle are finished — sell to the packer", icon:"",
+        text:`Your ${f.head} cattle have reached <b>${wt} lb</b> — finished. Packers are bidding <b>$${ppc.toFixed(0)}/cwt</b> live (${BREEDS[f.breed].name}), about <b>${$money(each)}/head</b>. ${S.loc.feedlot>0.6?'Being in feedlot country, buyers are competing for your cattle.':'You\'re a ways from the big packers, so freight eats a little.'}`,
+        choices:[
+          {label:`Sell all (${$money(each*f.head)})`, tip:"Take the market. Then refill your pens with new feeders.", apply(){
+            let net=each*f.head; if(S.loc.feedlot<0.6) net*=0.97;
+            const gross=Math.round(net); const n=f.head; removeHead('feeder',n); S.cash+=gross;
+            return `Sold <b>${n} head</b> at ${wt} lb for <b>${$money(gross)}</b>. Pens are empty — buy feeders to refill them (Market button).`;
+          }},
+          {label:"Hold 2 weeks for a better bid", tip:"More feed cost + risk of price drop; cattle get over-finished (discounted) if too heavy.", apply(){
+            S.cash -= f.head*CONFIG.feedlot$Head*14; f.wt+=42;
+            const ppc2=price('fedSteer')*BREEDS[f.breed].mult*0.99;
+            const gross=Math.round((f.wt/100)*ppc2*f.head*(S.loc.feedlot<0.6?0.97:1)); const n=f.head;
+            removeHead('feeder',n); S.cash+=gross;
+            return `Held two weeks (extra feed). Sold ${n} head at ${Math.round(f.wt)} lb for <b>${$money(gross)}</b>. Heavy cattle risk price discounts — watch that next time.`;
+          }},
+        ]};
+    }},
+  /* ---- shared weather / market / opportunity events ---- */
+  { id:"drought", once:true, when:s=> seasonOf(s.week).name==='Summer' && chance(s.loc.drought*1.4),
+    build(){
+      return { title:"🌵 Drought watch", icon:"☀️",
+        text:`Rain has stopped and the grass is burning up. Pastures won't carry your cattle much longer. Drought is a top way ranchers go broke — react early.`,
+        choices:[
+          {label:"Buy hay early to bridge the gap", tip:"Costs cash now, protects body condition & the herd.", apply(){
+            const cost=Math.round(totalHead()*45); S.cash-=cost;
+            return `You locked in hay before prices spiked (-${$money(cost)}). The cattle stay in good shape.`;
+          }},
+          {label:"Sell some cows to lighten the load", tip:"Destock to match the grass. Less feed risk, fewer cows.", apply(){
+            if(!herd('cow')) return `Nothing practical to destock right now.`;
+            const n=Math.max(1,Math.round(herd('cow').head*0.2)); const gross=Math.round((1150/100)*price('cullCow')*n);
+            removeHead('cow',n); S.cash+=gross;
+            return `Sold ${n} cows for <b>${$money(gross)}</b> to match your grass. Smaller herd, lower risk.`;
+          }},
+          {label:"Gamble that rain comes", tip:"Free now. If you're wrong, expect death loss and weight loss.", apply(){
+            if(chance(0.45)) return `Storms rolled in just in time. You dodged it — this round.`;
+            const n=Math.max(1,Math.round(totalHead()*0.06)); removeHead(S.op==='finisher'?'feeder':'cow',n);
+            return `The drought held. You lost condition and <b>${n} head</b>. Gambling on rain is how ranches die.`;
+          }},
+        ]};
+    }},
+  { id:"blizzard", once:true, when:s=> seasonOf(s.week).name==='Winter' && chance(s.loc.blizzard*0.5),
+    build(){
+      return { title:"❄️ Blizzard warning", icon:"❄️",
+        text:`A major winter storm is bearing down. Cattle caught without shelter or feed can die in the cold. Your barn shelters about ${S.barnCap} head; you're running ${totalHead()}.`,
+        choices:[
+          {label:"Haul extra feed & bed down the herd", tip:"Costs money, prevents most losses.", apply(){
+            const cost=Math.round(totalHead()*22); S.cash-=cost;
+            const n = totalHead()>S.barnCap ? Math.round((totalHead()-S.barnCap)*0.04) : 0;
+            if(n>0) removeHead(S.op==='finisher'?'feeder':'cow',n);
+            return `You fed heavy and bedded them down (-${$money(cost)}). ${n>0?`Lost ${n} head that couldn't fit shelter — your barn's too small.`:'The herd came through fine.'}`;
+          }},
+          {label:"Ride it out as-is", tip:"Free, but expect death loss — worse if overstocked.", apply(){
+            const base=0.05 + Math.max(0,(totalHead()-S.barnCap))/Math.max(1,totalHead())*0.08;
+            const n=Math.max(1,Math.round(totalHead()*base)); removeHead(S.op==='finisher'?'feeder':'cow',n);
+            return `The storm killed <b>${n} head</b>. A bigger barn would have saved some.`;
+          }},
+        ]};
+    }},
+  { id:"market_swing", once:false, when:s=> true,
+    build(){
+      const up=chance(0.5);
+      return { title: up?"📈 Cattle market rallies":"📉 Cattle market slips", icon:"",
+        text: up ? `Buyers are hungry — packers and feedlots are bidding aggressively this week. Prices ticked up across the board.`
+                 : `Beef demand softened and a big set of cattle hit the auction. Prices eased a bit this week.`,
+        choices:[
+          {label:"Note it and carry on", tip:"Markets move every week. Watch the per-cwt prices in the Market screen.", apply(){
+            const d=up?0.06:-0.05;
+            for(const k of ['feederCalf','fedSteer']) S.market[k]=clamp(S.market[k]+d,0.7,1.4);
+            return up?`You jot down the higher bids — good week to be selling.`:`You make a mental note to avoid selling into a soft market if you can wait.`;
+          }},
+        ]};
+    }},
+  { id:"vet", once:false, when:s=> totalHead()>0 && chance(0.5),
+    build(){
+      return { title:"🩺 Sick animal", icon:"",
+        text:`A few head are off feed and droopy — looks like <span class="help" title="Bovine Respiratory Disease: the #1 killer in cattle, common after weather stress or shipping.">respiratory disease (BRD)</span>. The vet can treat them.`,
+        choices:[
+          {label:"Treat promptly ($420)", tip:"Antibiotics & vet call. Saves the animals.", apply(){ S.cash-=420; return `Treated early (-$420). They pulled through. Catching BRD fast saves cattle.`; }},
+          {label:"Wait and watch", tip:"Free, but BRD spreads and kills.", apply(){
+            if(chance(0.5)) return `They recovered on their own this time. Lucky.`;
+            const n=Math.max(1,Math.round(totalHead()*0.03)); removeHead(S.op==='finisher'?'feeder':'cow',n);
+            return `It spread. You lost <b>${n} head</b>. BRD is the #1 killer in cattle — treat early.`;
+          }},
+        ]};
+    }},
+  { id:"land_offer", once:false, when:s=> chance(0.35),
+    build(){
+      const acres = [80,120,160,240][Math.floor(Math.random()*4)];
+      const cost = Math.round(acres*S.loc.land);
+      return { title:"🤝 Neighbor selling land", icon:"",
+        text:`The neighbor is selling <b>${acres} acres</b> of grass at $${S.loc.land.toLocaleString()}/acre — <b>${$money(cost)}</b>. More land = more cattle you can carry (currently ${carryingCapacity()} head capacity on ${S.land} acres).`,
+        choices:[
+          {label:`Buy the ${acres} acres (${$money(cost)})`, tip:"Expands your carrying capacity. The #1 way to grow a cow herd.", apply(){
+            if(S.cash<cost) return `You can't cover ${$money(cost)} right now.`;
+            S.cash-=cost; S.land+=acres; return `Bought ${acres} acres (-${$money(cost)}). You can now carry <b>${carryingCapacity()} head</b>.`;
+          }},
+          {label:"Pass for now", tip:"Keep your cash.", apply(){ return `You let it go. Land comes up again — when you're ready.`; }},
+        ]};
+    }},
+  { id:"quiet", once:false, when:s=> true,
+    build(){
+      const lines=[
+        "Quiet week. You ride fence, fix a gap in the wire, and check water.",
+        "Calm week on the ranch. You grease the tractor and move cattle to fresh grass.",
+        "Nothing dramatic — just chores, coffee, and watching the sky for weather.",
+        "A slow week. You catch up on records and study the market reports.",
+      ];
+      return { title:"🤠 A quiet week", icon:"",
+        text: lines[Math.floor(Math.random()*lines.length)],
+        choices:[{label:"Get to work — next week", tip:"Advance the calendar.", apply(){ return `Another week down. The cattle are content.`; }}],
+      };
+    }},
+];
+
+function startWeekScenario(){
+  // prefer a fitting "once-per-year" seasonal/forced scenario, else weighted random
+  const candidates = SCENARIOS.filter(sc=>{
+    if(sc.once && S.firedThisYear[sc.id]) return false;
+    try { return sc.when(S); } catch(e){ return false; }
+  });
+  // priority: arc events (calving/weaning/finish/pregcheck/breeding) first, then weather, then generic
+  const priority = ["calving","breeding","weaning","pregcheck","finish_sale","drought","blizzard"];
+  let pick = null;
+  for(const id of priority){ const c=candidates.find(x=>x.id===id); if(c){ pick=c; break; } }
+  if(!pick){
+    const generic = candidates.filter(c=>["market_swing","vet","land_offer","quiet"].includes(c.id));
+    // bias away from quiet so weeks feel alive
+    const pool=[]; generic.forEach(g=>{ const w = g.id==='quiet'?1:3; for(let i=0;i<w;i++) pool.push(g); });
+    pick = pool[Math.floor(Math.random()*pool.length)] || candidates[0];
+  }
+  if(pick && pick.once) S.firedThisYear[pick.id]=true;
+  CURRENT = pick ? Object.assign({_id:pick.id}, pick.build()) : null;
+  CURRENT.resolved=false;
+}
+
+function chooseScenario(i){
+  const ch=CURRENT.choices[i];
+  const outcome=ch.apply();
+  CURRENT.resolved=true; CURRENT.outcome=outcome;
+  logE(`<b>${CURRENT.title.replace(/^[^A-Za-z]+/,'')}:</b> ${outcome.replace(/<[^>]+>/g,'')}`);
+  render();
+}
+
+/* ---------------- Broke / bailout ---------------- */
+function brokeEvent(){
+  S.cash = S.cash; // negative
+  if(S.bailoutsUsed===0){
+    modal(`<h2 class="warn">💸 You're out of money</h2>
+      <p>Your account is at <b class="warn">${$money(S.cash)}</b>. The bank will offer you a one-time operating loan to stay in business.</p>
+      <div class="card" style="background:var(--panel2)">
+        <p><b>Operating loan: ${$money(CONFIG.bailoutLoan)}</b> at ~13%/yr (you'll pay weekly interest until it's repaid).</p>
+      </div>
+      <div class="toolbar">
+        <button class="btn" onclick="takeBailout()">Take the loan (one time)</button>
+        <button class="btn ghost" onclick="declareBankruptcy()">Declare bankruptcy & restart</button>
+      </div>`);
+  } else {
+    modal(`<h2 class="warn">🪦 Bankrupt</h2>
+      <p>You've run out of money again (<b>${$money(S.cash)}</b>) and the bank won't extend more credit. The ranch is foreclosed.</p>
+      <p class="muted">Ranching is brutal — drought, markets, and feed bills humble everyone. Try a different location or operation next time.</p>
+      <button class="btn" onclick="restart()">Start over</button>`);
+  }
+}
+function takeBailout(){ S.cash+=CONFIG.bailoutLoan; S.loan+=CONFIG.bailoutLoan; S.bailoutsUsed++; logE(`Took a ${$money(CONFIG.bailoutLoan)} operating loan. Now carrying debt with weekly interest.`,'warn'); closeModal(); startWeekScenario(); render(); }
+function declareBankruptcy(){ closeModal(); restart(); }
+function restart(){ S=null; CURRENT=null; pendingState=null; $('locPicker').innerHTML=''; go('intro'); }
+
+/* ---------------- Market & Ranch modals ---------------- */
+function modal(html){ $('modalBox').innerHTML=html; $('modal').classList.add('active'); }
+function closeModal(){ $('modal').classList.remove('active'); render(); }
+
+function openMarket(){
+  const m=CONFIG.base;
+  let html=`<h2>🛒 Market</h2><p class="muted">Cattle are priced per <span class="help" title="100 lbs. $/cwt × (weight/100) = price per head.">cwt</span>. Prices move weekly.</p>`;
+  html+=`<table>
+    <tr><th>Item</th><th>Current price</th></tr>
+    <tr><td>Feeder calves (sell)</td><td class="num">$${price('feederCalf').toFixed(0)}/cwt</td></tr>
+    <tr><td>Fed cattle (sell to packer)</td><td class="num">$${price('fedSteer').toFixed(0)}/cwt</td></tr>
+    <tr><td>Cull cows (sell)</td><td class="num">$${price('cullCow').toFixed(0)}/cwt</td></tr>
+    <tr><td>Buy feeders (~750 lb)</td><td class="num">$${price('feederBuy').toFixed(0)}/cwt</td></tr>
+    <tr><td>Hay</td><td class="num">$${price('hayTon').toFixed(0)}/ton</td></tr>
+  </table><div class="card" style="background:var(--panel2)"><h3>Actions</h3>`;
+
+  if(S.op==='finisher'){
+    const buyWt=750; const each=(buyWt/100)*price('feederBuy');
+    html+=`<div class="row"><span>Buy feeder cattle @ ${buyWt} lb — ${$money(each)}/head</span></div>
+      <div class="toolbar">
+        ${[10,25,50].map(n=>`<button class="btn" onclick="buyFeeders(${n},${buyWt})">Buy ${n} (${$money(each*n)})</button>`).join('')}
+      </div>
+      <p class="muted" style="font-size:.8rem">Your yard shelters ${S.barnCap} head; you run ${totalHead()}.</p>`;
+  } else {
+    const each=price('bredCow');
+    html+=`<div class="row"><span>Buy bred cows — ${$money(each)}/head</span></div>
+      <div class="toolbar">
+        ${[5,10,20].map(n=>`<button class="btn" onclick="buyCows(${n})">Buy ${n} (${$money(each*n)})</button>`).join('')}
+      </div>
+      <p class="muted" style="font-size:.8rem">Carrying capacity: ${carryingCapacity()} head on ${S.land} acres (${S.loc.acresPerCow} ac/cow).</p>`;
+    if(herd('cow')) html+=`<div class="toolbar"><button class="btn ghost" onclick="sellCull(5)">Sell 5 cull cows</button></div>`;
+  }
+  html+=`</div><button class="btn ghost" onclick="closeModal()">Close</button>`;
+  modal(html);
+}
+function buyFeeders(n,wt){ const cost=Math.round((wt/100)*price('feederBuy')*n); if(S.cash<cost){ alert("Not enough cash."); return; } S.cash-=cost; addHead('feeder',S.breedDefault,n,wt); logE(`Bought ${n} feeders @ ${wt} lb (-${$money(cost)}).`); openMarket(); }
+function buyCows(n){ const cost=Math.round(price('bredCow')*n); if(S.cash<cost){ alert("Not enough cash."); return; } S.cash-=cost; addHead('cow',S.breedDefault,n,1150); logE(`Bought ${n} bred cows (-${$money(cost)}).`); openMarket(); }
+function sellCull(n){ const cow=herd('cow'); if(!cow){return;} const k=Math.min(n,cow.head); const gross=Math.round((1150/100)*price('cullCow')*k); removeHead('cow',k); S.cash+=gross; logE(`Sold ${k} cull cows (+${$money(gross)}).`); openMarket(); }
+
+function openRanchUpgrades(){
+  let html=`<h2>🏗️ Build & Grow</h2><p class="muted">Reinvest profits to carry more cattle and survive weather.</p><div class="card" style="background:var(--panel2)">`;
+  const barnCost=18000, houseCost=24000, equipCost=22000;
+  html+=`<div class="row"><span>Bigger barn (+80 head shelter) — protects against blizzards</span><button class="btn" onclick="upgrade('barn',${barnCost})">${$money(barnCost)}</button></div>
+    <div class="row"><span>Hire a ranch hand (+labor, +$900/wk wages) — handle more cattle</span><button class="btn" onclick="upgrade('hand',12000)">${$money(12000)} hire</button></div>
+    <div class="row"><span>Build hand housing (needed before 3rd hand)</span><button class="btn" onclick="upgrade('house',${houseCost})">${$money(houseCost)}</button></div>
+    <div class="row"><span>Upgrade equipment (lowers feed waste & breakdowns)</span><button class="btn" onclick="upgrade('equip',${equipCost})">${$money(equipCost)}</button></div>`;
+  html+=`</div><button class="btn ghost" onclick="closeModal()">Close</button>`;
+  modal(html);
+}
+function upgrade(kind,cost){
+  if(S.cash<cost){ alert("Not enough cash."); return; }
+  S.cash-=cost;
+  if(kind==='barn'){ S.barnCap+=80; logE(`Built a bigger barn (+80 head shelter).`,'ok'); }
+  if(kind==='hand'){ S.hands++; logE(`Hired a ranch hand. Wages now +$900/wk.`,'ok'); }
+  if(kind==='house'){ S.houses++; logE(`Built hand housing.`,'ok'); }
+  if(kind==='equip'){ S.equipment++; logE(`Upgraded equipment.`,'ok'); }
+  openRanchUpgrades();
+}
+
+function openHelp(){
+  modal(`<h2>📚 Cattle Industry 101</h2>
+   <p><b>cwt (hundredweight)</b> = 100 lb. Cattle sell by weight: price/head = (weight ÷ 100) × $/cwt. A 560 lb calf at $280/cwt = $1,568.</p>
+   <p><b>Cow-Calf</b>: keep mama cows + a bull; sell weaned calves (~560 lb) each fall as <i>feeder cattle</i>. Grass-based, lower feed cost, slow steady money.</p>
+   <p><b>Finisher / Feedlot</b>: buy feeder cattle (~750 lb), feed grain to ~1,340 lb, sell <i>fed cattle</i> to packers. Fast, feed-heavy, swings with corn & beef prices.</p>
+   <p><b>Carrying capacity</b>: land ÷ acres-per-cow. Overstock and you'll buy feed or lose cattle.</p>
+   <p><b>Markets</b>: <span style="color:var(--premium)">Premium</span> (Black Angus / Certified Angus Beef → restaurants) pays more per pound; <span style="color:var(--commodity)">Commodity</span> (Holstein, big uniform lots → box stores) is cheaper but high-volume.</p>
+   <p><b>Top ways to go broke</b>: drought, overstocking, selling into a crash, ignoring sick cattle (BRD), and feeding open cows all winter.</p>
+   <button class="btn ghost" onclick="closeModal()">Got it</button>`);
+}
+
+/* ---------------- Render ---------------- */
+function render(){
+  if(!S){ return; }
+  const se=seasonOf(S.week); const c=weeklyCosts();
+  // topbar
+  $('topbar').innerHTML = `
+    <div class="stat"><b>Year ${S.year} · Wk ${S.week}/52</b><small>Calendar</small></div>
+    <div class="stat"><b class="seasonchip">${se.icon} ${se.name}${isWinterFeeding()?' · feeding hay':''}</b><small>Season</small></div>
+    <div class="stat"><b>${S.loc.name.split('(')[0].trim()}</b><small>${S.stateKey} · ${S.op==='cowcalf'?'Cow-Calf':'Finisher'}</small></div>
+    <div class="stat"><b class="${S.cash<0?'warn':'acc'}">${$money(S.cash)}</b><small>Cash${S.loan>0?` · loan ${$money(S.loan)}`:''}</small></div>
+    <div class="stat"><b>${totalHead()} head</b><small>Total cattle</small></div>
+    <div class="stat"><b>${S.land} ac</b><small>Cap ${carryingCapacity()} cows</small></div>`;
+
+  // scenario card
+  let sc='';
+  if(CURRENT){
+    sc=`<h2>${CURRENT.title}</h2><p>${CURRENT.text}</p>`;
+    if(!CURRENT.resolved){
+      CURRENT.choices.forEach((ch,i)=>{ sc+=`<button class="choice" onclick="chooseScenario(${i})"><span class="lbl">${ch.label}</span><span class="tip">${ch.tip||''}</span></button>`; });
+    } else {
+      sc+=`<div class="outcome">${CURRENT.outcome}</div>
+        <p class="muted" style="font-size:.85rem">This week's costs: feed ${$money(c.feed)}${c.over?` (+${$money(c.over)} overstock)`:''}, labor/living ${$money(c.labor)}${c.interest?`, loan interest ${$money(c.interest)}`:''} = <b>${$money(c.total)}</b>.</p>
+        <button class="btn" onclick="nextWeek()">▶ Advance to next week</button>`;
+    }
+  }
+  $('scenarioCard').innerHTML=sc;
+
+  // ranch panel
+  let rp=`<h3>🏡 Your Ranch</h3>`;
+  rp+=`<table><tr><th>Herd</th><th>Head</th><th>Avg wt</th></tr>`;
+  if(S.herds.length===0) rp+=`<tr><td colspan="3" class="muted">No cattle — buy some at the Market.</td></tr>`;
+  const label={cow:"Cows",bull:"Bull(s)",calf:"Calves",feeder:"Feeders/finishing"};
+  for(const h of S.herds){ rp+=`<tr><td>${label[h.kind]||h.kind} <span class="muted">(${BREEDS[h.breed].name})</span></td><td class="num">${h.head}</td><td class="num">${Math.round(h.wt)} lb</td></tr>`; }
+  rp+=`</table>`;
+  rp+=`<div style="margin-top:8px">
+    <span class="pill">🏚️ Barn: ${S.barnCap} head</span>
+    <span class="pill">🏠 Houses: ${S.houses}</span>
+    <span class="pill">👤 Hands: ${S.hands}</span>
+    <span class="pill">🚜 Equip Lv ${S.equipment}</span>
+    <span class="pill">🐎 Horse: ${S.horses}</span>
+  </div>`;
+  // market access flavor
+  const anyAngus=S.herds.some(h=>BREEDS[h.breed].market==='premium');
+  rp+=`<p class="muted" style="font-size:.83rem;margin-top:8px">Market: ${anyAngus?'<span style="color:var(--premium)">Premium (Angus / restaurant)</span>':'<span style="color:var(--commodity)">Commodity (box-store)</span>'} · ${S.loc.feedlot>0.6?'near feedlots & packers':'rural — freight matters'}</p>`;
+  $('ranchPanel').innerHTML=rp;
+
+  // log
+  $('log').innerHTML = S.log.map(e=>`<div class="e ${e.cls}">${e.html}</div>`).join('') || '<div class="muted">Your story starts here…</div>';
+}
+
+/* ---------------- boot ---------------- */
+buildMap();
+</script>
+</body>
+</html>
