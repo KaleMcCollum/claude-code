@@ -4320,7 +4320,7 @@ const UI = {
       app.querySelectorAll("[data-crewtab]").forEach(b=> b.onclick=()=>{ crewTab=b.dataset.crewtab; viewingShip=null; UI.render("crew"); });
       app.querySelectorAll("[data-recopen]").forEach(b=> b.onclick=()=>{ const ci=+b.dataset.recopen; officerOpen=officerOpen===ci?null:ci; recruiterMode="menu"; UI.render("crew"); });
       app.querySelectorAll("[data-recmode]").forEach(b=> b.onclick=()=>{ recruiterMode=b.dataset.recmode; UI.render("crew"); });
-      app.querySelectorAll("[data-recship]").forEach(b=> b.onclick=()=>recruiterHireShip(+b.dataset.recship));
+      app.querySelectorAll("[data-recship]").forEach(b=> b.onclick=()=>recruiterHireShip(b.dataset.recship));
       app.querySelectorAll("[data-recfleet]").forEach(b=> b.onclick=()=>recruiterHireFleet(b.dataset.recfleet));
       app.querySelectorAll("[data-recuprole]").forEach(b=> b.onclick=()=>recruiterHeadhunt(b.dataset.recuprole));
       const ra=$("[data-recauto]"); if(ra) ra.onclick=()=>toggleRecruiterAuto();
@@ -5750,8 +5750,10 @@ function assignToSeat(ci, shipId, seat){
 }
 function unassignCrew(ci){ const c=state.crew[ci]; if(c){ c.shipId=null; c.seat=null; Game.save(); UI.render(UI.current); } }
 function dismissCrew(ci){ const c=state.crew[ci]; if(!c) return;
+  const t=crewTier(c);
+  if(!confirm(`Dismiss ${c.name}${t?` (${t.name} ${careerName(c.career)})`:`, your ${careerName(c.career)}`}? They'll leave your crew for good.`)) return;
   if(c.personIdx>=0 && state.codex.people[c.personIdx]) state.codex.people[c.personIdx].hired=false;
-  state.crew.splice(ci,1); Game.logMsg(`You let ${c.name} go.`,"sys"); Game.save(); UI.render(UI.current); }
+  state.crew.splice(ci,1); Game.logMsg(`You let ${c.name} go.`,"sys"); toast(`Dismissed ${c.name}`); Game.save(); UI.render(UI.current); }
 /* ===================== FLEETS =====================
    A fleet is a named group of ships that travel together. Membership is tracked on the ship
    (v.fleetId) and on the fleet (f.shipIds). All ships in a fleet stay in one system. */
