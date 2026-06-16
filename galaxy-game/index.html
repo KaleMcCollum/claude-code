@@ -1916,10 +1916,15 @@ function advanceTime(n){
   if(state.lastBillYear==null) state.lastBillYear=yrs;
   const prevYr=state.lastBillYear;
   while(state.lastBillYear<yrs){ chargeUpkeep(); empireYear(); state.lastBillYear++; }
-  if(yrs>prevYr){                       // a year turned over: markets & shipyards refresh stock
-    state.shipStock={}; state.marketStock={};
-    Game.logMsg(`A year turns over — markets and shipyards across the galaxy refresh their stock.`,"sys");
+  if(yrs>prevYr){                       // a year turned over: markets refresh stock
+    state.marketStock={};
+    Game.logMsg(`A year turns over — markets across the galaxy refresh their stock.`,"sys");
   }
+  // shipyards restock every season (4x a year) — fresh hulls turn over far quicker than goods
+  const quarters=Math.floor(state.actions/(ACTIONS_PER_YEAR/4));
+  if(state.lastShipQuarter==null) state.lastShipQuarter=quarters;
+  if(quarters>state.lastShipQuarter){ state.shipStock={}; state.lastShipQuarter=quarters;
+    Game.logMsg(`The season turns — shipyards across the galaxy refresh their stock.`,"sys"); }
   const a=Game.age(), l=Game.lifespan();
   if(a>=l){
     const over=a-l, p=clamp(0.04+over*0.05, 0.04, 0.6);
