@@ -607,8 +607,8 @@ const CAREERS = [
   { id:"mercenary",name:"Mercenary",       weight:6,  wealth:[400,12000] },
   { id:"gunner",   name:"Gunner",          weight:4,  wealth:[400,9000] },
   { id:"smuggler", name:"Smuggler",        weight:3,  wealth:[800,70000] },
-  // —— specialists you seek out (never rolled randomly; found by asking around) ——
-  { id:"recruiter",name:"Recruiter",       weight:0,  wealth:[2000,40000] },
+  // —— specialists you may cross paths with out in the galaxy ——
+  { id:"recruiter",name:"Recruiter",       weight:2,  wealth:[2000,40000] },
   // —— outlaws & rebels (rare, hostile) ——
   { id:"wanted",   name:"Outlaw",          weight:3,   wealth:[200,9000],     hostile:1 },
   { id:"enforcer", name:"Gang Enforcer",   weight:1.6, wealth:[2000,45000],   hostile:2, arms:1 },
@@ -2468,16 +2468,6 @@ const UI = {
             <div class="sub">${p.who} is hiring &middot; <span class="gold">${commas(p.pay)}c/yr</span></div></div>
             <button class="small primary" data-takejob="${i}">Take</button></div>`).join("")
           :`<p class="small dim">Nothing pinned up today — check back another time.</p>`}</div>`; })()}
-    <div class="card"><h3>&#128101; Looking for crew?</h3>
-      <p class="small dim">"Need hands? A few tradesfolk drink here between berths — say the word and I'll point you to one."</p>
-      <div class="grid">
-        <button id="bCrewPilot">&#9992; Know a pilot?</button>
-        <button id="bCrewGunner">&#9876; Know a gunner?</button>
-        <button id="bCrewMech">&#128295; Know a mechanic?</button>
-        <button id="bCrewRecruiter">&#128188; Know a recruiter?</button>
-      </div>
-      <p class="small dim" style="margin-top:5px">A recruiter joins your crew and runs hiring for your whole fleet.</p>
-    </div>
     <div class="card"><button id="bRumor" class="full center">&#128172; Ask for a rumor</button></div>
     <div class="card"><button id="bBack" class="ghost full center">&larr; Back to the tavern</button></div>`;
   },
@@ -4189,10 +4179,6 @@ const UI = {
     if(screen==="bartender"){
       const bs=$("#bSell"); if(bs) bs.onclick=()=>sellInformation();
       app.querySelectorAll("[data-takejob]").forEach(b=> b.onclick=()=>takeBoardJob(+b.dataset.takejob));
-      const cp=$("#bCrewPilot"); if(cp) cp.onclick=()=>askBartenderCrew("pilot");
-      const cg=$("#bCrewGunner"); if(cg) cg.onclick=()=>askBartenderCrew("gunner");
-      const cm=$("#bCrewMech"); if(cm) cm.onclick=()=>askBartenderCrew("mechanic");
-      const cr=$("#bCrewRecruiter"); if(cr) cr.onclick=()=>askBartenderCrew("recruiter");
       $("#bRumor").onclick=()=>{ Game.logMsg("The bartender leans in — "+pick(RUMORS),"sys"); toast("You hear a rumor"); Game.save(); UI.flashLog(); };
       $("#bBack").onclick=()=>UI.render("tavern");
     }
@@ -5254,20 +5240,6 @@ const RUMORS=[
   "the dockmaster's looking for hands to haul cargo off-world, if you've a ship.",
   "they whisper of a desolate world where no one lives at all.",
 ];
-/* ask the bartender to point you to a tradesperson drinking here — a pilot, gunner or mechanic
-   looking for a berth. Drops you into a normal meeting where you can size them up and hire them. */
-function askBartenderCrew(career){
-  const draw=drawRace(); if(!draw.race.name) draw.race.name=genName("race");
-  const person=Gen.person(draw.race);
-  person.career=career; if(!person.name) person.name=genName("person");
-  delete person.bounty; delete person.hostile; delete person.force;   // a worker, not a mark
-  const cc=careerById(career); if(cc) person.credits=rollWealth(cc);
-  person.raceName=draw.race.name;
-  const label=careerName(career).toLowerCase();
-  meeting={ draw, person, back:"bartender", step:2, where:state.world?state.world.name:"the tavern",
-    intro:`The bartender nods toward a ${label} nursing a drink across the room. "${person.name} — a steady ${label} looking for a berth. Go have a word."` };
-  personExpand=false; shipDealMsg=null; UI.render("meet");
-}
 function startMeeting(intro, back){
   // if you've a bounty on someone holed up on THIS world, asking around may turn them up
   const hit=activeContractHere();
