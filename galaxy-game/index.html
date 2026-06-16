@@ -609,6 +609,7 @@ const CAREERS = [
   { id:"smuggler", name:"Smuggler",        weight:3,  wealth:[800,70000] },
   // —— specialists you may cross paths with out in the galaxy ——
   { id:"recruiter",name:"Recruiter",       weight:2,  wealth:[2000,40000] },
+  { id:"ordnance", name:"Ordnance Officer", weight:2, wealth:[3000,50000] },
   // —— outlaws & rebels (rare, hostile) ——
   { id:"wanted",   name:"Outlaw",          weight:3,   wealth:[200,9000],     hostile:1 },
   { id:"enforcer", name:"Gang Enforcer",   weight:1.6, wealth:[2000,45000],   hostile:2, arms:1 },
@@ -661,12 +662,13 @@ const HIRE_ROLES={
   gunner:   { fee:2200, salary:4500, role:"mans the guns" },
   medic:    { fee:2800, salary:4500, role:"tends the crew (healing coming soon)" },
   recruiter:{ fee:8000, salary:60000, role:"a fleet recruiter — keeps your ships crewed and scouts fresh talent (a hefty salary, but runs your whole fleet's hiring)" },
+  ordnance: { fee:7000, salary:48000, role:"a fleet ordnance officer — arms and upgrades weapons across all your ships in one click from any shipyard, no ship-by-ship fitting" },
 };
 /* careers that can fill a ship's LABOR seats (grunt work in the holds) */
 const LABOR_CAREERS=["drifter","laborer","dockhand","factory"];
 const isLaborCareer=c=>LABOR_CAREERS.includes(c);
 /* management crew — hired like anyone, but they run things rather than working a ship seat */
-const MGMT_CAREERS=["recruiter"];
+const MGMT_CAREERS=["recruiter","ordnance"];
 const isManagement=c=>MGMT_CAREERS.includes(c&&c.career?c.career:c);
 function hasRecruiter(){ return (state.crew||[]).some(c=>c.career==="recruiter"); }
 function getRecruiter(){ return (state.crew||[]).find(c=>c.career==="recruiter")||null; }
@@ -3699,6 +3701,27 @@ const UI = {
     }
     return `<div class="card" style="margin:2px 0 8px;background:var(--panel2)"><p class="small gold" style="margin:0 0 6px">&#128188; ${o.name} &mdash; what can I do for you?</p>${body}</div>`;
   },
+  ordnancePanel(o){
+    const w=state.world, yard=!!(w&&settleHasShipyard(w));
+    const ships=(state.vehicles||[]).filter(v=>v.guns&&v.guns.length);
+    const empty=ships.reduce((s,v)=>s+v.guns.filter(g=>!g).length,0);
+    let body;
+    if(!ships.length) body=`<p class="small dim">None of your ships have weapon hardpoints to arm — only gunships and warships do.</p>`;
+    else if(!empty) body=`<p class="small green">Every hardpoint across your fleet is already armed. Nothing to fit.</p>`;
+    else if(!yard) body=`<p class="small dim"><b>${empty}</b> empty hardpoint${empty>1?"s":""} across your fleet. ${o.name} draws ordnance straight from a shipyard's stores &mdash; dock at one and come back to arm everything at once.</p>`;
+    else{
+      const sold=WEAPONS.filter(wp=>wp.minTech<=w.tech);
+      const best=fleetArmPlan("best",false), cheap=fleetArmPlan("cheap",false);
+      body=`<p class="small dim"><b>${empty}</b> empty hardpoint${empty>1?"s":""} across <b>${ships.length}</b> ship${ships.length>1?"s":""}. ${o.name} fits them in one pass from <b>${w.name}</b>'s ordnance stores — no ship-by-ship clicking, anywhere your ships are.</p>
+        ${sold.length?`<div class="grid" style="margin-top:6px">
+          <button class="primary" data-armfleet="best" ${best.n?"":"disabled"}>&#9876; Best guns affordable${best.n?` &middot; ${best.n} for ${commas(best.spent)}c`:""}</button>
+          <button data-armfleet="cheap" ${cheap.n?"":"disabled"}>Fill every mount${cheap.n?` &middot; ${cheap.n} for ${commas(cheap.spent)}c`:""}</button>
+        </div>
+        <p class="small dim" style="margin-top:6px">"Best" mounts the strongest weapon each hardpoint can take that you can afford; "Fill" arms the most mounts with the cheapest fit. Sold at ${w.name}: ${sold.map(s=>s.name).join(", ")}.</p>`
+        :`<p class="small red">${w.name}'s yard is too low-tech to sell any ship weapons. Try a higher-tech world.</p>`}`;
+    }
+    return `<div class="card" style="margin:2px 0 8px;background:var(--panel2)"><p class="small gold" style="margin:0 0 6px">&#9876; ${o.name} &mdash; ordnance, reporting.</p>${body}</div>`;
+  },
   crewmatesView(){
     const crew=state.crew||[], wages=annualWages();
     const order=["recruiter","pilot","mechanic","gunner","laborer","medic","mercenary"];
@@ -3713,7 +3736,7 @@ const UI = {
           <button class="small ghost" data-recopen="${ci}" style="padding:0;width:100%;text-align:left">
             <div class="top"><span class="nm">${open?'&#9662;':'&#9656;'} ${c.name}</span><span class="tag">${careerName(c.career)}</span></div></button>
           <div class="chips"><span class="chip">management &middot; tap to direct</span><span class="chip gold">${commas(crewSalary(c))}c/yr</span></div>
-          ${open?this.recruiterPanel(c):""}
+          ${open?(c.career==="ordnance"?this.ordnancePanel(c):this.recruiterPanel(c)):""}
           <div class="row" style="margin-top:8px"><button class="small ghost" data-dismiss="${ci}">Dismiss</button></div>
         </div>`; }
       const tr=crewTier(c), pr=crewPrimary(c);
@@ -4344,6 +4367,7 @@ const UI = {
     if(screen==="crew"){
       app.querySelectorAll("[data-crewtab]").forEach(b=> b.onclick=()=>{ crewTab=b.dataset.crewtab; viewingShip=null; UI.render("crew"); });
       app.querySelectorAll("[data-recopen]").forEach(b=> b.onclick=()=>{ const ci=+b.dataset.recopen; officerOpen=officerOpen===ci?null:ci; recruiterMode="menu"; UI.render("crew"); });
+      app.querySelectorAll("[data-armfleet]").forEach(b=> b.onclick=()=>armFleet(b.dataset.armfleet));
       app.querySelectorAll("[data-recmode]").forEach(b=> b.onclick=()=>{ recruiterMode=b.dataset.recmode; UI.render("crew"); });
       app.querySelectorAll("[data-recship]").forEach(b=> b.onclick=()=>recruiterHireShip(b.dataset.recship));
       app.querySelectorAll("[data-recfleet]").forEach(b=> b.onclick=()=>recruiterHireFleet(b.dataset.recfleet));
@@ -5482,6 +5506,31 @@ function mountWeapon(id, slot, wid){ const v=(state.vehicles||[]).find(x=>x.id==
   if((w.size||0) > (v.slotSizes?v.slotSizes[slot]:2)){ toast(`A ${w.name} is too big for a ${SLOT_SIZES[v.slotSizes[slot]].toLowerCase()} mount`); return; }
   state.credits-=w.price; v.guns[slot]=wid; v.value=(v.value||0)+Math.round(w.price*0.5);
   Game.logMsg(`You mount ${article(w.name)} ${w.name} on the ${v.name}.`,"good"); Game.save(); UI.render("outfit"); }
+/* Ordnance Officer: arm every empty hardpoint across your whole roster in one pass, sourcing weapons
+   from the current shipyard (its tech gates what's sold, your credits gate how much gets fitted).
+   mode "best" = strongest affordable gun per mount; "cheap" = cheapest fit, to arm the most mounts.
+   apply=false dry-runs it for the panel preview. */
+function fleetArmPlan(mode, apply){
+  const w=state.world; if(!w||!settleHasShipyard(w)) return {n:0, spent:0};
+  const sold=WEAPONS.filter(wp=>wp.minTech<=w.tech).slice().sort((a,b)=> mode==="cheap" ? a.price-b.price : b.atk-a.atk);
+  let credits=state.credits, n=0, spent=0;
+  (state.vehicles||[]).forEach(v=>{ if(!v.guns||!v.guns.length) return;
+    v.guns.forEach((gid,i)=>{ if(gid) return; const sz=(v.slotSizes||[])[i]||0;
+      const pick=sold.find(wp=>(wp.size||0)<=sz && wp.price<=credits); if(!pick) return;
+      credits-=pick.price; spent+=pick.price; n++;
+      if(apply){ v.guns[i]=pick.id; v.value=(v.value||0)+Math.round(pick.price*0.5); } });
+  });
+  if(apply) state.credits=credits;
+  return {n, spent};
+}
+function armFleet(mode){
+  if(!(state.crew||[]).some(c=>c.career==="ordnance")){ toast("You need an Ordnance Officer in your crew"); return; }
+  const w=state.world; if(!w||!settleHasShipyard(w)){ toast("Dock at a shipyard so your officer can draw ordnance"); return; }
+  const r=fleetArmPlan(mode, true);
+  if(!r.n){ toast(WEAPONS.some(wp=>wp.minTech<=w.tech&&wp.price<=state.credits) ? "Every hardpoint is already armed" : "Not enough credits to fit a single weapon"); return; }
+  Game.logMsg(`&#9876; Your Ordnance Officer arms the fleet — ${r.n} weapon${r.n>1?"s":""} fitted across your ships for ${commas(r.spent)}c.`,"good");
+  Game.save(); UI.render("crew");
+}
 /* strip a weapon off a hardpoint (sell it back for half) */
 function unmountWeapon(id, slot){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
   const wid=v.guns[slot]; if(!wid) return; const w=weaponById(wid);
