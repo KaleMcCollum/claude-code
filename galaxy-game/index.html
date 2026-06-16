@@ -3703,22 +3703,26 @@ const UI = {
   },
   ordnancePanel(o){
     const w=state.world, yard=!!(w&&settleHasShipyard(w));
-    const ships=(state.vehicles||[]).filter(v=>v.guns&&v.guns.length);
-    const empty=ships.reduce((s,v)=>s+v.guns.filter(g=>!g).length,0);
+    const gunShips=(state.vehicles||[]).filter(v=>v.guns&&v.guns.length);
+    const empty=gunShips.reduce((s,v)=>s+v.guns.filter(g=>!g).length,0);
     let body;
-    if(!ships.length) body=`<p class="small dim">None of your ships have weapon hardpoints to arm — only gunships and warships do.</p>`;
-    else if(!empty) body=`<p class="small green">Every hardpoint across your fleet is already armed. Nothing to fit.</p>`;
-    else if(!yard) body=`<p class="small dim"><b>${empty}</b> empty hardpoint${empty>1?"s":""} across your fleet. ${o.name} draws ordnance straight from a shipyard's stores &mdash; dock at one and come back to arm everything at once.</p>`;
-    else{
+    if(!yard){
+      body=`<p class="small dim">${o.name} works out of a shipyard's stores. Dock at one — a <b>Tech 6+</b> yard for shields — and come back to arm and upgrade your whole fleet in one click, wherever your ships are.</p>`;
+    } else {
       const sold=WEAPONS.filter(wp=>wp.minTech<=w.tech);
       const best=fleetArmPlan("best",false), cheap=fleetArmPlan("cheap",false);
-      body=`<p class="small dim"><b>${empty}</b> empty hardpoint${empty>1?"s":""} across <b>${ships.length}</b> ship${ships.length>1?"s":""}. ${o.name} fits them in one pass from <b>${w.name}</b>'s ordnance stores — no ship-by-ship clicking, anywhere your ships are.</p>
-        ${sold.length?`<div class="grid" style="margin-top:6px">
-          <button class="primary" data-armfleet="best" ${best.n?"":"disabled"}>&#9876; Best guns affordable${best.n?` &middot; ${best.n} for ${commas(best.spent)}c`:""}</button>
-          <button data-armfleet="cheap" ${cheap.n?"":"disabled"}>Fill every mount${cheap.n?` &middot; ${cheap.n} for ${commas(cheap.spent)}c`:""}</button>
-        </div>
-        <p class="small dim" style="margin-top:6px">"Best" mounts the strongest weapon each hardpoint can take that you can afford; "Fill" arms the most mounts with the cheapest fit. Sold at ${w.name}: ${sold.map(s=>s.name).join(", ")}.</p>`
-        :`<p class="small red">${w.name}'s yard is too low-tech to sell any ship weapons. Try a higher-tech world.</p>`}`;
+      const sh=fleetUpgradePlan("shield",false), hy=fleetUpgradePlan("hyper",false), ar=fleetUpgradePlan("armor",false);
+      const allN=best.n+sh.n+hy.n+ar.n;
+      const btn=(k,label,plan,primary)=>`<button class="${primary?'primary':''}" data-fleetfit="${k}" ${plan.n?"":"disabled"}>${label}${plan.n?` &middot; ${plan.n} / ${commas(plan.spent)}c`:""}</button>`;
+      body=`<p class="small dim">One-click fleet-wide outfitting from <b>${w.name}</b> — no ship-by-ship clicking.</p>
+        <div class="shipcat">Weapons${empty?` &middot; ${empty} empty mount${empty>1?"s":""}`:""}</div>
+        ${sold.length?`<div class="grid">${btn("armbest","&#9876; Best guns",best,true)}${btn("armcheap","Fill every mount",cheap,false)}</div>`
+          :`<p class="small red">${w.name}'s yard is too low-tech to sell any ship weapons.</p>`}
+        <div class="shipcat" style="margin-top:8px">Systems &middot; one tier each</div>
+        <div class="grid">${btn("shield","&#128737; Shields",sh,false)}${btn("hyper","&#128640; Hyperdrives",hy,false)}${btn("armor","&#9874; Hull plating",ar,false)}</div>
+        ${w.tech<6?`<p class="small dim" style="margin-top:4px">Shields need a Tech 6+ yard.</p>`:""}
+        <div class="grid" style="margin-top:8px"><button class="primary" data-fleetfit="all" ${allN?"":"disabled"}>&#9881; Refit everything affordable</button></div>
+        <p class="small dim" style="margin-top:6px">"Best" mounts the strongest guns you can afford; "Fill" arms the most mounts cheaply. System buttons raise one tier per ship within budget. Sold here: ${sold.map(s=>s.name).join(", ")||"no weapons"}.</p>`;
     }
     return `<div class="card" style="margin:2px 0 8px;background:var(--panel2)"><p class="small gold" style="margin:0 0 6px">&#9876; ${o.name} &mdash; ordnance, reporting.</p>${body}</div>`;
   },
@@ -4367,7 +4371,7 @@ const UI = {
     if(screen==="crew"){
       app.querySelectorAll("[data-crewtab]").forEach(b=> b.onclick=()=>{ crewTab=b.dataset.crewtab; viewingShip=null; UI.render("crew"); });
       app.querySelectorAll("[data-recopen]").forEach(b=> b.onclick=()=>{ const ci=+b.dataset.recopen; officerOpen=officerOpen===ci?null:ci; recruiterMode="menu"; UI.render("crew"); });
-      app.querySelectorAll("[data-armfleet]").forEach(b=> b.onclick=()=>armFleet(b.dataset.armfleet));
+      app.querySelectorAll("[data-fleetfit]").forEach(b=> b.onclick=()=>fleetFit(b.dataset.fleetfit));
       app.querySelectorAll("[data-recmode]").forEach(b=> b.onclick=()=>{ recruiterMode=b.dataset.recmode; UI.render("crew"); });
       app.querySelectorAll("[data-recship]").forEach(b=> b.onclick=()=>recruiterHireShip(b.dataset.recship));
       app.querySelectorAll("[data-recfleet]").forEach(b=> b.onclick=()=>recruiterHireFleet(b.dataset.recfleet));
@@ -5530,6 +5534,63 @@ function armFleet(mode){
   if(!r.n){ toast(WEAPONS.some(wp=>wp.minTech<=w.tech&&wp.price<=state.credits) ? "Every hardpoint is already armed" : "Not enough credits to fit a single weapon"); return; }
   Game.logMsg(`&#9876; Your Ordnance Officer arms the fleet — ${r.n} weapon${r.n>1?"s":""} fitted across your ships for ${commas(r.spent)}c.`,"good");
   Game.save(); UI.render("crew");
+}
+/* Ordnance Officer: bulk-upgrade a ship SYSTEM one tier across the whole roster, within budget.
+   kind "shield" (Tech 6+ yard, gunships/warships), "hyper" (interstellar drives), "armor" (any hull).
+   Mirrors the per-ship installShield / upgradeHyper / upgradeArmor cost & effect. Dry-run if !apply. */
+function fleetUpgradePlan(kind, apply){
+  const w=state.world; if(!w||!settleHasShipyard(w)) return {n:0, spent:0};
+  if(kind==="shield" && w.tech<6) return {n:0, spent:0};
+  let credits=state.credits, n=0, spent=0;
+  (state.vehicles||[]).forEach(v=>{
+    let next, cost;
+    if(kind==="shield"){ const cur=v.shieldTier||0; if(!shipCanShield(v)||cur>=SHIELD_MAX_TIER) return;
+      next=cur+1; cost=Math.round((v.maxHp||500)*0.55*next*(1+w.wealth*0.04)); }
+    else if(kind==="hyper"){ if(v.range!=="interstellar"||(v.hyper||0)>=HYPERDRIVE.length-1) return;
+      next=(v.hyper||0)+1; cost=Math.round((v.power.star||0)*10*next*(1+w.wealth*0.03)); }
+    else if(kind==="armor"){ if((v.armor||0)>=ARMOR.length-1) return;
+      next=(v.armor||0)+1; const c=shipClass(v.cls); cost=Math.round((c?c.baseHp:200)*ARMOR[next].mult*8*(1+w.wealth*0.04)); }
+    else return;
+    if(cost>credits) return;
+    if(apply){
+      if(kind==="shield") v.shieldTier=next;
+      else if(kind==="hyper") v.hyper=next;
+      else if(kind==="armor"){ const ratio=v.maxHp>0?v.hp/v.maxHp:1, baseNoArmor=v.maxHp/ARMOR[v.armor||0].mult;
+        v.armor=next; v.maxHp=Math.round(baseNoArmor*ARMOR[next].mult); v.hp=Math.round(v.maxHp*ratio); }
+      v.value=(v.value||0)+Math.round(cost*0.5);
+    }
+    credits-=cost; spent+=cost; n++;
+  });
+  if(apply) state.credits=credits;
+  return {n, spent};
+}
+function fleetUpgrade(kind){
+  if(!(state.crew||[]).some(c=>c.career==="ordnance")){ toast("You need an Ordnance Officer in your crew"); return; }
+  const w=state.world; if(!w||!settleHasShipyard(w)){ toast("Dock at a shipyard so your officer can work"); return; }
+  if(kind==="shield" && w.tech<6){ toast("Shields need a Tech 6+ shipyard"); return; }
+  const r=fleetUpgradePlan(kind, true);
+  const noun=kind==="shield"?"shield generator":kind==="hyper"?"hyperdrive":"hull plating";
+  if(!r.n){ toast(`Nothing to upgrade — every ${noun} is maxed, or you can't afford one`); return; }
+  Game.logMsg(`&#9881; Your Ordnance Officer upgrades ${r.n} ship${r.n>1?"s":""}' ${noun}${kind!=="armor"&&r.n>1?"s":""} across the fleet for ${commas(r.spent)}c.`,"good");
+  Game.save(); UI.render("crew");
+}
+/* one-click everything: best affordable guns, then a tier of shields, hyperdrives and plating, in budget order */
+function fleetRefitAll(){
+  if(!(state.crew||[]).some(c=>c.career==="ordnance")){ toast("You need an Ordnance Officer in your crew"); return; }
+  const w=state.world; if(!w||!settleHasShipyard(w)){ toast("Dock at a shipyard so your officer can work"); return; }
+  const a=fleetArmPlan("best",true), s=fleetUpgradePlan("shield",true), h=fleetUpgradePlan("hyper",true), p=fleetUpgradePlan("armor",true);
+  const total=a.spent+s.spent+h.spent+p.spent, parts=a.n+s.n+h.n+p.n;
+  if(!parts){ toast("Nothing left to refit, or not enough credits"); return; }
+  const bits=[]; if(a.n)bits.push(`${a.n} gun${a.n>1?"s":""}`); if(s.n)bits.push(`${s.n} shield${s.n>1?"s":""}`); if(h.n)bits.push(`${h.n} hyperdrive${h.n>1?"s":""}`); if(p.n)bits.push(`${p.n} plating refit${p.n>1?"s":""}`);
+  Game.logMsg(`&#9881; Your Ordnance Officer refits the whole fleet — ${bits.join(", ")} for ${commas(total)}c.`,"good");
+  Game.save(); UI.render("crew");
+}
+/* dispatch the Ordnance panel's buttons */
+function fleetFit(kind){
+  if(kind==="armbest") return armFleet("best");
+  if(kind==="armcheap") return armFleet("cheap");
+  if(kind==="all") return fleetRefitAll();
+  return fleetUpgrade(kind);
 }
 /* strip a weapon off a hardpoint (sell it back for half) */
 function unmountWeapon(id, slot){ const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return;
