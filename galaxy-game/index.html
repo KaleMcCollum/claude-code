@@ -674,17 +674,19 @@ function getRecruiter(){ return (state.crew||[]).find(c=>c.career==="recruiter")
    lets a nimble fighter dodge fire. Rolled from a recruit's genetics + trade when hired, and they
    sharpen with battle later. A Gunner starts strong at gunnery; a Pilot at piloting (and runs the
    pilot-mounts, so they carry some gunnery too). */
-function rollCrewSkills(career, p){
+function rollCrewSkills(career, p, quality){
   const A=p&&p.attrs||{}, val=k=>(A[k]&&A[k].value)||10;
   const ag=val("agility"), intel=val("intellect"), per=p&&p.bio&&p.bio.perception?p.bio.perception.value:10;
-  // skewed HIGH around ~7: most are good, the odd one excellent, and any who fall short fall only a
-  // little (downside compressed, floor 4). Only gunners & pilots carry these — no one else needs them.
-  const skew=(center, nudge)=>{ let g=gauss(); if(g<0) g*=0.4; return clamp(Math.round(center+g*1.6+nudge), 4, 10); };
+  // quality "filler" (the recruiter's auto-hires): cheap warm bodies — mostly Common, rarely Uncommon,
+  // very rarely Rare, Legendary almost never. Otherwise (people you meet / scout): a good spread to ~7
+  // that can turn up the odd Epic/Legendary, so finding elites means actually looking.
+  const filler=quality==="filler", cen=filler?4.3:7, spread=filler?1.0:1.6;
+  const skew=(base, nudge)=>{ let g=gauss(); if(g<0) g*=0.4; return clamp(Math.round(base+g*spread+nudge), 4, 10); };
   const skills={};
-  if(career==="gunner") skills.gunnery=skew(7, (ag-10)*0.12+(per-10)*0.1);
-  if(career==="pilot"){ skills.piloting=skew(7, (ag-10)*0.12+(intel-10)*0.1);
-    skills.gunnery=skew(6, (ag-10)*0.1); }   // pilots run the pilot-mounts too, a touch under a dedicated gunner
-  if(career==="mechanic") skills.repair=skew(7, (intel-10)*0.14+(per-10)*0.06);   // keeps ships from wearing out
+  if(career==="gunner") skills.gunnery=skew(cen, (ag-10)*0.12+(per-10)*0.1);
+  if(career==="pilot"){ skills.piloting=skew(cen, (ag-10)*0.12+(intel-10)*0.1);
+    skills.gunnery=skew(cen-1, (ag-10)*0.1); }   // pilots run the pilot-mounts too, a touch under a dedicated gunner
+  if(career==="mechanic") skills.repair=skew(cen, (intel-10)*0.14+(per-10)*0.06);   // keeps ships from wearing out
   return skills;                              // laborers / dockhands etc. carry no rated skill
 }
 const crewSkill=(c,which)=>(c&&c.skills&&c.skills[which]!=null)?c.skills[which]:0;
@@ -5661,8 +5663,8 @@ function hireCrew(i){
 function idleHires(){ return (state.crew||[]).filter(c=>!c.shipId && !isManagement(c)); }
 /* ---- the Recruiter (a management crewmate) and its automated effects ---- */
 /* a fresh recruit sourced by the recruiter — decent skills, not from the codex */
-function genCrewMember(career){ return { name:genName("person"), raceName:genName("race"), career, personIdx:-1,
-  shipId:null, seat:null, skills:rollCrewSkills(career, null), recruited:true }; }
+function genCrewMember(career, quality){ return { name:genName("person"), raceName:genName("race"), career, personIdx:-1,
+  shipId:null, seat:null, skills:rollCrewSkills(career, null, quality), recruited:true }; }
 /* how many of each required role a ship is still missing */
 function crewNeeds(v){ const pilotsHave=Game.aboard(v,"pilot")+(v.id===state.activeShip?1:0);
   return { pilot:Math.max(0,(v.reqPilots??1)-pilotsHave), mechanic:Math.max(0,(v.reqMech??0)-Game.aboard(v,"mechanic")),
@@ -5673,7 +5675,7 @@ function crewShip(v){ if(!v||v.carrier) return {hired:0,fee:0};
   ["pilot","mechanic","gunner","laborer"].forEach(role=>{ const r=HIRE_ROLES[role]; if(!r) return;
     for(let k=0;k<need[role];k++){ if((state.credits||0)<r.fee) return;   // out of money — stop
       state.credits-=r.fee; fee+=r.fee; state.crew=state.crew||[];
-      const m=genCrewMember(role); m.shipId=v.id; m.seat=Game.shipCrew(v).length; state.crew.push(m); hired++; } });
+      const m=genCrewMember(role, "filler"); m.shipId=v.id; m.seat=Game.shipCrew(v).length; state.crew.push(m); hired++; } });
   return {hired,fee}; }
 function shipBerthsNeeded(v){ const n=crewNeeds(v); return (n.pilot+n.mechanic+n.gunner+n.laborer)||0; }
 /* the Recruiter, ticked each action (when auto-crew is on): keep every ship's berths filled, and
