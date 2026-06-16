@@ -4700,7 +4700,7 @@ const poissonSample=l=>{ if(l<=0) return 0; const L=Math.exp(-l); let k=0,p=1; d
 /* systems-per-cell by ring, halving each step out (cf = 1 - dist/radius): a bunch in the Core,
    ~half in the Middle, ~half of that in the Outer, ~half again in the vast Deep Space */
 const chunkLambda=cf=>{ cf=clamp(cf,0,1);
-  return cf>=0.90 ? 2.4 : cf>=0.72 ? 1.2 : cf>=0.45 ? 0.6 : 0.3; };
+  return cf>=0.90 ? 5.5 : cf>=0.72 ? 2.7 : cf>=0.45 ? 1.35 : 0.7; };
 function ensureChunksAround(x,y,radiusLy){
   const g=state.galaxy; if(!g||!g.lazy) return;                 // chunk-gen only drives lazy galaxies
   g.cells=g.cells||{}; g.systems=g.systems||[];
