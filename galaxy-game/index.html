@@ -3631,13 +3631,48 @@ const UI = {
   },
   officersCard(){
     return `<div class="card sheet"><h3>&#128188; Officers <span class="dim small">&middot; management staff</span></h3>
-      <p class="small dim">Specialists you put on salary to run things for you — not ship crew.</p>
-      ${Object.entries(OFFICERS).map(([id,o])=>{ const have=hasOfficer(id);
-        return `<div class="frow"><div class="finfo"><div class="nm">${o.icon} ${o.name}${have?` <span class="dim small">&middot; ${state.officers[id].name}</span>`:''}</div>
-          <div class="sub">${o.blurb}</div>
-          <div class="chips" style="margin-top:4px">${have?'<span class="chip g">on staff</span>':`<span class="chip">fee ${commas(o.fee)}c</span>`}<span class="chip gold">${commas(o.salary)}c/yr</span></div></div>
-          ${have?`<button class="small ghost" data-fireoff="${id}">Dismiss</button>`:`<button class="small ${(state.credits||0)>=o.fee?'primary':''}" data-hireoff="${id}" ${(state.credits||0)>=o.fee?'':'disabled'}>Hire</button>`}</div>`; }).join("")}
+      <p class="small dim">Specialists you put on salary to run things for you — not ship crew. Tap one to direct it.</p>
+      ${Object.entries(OFFICERS).map(([id,o])=>{ const have=hasOfficer(id), open=have&&officerOpen===id;
+        return `<div class="frow"><div class="finfo">
+            ${have?`<button class="small ghost" data-officer="${id}" style="padding:0;text-align:left"><span class="nm">${open?'&#9662;':'&#9656;'} ${o.icon} ${o.name} <span class="dim small">&middot; ${state.officers[id].name}</span></span></button>`
+                  :`<div class="nm">${o.icon} ${o.name}</div>`}
+            <div class="sub">${o.blurb}</div>
+            <div class="chips" style="margin-top:4px">${have?'<span class="chip g">on staff</span>':`<span class="chip">fee ${commas(o.fee)}c</span>`}<span class="chip gold">${commas(o.salary)}c/yr</span></div></div>
+          ${have?`<button class="small ghost" data-fireoff="${id}">Dismiss</button>`:`<button class="small ${(state.credits||0)>=o.fee?'primary':''}" data-hireoff="${id}" ${(state.credits||0)>=o.fee?'':'disabled'}>Hire</button>`}</div>
+          ${open&&id==="recruiter"?this.recruiterPanel():""}`; }).join("")}
     </div>`;
+  },
+  recruiterPanel(){
+    const o=state.officers.recruiter, auto=o.auto!==false, m=recruiterMode;
+    const ships=(state.vehicles||[]).filter(v=>!v.carrier), fleets=state.fleets||[];
+    const need=v=>shipBerthsNeeded(v);
+    let body;
+    if(m==="hire"){
+      const shipRows=ships.map(v=>{ const n=need(v); return `<div class="krow"><span class="lbl">${v.name} <span class="dim small">&middot; ${n?`${n} berth${n>1?"s":""} open`:"fully crewed"}</span></span>
+        <span class="kv"><button class="small ${n?'primary':''}" data-recship="${v.id}" ${n?'':'disabled'}>Crew up</button></span></div>`; }).join("");
+      const fleetRows=fleets.map(f=>{ const n=shipsByIds(f.shipIds).reduce((s,v)=>s+need(v),0);
+        return `<div class="krow"><span class="lbl">&#128666; ${f.name} <span class="dim small">&middot; ${f.shipIds.length} ship${f.shipIds.length!==1?"s":""}${n?` &middot; ${n} open`:" &middot; crewed"}</span></span>
+        <span class="kv"><button class="small ${n?'primary':''}" data-recfleet="${f.id}" ${n?'':'disabled'}>Crew fleet</button></span></div>`; }).join("");
+      body=`<p class="small dim">Pick a ship or fleet to crew up — the recruiter fills its empty berths (pilots, mechanics, gunners, laborers) at standard signing fees.</p>
+        ${fleets.length?`<div class="shipcat">Fleets</div>${fleetRows}`:""}
+        <div class="shipcat">Ships</div>${ships.length?shipRows:'<p class="small dim">No ships.</p>'}
+        <button class="small ghost full center" data-recmode="menu" style="margin-top:6px">&larr; Back</button>`;
+    } else if(m==="upgrade"){
+      const shipRows=ships.map(v=>{ const has=Game.shipCrew(v).some(c=>c.career==="pilot"||c.career==="gunner");
+        return `<div class="krow"><span class="lbl">${v.name}</span><span class="kv"><button class="small ${has?'':''}" data-recupship="${v.id}" ${has?'':'disabled'}>Headhunt</button></span></div>`; }).join("");
+      body=`<p class="small dim">Scout a sharper pilot or gunner to replace the weakest aboard a ship (a one-off signing fee).</p>
+        ${ships.length?shipRows:'<p class="small dim">No ships.</p>'}
+        <button class="small ghost full center" data-recmode="menu" style="margin-top:6px">&larr; Back</button>`;
+    } else {
+      body=`<div class="grid">
+          <button data-recmode="hire">&#128101; Hire crew</button>
+          <button data-recmode="upgrade">&#127919; Headhunt a pro</button>
+        </div>
+        <div class="row between" style="margin-top:8px"><span class="small">Auto-crew the whole fleet each turn</span>
+          <button class="small ${auto?'sel':'ghost'}" data-recauto="1">${auto?'On':'Off'}</button></div>
+        <p class="small dim" style="margin-top:4px">${auto?"Empty berths fill themselves as you play.":"Off — crew ships yourself with Hire crew."}</p>`;
+    }
+    return `<div class="card" style="margin:2px 0 8px;background:var(--panel2)"><p class="small gold" style="margin:0 0 6px">&#128188; ${o.name} &mdash; what can I do for you?</p>${body}</div>`;
   },
   crewmatesView(){
     const crew=state.crew||[], wages=annualWages();
@@ -4273,6 +4308,12 @@ const UI = {
       app.querySelectorAll("[data-crewtab]").forEach(b=> b.onclick=()=>{ crewTab=b.dataset.crewtab; viewingShip=null; UI.render("crew"); });
       app.querySelectorAll("[data-hireoff]").forEach(b=> b.onclick=()=>hireOfficer(b.dataset.hireoff));
       app.querySelectorAll("[data-fireoff]").forEach(b=> b.onclick=()=>fireOfficer(b.dataset.fireoff));
+      app.querySelectorAll("[data-officer]").forEach(b=> b.onclick=()=>{ const id=b.dataset.officer; officerOpen=officerOpen===id?null:id; recruiterMode="menu"; UI.render("crew"); });
+      app.querySelectorAll("[data-recmode]").forEach(b=> b.onclick=()=>{ recruiterMode=b.dataset.recmode; UI.render("crew"); });
+      app.querySelectorAll("[data-recship]").forEach(b=> b.onclick=()=>recruiterHireShip(+b.dataset.recship));
+      app.querySelectorAll("[data-recfleet]").forEach(b=> b.onclick=()=>recruiterHireFleet(b.dataset.recfleet));
+      app.querySelectorAll("[data-recupship]").forEach(b=> b.onclick=()=>recruiterHeadhunt([+b.dataset.recupship]));
+      const ra=$("[data-recauto]"); if(ra) ra.onclick=()=>toggleRecruiterAuto();
       app.querySelectorAll("[data-selshipview]").forEach(b=> b.onclick=()=>{ viewingShip=b.dataset.selshipview; UI.render("crew"); });
       const sb=$("#shipsBack"); if(sb) sb.onclick=()=>{ viewingShip=null; UI.render("crew"); };
       app.querySelectorAll("[data-launch]").forEach(b=> b.onclick=()=>launchFighter(b.dataset.launch));
@@ -5615,33 +5656,54 @@ function genCrewMember(career){ return { name:genName("person"), raceName:genNam
 function crewNeeds(v){ const pilotsHave=Game.aboard(v,"pilot")+(v.id===state.activeShip?1:0);
   return { pilot:Math.max(0,(v.reqPilots??1)-pilotsHave), mechanic:Math.max(0,(v.reqMech??0)-Game.aboard(v,"mechanic")),
            gunner:Math.max(0,(v.reqGun??0)-Game.aboard(v,"gunner")), laborer:Math.max(0,(v.reqLabor??0)-Game.laborers(v)) }; }
-/* the Recruiter, ticked each action: fill empty berths across all your ships, then sometimes headhunt
-   a sharper pilot or gunner to replace your weakest */
+/* fill one ship's empty required berths; returns {hired, fee} */
+function crewShip(v){ if(!v||v.carrier) return {hired:0,fee:0};
+  let hired=0, fee=0; const need=crewNeeds(v);
+  ["pilot","mechanic","gunner","laborer"].forEach(role=>{ const r=HIRE_ROLES[role]; if(!r) return;
+    for(let k=0;k<need[role];k++){ if((state.credits||0)<r.fee) return;   // out of money — stop
+      state.credits-=r.fee; fee+=r.fee; state.crew=state.crew||[];
+      const m=genCrewMember(role); m.shipId=v.id; m.seat=Game.shipCrew(v).length; state.crew.push(m); hired++; } });
+  return {hired,fee}; }
+function shipBerthsNeeded(v){ const n=crewNeeds(v); return (n.pilot+n.mechanic+n.gunner+n.laborer)||0; }
+/* the Recruiter, ticked each action (when auto-crew is on): keep every ship's berths filled, and
+   now and then headhunt a sharper pilot or gunner */
 function runRecruiter(){
-  if(!hasOfficer("recruiter")) return;
+  const o=state.officers&&state.officers.recruiter; if(!o || o.auto===false) return;
   let hired=0, fee=0;
-  (state.vehicles||[]).forEach(v=>{ if(v.carrier) return;             // stowed fighters get crewed when launched
-    const need=crewNeeds(v);
-    ["pilot","mechanic","gunner","laborer"].forEach(role=>{ const r=HIRE_ROLES[role]; if(!r) return;
-      for(let k=0;k<need[role];k++){ if((state.credits||0)<r.fee) return;   // out of money — stop hiring
-        state.credits-=r.fee; fee+=r.fee; state.crew=state.crew||[];
-        const m=genCrewMember(role); m.shipId=v.id; m.seat=Game.shipCrew(v).length; state.crew.push(m); hired++; } });
-  });
+  (state.vehicles||[]).forEach(v=>{ const r=crewShip(v); hired+=r.hired; fee+=r.fee; });
   if(hired) Game.logMsg(`Your recruiter crews up ${hired} berth${hired>1?"s":""} across the fleet (${commas(fee)}c in signing fees).`,"sys");
-  if(chance(0.05)) recruiterUpgrade();
+  if(chance(0.05)) recruiterHeadhunt((state.vehicles||[]).map(v=>v.id), true);
 }
-function recruiterUpgrade(){
-  const role=chance(0.5)?"pilot":"gunner", which=role==="pilot"?"piloting":"gunnery";
-  const cands=(state.crew||[]).filter(c=>c.career===role && c.shipId); if(!cands.length) return;
-  const weakest=cands.reduce((a,b)=>crewSkill(a,which)<=crewSkill(b,which)?a:b);
-  const better=rollCrewSkills(role,null);
-  if((better[which]||0) > crewSkill(weakest,which)+1 && (state.credits||0)>=HIRE_ROLES[role].fee){
-    state.credits-=HIRE_ROLES[role].fee;
-    weakest.name=genName("person"); weakest.raceName=genName("race"); weakest.skills=better; weakest.recruited=true;
-    Game.logMsg(`Your recruiter headhunts a sharper ${careerName(role)} (${which} ${better[which]}) for one of your berths.`,"good");
-  }
+/* directed: crew up a single ship */
+function recruiterHireShip(id){ if(!hasOfficer("recruiter")){ toast("Hire a Recruiter first"); return; }
+  const v=(state.vehicles||[]).find(x=>x.id===id); if(!v) return; const {hired,fee}=crewShip(v);
+  Game.logMsg(hired?`Recruiter crews the ${v.name}: ${hired} berth${hired>1?"s":""} filled (${commas(fee)}c).`:`The ${v.name} is already fully crewed.`, hired?"good":"sys");
+  toast(hired?`Crewed ${v.name}`:"Already crewed"); Game.save(); UI.render("crew"); }
+/* directed: crew up every ship in a fleet */
+function recruiterHireFleet(fid){ if(!hasOfficer("recruiter")){ toast("Hire a Recruiter first"); return; }
+  const f=fleetById(fid); if(!f) return; let H=0,F=0;
+  shipsByIds(f.shipIds).forEach(v=>{ const r=crewShip(v); H+=r.hired; F+=r.fee; });
+  Game.logMsg(H?`Recruiter crews the ${f.name}: ${H} berth${H>1?"s":""} across the fleet (${commas(F)}c).`:`${f.name} is already fully crewed.`, H?"good":"sys");
+  toast(H?`Crewed ${f.name}`:"Already crewed"); Game.save(); UI.render("crew"); }
+/* headhunt a sharper pilot or gunner among the given ships, replacing the weakest of that trade */
+function recruiterHeadhunt(ids, silent){
+  const set=new Set(ids); const pickRole=chance(0.5)?"pilot":"gunner";
+  let role=pickRole, which=role==="pilot"?"piloting":"gunnery";
+  let cands=(state.crew||[]).filter(c=>c.career===role && set.has(c.shipId));
+  if(!cands.length){ role=role==="pilot"?"gunner":"pilot"; which=role==="pilot"?"piloting":"gunnery";
+    cands=(state.crew||[]).filter(c=>c.career===role && set.has(c.shipId)); }
+  if(!cands.length){ if(!silent) toast("No pilots or gunners to upgrade there"); return; }
+  const weakest=cands.reduce((a,b)=>crewSkill(a,which)<=crewSkill(b,which)?a:b), better=rollCrewSkills(role,null), fee=HIRE_ROLES[role].fee;
+  if((better[which]||0) <= crewSkill(weakest,which)+1){ if(!silent) toast("No sharper candidate turned up this time"); return; }
+  if((state.credits||0)<fee){ if(!silent) toast(`Headhunting costs ${commas(fee)}c`); return; }
+  state.credits-=fee; weakest.name=genName("person"); weakest.raceName=genName("race"); weakest.skills=better; weakest.recruited=true;
+  Game.logMsg(`Recruiter headhunts a sharper ${careerName(role)} (${which} ${better[which]}) — ${commas(fee)}c.`,"good");
+  if(!silent){ toast("Upgraded a berth"); Game.save(); UI.render("crew"); }
 }
+function toggleRecruiterAuto(){ const o=state.officers&&state.officers.recruiter; if(!o) return;
+  o.auto=o.auto===false; toast(o.auto===false?"Auto-crew off":"Auto-crew on"); Game.save(); UI.render("crew"); }
 let seatPick=null, crewTab="crewmates", viewingShip=null;   // Crew-tab UI state
+let officerOpen=null, recruiterMode="menu";   // Officers panel: which officer is expanded, and the recruiter sub-view
 let travelCtx=null;   // {ids:[shipId], title} — what the Travel screen is moving
 let mapView=null;     // {cx,cy,span} — galaxy-map viewport in light-years
 let mapSel=null;      // id of the system selected on the Map tab (shows its detail panel)
