@@ -6,21 +6,21 @@
 <title>Ranch Tycoon — a cattle ranching life sim</title>
 <style>
   :root{
-    --bg:#1b1410; --panel:#2a211a; --panel2:#332821; --ink:#f3e9dc; --muted:#b9a890;
-    --accent:#d9a441; --good:#6fbf73; --bad:#e2705f; --line:#4a3b2e;
-    --premium:#c9a0dc; --commodity:#9bb7d4;
+    --bg:#f7f1e3; --panel:#ffffff; --panel2:#f1e7d4; --ink:#3a2c1e; --muted:#8a7560;
+    --accent:#e0a629; --brown:#6f4a27; --good:#3f9d4f; --bad:#c0492f; --line:#e0d2b8;
+    --premium:#7a4fae; --commodity:#3f6f9c;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
   button{font-family:inherit;cursor:pointer}
-  h1,h2,h3{margin:.2em 0;font-weight:700}
+  h1,h2,h3{margin:.2em 0;font-weight:700;color:var(--brown)}
   .wrap{max-width:1080px;margin:0 auto;padding:16px}
   .screen{display:none}
   .screen.active{display:block}
   .muted{color:var(--muted)}
   .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:.82rem;margin:2px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:12px 0;box-shadow:0 4px 14px rgba(0,0,0,.25)}
-  .btn{background:var(--accent);color:#241a0f;border:none;border-radius:8px;padding:10px 16px;font-weight:700;font-size:.95rem}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:12px 0;box-shadow:0 2px 10px rgba(90,60,30,.10)}
+  .btn{background:var(--accent);color:#3a2c1e;border:none;border-radius:8px;padding:10px 16px;font-weight:700;font-size:.95rem}
   .btn:hover{filter:brightness(1.08)}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
   .btn:disabled{opacity:.4;cursor:not-allowed}
@@ -30,21 +30,21 @@
   .choice .tip{display:block;color:var(--muted);font-size:.85rem;margin-top:3px}
   /* intro */
   .hero{text-align:center;padding:40px 0}
-  .hero h1{font-size:2.4rem;color:var(--accent)}
+  .hero h1{font-size:2.4rem;color:var(--brown)}
   /* map */
-  #mapWrap{max-width:840px;margin:6px auto;background:#10202b;border:1px solid var(--line);border-radius:12px;padding:6px}
+  #mapWrap{max-width:840px;margin:6px auto;background:#faf4e8;border:1px solid var(--line);border-radius:12px;padding:6px}
   #usmap{width:100%;height:auto;display:block}
-  .st{fill:#241d16;stroke:#4a3b2e;stroke-width:.7;stroke-linejoin:round;transition:fill .12s}
-  .st.avail{fill:#3a5a3f;stroke:#6f9a74;stroke-width:.9;cursor:pointer}
-  .st.avail:hover{fill:#5b8a61}
-  .st.sel{fill:#6aa970;stroke:var(--accent);stroke-width:2}
-  .stlabel{font-size:11px;font-weight:700;fill:#eafaea;pointer-events:none;text-anchor:middle;paint-order:stroke;stroke:#10202b;stroke-width:2.4px}
+  .st{fill:#e6d9bf;stroke:#cdb791;stroke-width:.7;stroke-linejoin:round;transition:fill .12s}
+  .st.avail{fill:var(--brown);stroke:#4d3018;stroke-width:.9;cursor:pointer}
+  .st.avail:hover{fill:#875a31}
+  .st.sel{fill:#875a31;stroke:var(--accent);stroke-width:2}
+  .stlabel{font-size:11px;font-weight:700;fill:#fff;pointer-events:none;text-anchor:middle;paint-order:stroke;stroke:#4d3018;stroke-width:2.4px}
   .insetlabel{font-size:10px;fill:var(--muted);pointer-events:none;text-anchor:middle}
   .pin{cursor:pointer}
-  .pin circle.ring{fill:var(--accent);stroke:#3b2a12;stroke-width:1}
-  .pin circle.pdot{fill:#3b2a12}
-  .pin:hover circle.ring{fill:#ffd277}
-  .pin.pinsel circle.ring{fill:#fff0c2;stroke:#fff;stroke-width:1.6}
+  .pin circle.ring{fill:var(--accent);stroke:#4d3018;stroke-width:1}
+  .pin circle.pdot{fill:#4d3018}
+  .pin:hover circle.ring{fill:#ffce5e}
+  .pin.pinsel circle.ring{fill:#fff3cf;stroke:#4d3018;stroke-width:1.6}
   .loccard.flash{outline:3px solid var(--accent)}
   .legend{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:8px 0;font-size:.85rem}
   .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:5px}
@@ -57,7 +57,7 @@
   @media(max-width:820px){.grid2{grid-template-columns:1fr}.wrap{padding:10px}}
   .log{max-height:220px;overflow:auto;font-size:.86rem}
   .log .e{padding:4px 0;border-bottom:1px dashed var(--line)}
-  .ok{color:var(--good)} .warn{color:var(--bad)} .acc{color:var(--accent)}
+  .ok{color:var(--good)} .warn{color:var(--bad)} .acc{color:#a9760f;font-weight:700}
   .row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dotted var(--line)}
   .seasonchip{font-weight:700}
   table{width:100%;border-collapse:collapse;font-size:.88rem}
@@ -97,8 +97,8 @@
     <h2>Where do you want to ranch?</h2>
     <p class="muted">Click a green state to see available starter ranches. (More states coming soon.)</p>
     <div class="legend">
-      <span><span class="swatch" style="background:#3a5a3f"></span>Available now</span>
-      <span><span class="swatch" style="background:#241d16"></span>Coming soon</span>
+      <span><span class="swatch" style="background:#6f4a27"></span>Available now</span>
+      <span><span class="swatch" style="background:#e6d9bf"></span>Coming soon</span>
     </div>
     <div id="mapWrap"></div>
     <div id="locPicker"></div>
