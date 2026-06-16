@@ -3752,12 +3752,12 @@ const UI = {
         const occ=seatOccupant(v.id,n);
         seats+= occ
           ? `<div class="frow"><div class="finfo">${lbl}<div class="small" style="margin-top:2px">${occ.name} <span class="dim">&middot; ${careerName(occ.career)}</span></div></div><button class="small ghost" data-unseat="${state.crew.indexOf(occ)}">Remove</button></div>`
-          : `<div class="frow"><div class="finfo">${lbl}<div class="small dim" style="margin-top:2px">empty</div></div>${here?`<button class="small" data-seat="${v.id}:${n}">Assign</button>`:'<span class="chip">&mdash;</span>'}</div>`;
+          : `<div class="frow"><div class="finfo">${lbl}<div class="small dim" style="margin-top:2px">empty</div></div><button class="small" data-seat="${v.id}:${n}">Assign</button></div>`;
       });
       // passenger berths (capacity beyond the working crew)
       const pax=(state.crew||[]).filter(c=>c.shipId===v.id && c.seat>=layout.length);
       if(berths>0){
-        seats+=`<div class="frow"><div class="finfo"><span class="dim" style="font-weight:600">Passenger berths</span><div class="small dim" style="margin-top:2px">${pax.length}/${berths} aboard</div></div>${here&&pax.length<berths?`<button class="small" data-seatpax="${v.id}">Board</button>`:""}</div>`;
+        seats+=`<div class="frow"><div class="finfo"><span class="dim" style="font-weight:600">Passenger berths</span><div class="small dim" style="margin-top:2px">${pax.length}/${berths} aboard</div></div>${pax.length<berths?`<button class="small" data-seatpax="${v.id}">Board</button>`:""}</div>`;
         seats+=pax.map(c=>`<div class="frow"><div class="finfo"><span class="dim small">passenger</span><div class="small" style="margin-top:2px">${c.name} <span class="dim">&middot; ${careerName(c.career)}</span></div></div><button class="small ghost" data-unseat="${state.crew.indexOf(c)}">Remove</button></div>`).join("");
       }
       const fleet=fleetOf(v), grounded=state.grounded && active && spaceworthy(v);
@@ -5787,7 +5787,6 @@ function nextFreeBerth(v){ const f=shipSeats(v).length, cap=Math.max(v.crewMax||
 /* assign a hire to a specific seat on a ship docked where you are */
 function assignToSeat(ci, shipId, seat){
   const c=state.crew[ci], v=(state.vehicles||[]).find(x=>x.id===shipId); if(!c||!v) return;
-  if(!atHere(v)){ toast("That ship is docked elsewhere"); return; }
   if(seatOccupant(shipId, seat)){ toast("Seat taken"); return; }
   c.shipId=shipId; c.seat=seat; seatPick=null;
   Game.logMsg(`${c.name} takes a seat aboard the ${v.name}.`,"sys"); Game.save(); UI.render("crew");
