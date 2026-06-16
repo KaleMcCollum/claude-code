@@ -3074,8 +3074,8 @@ const UI = {
     // ---- powers panel: who holds what space, and how they regard you ----
     const kg=new Set(); vis.forEach(s=>{ if(s.discovered&&s.govId) kg.add(s.govId); }); if(hg) kg.add(hg.id);
     const enemies=(state.allegiance&&state.allegiance.enemies)||[];
-    const powers=(state.galaxy.governments||[]).filter(g=>kg.has(g.id)).sort((a,b)=>(a.rank||9)-(b.rank||9));
-    const powersCard = powers.length?`<div class="card sheet"><div class="row between"><h3>&#127963; Powers</h3><span class="dim small">${powers.length} known</span></div>
+    const powers=(state.galaxy.governments||[]).filter(g=>mapShowAll||kg.has(g.id)).sort((a,b)=>(a.rank||9)-(b.rank||9));
+    const powersCard = powers.length?`<div class="card sheet"><div class="row between"><h3>&#127963; Powers</h3><span class="dim small">${mapShowAll?`all ${powers.length} shown`:`${powers.length} known`}</span></div>
       ${powers.map(g=>{ const held=vis.filter(s=>s.discovered&&s.govId===g.id).length, st=govStance(g), enemy=enemies.includes(g.id), foc=mapFocusGov===g.id;
         return `<div class="krow" style="${foc?'background:#ffffff0c;border-radius:8px':''}">
           <span class="lbl"><span style="color:${g.color}">&#9632;</span> ${g.name} <span class="dim small">&middot; ${g.alignment}</span> <span class="chip ${enemy?'r':(sCol[st]||'')}">${enemy?'&#9876; at war':st}</span></span>
@@ -3094,6 +3094,7 @@ const UI = {
         <button class="small" id="mapZout">&#10134;</button>
         <button class="small ghost" id="mapMe">&#9673; Me</button>
         <button class="small ghost" id="mapAll">&#9737; All</button>
+        <button class="small ${mapShowAll?'sel':'ghost'}" id="mapPowers" title="Reveal every power's territory and capital">&#127963; Powers</button>
         <button class="small ghost" id="mapU">&#9650;</button>
         <button class="small ghost" id="mapD">&#9660;</button>
         <button class="small ghost" id="mapL">&#9664;</button>
@@ -3146,8 +3147,9 @@ const UI = {
     const showLabels=v.span<=46;
     const knownGovs=new Set(); (state.galaxy.systems||[]).forEach(s=>{ if(s.discovered && s.govId) knownGovs.add(s.govId); });
     const hereG=systemGov(curSys()); if(hereG) knownGovs.add(hereG.id);
+    const revealAll = !!(opts.pick && mapShowAll), govKnown = id => revealAll || knownGovs.has(id);
     const focusG = opts.pick ? mapFocusGov : null, gtime=state.actions||0;
-    (state.galaxy.governments||[]).forEach(g=>{ if(!knownGovs.has(g.id)) return;
+    (state.galaxy.governments||[]).forEach(g=>{ if(!govKnown(g.id)) return;
       const gx=sx(g.center.x), gy=sy(g.center.y), gr=g.radius/v.span*SIZE;
       if(!inView(gx,gy,gr)) return;
       const dim = focusG && focusG!==g.id, foc = focusG===g.id;
@@ -3166,7 +3168,7 @@ const UI = {
       els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${full?7:5}" fill="${ecol}22" stroke="${ecol}" stroke-width="${full?1.4:1}" ${full?'':'stroke-dasharray="2 2"'}/>`; }); }
     // systems you can see — discovered stars are tinted by who controls them
     visibleSystems().forEach(s=>{ const px=sx(s.x), py=sy(s.y); if(!inView(px,py,8)) return;
-      const here=s.id===originId, gcol=(s.govId&&knownGovs.has(s.govId))?((govById(s.govId)||{}).color||null):null, sel=s.id===mapSel;
+      const here=s.id===originId, gcol=(s.govId&&govKnown(s.govId))?((govById(s.govId)||{}).color||null):null, sel=s.id===mapSel;
       if(sel) els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="none" stroke="#ffd66b" stroke-width="1.4"/>`;
       if(here){ els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="none" stroke="#5aa9ff" stroke-width="1" class="pulse"/>
         <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.5" fill="none" stroke="#5aa9ff" stroke-width="1.5"/>
@@ -3179,7 +3181,7 @@ const UI = {
       if(opts.pick && (s.discovered||systemVisible(s))) els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="9" fill="transparent" data-mapsel="${s.id}"><title>${s.discovered?s.name:"uncharted contact"}</title></circle>`;
     });
     // capital stars for the powers you know — landmarks toward the core, drawn on top
-    (state.galaxy.governments||[]).forEach(g=>{ if(!knownGovs.has(g.id) || g.capitalSys==null) return;
+    (state.galaxy.governments||[]).forEach(g=>{ if(!govKnown(g.id) || g.capitalSys==null) return;
       const cap=state.galaxy.systems[g.capitalSys]; if(!cap) return;
       const cxp=sx(cap.x), cyp=sy(cap.y); if(!inView(cxp,cyp,12)) return;
       if(opts.pick && mapFocusGov && mapFocusGov!==g.id) return;
@@ -4302,6 +4304,7 @@ const UI = {
       const zo=$("#mapZout"); if(zo) zo.onclick=()=>z(1.6);
       const me=$("#mapMe"); if(me) me.onclick=()=>{ this.mapCenterMe(); UI.render("map"); };
       const all=$("#mapAll"); if(all) all.onclick=()=>{ mapView={ cx:0, cy:0, span:GALAXY.radius*2.2 }; UI.render("map"); };
+      const mpw=$("#mapPowers"); if(mpw) mpw.onclick=()=>{ mapShowAll=!mapShowAll; if(mapShowAll){ mapView={ cx:0, cy:0, span:GALAXY.radius*2.2 }; } UI.render("map"); };
       const mu=$("#mapU"); if(mu) mu.onclick=()=>{ mapView.cy+=step(); UI.render("map"); };
       const md=$("#mapD"); if(md) md.onclick=()=>{ mapView.cy-=step(); UI.render("map"); };
       const ml=$("#mapL"); if(ml) ml.onclick=()=>{ mapView.cx-=step(); UI.render("map"); };
@@ -5879,6 +5882,7 @@ let mapView=null;     // {cx,cy,span} — galaxy-map viewport in light-years
 let mapSel=null;      // id of the system selected on the Map tab (shows its detail panel)
 let mapFilter="all";  // system-browser filter on the Map tab: all / fav / mine / contacts
 let mapFocusGov=null; // id of a power whose territory is highlighted (dims the rest)
+let mapShowAll=false;  // Map tab: reveal every power's territory/capital, even undiscovered space
 /* open the Travel screen for a set of ships */
 function openTravel(ids, title){ travelCtx={ ids:ids.slice(), title }; UI.render("travel"); }
 /* move one ship; if it's in a fleet, that whole fleet moves (jump to its fleet view) */
