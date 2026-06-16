@@ -5240,16 +5240,32 @@ function loseShipBattle(){
   Game.save(); UI.render("shipbattle");
 }
 /* leave the battle screen — knocked out fleets limp home */
+/* a ship is lost for good: stowed fighters go down with a carrier, crew aboard are lost with her,
+   it's pulled from any fleet (disbanding/ending its trade run if empty), and removed from your roster */
+function destroyShip(id, cause){
+  const arr=state.vehicles||[]; if(arr.findIndex(v=>v.id===id)<0) return;
+  const v=arr.find(x=>x.id===id);
+  arr.filter(x=>x.carrier===id).slice().forEach(f=>destroyShip(f.id, cause));   // bays go down with the carrier
+  const lostCrew=(state.crew||[]).filter(c=>c.shipId===id).length;
+  state.crew=(state.crew||[]).filter(c=>c.shipId!==id);
+  if(v.fleetId){ const fl=fleetById(v.fleetId); if(fl){ fl.shipIds=fl.shipIds.filter(x=>x!==id);
+    if(!fl.shipIds.length){ fl.trade=null; state.fleets=(state.fleets||[]).filter(x=>x.id!==fl.id); } } }
+  const i=state.vehicles.findIndex(x=>x.id===id); if(i>=0) state.vehicles.splice(i,1);
+  if(state.activeShip===id) state.activeShip=null;
+  Game.logMsg(`&#9760; <b>${v.name}</b> is destroyed${cause?" "+cause:""}${lostCrew?` — ${lostCrew} crew lost with her`:""}.`,"bad");
+}
 function shipBattleDone(){
   const c=shipCombat; const lost=c.lost; shipCombat=null;
   (state.vehicles||[]).forEach(v=>{ delete v.shield; });   // shields recharge out of combat
-  if(c.tradeRaid){                       // a remote trade-fleet fight — the fleet limps on, never destroyed in absentia
+  // BRUTAL: any of your ships shot to zero are lost for good (crew aboard with them)
+  c.my.slice().forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v && v.hp<=0) destroyShip(id, "in the fighting"); });
+  // if the ship you were flying went down, take the helm of a surviving battle-mate (if any)
+  if(!state.activeShip){ const surv=c.my.map(id=>(state.vehicles||[]).find(x=>x.id===id)).find(v=>v&&spaceworthy(v)); if(surv) state.activeShip=surv.id; }
+  if(c.tradeRaid){                       // a remote trade-fleet fight
     const f=fleetById(c.tradeRaid);
-    if(f){ shipsByIds(f.shipIds).forEach(v=>{ if(v.hp<=0) v.hp=1; });   // crippled hulls survive, barely
-      if(lost){ let plundered=0;                                       // overrun: raiders strip the holds as they peel off
-        shipsByIds(f.shipIds).forEach(v=>{ for(const id in (v.cargo||{})){ const take=Math.round(v.cargo[id]*rndF(0.4,0.7)); if(take>0){ v.cargo[id]=Math.max(0,v.cargo[id]-take); if(v.cargo[id]<=0) delete v.cargo[id]; plundered+=take; } } });
-        if(plundered) Game.logMsg(`${f.name} loses ${commas(plundered)} units of cargo to the raiders.`,"bad");
-      }
+    if(f && lost){ let plundered=0;                                       // overrun: raiders strip the holds as they peel off
+      shipsByIds(f.shipIds).forEach(v=>{ for(const id in (v.cargo||{})){ const take=Math.round(v.cargo[id]*rndF(0.4,0.7)); if(take>0){ v.cargo[id]=Math.max(0,v.cargo[id]-take); if(v.cargo[id]<=0) delete v.cargo[id]; plundered+=take; } } });
+      if(plundered) Game.logMsg(`${f.name} loses ${commas(plundered)} units of cargo to the raiders.`,"bad");
     }
     Game.save(); UI.render(c.raidBack||"crew"); UI.flashLog(); return;
   }
@@ -5271,7 +5287,9 @@ function shipBattleDone(){
     if(state.galaxy){ playerGroupIds().forEach(id=>{ const v=(state.vehicles||[]).find(x=>x.id===id); if(v){ v.sysId=0; v.slot=0; } });
       state.voidPos=null; state.sysId=0; state.atSlot=0; state.system=state.galaxy.systems[0]; state.world=state.system.planets[0].world; }
     state.hp=Math.max(1,Math.round(Game.effMaxHp()*0.4));
-    Game.logMsg(`You limp home to ${state.world?state.world.name:"port"}. Repair your hulls at the Shipyard.`,"bad");
+    Game.logMsg((state.vehicles||[]).length
+      ? `You limp home to ${state.world?state.world.name:"port"}. Repair your hulls at the Shipyard.`
+      : `Your ship is gone. You're picked up adrift and put ashore at ${state.world?state.world.name:"port"} — on foot, with nothing but your wits.`,"bad");
   }
   Game.save(); UI.render("hub"); UI.flashLog();
 }
@@ -5940,7 +5958,8 @@ function raidMaul(f, cargoFrac, hullFrac){
   let lost=0;
   shipsByIds(f.shipIds).filter(v=>v.hp>0).forEach(v=>{
     for(const id in (v.cargo||{})){ const take=Math.round(v.cargo[id]*cargoFrac); if(take>0){ v.cargo[id]=Math.max(0,v.cargo[id]-take); if(v.cargo[id]<=0) delete v.cargo[id]; lost+=take; } }
-    v.hp=Math.max(1, Math.round(v.hp*(1-hullFrac)));        // battered, never destroyed in absentia
+    v.hp=Math.round(v.hp*(1-hullFrac));
+    if(v.hp<=0) destroyShip(v.id, "to raiders on the lanes");   // a botched run-for-it can cost you the ship
   });
   return lost;
 }
