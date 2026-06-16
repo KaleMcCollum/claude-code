@@ -37,7 +37,8 @@ feeder calves ~$280/cwt, fed cattle ~$192/cwt live, cull cows ~$116/cwt, bred co
 hay ~$160/ton. All tunable in the `CONFIG` object at the top of the `<script>` in `index.html`.
 
 ## This is a vertical slice
-Working now: clickable map (TX/MT/CO), operation choice, starting herd/horse/barn/house, the weekly
+Working now: clickable geographic US map with real state outlines (TX/MT/CO playable, Alaska &
+Hawaii drawn as insets), operation choice, starting herd/horse/barn/house, the weekly
 loop with a full first-year arc (calving → breeding → drought → weaning sale → preg-check/cull →
 winter blizzard), markets, buying/selling cattle, land/barn/labor upgrades, and the broke→bailout→
 bankruptcy path.
