@@ -3793,7 +3793,7 @@ const UI = {
   /* the trade-job panel inside a fleet's view: current job, the route builder, or the entry point */
   fleetTradeCard(f){
     if(f.trade){ const t=f.trade, A=worldAt(t.buySys,t.buySlot), B=worldAt(t.sellSys,t.sellSlot), c=commodityById(t.commodity);
-      const bp=A?commodityBuy(A,c):0, sp=B?commoditySell(B,c):0, cap=fleetCargoCap(f), qty=Math.floor(cap/(c?c.bulk:1)), cyc=tradeCycleActions(t, groupCaps(f.shipIds).jump);
+      const bp=A?commodityBuy(A,c):0, sp=B?Math.round(commoditySell(B,c)*laneFactor(t.buySys,t.sellSys)):0, cap=fleetCargoCap(f), qty=Math.floor(cap/(c?c.bulk:1)), cyc=tradeCycleActions(t, groupCaps(f.shipIds).jump);
       const margin=sp-bp, crewed=fleetAllCrewed(f), uncrewed=shipsByIds(f.shipIds).filter(v=>!Game.operational(v));
       // why isn't it earning? surface the exact blocker
       let warn="";
@@ -3848,7 +3848,7 @@ const UI = {
     // confirm
     const A=worldAt(tb.buySys,tb.buySlot), B=worldAt(tb.sellSys,tb.sellSlot), c=commodityById(tb.commodity);
     const free=routeFreeGood(tb.buySys,tb.buySlot,tb.commodity), bp=free?0:commodityBuy(A,c);
-    const sp=commoditySell(B,c), qty=Math.floor(cap/c.bulk), profit=(sp-bp)*qty;
+    const sp=Math.round(commoditySell(B,c)*laneFactor(tb.buySys,tb.sellSys)), qty=Math.floor(cap/c.bulk), profit=(sp-bp)*qty;
     const cyc=tradeCycleActions({buySys:tb.buySys,buySlot:tb.buySlot,sellSys:tb.sellSys,sellSlot:tb.sellSlot}, groupCaps(f.shipIds).jump);
     return `<div class="card sheet">${head}
       <p class="small">${free?`Load <b>${c.name}</b> free from your stockpile at <b style="color:${empireColor()}">${A.name}</b>`:`Buy <b>${c.name}</b> at <b>${A.name}</b> for <span class="gold">${commas(bp)}c</span>`}, sell at <b>${B.name}</b> for <span class="gold">${commas(sp)}c</span> (margin ${commas(sp-bp)}c).</p>
@@ -5842,10 +5842,16 @@ function tradeBuy(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(t
     if(qty>0){ state.credits-=qty*p; t.lastBuy=qty*p; tradeLoad(ships, t.commodity, qty, c); }
   } }
 /* and sells it all at the sell world */
+/* long-haul premium: goods fetch much more the further they're carried between STARS. An in-system
+   run earns a thin margin; hauling across the galaxy is where the real profit (and the risk) is. */
+function laneFactor(buySys, sellSys){
+  if(buySys===sellSys) return 0.8;                          // same-system trade — slim pickings
+  return clamp(1 + sysDist(buySys,sellSys)*0.012, 1.08, 2.0);   // scales with jump distance, up to 2x
+}
 function tradeSell(f){ const t=f.trade, c=commodityById(t.commodity), w=worldAt(t.sellSys,t.sellSlot);
   if(!w||!c||!canSellHere(w,c)) return;
   const ships=shipsByIds(f.shipIds), have=ships.reduce((s,v)=>s+(v.cargo[t.commodity]||0),0); if(!have) return;
-  const p=commoditySell(w,c); state.credits+=have*p; let rem=have;
+  const p=Math.round(commoditySell(w,c)*laneFactor(t.buySys,t.sellSys)); state.credits+=have*p; let rem=have;
   for(const v of ships){ const take=Math.min(v.cargo[t.commodity]||0,rem); if(take>0){ v.cargo[t.commodity]-=take; if(v.cargo[t.commodity]<=0) delete v.cargo[t.commodity]; rem-=take; } }
   t.earned=(t.earned||0)+(have*p-(t.lastBuy||0)); t.runs=(t.runs||0)+1;
   Game.logMsg(`Trade fleet ${f.name}: ${have} ${c.name} sold at ${w.name} for ${commas(have*p)}c.`,"good"); }
@@ -5927,15 +5933,16 @@ function raidFlee(){
 /* advance one fleet's route by a single action — a same-system hop arrives at once; a jump between
    systems takes one action per jump (distance / jump range) before it arrives and trades */
 function tradeStep(f){ const t=f.trade; if(!t||!fleetAllCrewed(f)) return;
-  if(chance(ambushChance(f))){ beginTradeRaid(f); return; }   // raiders strike — freeze the run for the player's call
   const tgt = t.phase==="toSell" ? {s:t.sellSys,p:t.sellSlot} : {s:t.buySys,p:t.buySlot};
-  if(t.pos.sysId!==tgt.s){                                  // crossing to another system — count down the jumps
+  const crossing = t.pos.sysId!==tgt.s;                     // are we jumping between systems this step?
+  if(crossing && chance(ambushChance(f))){ beginTradeRaid(f); return; }   // only the lanes between stars are raided
+  if(crossing){                                             // crossing to another system — count down the jumps
     if(t.legLeft==null){ const jump=Math.max(1, groupCaps(f.shipIds).jump);
       t.legLeft=Math.max(1, Math.ceil(sysDist(t.pos.sysId,tgt.s)/jump)); }
     if(--t.legLeft>0) return;                               // still in transit this action
     t.legLeft=null; t.pos={sysId:tgt.s, slot:tgt.p};
     shipsByIds(f.shipIds).forEach(v=>{ v.sysId=tgt.s; v.slot=tgt.p; });
-  } else if(t.pos.slot!==tgt.p){                            // same system, different planet — one hop
+  } else if(t.pos.slot!==tgt.p){                            // same system, different planet — one hop, no raiders
     t.pos={sysId:tgt.s, slot:tgt.p}; shipsByIds(f.shipIds).forEach(v=>{ v.sysId=tgt.s; v.slot=tgt.p; });
   }
   if(t.pos.sysId===tgt.s && t.pos.slot===tgt.p){            // arrived — buy or sell, patch up, then turn around
