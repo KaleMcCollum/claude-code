@@ -55,6 +55,19 @@
   .land-fence{fill:none;stroke:#5a3c1e;stroke-width:2.6;stroke-dasharray:2 4;stroke-linejoin:round;pointer-events:none}
   .plabel{text-anchor:middle;pointer-events:none}
   .pbuy{font-weight:700;fill:#6e4a0c;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:#fff;stroke-width:3px}
+  /* map-as-homescreen */
+  #mapStage{position:relative;margin-top:12px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#cfe2a3;box-shadow:0 2px 12px rgba(90,60,30,.12)}
+  #ranchMap{width:100%;max-height:74vh;overflow:auto}
+  #ranchMap svg{display:block;margin:auto}
+  #toolPalette{position:absolute;top:10px;left:10px;display:flex;flex-direction:column;gap:5px;background:rgba(255,251,243,.92);padding:8px;border-radius:10px;border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.15);width:132px}
+  #mapTopRight{position:absolute;top:10px;right:10px;display:flex;gap:5px;flex-wrap:wrap;max-width:62%;justify-content:flex-end}
+  .btn.mini{padding:6px 9px;font-size:.78rem}
+  .toolbtn{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-weight:700;font-size:.82rem;cursor:pointer;color:var(--ink)}
+  .toolbtn:hover{border-color:var(--accent)}
+  .toolbtn.sel{background:var(--accent);border-color:var(--brown);color:#3a2c1e}
+  #scenarioOverlay{position:absolute;left:10px;right:10px;bottom:10px;background:rgba(255,251,243,.95);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:0 4px 16px rgba(0,0,0,.2);max-height:48%;overflow:auto}
+  #scenarioOverlay:empty{display:none}
+  @media(max-width:680px){#toolPalette{width:108px}#mapTopRight{max-width:50%}}
   /* toast */
   #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--brown);color:#fff;padding:10px 18px;border-radius:999px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:.25s;z-index:80}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -144,30 +157,22 @@
     <button class="btn ghost" onclick="go('map')">← Back to map</button>
   </section>
 
-  <!-- ===================== GAME ===================== -->
+  <!-- ===================== GAME (the map IS the home screen) ===================== -->
   <section id="game" class="screen">
     <div class="topbar" id="topbar"></div>
-    <div class="grid2" style="margin-top:14px">
-      <div>
-        <div class="card" id="scenarioCard"></div>
-        <div class="card">
-          <h3>📜 Ranch Log</h3>
-          <div class="log" id="log"></div>
-        </div>
+    <div id="mapStage">
+      <div id="ranchMap"></div>
+      <div id="toolPalette"></div>
+      <div id="mapTopRight">
+        <button class="btn ghost mini" onclick="zoomLand(1)" title="Zoom in">➕</button>
+        <button class="btn ghost mini" onclick="zoomLand(-1)" title="Zoom out">➖</button>
+        <button class="btn ghost mini" onclick="openHerd()">🐄 Herd</button>
+        <button class="btn ghost mini" onclick="openRanchUpgrades()">👷 Crew</button>
+        <button class="btn ghost mini" onclick="openLog()">📜 Log</button>
+        <button class="btn ghost mini" onclick="saveGame()">💾</button>
+        <button class="btn ghost mini" onclick="openHelp()">❓</button>
       </div>
-      <div>
-        <div class="card" id="ranchPanel"></div>
-        <div class="card">
-          <h3>Manage</h3>
-          <div class="toolbar">
-            <button class="btn" onclick="openMarket()">🛒 Market</button>
-            <button class="btn" onclick="openLandMap()">🗺️ My Land</button>
-            <button class="btn" onclick="openRanchUpgrades()">🏗️ Ranch</button>
-            <button class="btn ghost" onclick="saveGame()">💾 Save</button>
-            <button class="btn ghost" onclick="openHelp()">❓ Industry 101</button>
-          </div>
-        </div>
-      </div>
+      <div id="scenarioOverlay"></div>
     </div>
   </section>
 </div>
@@ -803,7 +808,7 @@ const BUILD = {
 };
 const FENCE_COST = 5000; // per quarter-section, cross-fencing for rotational grazing
 let landZoom = 1;
-let buildTool = 'buy';
+let buildTool = 'interact';
 
 function makeInitialParcels(n){ const w=Math.ceil(Math.sqrt(n)); const out=[]; for(let i=0;i<n;i++) out.push((i%w)+','+Math.floor(i/w)); return out; }
 function recomputeLand(){ S.land = S.parcels.length * PARCEL_ACRES; }
@@ -812,8 +817,8 @@ function buyableParcels(){ const owned=new Set(S.parcels), out=new Set(); S.parc
 function addParcel(k){ if(!S.parcels.includes(k)){ S.parcels.push(k); recomputeLand(); } }
 function parcelPrice(){ return Math.round(PARCEL_ACRES * S.loc.land); }
 
-function setTool(t){ buildTool=t; openLandMap(); }
-function buyParcel(k){ const cost=parcelPrice(); if(S.cash<cost){ toast("Not enough cash for that parcel."); return; } S.cash-=cost; addParcel(k); logE(`Bought a ${PARCEL_ACRES}-acre parcel (-${$money(cost)}). Now ${S.land} acres.`,'ok'); saveGame(true); openLandMap(); render(); }
+function setTool(t){ buildTool=t; render(); }
+function buyParcel(k){ const cost=parcelPrice(); if(S.cash<cost){ toast("Not enough cash for that parcel."); return; } S.cash-=cost; addParcel(k); logE(`Bought a ${PARCEL_ACRES}-acre parcel (-${$money(cost)}). Now ${S.land} acres.`,'ok'); saveGame(true); render(); }
 function placeBuilding(k,type){
   if(!S.parcels.includes(k)){ toast("You don't own that parcel yet."); return; }
   if(S.buildings[k]){ toast("That parcel already has a building."); return; }
@@ -823,14 +828,14 @@ function placeBuilding(k,type){
   if(type==='house') S.houses++;
   if(type==='stables') S.horses+=2;
   logE(`Built a ${b.name} on your land (-${$money(b.cost)}). ${b.note}.`,'ok');
-  saveGame(true); openLandMap(); render();
+  saveGame(true); render();
 }
 function toggleFence(k){
   if(!S.parcels.includes(k)){ toast("You can only fence land you own."); return; }
   const i=S.fences.indexOf(k);
   if(i>=0){ S.fences.splice(i,1); logE(`Pulled the fence off a parcel.`); }
   else { if(S.cash<FENCE_COST){ toast("Not enough cash to fence that parcel."); return; } S.cash-=FENCE_COST; S.fences.push(k); logE(`Fenced a ${PARCEL_ACRES}-acre pasture (-${$money(FENCE_COST)}). Cross-fencing boosts grazing capacity.`,'ok'); }
-  saveGame(true); openLandMap(); render();
+  saveGame(true); render();
 }
 function onParcelClick(k){
   const owned=S.parcels.includes(k), buyable=buyableParcels().includes(k);
@@ -846,19 +851,24 @@ function initMap(){
   const names=["Dry Creek","Junction","Cedar Bend","Lone Pine","Pratt","Willow Gap","Stockman's Flat","Red Bluff","Antelope","Mesa Springs"];
   S.townName = names[S.mapSeed % names.length];
 }
-function openLandMap(){
+// Builds the inner SVG markup for the ranch terrain map (used by the main map screen).
+function buildRanchMapInner(){
   if(!S.parcels||!S.parcels.length){ S.parcels=makeInitialParcels(Math.max(1,Math.round(S.land/PARCEL_ACRES))); recomputeLand(); }
   if(!S.buildings) S.buildings={}; if(!S.fences) S.fences=[];
   if(S.mapSeed==null) initMap();
   const owned=new Set(S.parcels), buy=new Set(buyableParcels());
+  const a=S.mapAnchor;
+  const tc=a.c+3, tr=a.r-2;                 // town location (in grid cells)
+  const lake=[a.c-2, a.r+3], pond=[a.c+3, a.r+1];
   let mnC=Infinity,mxC=-Infinity,mnR=Infinity,mxR=-Infinity;
   [...owned,...buy].forEach(k=>{const [c,r]=k.split(',').map(Number);mnC=Math.min(mnC,c);mxC=Math.max(mxC,c);mnR=Math.min(mnR,r);mxR=Math.max(mxR,r);});
-  const M=2, g0c=mnC-M,g1c=mxC+M,g0r=mnR-M,g1r=mxR+M;
-  const cell=Math.round(72*landZoom), pad=Math.round(cell*0.7);
+  // keep the town & water in view so the map always shows the surroundings
+  [[tc,tr],lake,pond].forEach(([c,r])=>{mnC=Math.min(mnC,c);mxC=Math.max(mxC,c);mnR=Math.min(mnR,r);mxR=Math.max(mxR,r);});
+  const M=1, g0c=mnC-M,g1c=mxC+M,g0r=mnR-M,g1r=mxR+M;
+  const cell=Math.round(66*landZoom), pad=Math.round(cell*0.6);
   const w=(g1c-g0c+1)*cell+pad*2, h=(g1r-g0r+1)*cell+pad*2, price=parcelPrice();
   const proj=(gx,gy)=>[ (gx-g0c)*cell+pad, (gy-g0r)*cell+pad ];
-  const P=a=>a[0].toFixed(1)+','+a[1].toFixed(1);
-  // deterministic value-noise hash (stable per game via mapSeed)
+  const P=p=>p[0].toFixed(1)+','+p[1].toFixed(1);
   const H=(i,j,s)=>{ const x=Math.sin(i*127.1+j*311.7+s*74.7+S.mapSeed*0.137)*43758.5453; return x-Math.floor(x); };
   const vtx=(i,j)=>proj(i+(H(i,j,1)-0.5)*0.46, j+(H(i,j,2)-0.5)*0.46);
   const eH=(i,j)=>proj(i+0.5, j+(H(i,j,3)-0.5)*0.40);
@@ -866,76 +876,125 @@ function openLandMap(){
   const parcelD=(c,r)=>{ const A=vtx(c,r),B=vtx(c+1,r),C=vtx(c+1,r+1),D=vtx(c,r+1),T=eH(c,r),R=eV(c+1,r),Bo=eH(c,r+1),L=eV(c,r);
     return `M${P(A)} Q${P(T)} ${P(B)} Q${P(R)} ${P(C)} Q${P(Bo)} ${P(D)} Q${P(L)} ${P(A)} Z`; };
 
-  // ---------- terrain background ----------
-  const a=S.mapAnchor; let bg='';
+  // ---------- terrain ----------
+  let bg='';
   const tl=proj(g0c-1,g0r-1), brc=proj(g1c+2,g1r+2);
-  bg+=`<rect x="${tl[0]}" y="${tl[1]}" width="${brc[0]-tl[0]}" height="${brc[1]-tl[1]}" fill="#cfe2a3"/>`; // grassland
-  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){ // mottling
+  bg+=`<rect x="${tl[0]}" y="${tl[1]}" width="${brc[0]-tl[0]}" height="${brc[1]-tl[1]}" fill="#cfe2a3"/>`;
+  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){
     if(H(c,r,9)>0.6){ const p=proj(c+H(c,r,11), r+H(c,r,12)); bg+=`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${(cell*0.5).toFixed(1)}" fill="#c4db93" opacity="0.5"/>`; }
   }
-  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){ // forests
-    if(H(c,r,7)>0.73){
+  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){
+    if(H(c,r,7)>0.74){
       const ctr=proj(c+0.5,r+0.5);
       bg+=`<circle cx="${ctr[0].toFixed(1)}" cy="${ctr[1].toFixed(1)}" r="${(cell*0.5).toFixed(1)}" fill="#7ba65d"/>`;
       for(let kk=0;kk<7;kk++){ const ang=H(c,r,20+kk)*6.283, rad=H(c,r,30+kk)*cell*0.42; bg+=`<circle cx="${(ctr[0]+Math.cos(ang)*rad).toFixed(1)}" cy="${(ctr[1]+Math.sin(ang)*rad).toFixed(1)}" r="${(cell*0.12).toFixed(1)}" fill="#52803a"/>`; }
     }
   }
-  // river meandering across the map
   const yr=x=> a.r + 2.4 + 1.7*Math.sin((x-a.c)*0.5 + (S.mapSeed%6));
   let rv=[]; for(let x=g0c-1;x<=g1c+2;x+=0.25) rv.push(proj(x, yr(x)));
   bg+=`<polyline points="${rv.map(P).join(' ')}" fill="none" stroke="#7cb6da" stroke-width="${(cell*0.24).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`;
   bg+=`<polyline points="${rv.map(P).join(' ')}" fill="none" stroke="#a7d2ea" stroke-width="${(cell*0.09).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>`;
-  // lake + pond (irregular blobs)
   const blob=(gx,gy,rg,salt)=>{ let pts=[]; for(let kk=0;kk<14;kk++){ const ang=kk/14*6.283, rr=rg*(0.65+0.55*H(Math.round(gx*3),Math.round(gy*3),salt+kk)); pts.push(proj(gx+Math.cos(ang)*rr, gy+Math.sin(ang)*rr)); } return `<polygon points="${pts.map(P).join(' ')}" fill="#7cb6da" stroke="#5b97be" stroke-width="1.5"/>`; };
-  bg+=blob(a.c-2.2, a.r+3.0, 1.0, 50);
-  bg+=blob(a.c+3.3, a.r+0.6, 0.45, 70);
-  // road from the ranch to a nearby town
-  const tc=a.c+5, tr=a.r-3, home=S.parcels[0].split(',').map(Number);
-  const hp=proj(home[0]+0.5,home[1]+0.5), tp=proj(tc+0.5,tr+0.6), midp=proj((home[0]+tc)/2+0.6,(home[1]+tr)/2);
+  bg+=blob(lake[0]+0.2, lake[1], 0.95, 50);
+  bg+=blob(pond[0]+0.3, pond[1]-0.3, 0.42, 70);
+  // road from the ranch home to town
+  const home=S.parcels[0].split(',').map(Number);
+  const hp=proj(home[0]+0.5,home[1]+0.5), tp=proj(tc+0.5,tr+0.5), midp=proj((home[0]+tc)/2+0.5,(home[1]+tr)/2);
   bg+=`<path d="M${P(hp)} Q${P(midp)} ${P(tp)}" fill="none" stroke="#b9a07a" stroke-width="${(cell*0.15).toFixed(1)}" stroke-linecap="round"/>`;
   bg+=`<path d="M${P(hp)} Q${P(midp)} ${P(tp)}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 6" opacity="0.7"/>`;
-  for(let kk=0;kk<6;kk++){ const bp=proj(tc+(kk%3)*0.34, tr+Math.floor(kk/3)*0.4); bg+=`<rect x="${(bp[0]-cell*0.09).toFixed(1)}" y="${(bp[1]-cell*0.09).toFixed(1)}" width="${(cell*0.18).toFixed(1)}" height="${(cell*0.18).toFixed(1)}" rx="2" fill="#caa46e" stroke="#7a5a36"/>`; }
-  bg+=`<text x="${tp[0].toFixed(1)}" y="${(tp[1]-cell*0.32).toFixed(1)}" text-anchor="middle" font-size="${Math.round(cell*0.2)}" font-weight="700" fill="#5a3c1e" paint-order="stroke" stroke="#fff" stroke-width="3">${S.townName}</text>`;
+  // town buildings
+  for(let kk=0;kk<5;kk++){ const bp=proj(tc+(kk%3)*0.32, tr+Math.floor(kk/3)*0.34); bg+=`<rect x="${(bp[0]-cell*0.09).toFixed(1)}" y="${(bp[1]-cell*0.09).toFixed(1)}" width="${(cell*0.18).toFixed(1)}" height="${(cell*0.18).toFixed(1)}" rx="2" fill="#caa46e" stroke="#7a5a36"/>`; }
+  bg+=`<text x="${tp[0].toFixed(1)}" y="${(tp[1]-cell*0.30).toFixed(1)}" text-anchor="middle" font-size="${Math.round(cell*0.18)}" font-weight="700" fill="#5a3c1e" paint-order="stroke" stroke="#fff" stroke-width="3">${S.townName}</text>`;
+  // clickable STORE in town
+  const sp=proj(tc+0.5, tr+0.95);
+  bg+=`<g data-act="store" style="cursor:pointer"><rect x="${(sp[0]-cell*0.21).toFixed(1)}" y="${(sp[1]-cell*0.19).toFixed(1)}" width="${(cell*0.42).toFixed(1)}" height="${(cell*0.36).toFixed(1)}" rx="3" fill="#e0a629" stroke="#7a5a36" stroke-width="1.6"/><text x="${sp[0].toFixed(1)}" y="${(sp[1]+cell*0.04).toFixed(1)}" text-anchor="middle" font-size="${Math.round(cell*0.2)}" pointer-events="none">🏪</text><text x="${sp[0].toFixed(1)}" y="${(sp[1]+cell*0.30).toFixed(1)}" text-anchor="middle" font-size="${Math.round(cell*0.13)}" font-weight="700" fill="#5a3c1e" paint-order="stroke" stroke="#fff" stroke-width="2.5" pointer-events="none">Stockyard &amp; Store</text></g>`;
 
   // ---------- property lines (organic) ----------
   let pc='';
   for(let r=g0r;r<=g1r;r++) for(let c=g0c;c<=g1c;c++){ const k=c+','+r; if(!owned.has(k)&&!buy.has(k)) pc+=`<path class="land-line" d="${parcelD(c,r)}"/>`; }
-  buy.forEach(k=>{ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-buy" onclick="onParcelClick('${k}')" d="${parcelD(c,r)}" fill="rgba(224,166,41,0.16)"/>`;
+  buy.forEach(k=>{ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-buy" data-act="parcel" data-k="${k}" d="${parcelD(c,r)}" fill="rgba(224,166,41,0.16)"/>`;
     const ctr=proj(c+0.5,r+0.5); pc+=`<text class="pbuy" x="${ctr[0].toFixed(1)}" y="${(ctr[1]+4).toFixed(1)}" style="font-size:${Math.round(cell*0.18)}px">$${(price/1000).toFixed(0)}k</text>`; });
-  owned.forEach(k=>{ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-owned" onclick="onParcelClick('${k}')" d="${parcelD(c,r)}" fill="rgba(120,86,46,0.10)"/>`; });
+  owned.forEach(k=>{ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-owned" data-act="parcel" data-k="${k}" d="${parcelD(c,r)}" fill="rgba(120,86,46,0.10)"/>`; });
   S.fences.forEach(k=>{ if(owned.has(k)){ const [c,r]=k.split(',').map(Number); pc+=`<path class="land-fence" d="${parcelD(c,r)}"/>`; } });
   let gl='';
   owned.forEach(k=>{ if(S.buildings[k]){ const [c,r]=k.split(',').map(Number), ctr=proj(c+0.5,r+0.5); gl+=`<text class="plabel" x="${ctr[0].toFixed(1)}" y="${(ctr[1]+cell*0.16).toFixed(1)}" style="font-size:${Math.round(cell*0.42)}px">${BUILD[S.buildings[k]].emoji}</text>`; } });
 
-  const tool=(id,emoji,label,sub)=>`<button class="btn ${buildTool===id?'':'ghost'}" style="flex-direction:column;line-height:1.1" onclick="setTool('${id}')">${emoji} ${label}<br><small style="font-weight:400;opacity:.8">${sub}</small></button>`;
-  let html=`<h2>🗺️ My Land — near ${S.loc.name.split('(')[0].trim()}, ${S.stateKey}</h2>
-    <p class="muted">Your property near <b>${S.townName}</b>. You own <b>${S.parcels.length}</b> parcels (${S.land} acres, ~160 ac each) · capacity <b>${carryingCapacity()} head</b> · shelter ${S.barnCap} · houses ${S.houses} · 🐎 ${S.horses}. Pick a tool, then click land.</p>
-    <div class="toolbar" style="margin-bottom:6px">
-      ${tool('buy','🟨','Buy land', $money(price))}
-      ${tool('house','🏠','House', $money(BUILD.house.cost))}
-      ${tool('barn','🏚️','Barn', $money(BUILD.barn.cost))}
-      ${tool('stables','🐴','Stables', $money(BUILD.stables.cost))}
-      ${tool('fence','🚧','Fence', $money(FENCE_COST))}
-    </div>
-    <div class="toolbar" style="margin-bottom:8px">
-      <button class="btn ghost" onclick="zoomLand(-1)">➖</button>
-      <button class="btn ghost" onclick="zoomLand(1)">➕</button>
-      <span class="pill">Cash: ${$money(S.cash)}</span>
-      <span class="pill">${toolHint()}</span>
-    </div>
-    <div style="overflow:auto;max-height:48vh;border:1px solid var(--line);border-radius:10px;background:#cfe2a3;padding:0">
-      <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;margin:auto">${bg}${pc}${gl}</svg>
-    </div>
-    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Close</button>`;
-  modal(html);
+  return { inner: bg+pc+gl, w, h };
+}
+let _mapWired=false;
+function renderRanchMap(){
+  const host=$('ranchMap'); if(!host) return;
+  const {inner,w,h}=buildRanchMapInner();
+  host.innerHTML=`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${inner}</svg>`;
+  if(!_mapWired){ host.addEventListener('click', onMapClick); _mapWired=true; }
+}
+function onMapClick(e){
+  const t=e.target.closest('[data-act]'); if(!t) return;
+  if(t.dataset.act==='store') return openMarket();
+  if(t.dataset.act==='parcel') return handleParcel(t.dataset.k);
+}
+function handleParcel(k){
+  const owned=S.parcels.includes(k);
+  if(buildTool==='interact'){
+    if(owned && S.buildings[k]==='house') return openRanchUpgrades();
+    if(owned && S.buildings[k]) return toast(BUILD[S.buildings[k]].name + ' — '+BUILD[S.buildings[k]].note);
+    if(owned) return toast('Your pasture. Pick a tool (left) to build or fence here.');
+    if(buyableParcels().includes(k)) return toast('Open land — choose the 🟨 Buy tool to purchase it.');
+    return;
+  }
+  onParcelClick(k); // build / buy / fence
+}
+function renderToolPalette(){
+  const host=$('toolPalette'); if(!host) return;
+  const t=(id,emoji,label)=>`<div class="toolbtn ${buildTool===id?'sel':''}" onclick="setTool('${id}')">${emoji} ${label}</div>`;
+  host.innerHTML =
+    t('interact','👆','Manage') +
+    t('buy','🟨','Buy '+$money(parcelPrice())) +
+    t('house','🏠','House') +
+    t('barn','🏚️','Barn') +
+    t('stables','🐴','Stables') +
+    t('fence','🚧','Fence') +
+    `<div class="muted" style="font-size:.7rem;line-height:1.25">${toolHint()}</div>`;
+}
+function renderScenario(){
+  const host=$('scenarioOverlay'); if(!host) return;
+  const c=weeklyCosts(); let sc='';
+  if(CURRENT){
+    sc=`<h3 style="margin-top:0">${CURRENT.title}</h3><p style="margin:.3em 0 .5em">${CURRENT.text}</p>`;
+    if(!CURRENT.resolved){
+      CURRENT.choices.forEach((ch,i)=>{ sc+=`<button class="choice" onclick="chooseScenario(${i})"><span class="lbl">${ch.label}</span><span class="tip">${ch.tip||''}</span></button>`; });
+    } else {
+      sc+=`<div class="outcome">${CURRENT.outcome}</div>
+        <p class="muted" style="font-size:.8rem">This week's costs: feed ${$money(c.feed)}${c.over?` (+${$money(c.over)} overstock)`:''}, labor/living ${$money(c.labor)}${c.interest?`, interest ${$money(c.interest)}`:''} = <b>${$money(c.total)}</b>.</p>
+        <button class="btn" onclick="nextWeek()">▶ Advance to next week</button>`;
+    }
+  }
+  host.innerHTML=sc;
 }
 function toolHint(){
-  if(buildTool==='buy') return "Click a 🟨 gold parcel to buy adjacent land";
-  if(buildTool==='fence') return "Click your land to fence/unfence it (boosts capacity)";
-  if(BUILD[buildTool]) return `Click an empty owned parcel to build a ${BUILD[buildTool].name}`;
+  if(buildTool==='interact') return "Click the 🏪 store, your 🏠 house, or land for info.";
+  if(buildTool==='buy') return "Click a 🟨 gold parcel to buy adjacent land.";
+  if(buildTool==='fence') return "Click your land to fence/unfence (boosts capacity).";
+  if(BUILD[buildTool]) return `Click an empty owned parcel to build a ${BUILD[buildTool].name}.`;
   return "";
 }
-function zoomLand(d){ landZoom=clamp(landZoom + d*0.3, 0.6, 2.2); openLandMap(); }
+function zoomLand(d){ landZoom=clamp(landZoom + d*0.3, 0.6, 2.4); renderRanchMap(); }
+function openHerd(){
+  let rp=`<h2>🐄 Your Ranch</h2><table><tr><th>Herd</th><th>Head</th><th>Avg wt</th></tr>`;
+  if(S.herds.length===0) rp+=`<tr><td colspan="3" class="muted">No cattle — visit the 🏪 store on the map to buy some.</td></tr>`;
+  const label={cow:"Cows",bull:"Bull(s)",calf:"Calves",feeder:"Feeders/finishing"};
+  for(const h of S.herds){ rp+=`<tr><td>${label[h.kind]||h.kind} <span class="muted">(${BREEDS[h.breed].name})</span></td><td class="num">${h.head}</td><td class="num">${Math.round(h.wt)} lb</td></tr>`; }
+  rp+=`</table><div style="margin-top:8px">
+    <span class="pill">🏚️ Shelter: ${S.barnCap} head</span><span class="pill">🏠 Houses: ${S.houses}</span>
+    <span class="pill">👤 Hands: ${S.hands}</span><span class="pill">🚜 Equip Lv ${S.equipment}</span><span class="pill">🐎 Horses: ${S.horses}</span></div>`;
+  const anyAngus=S.herds.some(h=>BREEDS[h.breed].market==='premium');
+  rp+=`<p class="muted" style="font-size:.83rem;margin-top:8px">Market: ${anyAngus?'<span style="color:var(--premium)">Premium (Angus / restaurant)</span>':'<span style="color:var(--commodity)">Commodity (box-store)</span>'} · ${S.loc.feedlot>0.6?'near feedlots & packers':'rural — freight matters'}</p>`;
+  rp+=`<button class="btn ghost" onclick="closeModal()">Close</button>`;
+  modal(rp);
+}
+function openLog(){
+  modal(`<h2>📜 Ranch Log</h2><div class="log" style="max-height:60vh">${S.log.map(e=>`<div class="e ${e.cls}">${e.html}</div>`).join('')||'<div class="muted">Your story starts here…</div>'}</div><button class="btn ghost" style="margin-top:8px" onclick="closeModal()">Close</button>`);
+}
 
 /* ---------------- Save / load (localStorage) ---------------- */
 const SAVE_KEY='ranchTycoonSave_v1';
@@ -969,11 +1028,10 @@ function openHelp(){
    <button class="btn ghost" onclick="closeModal()">Got it</button>`);
 }
 
-/* ---------------- Render ---------------- */
+/* ---------------- Render (map is the home screen) ---------------- */
 function render(){
   if(!S){ return; }
-  const se=seasonOf(S.week); const c=weeklyCosts();
-  // topbar
+  const se=seasonOf(S.week);
   $('topbar').innerHTML = `
     <div class="stat"><b>Year ${S.year} · Wk ${S.week}/52</b><small>Calendar</small></div>
     <div class="stat"><b class="seasonchip">${se.icon} ${se.name}${isWinterFeeding()?' · feeding hay':''}</b><small>Season</small></div>
@@ -981,42 +1039,9 @@ function render(){
     <div class="stat"><b class="${S.cash<0?'warn':'acc'}">${$money(S.cash)}</b><small>Cash${S.loan>0?` · loan ${$money(S.loan)}`:''}</small></div>
     <div class="stat"><b>${totalHead()} head</b><small>Total cattle</small></div>
     <div class="stat"><b>${S.land} ac</b><small>Cap ${carryingCapacity()} cows</small></div>`;
-
-  // scenario card
-  let sc='';
-  if(CURRENT){
-    sc=`<h2>${CURRENT.title}</h2><p>${CURRENT.text}</p>`;
-    if(!CURRENT.resolved){
-      CURRENT.choices.forEach((ch,i)=>{ sc+=`<button class="choice" onclick="chooseScenario(${i})"><span class="lbl">${ch.label}</span><span class="tip">${ch.tip||''}</span></button>`; });
-    } else {
-      sc+=`<div class="outcome">${CURRENT.outcome}</div>
-        <p class="muted" style="font-size:.85rem">This week's costs: feed ${$money(c.feed)}${c.over?` (+${$money(c.over)} overstock)`:''}, labor/living ${$money(c.labor)}${c.interest?`, loan interest ${$money(c.interest)}`:''} = <b>${$money(c.total)}</b>.</p>
-        <button class="btn" onclick="nextWeek()">▶ Advance to next week</button>`;
-    }
-  }
-  $('scenarioCard').innerHTML=sc;
-
-  // ranch panel
-  let rp=`<h3>🏡 Your Ranch</h3>`;
-  rp+=`<table><tr><th>Herd</th><th>Head</th><th>Avg wt</th></tr>`;
-  if(S.herds.length===0) rp+=`<tr><td colspan="3" class="muted">No cattle — buy some at the Market.</td></tr>`;
-  const label={cow:"Cows",bull:"Bull(s)",calf:"Calves",feeder:"Feeders/finishing"};
-  for(const h of S.herds){ rp+=`<tr><td>${label[h.kind]||h.kind} <span class="muted">(${BREEDS[h.breed].name})</span></td><td class="num">${h.head}</td><td class="num">${Math.round(h.wt)} lb</td></tr>`; }
-  rp+=`</table>`;
-  rp+=`<div style="margin-top:8px">
-    <span class="pill">🏚️ Barn: ${S.barnCap} head</span>
-    <span class="pill">🏠 Houses: ${S.houses}</span>
-    <span class="pill">👤 Hands: ${S.hands}</span>
-    <span class="pill">🚜 Equip Lv ${S.equipment}</span>
-    <span class="pill">🐎 Horse: ${S.horses}</span>
-  </div>`;
-  // market access flavor
-  const anyAngus=S.herds.some(h=>BREEDS[h.breed].market==='premium');
-  rp+=`<p class="muted" style="font-size:.83rem;margin-top:8px">Market: ${anyAngus?'<span style="color:var(--premium)">Premium (Angus / restaurant)</span>':'<span style="color:var(--commodity)">Commodity (box-store)</span>'} · ${S.loc.feedlot>0.6?'near feedlots & packers':'rural — freight matters'}</p>`;
-  $('ranchPanel').innerHTML=rp;
-
-  // log
-  $('log').innerHTML = S.log.map(e=>`<div class="e ${e.cls}">${e.html}</div>`).join('') || '<div class="muted">Your story starts here…</div>';
+  renderToolPalette();
+  renderRanchMap();
+  renderScenario();
 }
 
 /* ---------------- boot ---------------- */

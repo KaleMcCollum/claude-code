@@ -36,14 +36,20 @@ Prices are quoted per cwt and drift weekly. Baselines reflect the recent high-ca
 feeder calves ~$280/cwt, fed cattle ~$192/cwt live, cull cows ~$116/cwt, bred cows ~$2,300/head,
 hay ~$160/ton. All tunable in the `CONFIG` object at the top of the `<script>` in `index.html`.
 
-## The 🗺️ My Land map (build your ranch)
-Open **My Land** in-game to manage your property visually. Each square is a **160-acre
-quarter-section**. Pick a tool, then click a parcel:
-- **Buy land** — gold squares touching your ranch can be purchased to expand acreage (and herd capacity).
-- **House / Barn / Stables** — place buildings on empty owned parcels. Barns add shelter (blizzard
-  protection), houses let you hire more hands, stables add horses.
-- **Fence** — fencing/cross-fencing your pastures enables rotational grazing and raises your carrying
-  capacity. Zoom in/out with ➕ / ➖.
+## You play from the map
+Once your ranch is set up, the **home screen is your land** — a procedurally generated terrain map
+with grassland, forests, a river, a lake/pond, and a road to a nearby town. You interact with the
+world directly:
+- **Click the 🏪 Stockyard & Store** in town to open the market (buy/sell cattle, hay).
+- **Click your 🏠 house** to manage crew & equipment.
+- **Tool palette (left):** pick **Manage / Buy land / House / Barn / Stables / Fence**, then click
+  land. Property lines are organic (not square); each parcel is a **160-acre quarter-section**.
+  - *Buy land* — gold parcels touching your ranch expand your acreage (and herd capacity).
+  - *House / Barn / Stables* — place buildings on empty owned parcels. Barns add shelter, houses let
+    you hire more hands, stables add horses.
+  - *Fence* — cross-fencing pastures enables rotational grazing and raises carrying capacity.
+- **Top-right buttons:** zoom ➕/➖, 🐄 Herd, 👷 Crew, 📜 Log, 💾 Save, ❓ help.
+- The **weekly decision** appears as a card overlaid on the map; resolve it and advance the week.
 
 ## Saving
 The game **auto-saves** to your browser every week and after major actions. Use **💾 Save** to save
