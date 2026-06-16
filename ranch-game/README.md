@@ -38,7 +38,8 @@ hay ~$160/ton. All tunable in the `CONFIG` object at the top of the `<script>` i
 
 ## This is a vertical slice
 Working now: clickable geographic US map with real state outlines (TX/MT/CO playable, Alaska &
-Hawaii drawn as insets), operation choice, starting herd/horse/barn/house, the weekly
+Hawaii drawn as insets) and a 📍 pin at each ranch's real-world location you can click to pick it,
+operation choice, starting herd/horse/barn/house, the weekly
 loop with a full first-year arc (calving → breeding → drought → weaning sale → preg-check/cull →
 winter blizzard), markets, buying/selling cattle, land/barn/labor upgrades, and the broke→bailout→
 bankruptcy path.

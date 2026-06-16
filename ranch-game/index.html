@@ -40,6 +40,12 @@
   .st.sel{fill:#6aa970;stroke:var(--accent);stroke-width:2}
   .stlabel{font-size:11px;font-weight:700;fill:#eafaea;pointer-events:none;text-anchor:middle;paint-order:stroke;stroke:#10202b;stroke-width:2.4px}
   .insetlabel{font-size:10px;fill:var(--muted);pointer-events:none;text-anchor:middle}
+  .pin{cursor:pointer}
+  .pin circle.ring{fill:var(--accent);stroke:#3b2a12;stroke-width:1}
+  .pin circle.pdot{fill:#3b2a12}
+  .pin:hover circle.ring{fill:#ffd277}
+  .pin.pinsel circle.ring{fill:#fff0c2;stroke:#fff;stroke-width:1.6}
+  .loccard.flash{outline:3px solid var(--accent)}
   .legend{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:8px 0;font-size:.85rem}
   .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:5px}
   /* dashboard */
@@ -200,27 +206,27 @@ const US_GEO = {"type":"FeatureCollection","features":[{"type":"Feature","id":"0
 // land=$/acre; acresPerCow=stocking rate; feedlot=proximity bonus for finishing.
 const LOCATIONS = {
   TX: { name:"Texas", defaultBreed:"brangus", locs:[
-    {id:"tx_south", name:"South Texas Brush Country (Cotulla)", land:2400, acresPerCow:13, winterFeedWeeks:8, heat:0.85, drought:0.18, blizzard:0, feedlot:0.4,
+    {id:"tx_south", lat:28.44, lon:-99.23, name:"South Texas Brush Country (Cotulla)", land:2400, acresPerCow:13, winterFeedWeeks:8, heat:0.85, drought:0.18, blizzard:0, feedlot:0.4,
       pros:["Long grazing season, short winters","Brahman-influenced cattle thrive in heat"], cons:["Brutal summer heat stress","Real drought risk","Thin brushy forage"]},
-    {id:"tx_pan", name:"Texas Panhandle (Amarillo)", land:1800, acresPerCow:18, winterFeedWeeks:14, heat:0.5, drought:0.14, blizzard:0.2, feedlot:0.95,
+    {id:"tx_pan", lat:35.22, lon:-101.83, name:"Texas Panhandle (Amarillo)", land:1800, acresPerCow:18, winterFeedWeeks:14, heat:0.5, drought:0.14, blizzard:0.2, feedlot:0.95,
       pros:["Heart of US feedlot country — best fed-cattle market","Cheap local corn for finishing"], cons:["Cold snaps & spring blizzards","Wind and dust"]},
-    {id:"tx_hill", name:"Texas Hill Country (Kerrville)", land:4200, acresPerCow:11, winterFeedWeeks:10, heat:0.6, drought:0.16, blizzard:0.02, feedlot:0.35,
+    {id:"tx_hill", lat:30.05, lon:-99.14, name:"Texas Hill Country (Kerrville)", land:4200, acresPerCow:11, winterFeedWeeks:10, heat:0.6, drought:0.16, blizzard:0.02, feedlot:0.35,
       pros:["Mild winters, scenic","Strong local/premium beef demand"], cons:["Expensive land","Rocky, limited stocking"]},
   ]},
   MT: { name:"Montana", defaultBreed:"angus", locs:[
-    {id:"mt_east", name:"Eastern Montana Rangeland (Miles City)", land:900, acresPerCow:25, winterFeedWeeks:26, heat:0.15, drought:0.12, blizzard:0.7, feedlot:0.3,
+    {id:"mt_east", lat:46.41, lon:-105.84, name:"Eastern Montana Rangeland (Miles City)", land:900, acresPerCow:25, winterFeedWeeks:26, heat:0.15, drought:0.12, blizzard:0.7, feedlot:0.3,
       pros:["Cheap land — buy a LOT of acres","Excellent summer grass, low pests"], cons:["Long, brutal winters (big hay bills)","Blizzard death-loss risk","Low stocking rate"]},
-    {id:"mt_cen", name:"Central Montana (Lewistown)", land:1500, acresPerCow:18, winterFeedWeeks:24, heat:0.2, drought:0.12, blizzard:0.5, feedlot:0.35,
+    {id:"mt_cen", lat:47.06, lon:-109.43, name:"Central Montana (Lewistown)", land:1500, acresPerCow:18, winterFeedWeeks:24, heat:0.2, drought:0.12, blizzard:0.5, feedlot:0.35,
       pros:["Mix of grass & grain ground","Strong, hardy Angus country"], cons:["Hard winters","Far from major packers"]},
-    {id:"mt_flat", name:"Flathead Valley NW (Kalispell)", land:5000, acresPerCow:14, winterFeedWeeks:20, heat:0.2, drought:0.08, blizzard:0.35, feedlot:0.3,
+    {id:"mt_flat", lat:48.2, lon:-114.31, name:"Flathead Valley NW (Kalispell)", land:5000, acresPerCow:14, winterFeedWeeks:20, heat:0.2, drought:0.08, blizzard:0.35, feedlot:0.3,
       pros:["Milder mountain valley","Good water & forage"], cons:["Very expensive land","Limited acreage to expand"]},
   ]},
   CO: { name:"Colorado", defaultBreed:"angus", locs:[
-    {id:"co_plains", name:"Eastern Plains (Yuma)", land:2000, acresPerCow:20, winterFeedWeeks:20, heat:0.4, drought:0.16, blizzard:0.4, feedlot:0.9,
+    {id:"co_plains", lat:40.12, lon:-102.72, name:"Eastern Plains (Yuma)", land:2000, acresPerCow:20, winterFeedWeeks:20, heat:0.4, drought:0.16, blizzard:0.4, feedlot:0.9,
       pros:["Big feedlots & corn nearby — great for finishing","Good fed-cattle market access"], cons:["Plains blizzards","Dry, drought-prone"]},
-    {id:"co_west", name:"Western Slope (Montrose)", land:3500, acresPerCow:16, winterFeedWeeks:22, heat:0.3, drought:0.14, blizzard:0.3, feedlot:0.4,
+    {id:"co_west", lat:38.48, lon:-107.88, name:"Western Slope (Montrose)", land:3500, acresPerCow:16, winterFeedWeeks:22, heat:0.3, drought:0.14, blizzard:0.3, feedlot:0.4,
       pros:["Mountain valley grazing","Good irrigated hay ground"], cons:["Pricey land","High-altitude, short season"]},
-    {id:"co_sanluis", name:"San Luis Valley (Alamosa)", land:1800, acresPerCow:22, winterFeedWeeks:24, heat:0.25, drought:0.13, blizzard:0.45, feedlot:0.45,
+    {id:"co_sanluis", lat:37.47, lon:-105.87, name:"San Luis Valley (Alamosa)", land:1800, acresPerCow:22, winterFeedWeeks:24, heat:0.25, drought:0.13, blizzard:0.45, feedlot:0.45,
       pros:["Affordable high valley land","Cool, low pest pressure"], cons:["Very cold high-altitude winters","Short growing season"]},
   ]},
 };
@@ -323,22 +329,36 @@ function buildMap(){
   }
   cont.forEach(f=>add(f,pCont)); ak.forEach(f=>add(f,pAk)); hi.forEach(f=>add(f,pHi));
   labels+=`<text class="insetlabel" x="83" y="${H-8}">Alaska</text><text class="insetlabel" x="212" y="${H-6}">Hawaii</text>`;
-  $('mapWrap').innerHTML=`<svg id="usmap" viewBox="0 0 ${W} ${H}" role="img" aria-label="Map of the United States">${body}${labels}</svg>`;
+  // Ranch-location pins (all playable states are in the continental projection).
+  let pins='';
+  for(const st of Object.keys(LOCATIONS)){
+    LOCATIONS[st].locs.forEach((l,i)=>{
+      const [x,y]=pCont([l.lon,l.lat]);
+      pins+=`<g class="pin" data-st="${st}" data-loc="${i}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})">`
+          + `<circle class="ring" r="5.5"/><circle class="pdot" r="2"/>`
+          + `<title>📍 ${l.name}</title></g>`;
+    });
+  }
+  $('mapWrap').innerHTML=`<svg id="usmap" viewBox="0 0 ${W} ${H}" role="img" aria-label="Map of the United States with ranch locations">${body}${labels}${pins}</svg>`;
   $('usmap').addEventListener('click',e=>{
-    const t=e.target.closest('[data-st]'); if(t && t.classList.contains('avail')) selectState(t.dataset.st);
+    const pin=e.target.closest('.pin');
+    if(pin){ selectState(pin.dataset.st, +pin.dataset.loc); return; }
+    const t=e.target.closest('.st'); if(t && t.classList.contains('avail')) selectState(t.dataset.st);
   });
 }
 let pendingState=null;
-function selectState(abbr){
+function selectState(abbr, focusIdx){
   pendingState=abbr;
   document.querySelectorAll('.st').forEach(e=>e.classList.remove('sel'));
-  document.querySelector('.st[data-st="'+abbr+'"]').classList.add('sel');
+  const sp=document.querySelector('.st[data-st="'+abbr+'"]'); if(sp) sp.classList.add('sel');
+  document.querySelectorAll('.pin').forEach(p=>p.classList.toggle('pinsel',
+    p.dataset.st===abbr && (focusIdx==null || +p.dataset.loc===focusIdx)));
   const data=LOCATIONS[abbr];
   let html=`<div class="card"><h3>${data.name} — choose a starter ranch</h3>`;
-  html+=`<p class="muted">Default cattle here: <b>${BREEDS[data.defaultBreed].name}</b>. Each location changes your costs and weather.</p>`;
+  html+=`<p class="muted">Default cattle here: <b>${BREEDS[data.defaultBreed].name}</b>. Click a 📍 pin on the map or a card below — each location changes your costs and weather.</p>`;
   data.locs.forEach((l,i)=>{
-    html+=`<div class="card" style="background:var(--panel2)">
-      <h3>${l.name}</h3>
+    html+=`<div class="card loccard" id="loccard-${abbr}-${i}" style="background:var(--panel2)">
+      <h3>📍 ${l.name}</h3>
       <div>
         <span class="pill">Land $${l.land.toLocaleString()}/ac</span>
         <span class="pill">Stocking: ${l.acresPerCow} ac/cow</span>
@@ -352,7 +372,12 @@ function selectState(abbr){
   });
   html+=`</div>`;
   $('locPicker').innerHTML=html;
-  $('locPicker').scrollIntoView({behavior:'smooth'});
+  if(focusIdx!=null){
+    const el=document.getElementById('loccard-'+abbr+'-'+focusIdx);
+    if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1400); }
+  } else {
+    $('locPicker').scrollIntoView({behavior:'smooth'});
+  }
 }
 function pickLocation(abbr,i){
   S = newGameState(LOCATIONS[abbr].locs[i], abbr);
