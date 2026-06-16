@@ -3711,18 +3711,18 @@ const UI = {
     } else {
       const sold=WEAPONS.filter(wp=>wp.minTech<=w.tech);
       const best=fleetArmPlan("best",false), cheap=fleetArmPlan("cheap",false);
-      const sh=fleetUpgradePlan("shield",false), hy=fleetUpgradePlan("hyper",false), ar=fleetUpgradePlan("armor",false);
-      const allN=best.n+sh.n+hy.n+ar.n;
+      const sh=fleetUpgradePlan("shield",false), hy=fleetUpgradePlan("hyper",false), ar=fleetUpgradePlan("armor",false), fh=fleetUpgradePlan("fighterhyper",false);
+      const allN=best.n+sh.n+hy.n+ar.n+fh.n;
       const btn=(k,label,plan,primary)=>`<button class="${primary?'primary':''}" data-fleetfit="${k}" ${plan.n?"":"disabled"}>${label}${plan.n?` &middot; ${plan.n} / ${commas(plan.spent)}c`:""}</button>`;
       body=`<p class="small dim">One-click fleet-wide outfitting from <b>${w.name}</b> — no ship-by-ship clicking.</p>
         <div class="shipcat">Weapons${empty?` &middot; ${empty} empty mount${empty>1?"s":""}`:""}</div>
         ${sold.length?`<div class="grid">${btn("armbest","&#9876; Best guns",best,true)}${btn("armcheap","Fill every mount",cheap,false)}</div>`
           :`<p class="small red">${w.name}'s yard is too low-tech to sell any ship weapons.</p>`}
         <div class="shipcat" style="margin-top:8px">Systems &middot; one tier each</div>
-        <div class="grid">${btn("shield","&#128737; Shields",sh,false)}${btn("hyper","&#128640; Hyperdrives",hy,false)}${btn("armor","&#9874; Hull plating",ar,false)}</div>
-        ${w.tech<6?`<p class="small dim" style="margin-top:4px">Shields need a Tech 6+ yard.</p>`:""}
+        <div class="grid">${btn("shield","&#128737; Shields",sh,false)}${btn("hyper","&#128640; Hyperdrives",hy,false)}${btn("armor","&#9874; Hull plating",ar,false)}${btn("fighterhyper","&#9992; Jump-fit fighters",fh,false)}</div>
+        ${w.tech<6?`<p class="small dim" style="margin-top:4px">Shields & hyperdrive fits need a Tech 6+ yard.</p>`:""}
         <div class="grid" style="margin-top:8px"><button class="primary" data-fleetfit="all" ${allN?"":"disabled"}>&#9881; Refit everything affordable</button></div>
-        <p class="small dim" style="margin-top:6px">"Best" mounts the strongest guns you can afford; "Fill" arms the most mounts cheaply. System buttons raise one tier per ship within budget. Sold here: ${sold.map(s=>s.name).join(", ")||"no weapons"}.</p>`;
+        <p class="small dim" style="margin-top:6px">"Best" mounts the strongest guns you can afford; "Fill" arms the most mounts cheaply. System buttons raise one tier per ship within budget; "Jump-fit" gives in-system fighters a hyperdrive (Advanced Starfighter). Sold here: ${sold.map(s=>s.name).join(", ")||"no weapons"}.</p>`;
     }
     return `<div class="card" style="margin:2px 0 8px;background:var(--panel2)"><p class="small gold" style="margin:0 0 6px">&#9876; ${o.name} &mdash; ordnance, reporting.</p>${body}</div>`;
   },
@@ -5540,16 +5540,18 @@ function armFleet(mode){
    Mirrors the per-ship installShield / upgradeHyper / upgradeArmor cost & effect. Dry-run if !apply. */
 function fleetUpgradePlan(kind, apply){
   const w=state.world; if(!w||!settleHasShipyard(w)) return {n:0, spent:0};
-  if(kind==="shield" && w.tech<6) return {n:0, spent:0};
+  if((kind==="shield"||kind==="fighterhyper") && w.tech<6) return {n:0, spent:0};   // shields & hyperdrive builds need a Tech 6+ yard
   let credits=state.credits, n=0, spent=0;
   (state.vehicles||[]).forEach(v=>{
-    let next, cost;
+    let next, cost, vmult=0.5;
     if(kind==="shield"){ const cur=v.shieldTier||0; if(!shipCanShield(v)||cur>=SHIELD_MAX_TIER) return;
       next=cur+1; cost=Math.round((v.maxHp||500)*0.55*next*(1+w.wealth*0.04)); }
     else if(kind==="hyper"){ if(v.range!=="interstellar"||(v.hyper||0)>=HYPERDRIVE.length-1) return;
       next=(v.hyper||0)+1; cost=Math.round((v.power.star||0)*10*next*(1+w.wealth*0.03)); }
     else if(kind==="armor"){ if((v.armor||0)>=ARMOR.length-1) return;
       next=(v.armor||0)+1; const c=shipClass(v.cls); cost=Math.round((c?c.baseHp:200)*ARMOR[next].mult*8*(1+w.wealth*0.04)); }
+    else if(kind==="fighterhyper"){ if(shipCat(v)!=="fighter"||v.range!=="system") return;
+      cost=Math.round((v.power.star||400)*25*(1+w.wealth*0.04)); vmult=0.6; }
     else return;
     if(cost>credits) return;
     if(apply){
@@ -5557,7 +5559,9 @@ function fleetUpgradePlan(kind, apply){
       else if(kind==="hyper") v.hyper=next;
       else if(kind==="armor"){ const ratio=v.maxHp>0?v.hp/v.maxHp:1, baseNoArmor=v.maxHp/ARMOR[v.armor||0].mult;
         v.armor=next; v.maxHp=Math.round(baseNoArmor*ARMOR[next].mult); v.hp=Math.round(v.maxHp*ratio); }
-      v.value=(v.value||0)+Math.round(cost*0.5);
+      else if(kind==="fighterhyper"){ v.range="interstellar"; v.power.star=Math.round((v.power.star||400)*1.8); v.axes=Object.keys(v.power);
+        const wasDefault=(v.name===v.clsName); v.clsName="Advanced Starfighter"; if(wasDefault) v.name="Advanced Starfighter"; v.advFighter=true; }
+      v.value=(v.value||0)+Math.round(cost*vmult);
     }
     credits-=cost; spent+=cost; n++;
   });
@@ -5567,8 +5571,13 @@ function fleetUpgradePlan(kind, apply){
 function fleetUpgrade(kind){
   if(!(state.crew||[]).some(c=>c.career==="ordnance")){ toast("You need an Ordnance Officer in your crew"); return; }
   const w=state.world; if(!w||!settleHasShipyard(w)){ toast("Dock at a shipyard so your officer can work"); return; }
-  if(kind==="shield" && w.tech<6){ toast("Shields need a Tech 6+ shipyard"); return; }
+  if((kind==="shield"||kind==="fighterhyper") && w.tech<6){ toast(`${kind==="shield"?"Shields":"Hyperdrive refits"} need a Tech 6+ shipyard`); return; }
   const r=fleetUpgradePlan(kind, true);
+  if(kind==="fighterhyper"){
+    if(!r.n){ toast("No in-system fighters to fit a hyperdrive to (or you can't afford it)"); return; }
+    Game.logMsg(`&#9992; Your Ordnance Officer fits hyperdrives to ${r.n} fighter${r.n>1?"s":""} — now Advanced Starfighters — for ${commas(r.spent)}c.`,"good");
+    Game.save(); UI.render("crew"); return;
+  }
   const noun=kind==="shield"?"shield generator":kind==="hyper"?"hyperdrive":"hull plating";
   if(!r.n){ toast(`Nothing to upgrade — every ${noun} is maxed, or you can't afford one`); return; }
   Game.logMsg(`&#9881; Your Ordnance Officer upgrades ${r.n} ship${r.n>1?"s":""}' ${noun}${kind!=="armor"&&r.n>1?"s":""} across the fleet for ${commas(r.spent)}c.`,"good");
@@ -5578,10 +5587,11 @@ function fleetUpgrade(kind){
 function fleetRefitAll(){
   if(!(state.crew||[]).some(c=>c.career==="ordnance")){ toast("You need an Ordnance Officer in your crew"); return; }
   const w=state.world; if(!w||!settleHasShipyard(w)){ toast("Dock at a shipyard so your officer can work"); return; }
-  const a=fleetArmPlan("best",true), s=fleetUpgradePlan("shield",true), h=fleetUpgradePlan("hyper",true), p=fleetUpgradePlan("armor",true);
-  const total=a.spent+s.spent+h.spent+p.spent, parts=a.n+s.n+h.n+p.n;
+  // upgrade existing hyperdrives before converting fighters, so a freshly jump-fit fighter isn't also tier-bumped in the same pass
+  const a=fleetArmPlan("best",true), s=fleetUpgradePlan("shield",true), h=fleetUpgradePlan("hyper",true), fh=fleetUpgradePlan("fighterhyper",true), p=fleetUpgradePlan("armor",true);
+  const total=a.spent+s.spent+h.spent+fh.spent+p.spent, parts=a.n+s.n+h.n+fh.n+p.n;
   if(!parts){ toast("Nothing left to refit, or not enough credits"); return; }
-  const bits=[]; if(a.n)bits.push(`${a.n} gun${a.n>1?"s":""}`); if(s.n)bits.push(`${s.n} shield${s.n>1?"s":""}`); if(h.n)bits.push(`${h.n} hyperdrive${h.n>1?"s":""}`); if(p.n)bits.push(`${p.n} plating refit${p.n>1?"s":""}`);
+  const bits=[]; if(a.n)bits.push(`${a.n} gun${a.n>1?"s":""}`); if(s.n)bits.push(`${s.n} shield${s.n>1?"s":""}`); if(h.n)bits.push(`${h.n} hyperdrive${h.n>1?"s":""}`); if(fh.n)bits.push(`${fh.n} fighter${fh.n>1?"s":""} jump-fit`); if(p.n)bits.push(`${p.n} plating refit${p.n>1?"s":""}`);
   Game.logMsg(`&#9881; Your Ordnance Officer refits the whole fleet — ${bits.join(", ")} for ${commas(total)}c.`,"good");
   Game.save(); UI.render("crew");
 }
