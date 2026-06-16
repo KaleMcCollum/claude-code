@@ -3653,20 +3653,25 @@ const UI = {
         ${fleets.length?`<div class="shipcat">Fleets</div>${fleetRows}`:""}
         <div class="shipcat">Ships</div>${ships.length?shipRows:'<p class="small dim">No ships.</p>'}
         <button class="small ghost full center" data-recmode="menu" style="margin-top:6px">&larr; Back</button>`;
-    } else if(m==="upgrade"){
-      const roleRows=[["pilot","piloting"],["gunner","gunnery"],["mechanic","repair"]].map(([r,which])=>{
-        const cs=(state.crew||[]).filter(c=>c.career===r && c.shipId);
-        if(!cs.length) return `<div class="krow"><span class="lbl">${cap(careerName(r))}s <span class="dim small">&middot; none aboard</span></span><span class="kv"><button class="small" disabled>Headhunt</button></span></div>`;
-        const weak=Math.min(...cs.map(c=>crewSkill(c,which))), t=skillTier(weak);
-        return `<div class="krow"><span class="lbl">${cap(careerName(r))}s <span class="dim small">&middot; ${cs.length} aboard, weakest <span style="color:${t.color}">${t.name} ${weak}/10</span></span></span>
-          <span class="kv"><button class="small primary" data-recuprole="${r}">Headhunt</button></span></div>`; }).join("");
-      body=`<p class="small dim">Scout a sharper recruit of a trade — the recruiter replaces your <b>weakest</b> of that role anywhere in the crew (one-off fee).</p>
-        ${roleRows}
+    } else if(m==="talent"){
+      const scout=`<div class="row" style="gap:5px;flex-wrap:wrap"><span class="small dim" style="align-self:center">Scout for:</span>
+        <button class="small" data-scout="pilot">&#9992; Pilots</button>
+        <button class="small" data-scout="gunner">&#9876; Gunners</button>
+        <button class="small" data-scout="mechanic">&#128295; Mechanics</button></div>`;
+      let cands="";
+      if(recruitPool && recruitPool.list.length){
+        cands=`<div class="shipcat">Candidates &middot; ${cap(careerName(recruitPool.role))}s</div>` + recruitPool.list.map((c,i)=>{ const t=crewTier(c), p=crewPrimary(c), fee=HIRE_ROLES[c.career].fee;
+          return `<div class="krow"><span class="lbl"${t?` style="color:${t.color}"`:""}>${c.name} <span class="dim small">&middot; ${t?t.name:""} ${p?`${p.label} ${p.val}/10`:""}</span></span>
+            <span class="kv"><button class="small ${(state.credits||0)>=fee?'primary':''}" data-hirecand="${i}" ${(state.credits||0)>=fee?'':'disabled'}>Hire &middot; ${commas(fee)}c</button></span></div>`; }).join("");
+      } else if(recruitPool){ cands=`<p class="small dim">You hired everyone worth taking from that batch. Scout again for fresh faces.</p>`; }
+      else cands=`<p class="small dim">Pick a trade and the recruiter will round up some candidates to look over.</p>`;
+      body=`<p class="small dim">Your recruiter finds fresh talent. Look them over and hire whoever you want — nobody's replaced unless you say so.</p>
+        ${scout}<div style="margin-top:6px">${cands}</div>
         <button class="small ghost full center" data-recmode="menu" style="margin-top:6px">&larr; Back</button>`;
     } else {
       body=`<div class="grid">
           <button data-recmode="hire">&#128101; Hire crew</button>
-          <button data-recmode="upgrade">&#127919; Headhunt a pro</button>
+          <button data-recmode="talent">&#127919; Find talent</button>
         </div>
         <div class="row between" style="margin-top:8px"><span class="small">Auto-crew the whole fleet each turn</span>
           <button class="small ${auto?'sel':'ghost'}" data-recauto="1">${auto?'On':'Off'}</button></div>
@@ -4322,7 +4327,8 @@ const UI = {
       app.querySelectorAll("[data-recmode]").forEach(b=> b.onclick=()=>{ recruiterMode=b.dataset.recmode; UI.render("crew"); });
       app.querySelectorAll("[data-recship]").forEach(b=> b.onclick=()=>recruiterHireShip(b.dataset.recship));
       app.querySelectorAll("[data-recfleet]").forEach(b=> b.onclick=()=>recruiterHireFleet(b.dataset.recfleet));
-      app.querySelectorAll("[data-recuprole]").forEach(b=> b.onclick=()=>recruiterHeadhunt(b.dataset.recuprole));
+      app.querySelectorAll("[data-scout]").forEach(b=> b.onclick=()=>recruiterScout(b.dataset.scout));
+      app.querySelectorAll("[data-hirecand]").forEach(b=> b.onclick=()=>recruiterHireCandidate(+b.dataset.hirecand));
       const ra=$("[data-recauto]"); if(ra) ra.onclick=()=>toggleRecruiterAuto();
       app.querySelectorAll("[data-selshipview]").forEach(b=> b.onclick=()=>{ viewingShip=b.dataset.selshipview; UI.render("crew"); });
       const sb=$("#shipsBack"); if(sb) sb.onclick=()=>{ viewingShip=null; UI.render("crew"); };
@@ -5671,7 +5677,6 @@ function runRecruiter(){
   let hired=0, fee=0;
   (state.vehicles||[]).forEach(v=>{ const r=crewShip(v); hired+=r.hired; fee+=r.fee; });
   if(hired) Game.logMsg(`Your recruiter crews up ${hired} berth${hired>1?"s":""} across the fleet (${commas(fee)}c in signing fees).`,"sys");
-  if(chance(0.05)) recruiterHeadhunt(null, true);
 }
 /* directed: crew up a single ship */
 function recruiterHireShip(id){ if(!hasRecruiter()){ toast("Hire a Recruiter first"); return; }
@@ -5686,20 +5691,26 @@ function recruiterHireFleet(fid){ if(!hasRecruiter()){ toast("Hire a Recruiter f
   toast(H?`Crewed ${f.name}`:"Already crewed"); Game.save(); UI.render("crew"); }
 /* headhunt a sharper pilot or gunner among the given ships, replacing the weakest of that trade */
 const SKILL_OF={pilot:"piloting",gunner:"gunnery",mechanic:"repair"};
-/* headhunt a sharper recruit of a specific TRADE (pilot/gunner/mechanic), replacing your weakest of
-   that role anywhere in your crew. With no role given (auto), picks a trade you employ. */
-function recruiterHeadhunt(role, silent){
-  if(!role){ const have=["pilot","gunner","mechanic"].filter(r=>(state.crew||[]).some(c=>c.career===r && c.shipId));
-    if(!have.length) return; role=pick(have); }
-  const which=SKILL_OF[role]; if(!which) return;
-  const cands=(state.crew||[]).filter(c=>c.career===role && c.shipId);
-  if(!cands.length){ if(!silent) toast(`You've no ${careerName(role)} aboard to upgrade`); return; }
-  const weakest=cands.reduce((a,b)=>crewSkill(a,which)<=crewSkill(b,which)?a:b), better=rollCrewSkills(role,null), fee=HIRE_ROLES[role].fee;
-  if((better[which]||0) <= crewSkill(weakest,which)+1){ if(!silent) toast(`No sharper ${careerName(role)} turned up — try again`); return; }
-  if((state.credits||0)<fee){ if(!silent) toast(`Headhunting a ${careerName(role)} costs ${commas(fee)}c`); return; }
-  state.credits-=fee; weakest.name=genName("person"); weakest.raceName=genName("race"); weakest.skills=better; weakest.recruited=true;
-  Game.logMsg(`Recruiter headhunts a ${skillTier(better[which]).name} ${careerName(role)} (${which} ${better[which]}) for ${commas(fee)}c.`,"good");
-  if(!silent){ toast(`Upgraded your weakest ${careerName(role)}`); Game.save(); UI.render("crew"); }
+let recruitPool=null;   // {role, list:[candidate crew objects]} — talent the recruiter has scouted up
+/* the recruiter scouts the local labor market for a trade and turns up a few candidates to look over.
+   Free to scout; you choose whom (if anyone) to actually hire. */
+function recruiterScout(role){
+  if(!hasRecruiter()){ toast("Hire a Recruiter first"); return; }
+  if(!SKILL_OF[role]) return;
+  const list=[]; for(let i=0;i<rnd(3,4);i++) list.push(genCrewMember(role));
+  recruitPool={ role, list }; recruiterMode="talent";
+  Game.save(); UI.render("crew");
+}
+/* hire one of the scouted candidates — they join your crew (idle); you choose where to seat them */
+function recruiterHireCandidate(idx){
+  if(!recruitPool) return; const cand=recruitPool.list[idx]; if(!cand) return;
+  const fee=HIRE_ROLES[cand.career].fee;
+  if((state.credits||0)<fee){ toast(`Hiring costs ${commas(fee)}c`); return; }
+  state.credits-=fee; cand.shipId=null; cand.seat=null;
+  state.crew=state.crew||[]; state.crew.push(cand); recruitPool.list.splice(idx,1);
+  const p=crewPrimary(cand), t=crewTier(cand);
+  Game.logMsg(`You hire ${cand.name}, a ${t?t.name+" ":""}${careerName(cand.career)}${p?` (${p.label} ${p.val})`:""}, for ${commas(fee)}c. Seat them on a ship from the Crew tab.`,"good");
+  toast(`Hired ${cand.name}`); Game.save(); UI.render("crew");
 }
 function toggleRecruiterAuto(){ const o=getRecruiter(); if(!o) return;
   o.auto=o.auto===false; toast(o.auto===false?"Auto-crew off":"Auto-crew on"); Game.save(); UI.render("crew"); }
