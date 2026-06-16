@@ -918,7 +918,7 @@ function distFromCore(sys){ return Math.hypot(sys.x, sys.y); }
 /* ---- map visibility (fog of war) ----
    You can see a system on the galaxy map only if you've charted it, or if it lies within
    MAP_SIGHT light-years of one of your charted systems (a sensor contact). */
-const MAP_SIGHT=50;
+const MAP_SIGHT=64;
 function nearestDiscoveredDist(sys){ let best=Infinity;
   (state.galaxy?state.galaxy.systems:[]).forEach(s=>{ if(s.discovered) best=Math.min(best, Math.hypot(s.x-sys.x, s.y-sys.y)); });
   return best; }
@@ -4622,7 +4622,7 @@ function makeNeighborSystems(hx, hy, startId){
 const CHUNK=42;                                   // light-years per generation cell
 const poissonSample=l=>{ if(l<=0) return 0; const L=Math.exp(-l); let k=0,p=1; do{ k++; p*=Math.random(); }while(p>L && k<40); return k-1; };
 /* expected systems per cell at centrality cf (1 core .. 0 rim): strongly core-weighted, sparse rim */
-const chunkLambda=cf=>0.06 + 2.2*Math.pow(clamp(cf,0,1), 1.6);
+const chunkLambda=cf=>0.08 + 3.3*Math.pow(clamp(cf,0,1), 1.5);
 function ensureChunksAround(x,y,radiusLy){
   const g=state.galaxy; if(!g||!g.lazy) return;                 // chunk-gen only drives lazy galaxies
   g.cells=g.cells||{}; g.systems=g.systems||[];
