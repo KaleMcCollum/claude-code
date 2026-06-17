@@ -25,10 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Configure Pages (auto-enable if needed)
+      - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - name: Upload ranch-game as the site
         uses: actions/upload-pages-artifact@v3
         with:
