@@ -36,11 +36,17 @@ Prices are quoted per cwt and drift weekly. Baselines reflect the recent high-ca
 feeder calves ~$280/cwt, fed cattle ~$192/cwt live, cull cows ~$116/cwt, bred cows ~$2,300/head,
 hay ~$160/ton. All tunable in the `CONFIG` object at the top of the `<script>` in `index.html`.
 
-## You play from the map
-Once your ranch is set up, the **home screen is your land** — an illustrated terrain map with
-grassland, patchwork fields, forests, a meandering river, a lake/pond, and a road to a nearby town.
-Property lines are organic (not square); each parcel is a **160-acre quarter-section**. You interact
-with the world directly:
+## You play from the map (satellite / onX-style)
+Once your ranch is set up, the **whole screen is your land** — an overhead, satellite-style view with
+shaded relief (topography), region-specific land cover, and crisp **yellow property/plot lines** laid
+over it like an onX map. Each parcel is a **160-acre quarter-section**.
+- **It zooms, it doesn't scroll:** drag to pan, pinch or scroll-wheel to zoom, or use ➕/➖.
+- **Region realism:** Montana is high, rolling, forested with **few roads**; Colorado is semi-arid
+  high plains with a dense section-road grid and **center-pivot irrigation circles**; Texas is brushy
+  with stock tanks and more roads. Roads follow the 1-mile section grid like the real rural West.
+- Distant **city/market destinations** are labeled at the edges of the map.
+
+You interact with the world directly:
 - **Click the 🏪 Stockyard & Store** in town (or the **🏪 Shop** button) to buy/sell cattle & hay,
   and to **buy adjoining land** from the Land Agent.
 - **Click a parcel you own** to build on it or fence it: **Barn** (shelter), **House** (lets you hire

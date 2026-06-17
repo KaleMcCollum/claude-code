@@ -56,9 +56,10 @@
   .plabel{text-anchor:middle;pointer-events:none}
   .pbuy{font-weight:700;fill:#6e4a0c;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:#fff;stroke-width:3px}
   /* map-as-homescreen */
-  #mapStage{position:relative;margin-top:12px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#cfe2a3;box-shadow:0 2px 12px rgba(90,60,30,.12)}
-  #ranchMap{width:100%;max-height:74vh;overflow:auto}
-  #ranchMap svg{display:block;margin:auto}
+  #mapStage{position:relative;margin-top:8px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#222a20;box-shadow:0 2px 12px rgba(90,60,30,.12);height:calc(100dvh - 96px)}
+  #ranchMap{width:100%;height:100%}
+  #ranchMap svg{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #ranchMap svg:active{cursor:grabbing}
   #toolPalette{position:absolute;top:10px;left:10px;display:flex;flex-direction:column;gap:5px;background:rgba(255,251,243,.92);padding:8px;border-radius:10px;border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.15);width:132px}
   #mapTopRight{position:absolute;top:10px;right:10px;display:flex;gap:5px;flex-wrap:wrap;max-width:62%;justify-content:flex-end}
   .btn.mini{padding:6px 9px;font-size:.78rem}
@@ -271,7 +272,7 @@ function newGameState(loc, stateKey){
 
 /* ---------------- Helpers ---------------- */
 const $ = id => document.getElementById(id);
-function go(screen){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(screen).classList.add('active'); window.scrollTo(0,0); }
+function go(screen){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(screen).classList.add('active'); window.scrollTo(0,0); document.body.style.overflow = (screen==='game') ? 'hidden' : ''; }
 function $money(n){ const neg = n<0; return (neg?'-$':'$') + Math.abs(Math.round(n)).toLocaleString(); }
 function clamp(x,a,b){ return Math.max(a,Math.min(b,x)); }
 function rnd(a,b){ return a + Math.random()*(b-a); }
@@ -426,6 +427,7 @@ function chooseOp(op){
   S.buildings[S.parcels[0]] = 'house';
   if(S.parcels[1]) S.buildings[S.parcels[1]] = 'barn';
   initMap();
+  _view=null;
   startWeekScenario();
   saveGame(true);
   go('game');
@@ -868,135 +870,158 @@ function initMap(){
   S.townName = names[S.mapSeed % names.length];
 }
 // Builds the inner SVG markup for the ranch terrain map (used by the main map screen).
+// Region-specific look (palette, land cover mix, road density, relief).
+function regionStyle(){
+  const k=S.stateKey;
+  if(k==='MT') return {grass:'#7c8757',grass2:'#6d7a4b',soil:'#8b7d54',forest:'#47633c',field:['#8f9558','#9aa05f','#7e8a4d'],forestPct:0.32,pivotPct:0.0,fieldPct:0.10,brushPct:0.04,relief:1.0,roadEvery:4,roadChance:0.40,water:'#46666b',scrub:'#6f7a4a'};
+  if(k==='CO') return {grass:'#9a9560',grass2:'#8a8654',soil:'#a58d5d',forest:'#546e41',field:['#aeb16a','#9aa45c','#c9c07a'],forestPct:0.10,pivotPct:0.24,fieldPct:0.14,brushPct:0.06,relief:0.6,roadEvery:2,roadChance:0.70,water:'#4d717c',scrub:'#94915a'};
+  return {grass:'#8f8a52','grass2':'#807a48',soil:'#9c8757',forest:'#5b6c3c',field:['#94924f','#a59a55','#86813f'],forestPct:0.12,pivotPct:0.07,fieldPct:0.16,brushPct:0.24,relief:0.45,roadEvery:2,roadChance:0.85,water:'#586f78',scrub:'#7d7a44'};
+}
 function buildRanchMapInner(){
   if(!S.parcels||!S.parcels.length){ S.parcels=makeInitialParcels(Math.max(1,Math.round(S.land/PARCEL_ACRES))); recomputeLand(); }
   if(!S.buildings) S.buildings={}; if(!S.fences) S.fences=[];
   if(S.mapSeed==null) initMap();
+  const st=regionStyle();
   const owned=new Set(S.parcels);
   const a=S.mapAnchor;
-  const tc=a.c+3, tr=a.r-2, lake=[a.c-2, a.r+3], pond=[a.c+3, a.r+1];
+  const tc=a.c+4, tr=a.r-3, lake=[a.c-3, a.r+3], pond=[a.c+3, a.r+1];
   let mnC=Infinity,mxC=-Infinity,mnR=Infinity,mxR=-Infinity;
   [...owned, ...buyableParcels()].forEach(k=>{const [c,r]=k.split(',').map(Number);mnC=Math.min(mnC,c);mxC=Math.max(mxC,c);mnR=Math.min(mnR,r);mxR=Math.max(mxR,r);});
   [[tc,tr],lake,pond].forEach(([c,r])=>{mnC=Math.min(mnC,c);mxC=Math.max(mxC,c);mnR=Math.min(mnR,r);mxR=Math.max(mxR,r);});
-  const M=2, g0c=mnC-M,g1c=mxC+M,g0r=mnR-M,g1r=mxR+M;
-  const cell=Math.round(78*landZoom), pad=Math.round(cell*0.5);
-  const w=(g1c-g0c+1)*cell+pad*2, h=(g1r-g0r+1)*cell+pad*2;
-  const proj=(gx,gy)=>[ (gx-g0c)*cell+pad, (gy-g0r)*cell+pad ];
+  const M=6, g0c=mnC-M,g1c=mxC+M,g0r=mnR-M,g1r=mxR+M;   // generous world for panning
+  const cell=80;
+  const worldW=(g1c-g0c+1)*cell, worldH=(g1r-g0r+1)*cell;
+  const proj=(gx,gy)=>[ (gx-g0c)*cell, (gy-g0r)*cell ];
   const n=v=>v.toFixed(1), P=p=>n(p[0])+','+n(p[1]);
   const H=(i,j,s)=>{ const x=Math.sin(i*127.1+j*311.7+s*74.7+S.mapSeed*0.137)*43758.5453; return x-Math.floor(x); };
-  const vtx=(i,j)=>proj(i+(H(i,j,1)-0.5)*0.46, j+(H(i,j,2)-0.5)*0.46);
-  const eH=(i,j)=>proj(i+0.5, j+(H(i,j,3)-0.5)*0.40);
-  const eV=(i,j)=>proj(i+(H(i,j,4)-0.5)*0.40, j+0.5);
-  const parcelD=(c,r)=>{ const A=vtx(c,r),B=vtx(c+1,r),C=vtx(c+1,r+1),D=vtx(c,r+1),T=eH(c,r),R=eV(c+1,r),Bo=eH(c,r+1),L=eV(c,r);
-    return `M${P(A)} Q${P(T)} ${P(B)} Q${P(R)} ${P(C)} Q${P(Bo)} ${P(D)} Q${P(L)} ${P(A)} Z`; };
-  const cover=(c,r)=> H(c,r,7)>0.80?'forest':(H(c,r,8)>0.66?'field':'pasture');
+  const J=0.05;
+  const vtx=(i,j)=>proj(i+(H(i,j,1)-0.5)*J, j+(H(i,j,2)-0.5)*J);
+  const cellPath=(c,r)=>{const A=vtx(c,r),B=vtx(c+1,r),C=vtx(c+1,r+1),D=vtx(c,r+1);return `M${P(A)}L${P(B)}L${P(C)}L${P(D)}Z`;};
+  const cover=(c,r)=>{ const f=H(c,r,7); let t=st.forestPct; if(f<t)return'forest'; t+=st.pivotPct; if(f<t)return'pivot'; t+=st.fieldPct; if(f<t)return'field'; return 'pasture'; };
 
+  const sd=S.mapSeed%97;
   const defs=`<defs>
-    <linearGradient id="waterG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fcbe2"/><stop offset="1" stop-color="#4d83a8"/></linearGradient>
-    <radialGradient id="canopyG" cx="0.35" cy="0.30" r="0.85"><stop offset="0" stop-color="#8cbf6c"/><stop offset="1" stop-color="#467437"/></radialGradient>
-    <radialGradient id="pineG" cx="0.40" cy="0.22" r="0.95"><stop offset="0" stop-color="#5f9356"/><stop offset="1" stop-color="#2f5a31"/></radialGradient>
-    <linearGradient id="vign" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#3a2a12" stop-opacity="0.10"/></linearGradient>
-    <pattern id="hayF" width="9" height="9" patternTransform="rotate(34)" patternUnits="userSpaceOnUse"><rect width="9" height="9" fill="#cdb96a"/><rect width="4.5" height="9" fill="#c0ad5c"/></pattern>
-    <filter id="bShadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#33291a" flood-opacity="0.32"/></filter>
+    <filter id="relief" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="${(0.006+0.006*st.relief).toFixed(4)}" numOctaves="4" seed="${sd}" result="n"/><feDiffuseLighting in="n" lighting-color="#ffffff" surfaceScale="${(2.2*st.relief+0.6).toFixed(2)}" diffuseConstant="1.05"><feDistantLight azimuth="305" elevation="${(48+10*st.relief).toFixed(0)}"/></feDiffuseLighting></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="${sd}" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 0"/></filter>
+    <filter id="splotch"><feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="3" seed="${sd+5}" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0"/></filter>
+    <filter id="bShadow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="2.5" stdDeviation="2" flood-color="#1c1408" flood-opacity="0.5"/></filter>
   </defs>`;
 
-  // ---------- ground ----------
-  let ground='';
-  const tl=proj(g0c-1,g0r-1), brc=proj(g1c+2,g1r+2);
-  ground+=`<rect x="${n(tl[0])}" y="${n(tl[1])}" width="${n(brc[0]-tl[0])}" height="${n(brc[1]-tl[1])}" fill="#b3cb80"/>`;
-  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){
-    const cv=cover(c,r);
-    if(cv==='field'){
-      const pat = H(c,r,15)>0.5 ? 'url(#hayF)' : (H(c,r,16)>0.5?'#c6d58a':'#a9bd6e');
-      ground+=`<path d="${parcelD(c,r)}" fill="${pat}" stroke="#9aac6a" stroke-width="0.8"/>`;
-    } else if(cv==='pasture'){
-      const tint = H(c,r,17)>0.55?'#bcd187':'#acc377';
-      ground+=`<path d="${parcelD(c,r)}" fill="${tint}" opacity="0.7"/>`;
-      // grass tufts
-      for(let t=0;t<2;t++){ const tp=proj(c+0.25+H(c,r,40+t)*0.5, r+0.3+H(c,r,42+t)*0.5); ground+=`<path d="M${n(tp[0]-3)},${n(tp[1])} q3,-6 6,0" fill="none" stroke="#7fa258" stroke-width="1.4" opacity="0.5"/>`; }
-    }
+  // ----- base ground + relief + cover -----
+  let g='';
+  g+=`<rect x="0" y="0" width="${worldW}" height="${worldH}" fill="${st.grass}"/>`;
+  // land-cover polygons
+  let forests='',fields='',pivots='',pasture='';
+  for(let r=g0r;r<=g1r;r++) for(let c=g0c;c<=g1c;c++){
+    const cv=cover(c,r), d=cellPath(c,r);
+    if(cv==='forest'){ forests+=`<path d="${d}" fill="${st.forest}"/>`; }
+    else if(cv==='field'){ const col=st.field[Math.floor(H(c,r,13)*st.field.length)]; fields+=`<path d="${d}" fill="${col}"/>`; }
+    else if(cv==='pivot'){ const ctr=proj(c+0.5,r+0.5); pivots+=`<path d="${d}" fill="${st.soil}"/><circle cx="${n(ctr[0])}" cy="${n(ctr[1])}" r="${n(cell*0.46)}" fill="${H(c,r,14)>0.5?'#9bb45f':'#b9b06a'}"/><circle cx="${n(ctr[0])}" cy="${n(ctr[1])}" r="${n(cell*0.30)}" fill="none" stroke="#00000018" stroke-width="${n(cell*0.18)}"/>`; }
+    else { const v=H(c,r,17); pasture+=`<path d="${d}" fill="${v>0.62?st.grass2:(v>0.3?st.grass:st.scrub)}" opacity="0.55"/>`; }
   }
+  g+=pasture+fields+`<g>${pivots}</g>`+`<g filter="url(#splotch)" opacity="0.20">${forests}</g>`+`<g opacity="0.92">${forests}</g>`;
+  // brush specks (esp Texas)
+  let brush='';
+  for(let r=g0r;r<=g1r;r++) for(let c=g0c;c<=g1c;c++){ if(cover(c,r)==='pasture' && H(c,r,9)<st.brushPct){ for(let b=0;b<5;b++){ const p=proj(c+0.15+H(c,r,50+b)*0.7, r+0.15+H(c,r,60+b)*0.7); brush+=`<circle cx="${n(p[0])}" cy="${n(p[1])}" r="${n(cell*0.05)}" fill="${st.forest}" opacity="0.5"/>`; } } }
+  g+=brush;
+  // hillshade relief overlay (multiply)
+  g+=`<rect x="0" y="0" width="${worldW}" height="${worldH}" filter="url(#relief)" style="mix-blend-mode:multiply" opacity="${(0.16+0.20*st.relief).toFixed(2)}"/>`;
 
-  // ---------- water ----------
-  let water='';
-  const yr=x=> a.r + 2.4 + 1.7*Math.sin((x-a.c)*0.5 + (S.mapSeed%6));
-  let rv=[]; for(let x=g0c-1;x<=g1c+2;x+=0.2) rv.push(proj(x, yr(x)));
+  // ----- water -----
+  const yr=x=> a.r + 2.6 + 1.8*Math.sin((x-a.c)*0.45 + (S.mapSeed%6)) + 0.5*Math.sin((x-a.c)*1.3);
+  let rv=[]; for(let x=g0c-1;x<=g1c+2;x+=0.18) rv.push(proj(x, yr(x)));
   const rvs=rv.map(P).join(' ');
-  water+=`<polyline points="${rvs}" fill="none" stroke="#9bb777" stroke-width="${n(cell*0.30)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>`;
-  water+=`<polyline points="${rvs}" fill="none" stroke="#5e9bc2" stroke-width="${n(cell*0.20)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  water+=`<polyline points="${rvs}" fill="none" stroke="#bfe0ef" stroke-width="${n(cell*0.06)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>`;
-  const blob=(gx,gy,rg,salt)=>{ let pts=[]; for(let kk=0;kk<16;kk++){ const ang=kk/16*6.283, rr=rg*(0.68+0.5*H(Math.round(gx*3),Math.round(gy*3),salt+kk)); pts.push(proj(gx+Math.cos(ang)*rr, gy+Math.sin(ang)*rr)); } return pts.map(P).join(' '); };
-  const lk=blob(lake[0]+0.2, lake[1], 0.95, 50);
-  water+=`<polygon points="${lk}" fill="#d7cf9f" transform="translate(0,2)" opacity="0.6"/><polygon points="${lk}" fill="url(#waterG)" stroke="#3f7396" stroke-width="1.4"/><ellipse cx="${n(proj(lake[0]-0.1,lake[1]-0.25)[0])}" cy="${n(proj(lake[0]-0.1,lake[1]-0.25)[1])}" rx="${n(cell*0.28)}" ry="${n(cell*0.12)}" fill="#fff" opacity="0.18"/>`;
-  const pd=blob(pond[0]+0.3, pond[1]-0.3, 0.42, 70);
-  water+=`<polygon points="${pd}" fill="url(#waterG)" stroke="#3f7396" stroke-width="1.2"/>`;
+  g+=`<polyline points="${rvs}" fill="none" stroke="#3d5a52" stroke-width="${n(cell*0.22)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>`;
+  g+=`<polyline points="${rvs}" fill="none" stroke="${st.water}" stroke-width="${n(cell*0.13)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const blob=(gx,gy,rg,salt)=>{ let pts=[]; for(let kk=0;kk<18;kk++){ const ang=kk/18*6.283, rr=rg*(0.7+0.45*H(Math.round(gx*3),Math.round(gy*3),salt+kk)); pts.push(proj(gx+Math.cos(ang)*rr, gy+Math.sin(ang)*rr)); } return pts.map(P).join(' '); };
+  g+=`<polygon points="${blob(lake[0],lake[1],1.0,50)}" fill="${st.water}" stroke="#2f4d4f" stroke-width="1.5"/>`;
+  g+=`<polygon points="${blob(pond[0],pond[1],0.4,70)}" fill="${st.water}" stroke="#2f4d4f" stroke-width="1.2"/>`;
 
-  // ---------- roads ----------
+  // ----- roads on the section grid (sparse out West) -----
   let roads='';
+  const road=(d,wd)=>{ roads+=`<path d="${d}" fill="none" stroke="#5a4a30" stroke-width="${n(wd*1.5)}" stroke-linecap="round" opacity="0.55"/><path d="${d}" fill="none" stroke="#c2ac7d" stroke-width="${n(wd)}" stroke-linecap="round"/>`; };
+  for(let c=Math.ceil(g0c/st.roadEvery)*st.roadEvery;c<=g1c;c+=st.roadEvery){ if(H(c,0,3)<st.roadChance){ const t=proj(c,g0r), b=proj(c,g1r+1); road(`M${P(t)}L${P(b)}`, cell*0.05); } }
+  for(let r=Math.ceil(g0r/st.roadEvery)*st.roadEvery;r<=g1r;r+=st.roadEvery){ if(H(0,r,4)<st.roadChance){ const l=proj(g0c,r), rr=proj(g1c+1,r); road(`M${P(l)}L${P(rr)}`, cell*0.05); } }
+  // ranch driveway to town
   const home=S.parcels[0].split(',').map(Number);
-  const hp=proj(home[0]+0.5,home[1]+0.5), tp=proj(tc+0.5,tr+0.5), midp=proj((home[0]+tc)/2+0.5,(home[1]+tr)/2);
-  const roadD=`M${P(hp)} Q${P(midp)} ${P(tp)}`;
-  roads+=`<path d="${roadD}" fill="none" stroke="#9c875f" stroke-width="${n(cell*0.20)}" stroke-linecap="round"/>`;
-  roads+=`<path d="${roadD}" fill="none" stroke="#c4ac7c" stroke-width="${n(cell*0.13)}" stroke-linecap="round"/>`;
-  roads+=`<path d="${roadD}" fill="none" stroke="#b09863" stroke-width="1" stroke-dasharray="1 ${n(cell*0.12)}" opacity="0.5"/>`;
+  const hp=proj(home[0]+0.5,home[1]+0.5), tp=proj(tc+0.5,tr+0.5);
+  road(`M${P(hp)} Q${P(proj((home[0]+tc)/2+0.6,(home[1]+tr)/2))} ${P(tp)}`, cell*0.045);
+  g+=roads;
+  // photographic grain over terrain
+  g+=`<rect x="0" y="0" width="${worldW}" height="${worldH}" filter="url(#grain)" style="mix-blend-mode:multiply" opacity="0.10" pointer-events="none"/>`;
 
-  // ---------- property lines (cadastral) ----------
+  // ----- property lines (onX style: crisp, mostly straight) -----
   let lines='';
-  for(let r=g0r;r<=g1r;r++) for(let c=g0c;c<=g1c;c++){ const k=c+','+r; if(!owned.has(k)) lines+=`<path d="${parcelD(c,r)}" fill="none" stroke="#6f5234" stroke-opacity="0.14" stroke-width="1"/>`; }
-  owned.forEach(k=>{ const [c,r]=k.split(',').map(Number); const d=parcelD(c,r);
-    lines+=`<path d="${d}" fill="none" stroke="#fbf4e4" stroke-width="4.5" stroke-linejoin="round"/>`;
-    lines+=`<path d="${d}" fill="rgba(247,242,227,0.10)" stroke="#5a3d22" stroke-width="2" stroke-linejoin="round" data-act="parcel" data-k="${k}" pointer-events="all" style="cursor:pointer"/>`;
+  for(let r=g0r;r<=g1r;r++) for(let c=g0c;c<=g1c;c++){ const k=c+','+r; if(!owned.has(k)) lines+=`<path d="${cellPath(c,r)}" fill="none" stroke="#fff8d0" stroke-opacity="0.10" stroke-width="1"/>`; }
+  owned.forEach(k=>{ const [c,r]=k.split(',').map(Number), d=cellPath(c,r);
+    lines+=`<path d="${d}" fill="rgba(255,224,90,0.05)" stroke="#1a1400" stroke-opacity="0.5" stroke-width="3.4" stroke-linejoin="round" pointer-events="none"/>`;
+    lines+=`<path d="${d}" fill="rgba(255,224,90,0.04)" stroke="#ffe04a" stroke-width="1.8" stroke-linejoin="round" data-act="parcel" data-k="${k}" pointer-events="all" style="cursor:pointer"/>`;
   });
-  S.fences.forEach(k=>{ if(owned.has(k)){ const [c,r]=k.split(',').map(Number);
-    lines+=`<path d="${parcelD(c,r)}" fill="none" stroke="#5a3c1e" stroke-width="2" stroke-dasharray="2 5" stroke-linejoin="round" pointer-events="none"/>`;
-    [vtx(c,r),eH(c,r),vtx(c+1,r),eV(c+1,r),vtx(c+1,r+1),eH(c,r+1),vtx(c,r+1),eV(c,r)].forEach(p=>{ lines+=`<rect x="${n(p[0]-1.6)}" y="${n(p[1]-1.6)}" width="3.2" height="3.2" fill="#4a3018" pointer-events="none"/>`; });
-  }});
+  S.fences.forEach(k=>{ if(owned.has(k)){ const [c,r]=k.split(',').map(Number); lines+=`<path d="${cellPath(c,r)}" fill="none" stroke="#e8dca8" stroke-width="1" stroke-dasharray="2 4" pointer-events="none"/>`; } });
+  g+=lines;
 
-  // ---------- trees (depth-sorted) ----------
-  const tree=(x,y,s,pine)=>{ let g=`<ellipse cx="${n(x)}" cy="${n(y+s*0.55)}" rx="${n(s*0.7)}" ry="${n(s*0.26)}" fill="#2f3a22" opacity="0.16"/><rect x="${n(x-s*0.07)}" y="${n(y)}" width="${n(s*0.14)}" height="${n(s*0.45)}" rx="${n(s*0.05)}" fill="#6b4a2b"/>`;
-    if(pine){ for(let t=0;t<3;t++){ const ty=y-s*0.05-t*s*0.32, ww=s*(0.62-t*0.16); g+=`<polygon points="${n(x)},${n(ty-s*0.5)} ${n(x-ww)},${n(ty)} ${n(x+ww)},${n(ty)}" fill="url(#pineG)"/>`; } }
-    else { g+=`<circle cx="${n(x-s*0.22)}" cy="${n(y-s*0.18)}" r="${n(s*0.42)}" fill="url(#canopyG)"/><circle cx="${n(x+s*0.24)}" cy="${n(y-s*0.12)}" r="${n(s*0.4)}" fill="url(#canopyG)"/><circle cx="${n(x)}" cy="${n(y-s*0.5)}" r="${n(s*0.46)}" fill="url(#canopyG)"/><circle cx="${n(x-s*0.18)}" cy="${n(y-s*0.55)}" r="${n(s*0.16)}" fill="#a9d385" opacity="0.6"/>`; }
-    return g; };
-  let trees=[];
-  for(let r=g0r-1;r<=g1r+1;r++) for(let c=g0c-1;c<=g1c+1;c++){
-    if(cover(c,r)!=='forest') continue;
-    const cnt=6+Math.floor(H(c,r,5)*6);
-    for(let t=0;t<cnt;t++){ const gx=c+0.12+H(c,r,60+t)*0.76, gy=r+0.12+H(c,r,80+t)*0.76, p=proj(gx,gy); const s=cell*(0.16+H(c,r,100+t)*0.14); trees.push([p[1], tree(p[0],p[1],s, H(c,r,120+t)>0.5)]); }
-  }
-  // a few lone trees along the river
-  for(let x=g0c;x<=g1c;x+=1){ if(H(x,0,200)>0.6){ const p=proj(x+0.3, yr(x+0.3)+0.6); trees.push([p[1], tree(p[0],p[1],cell*0.2, false)]); } }
-  trees.sort((u,v)=>u[0]-v[0]);
-  const treeSVG=trees.map(t=>t[1]).join('');
+  // ----- building rooftops (overhead) -----
+  const roofBarn=(x,y,s)=>`<g filter="url(#bShadow)"><rect x="${n(x-s*0.34)}" y="${n(y-s*0.22)}" width="${n(s*0.68)}" height="${n(s*0.44)}" rx="1.5" fill="#9a3a2b"/><line x1="${n(x-s*0.34)}" y1="${n(y)}" x2="${n(x+s*0.34)}" y2="${n(y)}" stroke="#6e271d" stroke-width="1.4"/></g>`;
+  const roofHouse=(x,y,s)=>`<g filter="url(#bShadow)"><rect x="${n(x-s*0.26)}" y="${n(y-s*0.2)}" width="${n(s*0.52)}" height="${n(s*0.4)}" rx="1.5" fill="#7d756a"/><line x1="${n(x-s*0.26)}" y1="${n(y)}" x2="${n(x+s*0.26)}" y2="${n(y)}" stroke="#574f46" stroke-width="1.2"/></g>`;
+  const roofStable=(x,y,s)=>`<g filter="url(#bShadow)"><rect x="${n(x-s*0.3)}" y="${n(y-s*0.16)}" width="${n(s*0.5)}" height="${n(s*0.32)}" rx="1.5" fill="#6e5230"/></g><rect x="${n(x+s*0.05)}" y="${n(y+s*0.18)}" width="${n(s*0.32)}" height="${n(s*0.26)}" fill="none" stroke="#cdbb84" stroke-width="1" stroke-dasharray="3 3"/>`;
+  const roof={barn:roofBarn,house:roofHouse,stables:roofStable};
+  owned.forEach(k=>{ if(S.buildings[k]){ const [c,r]=k.split(',').map(Number), p=proj(c+0.5,r+0.5); g+=roof[S.buildings[k]](p[0],p[1],cell*0.7); } });
 
-  // ---------- vector buildings ----------
-  const house=(cx,cy,s)=>`<g filter="url(#bShadow)"><rect x="${n(cx-s*0.42)}" y="${n(cy-s*0.05)}" width="${n(s*0.84)}" height="${n(s*0.5)}" fill="#f1e7d2" stroke="#b9a079" stroke-width="1"/><polygon points="${n(cx-s*0.5)},${n(cy-s*0.05)} ${n(cx)},${n(cy-s*0.42)} ${n(cx+s*0.5)},${n(cy-s*0.05)}" fill="#9c5b3b" stroke="#7a4329" stroke-width="1"/><rect x="${n(cx-s*0.09)}" y="${n(cy+s*0.14)}" width="${n(s*0.18)}" height="${n(s*0.31)}" fill="#6f4a2a"/><rect x="${n(cx+s*0.14)}" y="${n(cy+s*0.06)}" width="${n(s*0.16)}" height="${n(s*0.14)}" fill="#bcd6e2" stroke="#7a4329" stroke-width="0.8"/></g>`;
-  const barn=(cx,cy,s)=>`<g filter="url(#bShadow)"><polygon points="${n(cx-s*0.46)},${n(cy)} ${n(cx-s*0.46)},${n(cy-s*0.12)} ${n(cx-s*0.2)},${n(cy-s*0.4)} ${n(cx+s*0.2)},${n(cy-s*0.4)} ${n(cx+s*0.46)},${n(cy-s*0.12)} ${n(cx+s*0.46)},${n(cy)}" fill="#8c3a2a"/><rect x="${n(cx-s*0.46)}" y="${n(cy)}" width="${n(s*0.92)}" height="${n(s*0.46)}" fill="#b5462f" stroke="#7d3023" stroke-width="1"/><rect x="${n(cx-s*0.14)}" y="${n(cy+s*0.08)}" width="${n(s*0.28)}" height="${n(s*0.38)}" fill="#7a2f22"/><line x1="${n(cx-s*0.14)}" y1="${n(cy+s*0.08)}" x2="${n(cx+s*0.14)}" y2="${n(cy+s*0.46)}" stroke="#e9ddc4" stroke-width="1.3"/><line x1="${n(cx+s*0.14)}" y1="${n(cy+s*0.08)}" x2="${n(cx-s*0.14)}" y2="${n(cy+s*0.46)}" stroke="#e9ddc4" stroke-width="1.3"/></g>`;
-  const stables=(cx,cy,s)=>`<g filter="url(#bShadow)"><rect x="${n(cx-s*0.4)}" y="${n(cy-s*0.02)}" width="${n(s*0.6)}" height="${n(s*0.4)}" fill="#9c6b3f" stroke="#6e4a2a" stroke-width="1"/><polygon points="${n(cx-s*0.44)},${n(cy-s*0.02)} ${n(cx-s*0.1)},${n(cy-s*0.32)} ${n(cx+s*0.24)},${n(cy-s*0.02)}" fill="#6e4a2a"/><rect x="${n(cx+s*0.06)}" y="${n(cy+s*0.06)}" width="${n(s*0.34)}" height="${n(s*0.32)}" fill="none" stroke="#7a5a36" stroke-width="1.2" stroke-dasharray="3 3"/></g>`;
-  const drawB={house,barn,stables};
-  let builds='';
-  owned.forEach(k=>{ if(S.buildings[k]){ const [c,r]=k.split(',').map(Number), p=proj(c+0.5,r+0.55); builds+=drawB[S.buildings[k]](p[0],p[1],cell*0.5); } });
-
-  // ---------- town + store ----------
+  // ----- town + clickable store + city destinations -----
   let town='';
-  for(let i=0;i<4;i++){ const p=proj(tc+(i%2)*0.5-0.25, tr+Math.floor(i/2)*0.45-0.1); town+=house(p[0],p[1],cell*0.34); }
-  const sp=proj(tc+0.5, tr+0.95);
-  town+=`<g data-act="store" style="cursor:pointer"><g filter="url(#bShadow)"><rect x="${n(sp[0]-cell*0.26)}" y="${n(sp[1]-cell*0.2)}" width="${n(cell*0.52)}" height="${n(cell*0.4)}" rx="2" fill="#e7c06a" stroke="#7a5a36" stroke-width="1.4"/><rect x="${n(sp[0]-cell*0.26)}" y="${n(sp[1]-cell*0.2)}" width="${n(cell*0.52)}" height="${n(cell*0.1)}" fill="#b5462f"/><rect x="${n(sp[0]-cell*0.08)}" y="${n(sp[1]-cell*0.02)}" width="${n(cell*0.16)}" height="${n(cell*0.22)}" fill="#6f4a2a"/></g><text x="${n(sp[0])}" y="${n(sp[1]+cell*0.34)}" text-anchor="middle" font-size="${Math.round(cell*0.13)}" font-weight="700" fill="#4a3416" paint-order="stroke" stroke="#fff" stroke-width="2.5" pointer-events="none">Stockyard &amp; Store</text></g>`;
-  town+=`<text x="${n(tp[0])}" y="${n(tp[1]-cell*0.34)}" text-anchor="middle" font-size="${Math.round(cell*0.17)}" font-weight="700" fill="#4a3416" paint-order="stroke" stroke="#fff" stroke-width="3" pointer-events="none">${S.townName}</text>`;
+  for(let i=0;i<7;i++){ const p=proj(tc+(H(tc,tr,200+i)-0.5)*1.1, tr+(H(tc,tr,210+i)-0.5)*1.1); town+=roofHouse(p[0],p[1],cell*0.5); }
+  const sp=proj(tc, tr);
+  town+=`<g data-act="store" style="cursor:pointer"><g filter="url(#bShadow)"><rect x="${n(sp[0]-cell*0.28)}" y="${n(sp[1]-cell*0.2)}" width="${n(cell*0.56)}" height="${n(cell*0.4)}" rx="2" fill="#caa23f"/><rect x="${n(sp[0]-cell*0.28)}" y="${n(sp[1]-cell*0.2)}" width="${n(cell*0.56)}" height="${n(cell*0.12)}" fill="#9a3a2b"/></g><circle cx="${n(sp[0])}" cy="${n(sp[1])}" r="${n(cell*0.32)}" fill="none" stroke="#ffe04a" stroke-width="2" opacity="0.9"/><text x="${n(sp[0])}" y="${n(sp[1]+cell*0.45)}" text-anchor="middle" font-size="${Math.round(cell*0.16)}" font-weight="700" fill="#fff" paint-order="stroke" stroke="#000" stroke-width="3" pointer-events="none">🏪 ${S.townName} Stockyard</text></g>`;
+  // distant city/market destinations at the world edges
+  const dest=(gx,gy,label)=>`<g pointer-events="none"><circle cx="${n(proj(gx,gy)[0])}" cy="${n(proj(gx,gy)[1])}" r="4" fill="#ffe04a" stroke="#000" stroke-width="1"/><text x="${n(proj(gx,gy)[0])}" y="${n(proj(gx,gy)[1]-8)}" text-anchor="middle" font-size="${Math.round(cell*0.17)}" font-weight="700" fill="#fff" paint-order="stroke" stroke="#000" stroke-width="3">${label}</text></g>`;
+  const cities=({MT:[['Billings','60 mi'],['Miles City','25 mi']],CO:[['Greeley','40 mi'],['Sterling','30 mi']],TX:[['Amarillo','45 mi'],['Lubbock','70 mi']]})[S.stateKey]||[['Market Town','40 mi']];
+  town+=dest(g1c-1, g0r+1, `▲ ${cities[0][0]} ${cities[0][1]}`);
+  if(cities[1]) town+=dest(g0c+2, g1r-1, `▼ ${cities[1][0]} ${cities[1][1]}`);
+  g+=town;
 
-  const vign=`<rect x="${n(tl[0])}" y="${n(tl[1])}" width="${n(brc[0]-tl[0])}" height="${n(brc[1]-tl[1])}" fill="url(#vign)" pointer-events="none"/>`;
-  return { inner: defs+ground+water+roads+lines+treeSVG+builds+town+vign, w, h };
+  return { inner: defs+g, worldW, worldH, homeWX: hp[0], homeWY: hp[1] };
 }
-let _mapWired=false;
+let _view=null, _world={w:0,h:0}, _home={x:0,y:0};
 function renderRanchMap(){
   const host=$('ranchMap'); if(!host) return;
-  const {inner,w,h}=buildRanchMapInner();
-  host.innerHTML=`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${inner}</svg>`;
-  if(!_mapWired){ host.addEventListener('click', onMapClick); _mapWired=true; }
+  const m=buildRanchMapInner();
+  _world={w:m.worldW,h:m.worldH}; _home={x:m.homeWX,y:m.homeWY};
+  const aspect=(host.clientHeight||560)/(host.clientWidth||900);
+  if(!_view){ const w=Math.min(m.worldW, 9*80); _view={w, h:w*aspect, x:_home.x-(w/2), y:_home.y-(w*aspect/2)}; clampView(aspect); }
+  else { _view.h=_view.w*aspect; clampView(aspect); }
+  host.innerHTML=`<svg id="ranchSvg" width="100%" height="100%" viewBox="${vbStr()}" preserveAspectRatio="xMidYMid slice">${m.inner}</svg>`;
+  wireMap(host.querySelector('svg'));
 }
-function onMapClick(e){
-  const t=e.target.closest('[data-act]'); if(!t) return;
-  if(t.dataset.act==='store') return openMarket();
-  if(t.dataset.act==='parcel') return handleParcel(t.dataset.k);
+function vbStr(){ return `${_view.x.toFixed(1)} ${_view.y.toFixed(1)} ${_view.w.toFixed(1)} ${_view.h.toFixed(1)}`; }
+function clampView(aspect){
+  const minW=2.4*80, maxW=_world.w;
+  _view.w=clamp(_view.w, minW, maxW); _view.h=_view.w*(aspect|| (_view.h/_view.w));
+  if(_view.h>_world.h){ _view.h=_world.h; _view.w=_view.h/(aspect||(_view.h/_view.w)); }
+  _view.x=clamp(_view.x, 0, Math.max(0,_world.w-_view.w));
+  _view.y=clamp(_view.y, 0, Math.max(0,_world.h-_view.h));
+}
+function applyView(svg){ svg=svg||document.getElementById('ranchSvg'); if(svg) svg.setAttribute('viewBox', vbStr()); }
+function zoomAt(factor, clientX, clientY, svg){
+  const r=svg.getBoundingClientRect();
+  const ax=(clientX-r.left)/r.width, ay=(clientY-r.top)/r.height;
+  const wx=_view.x+ax*_view.w, wy=_view.y+ay*_view.h;
+  const aspect=r.height/r.width;
+  _view.w=clamp(_view.w*factor, 2.4*80, _world.w); _view.h=_view.w*aspect;
+  _view.x=wx-ax*_view.w; _view.y=wy-ay*_view.h; clampView(aspect); applyView(svg);
+}
+function zoomLand(d){ const svg=document.getElementById('ranchSvg'); if(!svg) return; const r=svg.getBoundingClientRect(); zoomAt(d>0?0.78:1.28, r.left+r.width/2, r.top+r.height/2, svg); }
+function wireMap(svg){
+  if(!svg) return;
+  const pts=new Map(); let dragging=false,moved=0,lx=0,ly=0,pinch=0;
+  svg.addEventListener('pointerdown',e=>{ svg.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]); dragging=true; moved=0; lx=e.clientX; ly=e.clientY; });
+  svg.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size>=2){ const v=[...pts.values()]; const d=Math.hypot(v[0][0]-v[1][0], v[0][1]-v[1][1]); if(pinch) zoomAt(pinch/d,(v[0][0]+v[1][0])/2,(v[0][1]+v[1][1])/2,svg); pinch=d; moved=99; return; }
+    if(!dragging) return; const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy);
+    const r=svg.getBoundingClientRect(); _view.x-=dx*_view.w/r.width; _view.y-=dy*_view.h/r.height; clampView(); applyView(svg);
+  });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=0; if(pts.size===0){ dragging=false; if(moved<6){ const t=e.target.closest&&e.target.closest('[data-act]'); if(t){ if(t.dataset.act==='store') openMarket(); else if(t.dataset.act==='parcel') handleParcel(t.dataset.k); } } } };
+  svg.addEventListener('pointerup',up); svg.addEventListener('pointercancel',up);
+  svg.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(e.deltaY>0?1.12:0.89, e.clientX, e.clientY, svg); }, {passive:false});
 }
 function handleParcel(k){
   if(!S.parcels.includes(k)) return; // unowned land is bought from the Shop
@@ -1039,7 +1064,6 @@ function renderScenario(){
   }
   host.innerHTML=sc;
 }
-function zoomLand(d){ landZoom=clamp(landZoom + d*0.3, 0.6, 2.4); renderRanchMap(); }
 function openHerd(){
   let rp=`<h2>🐄 Your Ranch</h2><table><tr><th>Herd</th><th>Head</th><th>Avg wt</th></tr>`;
   if(S.herds.length===0) rp+=`<tr><td colspan="3" class="muted">No cattle — visit the 🏪 store on the map to buy some.</td></tr>`;
@@ -1072,6 +1096,7 @@ function loadGame(){
     if(!S.parcels||!S.parcels.length){ S.parcels=makeInitialParcels(Math.max(1,Math.round((S.land||320)/PARCEL_ACRES))); recomputeLand(); }
     if(!S.buildings) S.buildings={}; if(!S.fences) S.fences=[];
     if(S.mapSeed==null) initMap();
+    _view=null;
     startWeekScenario(); go('game'); render(); toast('Game loaded');
   }catch(e){ toast('Load failed'); }
 }
