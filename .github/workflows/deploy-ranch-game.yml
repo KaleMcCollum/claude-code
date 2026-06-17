@@ -4,7 +4,8 @@ name: Deploy ranch-game to GitHub Pages
 # so a single URL (https://<user>.github.io/claude-code/) always shows the latest build.
 on:
   push:
-    branches: ["claude/ranching-game-prototype-co8ecg"]
+    branches: ["main"]
+    paths: ["ranch-game/**", ".github/workflows/deploy-ranch-game.yml", ".nojekyll"]
   workflow_dispatch:
 
 permissions:
