@@ -1024,8 +1024,8 @@ function openRankPop(rposEl, count, currentIdx, onPick){
   rposEl.appendChild(pop);
   setTimeout(()=>document.addEventListener('click',function h(){ document.querySelectorAll('.rankpop').forEach(p=>p.remove()); document.removeEventListener('click',h); }),0);
 }
-function setPlayerRank(name,target){ const arr=voteOrder[voteGender]; const from=arr.indexOf(name); if(from<0)return; arr.splice(from,1); arr.splice(target,0,name); touched[voteGender]=true; renderVote(); }
-function setTeamRank(id,target){ const from=teamOrder.indexOf(id); if(from<0)return; teamOrder.splice(from,1); teamOrder.splice(target,0,id); teamTouched=true; renderTeamVote(); }
+function setPlayerRank(name,target){ const arr=voteOrder[voteGender]; const from=arr.indexOf(name); if(from<0||target<0||target>=arr.length||from===target)return; [arr[from],arr[target]]=[arr[target],arr[from]]; touched[voteGender]=true; renderVote(); }
+function setTeamRank(id,target){ const from=teamOrder.indexOf(id); if(from<0||target<0||target>=teamOrder.length||from===target)return; [teamOrder[from],teamOrder[target]]=[teamOrder[target],teamOrder[from]]; teamTouched=true; renderTeamVote(); }
 function dropOnCard(target){ const arr=voteOrder[voteGender]; if(!dragName||dragName===target)return; const from=arr.indexOf(dragName), to=arr.indexOf(target); if(from<0||to<0)return; arr.splice(from,1); arr.splice(to,0,dragName); dragName=null; touched[voteGender]=true; renderVote(); }
 
 /* ---- Team ranking + champion ballot ---- */
