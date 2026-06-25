@@ -1410,18 +1410,32 @@ document.getElementById('aiClear').addEventListener('click',async()=>{ if(!confi
   aiData=null; source="committee"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
 
 function buildAIPrompt(){
+  const round1=x=>x==null?null:Math.round(x*10)/10;
   const ps=SEED.players.map(seed=>{
-    const com=votes.filter(v=>v.committee && v.player_name===seed.name);
+    const all=votesFor(seed.name);
+    const com=all.filter(v=>v.committee), pub=all.filter(v=>!v.committee);
+    const ca=aggSub(com), pa=aggSub(pub);
     return { name:seed.name, team:seed.team, gender:seed.gender==='F'?'woman':'man',
+      // committee = the expert judging panel
       committee_ranks: com.map(v=>v.rank).filter(x=>typeof x==='number'),   // each member's placement within this player's gender (1=best)
-      committee_golf: com.map(v=>v.golf).filter(x=>x>0),
-      committee_drink: com.map(v=>v.drink).filter(x=>x>0),
-      comments: com.map(v=>v.comment).filter(Boolean).slice(0,10) };
+      committee_golf_avg: round1(ca.golf), committee_drink_avg: round1(ca.drink), committee_voters: com.length,
+      committee_comments: com.map(v=>v.comment).filter(Boolean).slice(0,8),
+      // people = the crowd
+      people_avg_rank: round1(pa.rankAvg), people_golf_avg: round1(pa.golf), people_drink_avg: round1(pa.drink), people_voters: pub.length,
+      people_comments: pub.map(v=>v.comment).filter(Boolean).slice(0,8) };
   });
   const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain,players:ps.filter(p=>p.team===t.id)}));
   return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice; good-natured.
 
-This is the COMMITTEE's official judging. Each committee member submitted a professional ranking of every competitor plus optional 1–7 golf/drinking ratings (golf 1=won't golf, 7=top-3 ringer; drink 1=won't drink, 7=top-3 savage) and optional comments. "committee_ranks" lists where each member placed this player within their gender (1 = best). Synthesize a FAIR consensus: a player ranked highly by multiple members should score high; weigh golf skill most (~60% golf / 40% drinking/vibes) and use the comments for color. Be playful and a little crude — this is a buddies' drinking-golf scramble.
+Rank every competitor using EVERYONE'S ballots — both the expert COMMITTEE and the general PEOPLE'S vote — and weigh BOTH their golfing ability and their beer-drinking ability.
+
+How to read the data per player:
+- "committee_ranks": where each committee member placed this player within their gender (1 = best). "committee_golf_avg" / "committee_drink_avg": the committee's average 1–7 ratings. The committee is the expert panel — weight it most.
+- "people_avg_rank": the crowd's average placement (lower = better). "people_golf_avg" / "people_drink_avg": the crowd's average 1–7 ratings. Use these as a strong secondary signal; let a clear crowd consensus move a player.
+- 1–7 scale meaning — golf: 1=won't golf, 7=top-3 ringer; drink: 1=won't drink, 7=top-3 savage. "*_voters" tells you how many ballots back each number (more voters = more trust; ignore empty/zero fields).
+- "*_comments": flavor for the scouting line.
+
+Synthesize a FAIR consensus across all of it. Within a player's overall grade, weigh GOLF skill most (~60% golf ability / 40% drinking ability + vibes). A player ranked highly by both committee and crowd, with strong golf and drinking numbers, should score near the top. Be playful and a little crude — this is a buddies' drinking-golf scramble.
 
 For EACH of the ${ps.length} players output:
 - "name": exact name as given
@@ -1429,14 +1443,14 @@ For EACH of the ${ps.length} players output:
 - "tier": "S"(90+),"A"(80-89),"B"(70-79),"C"(60-69) or "D"(<60), consistent with score
 - "blurb": ONE punchy scouting sentence (max ~22 words), can reference the vibe from comments
 
-ALSO produce a TEAMS power ranking. Each team has five players (under team.players) with their committee golf/drink ratings and placement ranks. Judge a team by the strength of its whole roster using the SAME committee data (~60% golf skill / 40% drinking + vibes), rewarding depth and a strong captain; have fun with chemistry and chaos. For EACH of the 6 teams output:
+ALSO produce a TEAMS power ranking. Each team has five players (under team.players) with their full committee + people golf/drink ratings and placement ranks. Judge a team by the strength of its whole roster using the SAME blended data (~60% golf skill / 40% drinking + vibes), rewarding depth and a strong captain; have fun with chemistry and chaos. For EACH of the 6 teams output:
 - "id": the given team id
 - "rank": integer 1-6 overall power ranking (1 = best, each value used exactly once)
 - "score": integer 0-100 team strength, CONSISTENT with rank (the #1 team has the highest score)
 - "blurb": ONE short punchy card line (max ~16 words)
 - "report": a 1-2 sentence TEAM SCOUTING REPORT naming their strongest player and biggest question mark; Ringer/ESPN voice, playful and a little crude. The team you rank #1 is your pick to win the whole Classic.
 
-Players (with committee ballots):
+Players (with all committee + people ballots):
 ${JSON.stringify(ps)}
 
 Teams (with their players):
