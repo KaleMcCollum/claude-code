@@ -109,6 +109,35 @@
   .pblurb{display:none;color:var(--muted);font-size:.88rem;padding:10px 14px 12px;margin:-4px 0 8px;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;background:var(--bg2)}
   .pblurb.open{display:block}
   .pblurb .scoreline{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;color:var(--ink);font-weight:600;font-size:.85rem}
+  /* Ringer-style player cards */
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:16px;box-shadow:var(--shadow);transition:.15s}
+  .pcard:hover{border-color:var(--line2)}
+  .pcard.top3 .pc-rank{color:#ff7a2f}
+  .pc-head{display:flex;align-items:center;gap:16px;background:#1b1f27;padding:13px 20px;border-bottom:1px solid var(--line)}
+  .pc-rank{font-family:"Anton",sans-serif;font-size:1.9rem;line-height:1;color:#cbd3e1;min-width:1.8ch}
+  .pc-title{flex:1;min-width:0;font-size:1.25rem;font-weight:800;letter-spacing:-.01em}
+  .pc-title .pc-team{font-weight:600;color:var(--muted);font-size:.95rem;margin-left:6px}
+  .pc-rmr{font-family:"Anton",sans-serif;font-size:1.5rem;color:#fff;text-align:right;line-height:.9}
+  .pc-rmr small{display:block;font-family:Inter;font-size:.55rem;letter-spacing:.12em;color:var(--muted2);font-weight:700}
+  .pc-body{display:flex;gap:20px;padding:18px 20px}
+  .pc-left{width:172px;flex:none}
+  .pc-photo{position:relative;aspect-ratio:1/1;border:1px solid var(--line2);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:repeating-linear-gradient(135deg,#15181f 0 10px,#1b1f27 10px 20px)}
+  .pc-photo .ph{font-size:2.6rem;opacity:.5}
+  .pc-postag{position:absolute;left:0;bottom:0;font-size:.62rem;font-weight:900;letter-spacing:.1em;padding:4px 9px;color:#0a0a0a}
+  .pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px}
+  .pc-stats .k{font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);font-weight:800;display:block}
+  .pc-stats .v{font-size:.92rem;font-weight:800}
+  .pc-right{flex:1;min-width:0;display:flex;flex-direction:column}
+  .pc-blurb{font-size:1.02rem;line-height:1.4;color:var(--muted)}
+  .pc-blurb b{color:var(--ink)}
+  .pc-skills{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:14px}
+  .skill{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--line2);border-radius:9px;padding:6px 11px;font-size:.8rem;font-weight:700;color:#cdd6e6}
+  .skill .ic{font-size:.95rem}
+  .skill.active{border-color:#ff7a2f;color:#fff}
+  .skill.tierchip{color:#0a0a0a;border:0;font-family:"Anton",sans-serif;letter-spacing:.04em}
+  .pc-more{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:.88rem}
+  .pc-more.open{display:block}
+  @media(max-width:560px){.pc-body{flex-direction:column;gap:14px}.pc-left{width:100%;display:flex;gap:14px}.pc-photo{width:120px;flex:none}.pc-stats{flex:1;margin-top:0;align-content:start}}
 
   .tierwrap{display:flex;flex-direction:column;gap:10px}
   .tierrow{display:flex;gap:12px;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
@@ -264,7 +293,7 @@
     </div>
     <div id="tierView" style="display:none"></div>
     <div id="listView">
-      <div class="listhead"><span style="min-width:1.8ch;text-align:center">#</span><span style="flex:1">Player</span><span id="metricHead">Rating</span><span>Tier</span><span style="min-width:2.4ch;text-align:right">RMR</span></div>
+      <div class="listhead" style="display:none"><span id="metricHead">Rating</span></div>
       <div id="playerList"></div>
     </div>
   </section>
@@ -287,6 +316,10 @@
     <div class="submitbar" id="submitBar" style="display:none">
       <button class="btn gold big" id="submitVotes">🗳️ Submit my ballot</button>
       <span class="hint" id="submitHint"></span>
+    </div>
+    <div id="claimWrap" style="display:none;text-align:center;margin-top:40px;padding-top:24px;border-top:1px solid var(--line)">
+      <p class="hint" style="margin-bottom:10px">Are you one of the 30 competitors? Add your photo &amp; stats so your player card looks legit.</p>
+      <button class="btn gold" id="openClaim">📸 Claim your player</button>
     </div>
   </section>
 
@@ -326,6 +359,30 @@
         <button class="btn ghost" id="aiClear" title="Remove AI rankings (revert to crowd average)">Clear AI rankings</button>
       </div>
       <div class="ailog" id="aiLog"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CLAIM PLAYER MODAL -->
+<div class="modal" id="claimModal">
+  <div class="sheet" style="max-width:480px">
+    <header><h2>📸 Claim your player</h2><button class="x" data-close>×</button></header>
+    <div class="body">
+      <p class="hint" style="margin-bottom:14px">Pick yourself, add a photo and your stats — it fills in your player card on the rankings.</p>
+      <label class="flabel">Who are you?</label>
+      <select class="sel" id="claimName" style="width:100%;margin:6px 0 14px"></select>
+      <label class="flabel">Nickname (optional)</label>
+      <input class="search" id="claimNick" style="width:100%;margin:6px 0 14px" placeholder='e.g. "Big Cat"'>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:130px"><label class="flabel">Birthday</label><input type="date" class="search" id="claimBday" style="width:100%;margin-top:6px"></div>
+        <div style="flex:1;min-width:90px"><label class="flabel">Height</label><input class="search" id="claimHt" placeholder="6'1&quot;" style="width:100%;margin-top:6px"></div>
+        <div style="flex:1;min-width:90px"><label class="flabel">Weight</label><input class="search" id="claimWt" placeholder="195 lbs" style="width:100%;margin-top:6px"></div>
+      </div>
+      <label class="flabel" style="display:block;margin-top:14px">Photo</label>
+      <input type="file" id="claimPhoto" accept="image/*" style="margin-top:6px;color:var(--muted)">
+      <img id="claimPreview" alt="" style="display:none;margin-top:12px;width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line2)">
+      <div style="margin-top:18px;display:flex;gap:10px;align-items:center"><button class="btn gold" id="claimSave">Save my card</button></div>
+      <div class="err" id="claimErr"></div>
     </div>
   </div>
 </div>
@@ -421,6 +478,7 @@ const SEED = {
    STATE
    ========================================================= */
 let votes = [];          // rows from supabase
+let profiles = {};       // player_name -> {nickname,birthday,height,weight,photo}
 let aiData = null;       // {players:[{name,score,tier,blurb}], teams:[{id,blurb}], updatedAt}
 let teams = structuredClone(SEED.teams);
 let about = structuredClone(SEED.about);
@@ -493,6 +551,13 @@ async function fetchAI(){
   if(error){ console.warn('ai', error); return; }
   aiData = data?.data || null;
 }
+async function fetchProfiles(){
+  if(!sb) return;
+  const { data, error } = await sb.from('profiles').select('*');
+  if(error){ console.warn('profiles', error); return; }
+  profiles={}; (data||[]).forEach(r=>profiles[r.player_name]=r);
+}
+function computeAge(bday){ if(!bday) return null; try{ const d=new Date(bday); if(isNaN(d)) return null; const t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return (a>=0&&a<120)?a:null; }catch(e){ return null; } }
 function ballotCount(){ return new Set(votes.map(v=>v.voter_id)).size; }
 function votesFor(name){ return votes.filter(v=>v.player_name===name); }
 
@@ -507,7 +572,9 @@ function players(){
     if(rv.length){ rankAvg=rv.reduce((s,v)=>s+v.rank,0)/rv.length; fromVotes=true; }
     const comments = vs.map(v=>v.comment).filter(Boolean);
     const ai = aiData?.players?.find(p=>p.name.toLowerCase()===seed.name.toLowerCase()) || null;
-    return { ...seed, golf, drink, fromVotes, nVotes:vs.length, rankAvg, comments, ai };
+    const pr = profiles[seed.name] || {};
+    return { ...seed, golf, drink, fromVotes, nVotes:vs.length, rankAvg, comments, ai,
+      nickname:pr.nickname||null, photo:pr.photo||null, height:pr.height||null, weight:pr.weight||null, age:computeAge(pr.birthday) };
   });
 }
 function aiExists(){ return !!(aiData && Array.isArray(aiData.players) && aiData.players.length); }
@@ -580,23 +647,42 @@ function renderPlayers(){
   if(!list.length){ playerList.innerHTML='<p class="hint" style="text-align:center;padding:24px">No players match.</p>'; return; }
   list.forEach((p,i)=>{
     const c=TEAM_COLORS[p.team]||'#888'; const cap=teams.find(t=>t.id===p.team)?.captain===p.name;
-    const o=p._o, tier=tierOf(o);
-    const metricStars=dimension==="overall"
-      ? `<span class="lvl">⛳ ${p.golf.toFixed(1)} · 🍺 ${p.drink.toFixed(1)}<small> /7</small></span>`
-      : `<span class="lvl">${esc(levelLabel(dimension, dimension==="golf"?p.golf:p.drink))}</span>`;
-    const row=document.createElement('div'); row.className='prow'+(i<3?' top3':'');
-    row.innerHTML=`<div class="prank">${i+1}</div>
-      <div class="pmeta"><div class="pname">${esc(p.name)} <span class="gtag ${p.gender}">${p.gender==='F'?'Girl':'Boy'}</span></div>
-      <div class="psub"><span class="tteam" style="border-color:${c};color:${c}">${cap?'★ Captain · ':''}Team ${p.team}</span>${p.nVotes?`<span class="hint">${p.nVotes} vote${p.nVotes>1?'s':''}</span>`:''}</div></div>
-      <div class="metric">${metricStars}</div><div class="ttier T-${tier}">${tier}</div><div class="prmr">${o}<small>RMR</small></div>`;
-    const blurb=document.createElement('div'); blurb.className='pblurb';
-    const label=(useAI()&&p.ai&&p.ai.blurb)?'✨ AI scouting report':'Notes';
-    const extra=(p.comments&&p.comments.length>1)?`<div style="margin-top:6px"><b>Other comments:</b> ${p.comments.slice(1,4).map(c=>'“'+esc(c)+'”').join(' · ')}</div>`:'';
-    blurb.innerHTML=`<div class="scoreline"><span>⛳ ${esc(levelLabel('golf',p.golf))} <small>(${p.golf.toFixed(1)}/7)</small></span><span>🍺 ${esc(levelLabel('drink',p.drink))} <small>(${p.drink.toFixed(1)}/7)</small></span><span>Overall <b>${o}</b> · Tier ${tier}</span></div><b>${label}:</b> ${esc(blurbOf(p))||'—'}${extra}`;
-    row.addEventListener('click',()=>blurb.classList.toggle('open'));
-    playerList.appendChild(row); playerList.appendChild(blurb);
+    const o=p._o, tier=tierOf(o); const exp=expBadge(p.yrs);
+    const golfChip=`<span class="skill ${dimension==='golf'?'active':''}"><span class="ic">⛳</span>${esc(levelLabel('golf',p.golf))}</span>`;
+    const drinkChip=`<span class="skill ${dimension==='drink'?'active':''}"><span class="ic">🍺</span>${esc(levelLabel('drink',p.drink))}</span>`;
+    const tierChip=`<span class="skill tierchip T-${tier}">TIER ${tier}</span>`;
+    const blurb=blurbOf(p)||(p.fromVotes?'':'No votes yet — be the first to scout this one.');
+    const card=document.createElement('div'); card.className='pcard'+(i<3?' top3':'');
+    card.innerHTML=`
+      <div class="pc-head">
+        <span class="pc-rank">${String(i+1).padStart(2,'0')}</span>
+        <span class="pc-title">${esc(p.name)}${p.nickname?` <span style="color:var(--gold)">“${esc(p.nickname)}”</span>`:''}<span class="pc-team" style="color:${c}">${cap?'★ Captain · ':''}Team ${p.team}</span></span>
+        <span class="pc-rmr">${o}<small>RMR</small></span>
+      </div>
+      <div class="pc-body">
+        <div class="pc-left">
+          <div class="pc-photo">${p.photo?`<img src="${p.photo}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="ph">${p.gender==='F'?'🏌️‍♀️':'🏌️'}</span>`}<span class="pc-postag" style="background:${exp.c}">${exp.t}</span></div>
+          <div class="pc-stats">
+            <div><span class="k">Height</span><span class="v">${p.height?esc(p.height):'—'}</span></div>
+            <div><span class="k">Age</span><span class="v">${p.age!=null?p.age:'—'}</span></div>
+            <div><span class="k">Weight</span><span class="v">${p.weight?esc(p.weight):'—'}</span></div>
+            <div><span class="k">Rardman Yrs</span><span class="v">${p.yrs||1}</span></div>
+          </div>
+        </div>
+        <div class="pc-right">
+          <div class="pc-blurb">${esc(blurb)}</div>
+          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${p.nVotes?`<span class="skill"><span class="ic">🗳️</span>${p.nVotes} vote${p.nVotes>1?'s':''}</span>`:''}</div>
+          <div class="pc-more">
+            <div class="scoreline"><span>⛳ ${esc(levelLabel('golf',p.golf))} <small>(${p.golf.toFixed(1)}/7)</small></span><span>🍺 ${esc(levelLabel('drink',p.drink))} <small>(${p.drink.toFixed(1)}/7)</small></span></div>
+            ${(p.comments&&p.comments.length>1)?`<div style="margin-top:6px"><b>More comments:</b> ${p.comments.slice(1,5).map(x=>'“'+esc(x)+'”').join(' · ')}</div>`:'<span class="hint">Tap a card for the breakdown.</span>'}
+          </div>
+        </div>
+      </div>`;
+    card.addEventListener('click',()=>card.querySelector('.pc-more').classList.toggle('open'));
+    playerList.appendChild(card);
   });
 }
+function expBadge(yrs){ const y=yrs||1; if(y>=3) return {t:'VETERAN',c:'#f5c518'}; if(y===2) return {t:'SOPHOMORE',c:'#5b9dff'}; return {t:'ROOKIE',c:'#2fd07a'}; }
 function renderTiers(){
   const list=rankedPlayers(); const byT={S:[],A:[],B:[],C:[],D:[]};
   list.forEach((p,i)=>byT[tierOf(p._o)].push({p,i}));
@@ -626,9 +712,9 @@ function renderVote(){
   const seg=document.getElementById('voteGenderSeg');
   if(!configured){
     voteNotice.innerHTML='<div class="notice">🛠️ Voting isn\'t connected yet. The organizer just needs to finish the quick database setup. Once that\'s done, refresh and you can rank everyone here.</div>';
-    voteList.innerHTML=''; seg.style.display='none'; submitBar.style.display='none'; return;
+    voteList.innerHTML=''; seg.style.display='none'; submitBar.style.display='none'; document.getElementById('claimWrap').style.display='none'; return;
   }
-  voteNotice.innerHTML=''; seg.style.display='flex'; submitBar.style.display='flex';
+  voteNotice.innerHTML=''; seg.style.display='flex'; submitBar.style.display='flex'; document.getElementById('claimWrap').style.display='block';
   document.querySelectorAll('#voteGenderSeg button').forEach(b=>b.classList.toggle('active',b.dataset.vg===voteGender));
   document.getElementById('submitHint').textContent = votes.some(v=>v.voter_id===voterId) ? "You've voted before — reorder/rate and re-submit to update." : "";
   voteList.innerHTML='';
@@ -696,6 +782,52 @@ async function submitVotes(){
 document.getElementById('submitVotes').addEventListener('click',submitVotes);
 document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); });
 document.getElementById('voteGenderSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; voteGender=b.dataset.vg; renderVote(); });
+
+/* ----- Claim your player ----- */
+const claimModal=document.getElementById('claimModal');
+let claimPhotoData=null;
+function resizeImage(file, max=360){ return new Promise((res,rej)=>{ const fr=new FileReader();
+  fr.onerror=rej; fr.onload=()=>{ const img=new Image(); img.onerror=rej; img.onload=()=>{
+    let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); const cw=Math.round(w*sc),ch=Math.round(h*sc);
+    const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
+    res(cv.toDataURL('image/jpeg',0.82)); }; img.src=fr.result; }; fr.readAsDataURL(file); }); }
+function fillClaim(name){
+  const pr=profiles[name]||{};
+  document.getElementById('claimName').value=name||'';
+  document.getElementById('claimNick').value=pr.nickname||'';
+  document.getElementById('claimBday').value=pr.birthday||'';
+  document.getElementById('claimHt').value=pr.height||'';
+  document.getElementById('claimWt').value=pr.weight||'';
+  const prev=document.getElementById('claimPreview');
+  if(pr.photo){ prev.src=pr.photo; prev.style.display='block'; claimPhotoData=pr.photo; } else { prev.style.display='none'; claimPhotoData=null; }
+}
+function openClaim(){
+  document.getElementById('claimName').innerHTML='<option value="">— pick your name —</option>'+SEED.players.map(p=>`<option value="${esc(p.name)}">${esc(p.name)} · Team ${p.team}</option>`).join('');
+  document.getElementById('claimErr').textContent='';
+  fillClaim(voterName && SEED.players.some(p=>p.name===voterName) ? voterName : '');
+  openM(claimModal);
+}
+document.getElementById('openClaim').addEventListener('click',openClaim);
+document.getElementById('claimName').addEventListener('change',e=>fillClaim(e.target.value));
+document.getElementById('claimPhoto').addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f)return;
+  const err=document.getElementById('claimErr'); err.textContent='';
+  try{ claimPhotoData=await resizeImage(f); const prev=document.getElementById('claimPreview'); prev.src=claimPhotoData; prev.style.display='block'; }
+  catch(err2){ err.textContent='Could not read that image — try another.'; } });
+async function saveClaim(){
+  const err=document.getElementById('claimErr'); err.textContent='';
+  const name=document.getElementById('claimName').value;
+  if(!name){ err.textContent='Pick your name first.'; return; }
+  if(!sb){ err.textContent='Not connected to the database yet.'; return; }
+  const row={ player_name:name, nickname:document.getElementById('claimNick').value.trim()||null,
+    birthday:document.getElementById('claimBday').value||null, height:document.getElementById('claimHt').value.trim()||null,
+    weight:document.getElementById('claimWt').value.trim()||null, photo:claimPhotoData||null, updated_at:new Date().toISOString() };
+  const btn=document.getElementById('claimSave'); btn.disabled=true; btn.textContent='Saving…';
+  try{ const { error }=await sb.from('profiles').upsert(row,{ onConflict:'player_name' }); if(error) throw error;
+    await fetchProfiles(); renderAll(); closeM(claimModal); flash('📸 '+name+' is claimed — check the rankings!');
+  }catch(e){ console.error(e); err.textContent='Save failed — the organizer may need to run the database update. ('+(e.message||e)+')'; }
+  btn.disabled=false; btn.textContent='Save my card';
+}
+document.getElementById('claimSave').addEventListener('click',saveClaim);
 
 function renderAll(){ renderTeams(); renderPlayerView(); renderVote(); renderAbout(); }
 
@@ -804,7 +936,7 @@ async function boot(){
   if(isAdmin) document.body.classList.add('admin');
   initBallotFromVotes();    // default personal order before any data
   renderAll();              // instant paint with seed/fallback
-  if(sb){ await Promise.all([fetchVotes(), fetchAI()]); }
+  if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles()]); }
   updateCStat(); renderAll();
 }
 boot();
