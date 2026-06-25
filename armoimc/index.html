@@ -137,6 +137,11 @@
   .skill.tierchip{color:#0a0a0a;border:0;font-family:"Anton",sans-serif;letter-spacing:.04em}
   .pc-more{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:.88rem}
   .pc-more.open{display:block}
+  .pc-pub{margin-top:10px;font-size:.84rem;color:var(--muted);line-height:1.45}
+  .pc-pub b{color:#cdd6e6}
+  .committee-notes{margin:10px 0 0;display:flex;flex-direction:column;gap:6px}
+  .cnote{font-size:.9rem;color:#dfe5ef;background:rgba(245,197,24,.07);border-left:3px solid var(--gold);border-radius:0 8px 8px 0;padding:7px 11px;font-style:italic}
+  .cnote .cm{font-style:normal;font-weight:800;color:var(--gold);margin-right:6px}
   @media(max-width:560px){.pc-body{flex-direction:column;gap:14px}.pc-left{width:100%;display:flex;gap:14px}.pc-photo{width:120px;flex:none}.pc-stats{flex:1;margin-top:0;align-content:start}}
 
   .tierwrap{display:flex;flex-direction:column;gap:10px}
@@ -204,6 +209,8 @@
 
   #adminBar{display:none;position:sticky;top:54px;z-index:25;margin:0 0 16px;padding:10px 14px;background:linear-gradient(100deg,rgba(226,59,59,.16),rgba(47,123,255,.16));border:1px solid var(--line2);border-radius:12px;align-items:center;gap:10px;flex-wrap:wrap}
   body.admin #adminBar{display:flex}
+  #committeeBar{display:none;position:sticky;top:54px;z-index:25;margin:0 0 16px;padding:10px 14px;background:linear-gradient(100deg,rgba(245,197,24,.14),rgba(255,138,61,.12));border:1px solid var(--line2);border-radius:12px;align-items:center;gap:10px;flex-wrap:wrap}
+  body.committee #committeeBar{display:flex}
   #adminBar .who{font-weight:800;font-size:.85rem;color:var(--gold)}
   .cstat{font-size:.76rem;font-weight:700;display:inline-flex;align-items:center;gap:6px}
   .cstat .d{width:8px;height:8px;border-radius:50%;background:var(--muted2)}
@@ -271,6 +278,15 @@
     <button class="btn ghost" id="logoutBtn">Log out</button>
   </div>
 
+  <div id="committeeBar">
+    <span class="who" style="color:#f5c518">🏛️ Committee</span>
+    <span id="cmName" style="font-weight:700"></span>
+    <button class="btn gold" id="openProForm">📋 Pro Ranking Form</button>
+    <span class="hint">Your ranking is official. Add a comment per player and it shows on their card, quoted as you.</span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="cmLogout">Log out</button>
+  </div>
+
   <!-- TEAMS -->
   <section class="panel active" id="panel-teams">
     <div class="toolbar"><span class="hint">Ranked by team Power Index — the average rating of each squad's five players.</span><span class="ballotnote" id="ballotNoteT"></span></div>
@@ -287,8 +303,12 @@
         <div class="seg" id="dimSeg"><button data-d="overall" class="active">Overall</button><button data-d="golf">Best Golfers</button><button data-d="drink">Best Drinkers</button></div></div>
       <div class="fgroup"><span class="flabel">View</span>
         <div class="seg" id="viewSeg"><button data-view="list" class="active">List</button><button data-view="tiers">Tiers</button></div></div>
-      <div class="fgroup" id="engineGroup" style="display:none"><span class="flabel">Source</span>
-        <div class="seg" id="engineSeg"><button data-e="ai" class="active">✨ AI</button><button data-e="crowd">Crowd avg</button></div></div>
+      <div class="fgroup" id="engineGroup" style="display:none"><span class="flabel">Ranking</span>
+        <div class="seg" id="engineSeg">
+          <button data-e="committee" class="active">🏛️ Committee</button>
+          <button data-e="people">🗳️ People's Choice</button>
+          <button data-e="ai" style="display:none">✨ AI</button>
+        </div></div>
       <div class="fgroup"><span class="flabel">Find</span><input class="search" id="playerSearch" placeholder="Search a player…" /></div>
     </div>
     <div id="tierView" style="display:none"></div>
@@ -328,7 +348,7 @@
 
   <footer>
     🇺🇸 ARMOIMC III &nbsp;•&nbsp; built for the squad &nbsp;•&nbsp; rankings are opinions, fight about them
-    <br><span class="adminlink" id="adminLink">· admin ·</span>
+    <br><span class="adminlink" id="committeeLink">· committee ·</span> &nbsp; <span class="adminlink" id="adminLink">· admin ·</span>
   </footer>
 </div>
 
@@ -359,6 +379,20 @@
         <button class="btn ghost" id="aiClear" title="Remove AI rankings (revert to crowd average)">Clear AI rankings</button>
       </div>
       <div class="ailog" id="aiLog"></div>
+    </div>
+  </div>
+</div>
+
+<!-- COMMITTEE LOGIN MODAL -->
+<div class="modal" id="cmModal">
+  <div class="sheet" style="max-width:420px">
+    <header><h2>🏛️ Committee login</h2><button class="x" data-close>×</button></header>
+    <div class="body">
+      <p class="hint">Committee members: log in to submit the official professional ranking and leave attributed comments.</p>
+      <label class="flabel" style="display:block;margin:12px 0 5px">Member</label>
+      <select class="sel" id="cmSelect" style="width:100%"></select>
+      <div class="login-row"><input type="password" id="cmPw" placeholder="Your password" autocomplete="current-password"><button class="btn primary" id="cmGo">Enter</button></div>
+      <div class="err" id="cmErr"></div>
     </div>
   </div>
 </div>
@@ -398,6 +432,15 @@
 const SUPABASE_URL = "https://bkzvrmdtlspokaakemdd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_VFbtiEIjQnMdIxa0jmzzjg_vl_DyFwC";
 const ADMIN_HASH = "09e181239cdcb5185d13ed87bc83e49de9d428611efb0c05b3395fec65854423"; // sha256("armoimc2026")
+
+/* Committee members + sha256 of their personal passwords (defaults; change anytime) */
+const COMMITTEE = [
+  { name:"Brett Braseth",  hash:"4cefa6b13a8f592f55bfd46b3719f879859c3eb348e20fe34ab86bcb5cb2ca27" }, // brett
+  { name:"Dylan McCollum", hash:"c0e7aec81a1a194e9f54f6b297f6544041188c741ae8f55c2133b5c510a7dc1d" }, // dylan
+  { name:"Evan Palmer",    hash:"ae74f72d212fb9871302a2459aeaf7b20bc2f792e4852be648a7d4e63967d9b1" }, // evan
+  { name:"Drew Thompson",  hash:"c850c75d30a9360f81eff0a01abcf9125ba034ef9a2dd9f95bbc073a60032299" }, // drew
+  { name:"Kale McCollum",  hash:"9857e117dd0722da68e8dbc1c35987456fc9cc0d9915a53984dda728c36bd1fe" }, // kale
+];
 
 const configured = !SUPABASE_URL.startsWith("PASTE_") && !SUPABASE_ANON_KEY.startsWith("PASTE_");
 let sb = null;
@@ -483,8 +526,9 @@ let aiData = null;       // {players:[{name,score,tier,blurb}], teams:[{id,blurb
 let teams = structuredClone(SEED.teams);
 let about = structuredClone(SEED.about);
 let isAdmin = sessionStorage.getItem("armoimc3_admin")==="1";
+let committeeMember = sessionStorage.getItem("armoimc3_committee") || null;
 
-let dimension="overall", genderF="all", view="list", searchQ="", engine="ai";
+let dimension="overall", genderF="all", view="list", searchQ="", source="committee";
 let aiModel="claude-sonnet-4-6";
 const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
 const MAX_LVL = 7;
@@ -512,6 +556,8 @@ function levelOptions(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS;
 let voterId = localStorage.getItem("armoimc3_voter_id");
 if(!voterId){ voterId = "v_"+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem("armoimc3_voter_id", voterId); }
 let voterName = localStorage.getItem("armoimc3_voter_name") || "";
+function activeId(){ return committeeMember ? 'cm_'+committeeMember : voterId; }
+function activeName(){ return committeeMember || voterName; }
 let voteGender = "M";              // which sub-tab: M | F
 let voteOrder = { M:[], F:[] };    // this voter's personal order (player names)
 let cardState = {};                // name -> {golf,drink,comment}
@@ -532,7 +578,7 @@ async function fetchVotes(){
 // build this voter's personal order + card state from their saved votes (or defaults)
 function initBallotFromVotes(){
   const mine={};
-  votes.filter(v=>v.voter_id===voterId).forEach(v=>{ mine[v.player_name]={golf:v.golf||0,drink:v.drink||0,comment:v.comment||'',rank:v.rank}; });
+  votes.filter(v=>v.voter_id===activeId()).forEach(v=>{ mine[v.player_name]={golf:v.golf||0,drink:v.drink||0,comment:v.comment||'',rank:v.rank}; });
   cardState={}; voteOrder={M:[],F:[]};
   SEED.players.forEach(p=>{ const m=mine[p.name]||{}; cardState[p.name]={golf:m.golf||0,drink:m.drink||0,comment:m.comment||''}; });
   ["M","F"].forEach(g=>{
@@ -561,43 +607,57 @@ function computeAge(bday){ if(!bday) return null; try{ const d=new Date(bday); i
 function ballotCount(){ return new Set(votes.map(v=>v.voter_id)).size; }
 function votesFor(name){ return votes.filter(v=>v.player_name===name); }
 
-// effective player list: ratings from votes (avg) or seed fallback; ai overlay
+// aggregate a subset of a player's votes into golf/drink/rank averages
+function aggSub(vs){
+  const gv=vs.filter(v=>v.golf>0), dv=vs.filter(v=>v.drink>0), rv=vs.filter(v=>typeof v.rank==='number'&&v.rank>0);
+  return { n:vs.length,
+    golf: gv.length? gv.reduce((s,v)=>s+v.golf,0)/gv.length : null,
+    drink:dv.length? dv.reduce((s,v)=>s+v.drink,0)/dv.length : null,
+    rankAvg:rv.length? rv.reduce((s,v)=>s+v.rank,0)/rv.length : null };
+}
+// effective player list with committee + people aggregates, profiles, ai overlay
 function players(){
   return SEED.players.map(seed=>{
-    const vs = votesFor(seed.name);
-    const gv=vs.filter(v=>v.golf>0), dv=vs.filter(v=>v.drink>0), rv=vs.filter(v=>typeof v.rank==='number'&&v.rank>0);
-    let golf=seed.golf, drink=seed.drink, fromVotes=false, rankAvg=null;
-    if(gv.length){ golf=gv.reduce((s,v)=>s+v.golf,0)/gv.length; fromVotes=true; }
-    if(dv.length){ drink=dv.reduce((s,v)=>s+v.drink,0)/dv.length; fromVotes=true; }
-    if(rv.length){ rankAvg=rv.reduce((s,v)=>s+v.rank,0)/rv.length; fromVotes=true; }
-    const comments = vs.map(v=>v.comment).filter(Boolean);
+    const all=votesFor(seed.name);
+    const pub=all.filter(v=>!v.committee), com=all.filter(v=>v.committee);
+    const people=aggSub(pub), committee=aggSub(com);
+    const comReports=com.filter(v=>v.comment).map(v=>({ member:v.member||v.voter_name||'Committee', comment:v.comment }));
+    const pubComments=pub.map(v=>v.comment).filter(Boolean);
     const ai = aiData?.players?.find(p=>p.name.toLowerCase()===seed.name.toLowerCase()) || null;
     const pr = profiles[seed.name] || {};
-    return { ...seed, golf, drink, fromVotes, nVotes:vs.length, rankAvg, comments, ai,
+    return { ...seed, seedGolf:seed.golf, seedDrink:seed.drink, people, committee, comReports, pubComments, ai,
       nickname:pr.nickname||null, photo:pr.photo||null, height:pr.height||null, weight:pr.weight||null, age:computeAge(pr.birthday) };
   });
 }
 function aiExists(){ return !!(aiData && Array.isArray(aiData.players) && aiData.players.length); }
-function useAI(){ return engine==="ai" && aiExists(); }
+function committeeExists(){ return votes.some(v=>v.committee); }
+function peopleExists(){ return votes.some(v=>!v.committee); }
 
 /* =========================================================
-   SCORING
+   SCORING (source = committee | people | ai)
    ========================================================= */
-function formulaScore(p){ return Math.round((W_GOLF*p.golf + (1-W_GOLF)*p.drink)/MAX_LVL*100); }
-function overallScore(p){ return (useAI()&&p.ai&&typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
+function srcOf(p){ return source==="committee" ? p.committee : p.people; }   // ai uses people for golf/drink
+function effGolf(p){ const a=srcOf(p); return (a&&a.golf!=null)?a.golf:p.seedGolf; }
+function effDrink(p){ const a=srcOf(p); return (a&&a.drink!=null)?a.drink:p.seedDrink; }
+function effRankAvg(p){ const a=srcOf(p); return a?a.rankAvg:null; }
+function nVotes(p){ const a=srcOf(p); return a?a.n:0; }
+function fromVotes(p){ const a=srcOf(p); return !!(a&&a.n); }
+function formulaScore(p){ return Math.round((W_GOLF*effGolf(p) + (1-W_GOLF)*effDrink(p))/MAX_LVL*100); }
+function overallScore(p){ return (source==="ai"&&p.ai&&typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
 function tierOf(s){ return s>=90?"S":s>=80?"A":s>=70?"B":s>=60?"C":"D"; }
-function blurbOf(p){ if(useAI()&&p.ai&&p.ai.blurb) return p.ai.blurb; return p.comments&&p.comments.length?('“'+p.comments[0]+'”'):''; }
+function blurbOf(p){ if(source==="ai"&&p.ai&&p.ai.blurb) return p.ai.blurb;
+  const c=(source==="committee" ? (p.comReports[0]&&p.comReports[0].comment) : p.pubComments[0]); return c?('“'+c+'”'):''; }
 
 function rankedPlayers(){
   let list = players().map(p=>({ ...p, _o:overallScore(p) }));
   list = list.filter(p=>(genderF==="all"||p.gender===genderF)&&(!searchQ||p.name.toLowerCase().includes(searchQ)));
-  const byRank = dimension==="overall" && !useAI() && genderF!=="all" && list.some(p=>p.rankAvg!=null);
+  const byRank = dimension==="overall" && source!=="ai" && genderF!=="all" && list.some(p=>effRankAvg(p)!=null);
   list.sort((a,b)=>{
     if(dimension==="overall"){
-      if(byRank){ const ar=a.rankAvg==null?1e9:a.rankAvg, br=b.rankAvg==null?1e9:b.rankAvg; return ar-br || b._o-a._o || a.name.localeCompare(b.name); }
+      if(byRank){ const ar=effRankAvg(a)==null?1e9:effRankAvg(a), br=effRankAvg(b)==null?1e9:effRankAvg(b); return ar-br || b._o-a._o || a.name.localeCompare(b.name); }
       return b._o-a._o || a.name.localeCompare(b.name);
     }
-    const av=dimension==="golf"?a.golf:a.drink, bv=dimension==="golf"?b.golf:b.drink;
+    const av=dimension==="golf"?effGolf(a):effDrink(a), bv=dimension==="golf"?effGolf(b):effDrink(b);
     return bv-av || b._o-a._o || a.name.localeCompare(b.name);
   });
   return list;
@@ -614,7 +674,10 @@ const TEAM_COLORS={1:"#e23b3b",2:"#2f7bff",3:"#f5c518",4:"#2fd07a",5:"#ff8a3d",6
 
 function ballotLine(){
   if(!configured) return "Preview mode — seeded ratings (voting not connected yet).";
-  const n=ballotCount(); return n? `Based on ${n} ballot${n>1?'s':''}${aiExists()?' · ✨ AI-ranked':''}` : "No votes yet — be the first on the ⭐ Vote tab!";
+  if(source==="committee"){ const n=new Set(votes.filter(v=>v.committee).map(v=>v.voter_id)).size; return n?`🏛️ Official committee ranking · ${n} member${n>1?'s':''} weighing in`:"🏛️ Official committee ranking — no committee ballots yet (showing seeds)."; }
+  if(source==="ai") return "✨ AI-built ranking";
+  const n=new Set(votes.filter(v=>!v.committee).map(v=>v.voter_id)).size;
+  return n?`🗳️ People's Choice · ${n} ballot${n>1?'s':''}`:"No public votes yet — be the first on the ⭐ Vote tab!";
 }
 const teamList=document.getElementById('teamList');
 function renderTeams(){
@@ -624,7 +687,7 @@ function renderTeams(){
     const ms=players().filter(p=>p.team===t.id);
     const chips=ms.map(m=>`<span class="chip">${m.name===t.captain?'<span class="cap">★</span>':''}${esc(m.name)}<span class="g">${m.gender==='F'?'♀':'♂'}</span></span>`).join('');
     const aiTeam=aiData?.teams?.find(x=>x.id===t.id);
-    const blurb=(useAI()&&aiTeam&&aiTeam.blurb)?aiTeam.blurb:t.blurb;
+    const blurb=(source==="ai"&&aiTeam&&aiTeam.blurb)?aiTeam.blurb:t.blurb;
     const tag=t.tag?`<span class="badge ${t.tag==='WILDCARD'?'cold':(i===0?'fire':'')}">${esc(t.tag)}</span>`:'';
     const card=document.createElement('div'); card.className='teamcard'; card.style.setProperty('--accent',t.color||'var(--blue)');
     card.innerHTML=`<div class="rankbig">${i+1}</div>
@@ -641,17 +704,18 @@ function renderTeams(){
 const playerList=document.getElementById('playerList'), tierView=document.getElementById('tierView'), metricHead=document.getElementById('metricHead');
 function renderPlayers(){
   document.getElementById('ballotNoteP').textContent=ballotLine();
-  document.getElementById('engineGroup').style.display=aiExists()?'':'none';
-  metricHead.textContent=dimension==="golf"?"⛳ Golf":dimension==="drink"?"🍺 Drinking":(useAI()?"✨ Rating":"Rating");
+  syncSourceToggle();
+  metricHead.textContent=dimension==="golf"?"⛳ Golf":dimension==="drink"?"🍺 Drinking":"Rating";
   const list=rankedPlayers(); playerList.innerHTML='';
   if(!list.length){ playerList.innerHTML='<p class="hint" style="text-align:center;padding:24px">No players match.</p>'; return; }
   list.forEach((p,i)=>{
     const c=TEAM_COLORS[p.team]||'#888'; const cap=teams.find(t=>t.id===p.team)?.captain===p.name;
-    const o=p._o, tier=tierOf(o); const exp=expBadge(p.yrs);
-    const golfChip=`<span class="skill ${dimension==='golf'?'active':''}"><span class="ic">⛳</span>${esc(levelLabel('golf',p.golf))}</span>`;
-    const drinkChip=`<span class="skill ${dimension==='drink'?'active':''}"><span class="ic">🍺</span>${esc(levelLabel('drink',p.drink))}</span>`;
+    const o=p._o, tier=tierOf(o); const exp=expBadge(p.yrs); const g=effGolf(p), d=effDrink(p);
+    const golfChip=`<span class="skill ${dimension==='golf'?'active':''}"><span class="ic">⛳</span>${esc(levelLabel('golf',g))}</span>`;
+    const drinkChip=`<span class="skill ${dimension==='drink'?'active':''}"><span class="ic">🍺</span>${esc(levelLabel('drink',d))}</span>`;
     const tierChip=`<span class="skill tierchip T-${tier}">TIER ${tier}</span>`;
-    const blurb=blurbOf(p)||(p.fromVotes?'':'No votes yet — be the first to scout this one.');
+    const blurb=blurbOf(p)||(fromVotes(p)?'':'No scouting yet.');
+    const comNotes=p.comReports.length?`<div class="committee-notes">${p.comReports.map(r=>`<div class="cnote"><span class="cm">🏛️ ${esc(r.member)}</span> “${esc(r.comment)}”</div>`).join('')}</div>`:'';
     const card=document.createElement('div'); card.className='pcard'+(i<3?' top3':'');
     card.innerHTML=`
       <div class="pc-head">
@@ -671,14 +735,11 @@ function renderPlayers(){
         </div>
         <div class="pc-right">
           <div class="pc-blurb">${esc(blurb)}</div>
-          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${p.nVotes?`<span class="skill"><span class="ic">🗳️</span>${p.nVotes} vote${p.nVotes>1?'s':''}</span>`:''}</div>
-          <div class="pc-more">
-            <div class="scoreline"><span>⛳ ${esc(levelLabel('golf',p.golf))} <small>(${p.golf.toFixed(1)}/7)</small></span><span>🍺 ${esc(levelLabel('drink',p.drink))} <small>(${p.drink.toFixed(1)}/7)</small></span></div>
-            ${(p.comments&&p.comments.length>1)?`<div style="margin-top:6px"><b>More comments:</b> ${p.comments.slice(1,5).map(x=>'“'+esc(x)+'”').join(' · ')}</div>`:'<span class="hint">Tap a card for the breakdown.</span>'}
-          </div>
+          ${comNotes}
+          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${nVotes(p)?`<span class="skill"><span class="ic">🗳️</span>${nVotes(p)} ${source==='committee'?'committee ':''}vote${nVotes(p)>1?'s':''}</span>`:''}</div>
+          ${(p.pubComments&&p.pubComments.length)?`<div class="pc-pub"><b>People's takes:</b> ${p.pubComments.slice(0,6).map(x=>'“'+esc(x)+'”').join(' · ')}</div>`:''}
         </div>
       </div>`;
-    card.addEventListener('click',()=>card.querySelector('.pc-more').classList.toggle('open'));
     playerList.appendChild(card);
   });
 }
@@ -715,8 +776,12 @@ function renderVote(){
     voteList.innerHTML=''; seg.style.display='none'; submitBar.style.display='none'; document.getElementById('claimWrap').style.display='none'; return;
   }
   voteNotice.innerHTML=''; seg.style.display='flex'; submitBar.style.display='flex'; document.getElementById('claimWrap').style.display='block';
+  const com=!!committeeMember;
+  const nameRow=document.querySelector('#panel-vote .namerow'); if(nameRow) nameRow.style.display=com?'none':'flex';
+  const introH=document.querySelector('#panel-vote .voteintro h2'); if(introH) introH.textContent=com?`🏛️ ${committeeMember} — Official Pro Ranking`:'⭐ Cast your ballot';
+  document.getElementById('submitVotes').textContent=com?'📋 Submit official ranking':'🗳️ Submit my ballot';
   document.querySelectorAll('#voteGenderSeg button').forEach(b=>b.classList.toggle('active',b.dataset.vg===voteGender));
-  document.getElementById('submitHint').textContent = votes.some(v=>v.voter_id===voterId) ? "You've voted before — reorder/rate and re-submit to update." : "";
+  document.getElementById('submitHint').textContent = votes.some(v=>v.voter_id===activeId()) ? "Submitted — reorder/rate and re-submit to update." : "";
   voteList.innerHTML='';
   const order=voteOrder[voteGender]||[];
   order.forEach((name,idx)=>{
@@ -766,18 +831,19 @@ async function upsertVotes(rows){
   }catch(e){ console.error(e); flash('Save failed: '+(e.message||e),true); return false; }
 }
 async function submitVotes(){
-  const name=document.getElementById('voterName').value.trim();
-  if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; }
-  voterName=name; localStorage.setItem('armoimc3_voter_name',name);
-  const already=votes.some(v=>v.voter_id===voterId);
+  const com=!!committeeMember;
+  let name;
+  if(com){ name=committeeMember; }
+  else { name=document.getElementById('voterName').value.trim(); if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; } voterName=name; localStorage.setItem('armoimc3_voter_name',name); }
+  const already=votes.some(v=>v.voter_id===activeId());
   const genders=["M","F"].filter(g=> touched[g] || already);
   if(!genders.length){ flash('Drag some players or rate them first 🙂',true); return; }
   const rows=[];
   genders.forEach(g=> voteOrder[g].forEach((nm,i)=>{ const st=cardState[nm]||{golf:0,drink:0,comment:''};
-    rows.push({ voter_id:voterId, voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1 }); }));
+    rows.push({ voter_id:activeId(), voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1, member:com?committeeMember:null, committee:com }); }));
   const btn=document.getElementById('submitVotes'); btn.disabled=true; btn.textContent='Saving…';
-  if(await upsertVotes(rows)){ touched={M:false,F:false}; await fetchVotes(); renderAll(); flash('🗳️ Ballot saved — thanks '+name+'!'); }
-  btn.disabled=false; btn.textContent='🗳️ Submit my ballot';
+  if(await upsertVotes(rows)){ touched={M:false,F:false}; await fetchVotes(); if(com) source='committee'; renderAll(); flash(com?('📋 Official ranking saved — thanks '+name+'!'):('🗳️ Ballot saved — thanks '+name+'!')); }
+  btn.disabled=false; btn.textContent=com?'📋 Submit official ranking':'🗳️ Submit my ballot';
 }
 document.getElementById('submitVotes').addEventListener('click',submitVotes);
 document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); });
@@ -843,8 +909,14 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
 function seg(id,fn){ document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
   e.currentTarget.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); fn(b); renderPlayerView(); }); }
 seg('genderSeg',b=>genderF=b.dataset.g); seg('dimSeg',b=>dimension=b.dataset.d); seg('viewSeg',b=>view=b.dataset.view);
-document.getElementById('engineSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
-  document.querySelectorAll('#engineSeg button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); engine=b.dataset.e; renderAll(); });
+document.getElementById('engineSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; source=b.dataset.e; renderAll(); });
+function syncSourceToggle(){
+  const grp=document.getElementById('engineGroup');
+  grp.style.display = configured ? '' : 'none';
+  document.querySelector('#engineSeg button[data-e="ai"]').style.display = aiExists()?'':'none';
+  if(source==='ai' && !aiExists()) source='committee';   // AI button hidden, don't leave it active
+  document.querySelectorAll('#engineSeg button').forEach(x=>x.classList.toggle('active',x.dataset.e===source));
+}
 document.getElementById('playerSearch').addEventListener('input',e=>{ searchQ=e.target.value.toLowerCase().trim(); renderPlayerView(); });
 
 /* =========================================================
@@ -865,6 +937,26 @@ document.getElementById('pwInput').addEventListener('keydown',e=>{if(e.key==='En
 document.getElementById('logoutBtn').addEventListener('click',()=>{ isAdmin=false; sessionStorage.removeItem('armoimc3_admin'); document.body.classList.remove('admin'); renderAll(); });
 document.getElementById('refreshBtn').addEventListener('click',async()=>{ await fetchVotes(); await fetchAI(); renderAll(); flash('Refreshed'); });
 
+/* ----- Committee auth ----- */
+function setCommittee(name){ committeeMember=name; if(name){ sessionStorage.setItem('armoimc3_committee',name); document.body.classList.add('committee'); document.getElementById('cmName').textContent=name; } else { sessionStorage.removeItem('armoimc3_committee'); document.body.classList.remove('committee'); } initBallotFromVotes(); }
+document.getElementById('committeeLink').addEventListener('click',()=>{
+  if(committeeMember){ openProForm(); return; }
+  const sel=document.getElementById('cmSelect'); sel.innerHTML=COMMITTEE.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('');
+  document.getElementById('cmErr').textContent=''; document.getElementById('cmPw').value='';
+  openM(document.getElementById('cmModal')); setTimeout(()=>document.getElementById('cmPw').focus(),50);
+});
+async function cmTryLogin(){
+  const name=document.getElementById('cmSelect').value; const pw=document.getElementById('cmPw').value; const err=document.getElementById('cmErr'); err.textContent='';
+  const m=COMMITTEE.find(x=>x.name===name); if(!m){ err.textContent='Pick a member.'; return; }
+  if(await sha256(pw)===m.hash){ setCommittee(name); closeM(document.getElementById('cmModal')); renderAll(); flash('🏛️ Welcome, '+name); openProForm(); }
+  else err.textContent='Wrong password for '+name+'.';
+}
+document.getElementById('cmGo').addEventListener('click',cmTryLogin);
+document.getElementById('cmPw').addEventListener('keydown',e=>{if(e.key==='Enter')cmTryLogin();});
+document.getElementById('cmLogout').addEventListener('click',()=>{ setCommittee(null); renderAll(); flash('Logged out of committee'); });
+function openProForm(){ document.querySelector('.tab[data-panel="vote"]').click(); window.scrollTo({top:0,behavior:'smooth'}); }
+document.getElementById('openProForm').addEventListener('click',openProForm);
+
 function updateCStat(){ const el=document.getElementById('cstat'), txt=document.getElementById('cstatText');
   if(!configured){ el.className='cstat bad'; txt.textContent='DB not connected'; }
   else { el.className='cstat ok'; txt.textContent=`Connected · ${ballotCount()} ballots`; } }
@@ -876,11 +968,12 @@ document.getElementById('openAI').addEventListener('click',()=>{ aiKeyEl.value=l
 document.getElementById('aiModel').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; document.querySelectorAll('#aiModel button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); aiModel=b.dataset.m; });
 aiKeyEl.addEventListener('change',()=>{ if(aiKeyEl.value.trim()) localStorage.setItem(AI_KEY_LS,aiKeyEl.value.trim()); });
 document.getElementById('aiClear').addEventListener('click',async()=>{ if(!confirm('Remove AI rankings for everyone (revert to crowd average)?'))return;
-  aiData=null; engine="crowd"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
+  aiData=null; source="people"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
 
 function buildAIPrompt(){
   const ps=players().map(p=>({ name:p.name, team:p.team, gender:p.gender==='F'?'woman':'man',
-    golf_avg:+p.golf.toFixed(2), drink_avg:+p.drink.toFixed(2), votes:p.nVotes, comments:(p.comments||[]).slice(0,8) }));
+    golf_avg:+( (p.people.golf!=null?p.people.golf:p.seedGolf) ).toFixed(2), drink_avg:+( (p.people.drink!=null?p.people.drink:p.seedDrink) ).toFixed(2),
+    votes:p.people.n, comments:(p.pubComments||[]).slice(0,8) }));
   const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain}));
   return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice; good-natured.
 
@@ -918,7 +1011,7 @@ async function generateAI(){
     const a=text.indexOf('{'), z=text.lastIndexOf('}'); if(a>=0&&z>a) text=text.slice(a,z+1);
     const parsed=JSON.parse(text);
     parsed.updatedAt=new Date().toISOString();
-    aiData=parsed; engine="ai";
+    aiData=parsed; source="ai";
     aiLog(`✓ Built rankings for ${parsed.players?.length||0} players.`,'ok');
     if(data.usage) aiLog(`Tokens: ${data.usage.input_tokens} in / ${data.usage.output_tokens} out.`);
     if(sb){ const { error }=await sb.from('ai_rankings').upsert({id:1,data:parsed,updated_at:parsed.updatedAt}); if(error) aiLog('Saved locally but cloud save failed: '+error.message,'bad'); else aiLog('Saved to the cloud — everyone sees these now.','ok'); }
@@ -934,9 +1027,12 @@ document.getElementById('aiGo').addEventListener('click',generateAI);
    ========================================================= */
 async function boot(){
   if(isAdmin) document.body.classList.add('admin');
+  if(committeeMember){ document.body.classList.add('committee'); document.getElementById('cmName').textContent=committeeMember; }
   initBallotFromVotes();    // default personal order before any data
   renderAll();              // instant paint with seed/fallback
   if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles()]); }
+  source = committeeExists() ? 'committee' : (peopleExists() ? 'people' : 'committee');
+  initBallotFromVotes();
   updateCStat(); renderAll();
 }
 boot();
