@@ -326,9 +326,10 @@
   <div id="adminBar">
     <span class="who">★ Admin</span>
     <span class="cstat" id="cstat"><span class="d"></span><span id="cstatText">checking…</span></span>
+    <button class="btn primary" id="saveConfigBtn">💾 Save &amp; publish edits</button>
     <button class="btn gold" id="openAI">✨ Build AI Rankings</button>
     <button class="btn ghost" id="refreshBtn">↻ Refresh votes</button>
-    <span class="hint">Team names, blurbs &amp; the About tab are editable inline.</span>
+    <span class="hint">Edit team names/blurbs &amp; the Rules tab inline, then hit Save &amp; publish.</span>
     <span class="spacer"></span>
     <button class="btn ghost" id="logoutBtn">Log out</button>
   </div>
@@ -636,6 +637,7 @@ let profiles = {};       // player_name -> {nickname,birthday,height,weight,phot
 let aiData = null;       // {players:[...], teams:[{id,rank,score,blurb,report}], updatedAt}
 let teams = structuredClone(SEED.teams);
 let about = structuredClone(SEED.about);
+let configData = null;   // admin-published team/about overrides
 let isAdmin = sessionStorage.getItem("armoimc3_admin")==="1";
 let committeeMember = sessionStorage.getItem("armoimc3_committee") || null;
 
@@ -716,6 +718,24 @@ async function fetchProfiles(){
   const { data, error } = await sb.from('profiles').select('*');
   if(error){ console.warn('profiles', error); return; }
   profiles={}; (data||[]).forEach(r=>profiles[r.player_name]=r);
+}
+async function fetchConfig(){
+  if(!sb) return;
+  try{ const { data, error } = await sb.from('config').select('data').eq('id',1).maybeSingle(); if(error){ console.warn('config',error); return; } configData=data?.data||null; applyConfig(); }
+  catch(e){ console.warn('config',e); }
+}
+function applyConfig(){
+  if(!configData) return;
+  if(Array.isArray(configData.teams)) configData.teams.forEach(ct=>{ const t=teams.find(x=>x.id===ct.id); if(t) Object.assign(t,ct); });
+  if(Array.isArray(configData.about)) about=configData.about;
+}
+async function saveConfig(){
+  if(!sb){ flash('Not connected to the database',true); return; }
+  const btn=document.getElementById('saveConfigBtn'); btn.disabled=true; const t0=btn.textContent; btn.textContent='Saving…';
+  const payload={ teams: teams.map(t=>({id:t.id,name:t.name,blurb:t.blurb,color:t.color,captain:t.captain,tag:t.tag})), about };
+  try{ const { error }=await sb.from('config').upsert({id:1,data:payload,updated_at:new Date().toISOString()}); if(error) throw error; flash('💾 Saved & published to everyone!'); }
+  catch(e){ console.error(e); flash('Save failed — run the config-table SQL ('+(e.message||e)+')',true); }
+  btn.disabled=false; btn.textContent=t0;
 }
 function computeAge(bday){ if(!bday) return null; try{ const d=new Date(bday); if(isNaN(d)) return null; const t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return (a>=0&&a<120)?a:null; }catch(e){ return null; } }
 async function fetchTeamVotes(){
@@ -1122,8 +1142,15 @@ async function submitVotes(){
   let name;
   if(com){ name=committeeMember; }
   else { name=document.getElementById('voterName').value.trim(); if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; } voterName=name; localStorage.setItem('armoimc3_voter_name',name); }
-  const already=votes.some(v=>v.voter_id===activeId());
-  const genders=["M","F"];   // always record a full ballot (their current order counts)
+  // require a golf AND drinking rating on every player before submitting
+  const unrated=SEED.players.filter(p=>{ const st=cardState[p.name]; return !st || !st.golf || !st.drink; });
+  if(unrated.length){
+    const firstG=unrated[0].gender;
+    if(voteGender!==firstG){ voteGender=firstG; renderVote(); }
+    flash(`Rate every player first — ${unrated.length} still need ⛳ & 🍺 (check the ${firstG==='F'?'Girls':'Boys'} tab)`,true);
+    return;
+  }
+  const genders=["M","F"];
   const rows=[];
   genders.forEach(g=> voteOrder[g].forEach((nm,i)=>{ const st=cardState[nm]||{golf:0,drink:0,comment:''};
     rows.push({ voter_id:activeId(), voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1, member:com?committeeMember:null, committee:com }); }));
@@ -1225,6 +1252,7 @@ document.getElementById('loginGo').addEventListener('click',tryLogin);
 document.getElementById('pwInput').addEventListener('keydown',e=>{if(e.key==='Enter')tryLogin();});
 document.getElementById('logoutBtn').addEventListener('click',()=>{ isAdmin=false; sessionStorage.removeItem('armoimc3_admin'); document.body.classList.remove('admin'); renderAll(); });
 document.getElementById('refreshBtn').addEventListener('click',async()=>{ await fetchVotes(); await fetchAI(); renderAll(); flash('Refreshed'); });
+document.getElementById('saveConfigBtn').addEventListener('click',saveConfig);
 
 /* ----- Committee auth ----- */
 function setCommittee(name){ committeeMember=name; if(name){ sessionStorage.setItem('armoimc3_committee',name); document.body.classList.add('committee'); document.getElementById('cmName').textContent=name; } else { sessionStorage.removeItem('armoimc3_committee'); document.body.classList.remove('committee'); } initBallotFromVotes(); initTeamBallot(); }
@@ -1329,7 +1357,7 @@ async function boot(){
   if(committeeMember){ document.body.classList.add('committee'); document.getElementById('cmName').textContent=committeeMember; }
   initBallotFromVotes(); initTeamBallot();    // defaults before any data
   renderAll();              // instant paint with seed/fallback
-  if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes()]); }
+  if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes(), fetchConfig()]); }
   // default each view to wherever the data actually is, so it visibly reflects votes
   source = (committeeExists()||aiExists()) ? 'official' : (peopleExists()?'people':'official');
   teamSource = teamAiExists() ? 'ai' : (teamVotes.some(v=>!v.committee)?'people':(teamVotes.some(v=>v.committee)?'committee':'ai'));
@@ -1343,7 +1371,7 @@ async function refreshData(){
   if(!sb || document.hidden) return;
   const active=document.querySelector('.panel.active');
   if(active && active.id==='panel-vote') return;
-  await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes()]);
+  await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes(), fetchConfig()]);
   updateCStat(); renderAll();
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshData(); });
