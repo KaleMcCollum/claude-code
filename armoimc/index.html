@@ -1102,7 +1102,9 @@ function renderTeamVote(){
   if(!configured){ notice.innerHTML='<div class="notice">🛠️ Team voting isn\'t connected yet.</div>'; list.innerHTML=''; bar.style.display='none'; return; }
   notice.innerHTML=''; bar.style.display='flex';
   document.getElementById('submitTeams').textContent=com?'📋 Submit Commission ranking':'🏁 Submit team picks';
-  document.getElementById('teamSubmitHint').textContent = teamVotes.some(v=>v.voter_id===activeId()) ? "✓ Your team picks are loaded — change anything and re-submit to update." : "";
+  const thint=document.getElementById('teamSubmitHint');
+  if(!championPick){ thint.textContent="👑 Crown a champion to submit — tap a team’s 👑 Crown button."; thint.style.color='var(--red)'; thint.style.fontWeight='700'; }
+  else { thint.style.color=''; thint.style.fontWeight=''; thint.textContent = teamVotes.some(v=>v.voter_id===activeId()) ? "✓ Your team picks are loaded — change anything and re-submit to update." : "👑 Champion: "+(teams.find(t=>t.id===championPick)||{}).name; }
   list.innerHTML='';
   teamOrder.forEach((id,idx)=>{
     const t=teams.find(x=>x.id===id); if(!t) return;
@@ -1150,6 +1152,7 @@ async function submitTeamVotes(){
   if(!com && !name){ flash('Enter your name on the players tab first',true); voteStep='players'; renderVote(); document.getElementById('voterName').focus(); return; }
   if(!com){ voterName=name; localStorage.setItem('armoimc3_voter_name',name); }
   if(!sb){ flash('Not connected yet',true); return; }
+  if(!championPick){ flash('👑 Crown a champion first — tap a team’s 👑 Crown button to pick your winner.',true); return; }
   const rows=teamOrder.map((id,i)=>({ voter_id:activeId(), voter_name:name, team_id:id, team_rank:i+1, champion:(championPick===id), comment:(teamCardState[id]&&teamCardState[id].comment)||null, member:com?committeeMember:null, committee:com }));
   const btn=document.getElementById('submitTeams'); btn.disabled=true; btn.textContent='Saving…';
   if(await upsertTeamVotes(rows)){ teamTouched=false; await fetchTeamVotes(); renderAll(); flash(com?'📋 Commission team ranking saved!':'🏁 Team picks saved — thanks '+name+'!'); }
