@@ -218,7 +218,8 @@
   .scale button{width:34px;height:32px;border:1px solid var(--line2);background:var(--panel);color:var(--muted2);font-family:var(--num);font-weight:700;font-size:.84rem;border-radius:6px;cursor:pointer;transition:.12s;padding:0}
   .scale button:hover{border-color:var(--green);color:var(--green)}
   .scale button.on{color:#fff;border-color:transparent}
-  .scalecap{font-family:var(--body);font-size:.8rem;color:var(--muted);margin-top:5px;min-height:1.15em;font-style:italic}
+  .scalecap{font-family:var(--body);font-size:.8rem;color:var(--muted);margin-top:6px;min-height:1.15em;font-style:italic}
+  .scalecap.set{font-family:var(--label);font-style:normal;font-weight:600;font-size:.82rem;color:var(--green);letter-spacing:.01em}
   @media(max-width:560px){.scale button{width:30px;height:30px}}
   .rrate .lab{font-size:.78rem;color:var(--muted)}
   .rcomment2{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--ink);font-family:inherit;font-size:.82rem;padding:7px;resize:vertical;min-height:36px}
@@ -606,21 +607,21 @@ const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
 const MAX_LVL = 7;
 // index 1..7 (0 = not rated)
 const GOLF_LEVELS = ["—",
-  "Cart jockey & beer caddy",
-  "Swings like hell, hits like shit",
-  "Blind squirrel finds a nut now and then",
-  "Chips in a couple clutch balls",
-  "Legit helps the squad",
-  "Lowkey a sandbagging ringer",
-  "Basically a pro — top 3 stick"];
+  "Won't golf — cart & cooler only",
+  "Total hack, swings for fun",
+  "Rough, but lands a few",
+  "Streaky — chips in here & there",
+  "Solid, carries his weight",
+  "Legit stick",
+  "Top 3 — basically a ringer"];
 const DRINK_LEVELS = ["—",
-  "Sober Sally, nursing a seltzer (0–2)",
-  "Lightweight — two and done (3–5)",
-  "Respectable buzz (6–8)",
-  "Pulling their weight (9–11)",
+  "Won't drink (0–2)",
+  "Lightweight (3–5)",
+  "Casual sipper (6–8)",
+  "Holds his own (9–11)",
   "Heavyweight (12–14)",
-  "Liver of steel (15–18)",
-  "Certified animal — top 3 (19–21+)"];
+  "Wild one (15–18)",
+  "Top 3 — total savage (19–21+)"];
 function levelLabel(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS; const i=Math.max(1,Math.min(MAX_LVL,Math.round(val||1))); return a[i]; }
 function levelOptions(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS; let h=`<option value="0" ${!val?'selected':''}>— pick one —</option>`; for(let i=1;i<=MAX_LVL;i++) h+=`<option value="${i}" ${val===i?'selected':''}>${a[i]}</option>`; return h; }
 
@@ -883,7 +884,8 @@ function renderVote(){
       const paint=()=>{ sc.innerHTML=''; for(let i=1;i<=MAX_LVL;i++){ const btn=document.createElement('button'); btn.type='button'; btn.textContent=i;
         if(st[k]===i){ btn.classList.add('on'); btn.style.background=i<=2?'var(--red)':i<=4?'var(--gold)':'var(--green)'; }
         btn.addEventListener('click',()=>{ st[k]=(st[k]===i?0:i); touched[voteGender]=true; paint(); }); sc.appendChild(btn); }
-        cap.textContent = st[k] ? `${st[k]} · ${levelLabel(k,st[k])}` : `1 = ${(k==='golf'?GOLF_LEVELS:DRINK_LEVELS)[1]}  →  7 = ${(k==='golf'?GOLF_LEVELS:DRINK_LEVELS)[7]}`;
+        if(st[k]){ cap.textContent=`${st[k]} — ${levelLabel(k,st[k])}`; cap.classList.add('set'); }
+        else { cap.textContent=`1 = ${(k==='golf'?GOLF_LEVELS:DRINK_LEVELS)[1]}  →  7 = ${(k==='golf'?GOLF_LEVELS:DRINK_LEVELS)[7]}`; cap.classList.remove('set'); }
       }; paint(); });
     card.querySelector('.rcomment2').addEventListener('input',e=>{ st.comment=e.target.value; touched[voteGender]=true; });
     card.querySelectorAll('.arrows button').forEach(b=>b.addEventListener('click',()=>moveCard(idx, b.dataset.act==='up'?-1:1)));
@@ -1068,7 +1070,7 @@ function buildAIPrompt(){
   const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain}));
   return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice; good-natured.
 
-This is the COMMITTEE's official judging. Each committee member submitted a professional ranking of every competitor plus optional 1–7 golf/drinking ratings (golf 1=cart-jockey, 7=basically a pro; drink 1=barely drinks, 7=certified animal) and optional comments. "committee_ranks" lists where each member placed this player within their gender (1 = best). Synthesize a FAIR consensus: a player ranked highly by multiple members should score high; weigh golf skill most (~60% golf / 40% drinking/vibes) and use the comments for color. Be playful and a little crude — this is a buddies' drinking-golf scramble.
+This is the COMMITTEE's official judging. Each committee member submitted a professional ranking of every competitor plus optional 1–7 golf/drinking ratings (golf 1=won't golf, 7=top-3 ringer; drink 1=won't drink, 7=top-3 savage) and optional comments. "committee_ranks" lists where each member placed this player within their gender (1 = best). Synthesize a FAIR consensus: a player ranked highly by multiple members should score high; weigh golf skill most (~60% golf / 40% drinking/vibes) and use the comments for color. Be playful and a little crude — this is a buddies' drinking-golf scramble.
 
 For EACH of the ${ps.length} players output:
 - "name": exact name as given
