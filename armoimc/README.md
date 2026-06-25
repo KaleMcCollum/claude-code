@@ -1,82 +1,69 @@
 # 🇺🇸 ARMOIMC III — Rankings Site
 
-A self-contained rankings webpage for the **3rd Annual Rard Man Open Invitational Master Classic**
-(July 4, 2026). No build step — it's a single `index.html` you can open in any browser or host on
-GitHub Pages.
+A webpage for the **3rd Annual Rard Man Open Invitational Master Classic** (July 4, 2026) where
+**everyone votes** on the players and **AI builds the official rankings** from the pooled votes.
 
-## Tabs
-- **Team Rankings** — six squads auto-ranked by a **Power Index** (the average rating of each team's
-  five players).
-- **Player Rankings** — every player ranked, with filters across the top:
-  - **Show:** Everyone / Boys / Girls
-  - **Rank by:** Overall / Best Golfers / Best Drinkers
-  - **View:** List or Tier list (S/A/B/C/D)
-  - plus a search box. Tap any player for their scouting report.
-- **About** — event info, course information, and the official rules.
+- `index.html` — the whole site (one file).
+- `supabase-setup.sql` — run once to create the shared "vote box" database.
 
-## How the rankings are calculated
-Rankings are **derived automatically** from the per-player ratings you set in the admin panel:
+## How it works
+1. You send everyone the link.
+2. On the **⭐ Vote** tab, each person types their name and rates every competitor — ⛳ golf and
+   🍺 drinking (1–5 stars) — plus optional comments.
+3. All ballots pool together in a free cloud database (Supabase).
+4. The **Team** and **Player** rankings show the live **crowd averages**.
+5. In admin mode you hit **✨ Build AI Rankings** and Claude turns everyone's votes + comments into
+   the official scores, tiers, and scouting reports. Those save to the cloud so **everyone sees the
+   same official rankings** — no key needed to view.
 
-- Each player has a **⛳ golf** rating and a **🍺 drinking** rating (1–5 stars).
-- **Overall (RMR)** = `(golf × golfWeight + drink × drinkWeight) × 20`, giving a 0–100 score.
-  The golf/drink weight split is adjustable in the Rank Players panel (default 60/40).
-- **Tiers:** S ≥ 90, A ≥ 80, B ≥ 70, C ≥ 60, D below.
-- **Team Power Index** = the average Overall of that team's five players.
+## One-time setup (≈5 minutes)
+1. Make a free account at **https://supabase.com** → **New project** (any name; pick a password;
+   wait ~1 min for it to spin up).
+2. Open **SQL Editor → New query**, paste in everything from `supabase-setup.sql`, click **Run**.
+3. Go to **Project Settings → API** and copy two things:
+   - **Project URL** (looks like `https://abcd1234.supabase.co`)
+   - **anon public** key (a long string)
+4. Paste both into the top of `index.html`:
+   ```js
+   const SUPABASE_URL = "https://abcd1234.supabase.co";
+   const SUPABASE_ANON_KEY = "your-anon-public-key";
+   ```
+   (Both are safe to be public — the anon key is designed for use in browsers.)
+5. Commit/publish, and voting is live. Until these are filled in, the site runs in **preview mode**
+   (seeded ratings, voting paused) — which is harmless.
 
-### ✨ AI rankings (real Claude, no backend)
-In admin mode, **✨ AI Rankings** sends every player's stars + your scouting comments straight to the
-Claude API from your browser and gets back the **official** overall score, tier, and a scouting
-blurb for each player, plus a blurb for every team.
+> Send me your Project URL + anon key and I'll paste them in for you.
 
-- Paste a **Claude API key** — it's stored only in your browser (`localStorage`) and is **never**
-  included when you Publish.
-- Pick a model (Sonnet 4.6 for speed, Opus 4.8 for the best writeups).
-- The AI results are baked into your data; once you Publish, **visitors see them with no key needed.**
-- A **Engine: ✨ AI / Formula** toggle appears on the rankings so you can compare the AI ordering with
-  the raw star formula. **Clear AI data** reverts to the formula.
-
-> Security note: a browser-side API key can be read by anyone with access to that device, which is why
-> Anthropic calls this "dangerous direct browser access." Only the commissioner uses it, on their own
-> device, and it never leaves the browser or gets published — fine for this use case. Use a key you
-> can rotate. (A server-side proxy is the move if you ever want zero key exposure.)
-
-## Admin mode (editing)
-The public can only view. To edit, click the faint **· admin ·** link at the very bottom of the page.
-
+## Admin mode
+Click the faint **· admin ·** link at the very bottom of the page.
 - **Default password:** `armoimc2026`
-- Once logged in you can:
-  - **⭐ Rank Players** — set each player's gender, golf/drinking stars, and comments. Rankings
-    recompute live.
-  - Edit team **names & blurbs** and the entire **About** tab inline (just click the text).
-  - **⬇ Publish (export)** — downloads a `data.json` file. Commit that file into this `armoimc/`
-    folder and the live site will show it to everyone (see below).
-  - **⬆ Import** — load a `data.json` back in.
-  - **Discard local** — throw away unpublished local edits and reload the published data.
+- Admin can: **✨ Build AI Rankings**, **↻ Refresh votes**, edit team names/blurbs and the About tab
+  inline, and **Clear AI rankings** (revert to crowd averages).
 
-Admin edits are saved in *your browser* immediately (so you can tinker), but they only become
-public once you **publish** the `data.json` and it's committed to the repo.
+### ✨ AI rankings (real Claude, no server)
+The AI call goes straight from the browser to the Claude API.
+- Paste a **Claude API key** (from console.anthropic.com). It's stored only in your browser and is
+  **never** sent to the database or shared.
+- Pick a model (Sonnet 4.6 = fast, Opus 4.8 = best writeups).
+- The AI reads the pooled vote averages + comments and writes each player's official score, tier,
+  and scouting blurb, plus a team blurb. The result is saved to the cloud for all viewers.
+- A **Source: ✨ AI / Crowd avg** toggle on the rankings lets anyone compare.
 
 ### Changing the admin password
-The password is stored as a SHA-256 hash in `index.html` (constant `ADMIN_HASH`). To change it,
-generate a new hash and replace the constant:
-
+The password is a SHA-256 hash in `index.html` (`ADMIN_HASH`). To change it:
 ```bash
 printf '%s' 'your-new-password' | sha256sum
 ```
+Replace the `ADMIN_HASH` value with the output. (Client-side gating only — fine for a friend group,
+not real security.)
 
-(Client-side gating only — fine for a friend group, not real security. Don't put anything sensitive
-behind it.)
+## Hosting (GitHub Pages)
+The repo has `.nojekyll`, so it serves static files as-is. After merging to `main`:
+**Settings → Pages → Deploy from a branch → `main` → `/ (root)`**. The site will be at
+`https://<user>.github.io/claude-code/armoimc/`.
 
-## Publishing data (making edits public)
-1. Log in as admin and make your changes.
-2. Click **⬇ Publish (export)** to download `data.json`.
-3. Put that file at `armoimc/data.json` and commit it.
-4. The live page loads `armoimc/data.json` on startup, so everyone now sees your edits.
-
-## Hosting on GitHub Pages
-The repo already has `.nojekyll`, so static files are served as-is.
-1. In the repo: **Settings → Pages**.
-2. Set **Source = Deploy from a branch**, branch **`main`**, folder **`/ (root)`**.
-3. The site will be at `https://<user>.github.io/claude-code/armoimc/`.
-
-(This page lives on a feature branch right now — merge it to `main` to publish.)
+## Privacy / security notes
+- The vote tables are open to anyone with the link (no login), so friends can vote freely. Don't put
+  anything sensitive in there. Votes are keyed to a random id in each voter's browser, so re-voting
+  updates their ballot instead of duplicating.
+- The Claude API key never leaves the admin's browser and is never written to the database.
