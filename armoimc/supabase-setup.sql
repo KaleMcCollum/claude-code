@@ -56,6 +56,8 @@ drop policy if exists "anon update votes" on votes;
 create policy "anon read votes"   on votes for select using (true);
 create policy "anon insert votes" on votes for insert with check (true);
 create policy "anon update votes" on votes for update using (true) with check (true);
+drop policy if exists "anon delete votes" on votes;
+create policy "anon delete votes" on votes for delete using (true);
 
 drop policy if exists "anon read ai"   on ai_rankings;
 drop policy if exists "anon insert ai" on ai_rankings;
@@ -78,3 +80,5 @@ drop policy if exists "anon update team_votes" on team_votes;
 create policy "anon read team_votes" on team_votes for select using (true);
 create policy "anon insert team_votes" on team_votes for insert with check (true);
 create policy "anon update team_votes" on team_votes for update using (true) with check (true);
+drop policy if exists "anon delete team_votes" on team_votes;
+create policy "anon delete team_votes" on team_votes for delete using (true);
