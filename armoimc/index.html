@@ -11,10 +11,13 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
-    --bg:#07120b; --bg2:#0b1810; --panel:#101e15; --panel2:#16271b;
-    --line:#21362a; --line2:#31503c; --ink:#f2f7f1; --muted:#8fa394; --muted2:#5f7567;
-    --red:#d8392f; --red2:#ff5a4d; --blue:#2f6fff; --blue2:#5b9dff;
-    --green:#2f9e44; --green2:#46c463; --gold:#f3c23b; --good:#2fd07a;
+    /* Masters / Augusta scheme: deep green, Masters yellow, white, leaderboard red */
+    --bg:#05130c; --bg2:#0a1d12; --panel:#0e2517; --panel2:#143020;
+    --line:#1f3c2a; --line2:#2d5840; --ink:#f4f8f2; --muted:#93a896; --muted2:#62795f;
+    --red:#c8102e; --red2:#e23b3b;
+    --blue:#0a7d46; --blue2:#2fb56e;        /* remapped to green so no blue appears */
+    --green:#0a7d46; --green2:#2fb56e; --green-deep:#064a2c;
+    --gold:#ffd23f; --good:#2fd07a;
     --serif:"DM Serif Display",Georgia,serif;
     --shadow:0 12px 40px rgba(0,0,0,.55);
   }
@@ -22,9 +25,8 @@
   html,body{margin:0;padding:0}
   body{
     background:
-      radial-gradient(1300px 640px at 50% -12%, rgba(47,158,68,.20), transparent 62%),
-      radial-gradient(900px 500px at 88% 4%, rgba(47,111,255,.08), transparent 60%),
-      radial-gradient(900px 500px at 6% 2%, rgba(216,57,47,.08), transparent 60%),
+      radial-gradient(1300px 660px at 50% -12%, rgba(10,125,70,.28), transparent 62%),
+      radial-gradient(900px 480px at 86% 6%, rgba(255,210,63,.07), transparent 60%),
       var(--bg);
     color:var(--ink);font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;
@@ -33,10 +35,10 @@
   .wrap{max-width:1080px;margin:0 auto;padding:0 18px 40px}
 
   header.hero{position:relative;padding:46px 18px 26px;text-align:center;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(20,23,29,.6),transparent);overflow:hidden}
-  .stripes{position:absolute;inset:0;opacity:.06;pointer-events:none;background:repeating-linear-gradient(90deg,var(--red) 0 8px,transparent 8px 16px,var(--blue) 16px 24px,transparent 24px 32px)}
+  .stripes{position:absolute;inset:0;opacity:.05;pointer-events:none;background:repeating-linear-gradient(90deg,var(--green) 0 8px,transparent 8px 16px,var(--gold) 16px 24px,transparent 24px 32px)}
   .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700;color:var(--muted);margin-bottom:10px}
-  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 12px var(--red)}
-  h1.title{font-family:var(--serif);font-weight:400;font-size:clamp(2.6rem,8.5vw,5.4rem);line-height:1.02;margin:0;letter-spacing:.005em;background:linear-gradient(100deg,#fff 8%,#dff0e2 32%,var(--green2) 56%,var(--blue2) 80%,var(--red2) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 12px var(--gold)}
+  h1.title{font-family:var(--serif);font-weight:400;font-size:clamp(2.6rem,8.5vw,5.4rem);line-height:1.02;margin:0;letter-spacing:.005em;background:linear-gradient(100deg,#fff 6%,#dff0e2 28%,var(--green2) 52%,#9fe6bf 70%,var(--gold) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
   .subtitle{margin:12px auto 0;max-width:680px;color:var(--muted);font-size:clamp(.85rem,2.4vw,1.02rem);font-weight:500}
   .subtitle b{color:var(--ink)} .flag{font-size:1.05em}
 
@@ -77,9 +79,9 @@
   .land-card .lbl .big{font-family:"Anton",sans-serif;font-size:clamp(2.2rem,6vw,3rem);line-height:.88;color:#fff;text-shadow:0 3px 24px rgba(0,0,0,.55)}
   .land-card .lbl .go{margin-top:12px;font-weight:800;font-size:.86rem;color:#fff;opacity:0;transform:translateX(-6px);transition:.25s}
   .land-card:hover .lbl .go{opacity:.95;transform:none}
-  .land-card.players .bg{background:radial-gradient(120% 80% at 50% 0%,#2aa356,#0c3d1d 70%)}
-  .land-card.teams .bg{background:radial-gradient(120% 80% at 50% 0%,#f3b21e,#6e4606 78%)}
-  .land-card.rules .bg{background:radial-gradient(120% 80% at 50% 0%,#3f8fc4,#0f3047 78%)}
+  .land-card.players .bg{background:radial-gradient(120% 80% at 50% 0%,#1ea15c,#063a22 72%)}
+  .land-card.teams .bg{background:radial-gradient(120% 80% at 50% 0%,#ffce3a,#7a5a06 80%)}
+  .land-card.rules .bg{background:radial-gradient(120% 80% at 50% 0%,#0f7a48,#04231a 80%)}
 
   .panel{display:none;animation:fade .25s ease} .panel.active{display:block}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -110,7 +112,7 @@
   .pmeta{flex:1;min-width:0}
   .pname{font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px}
   .gtag{font-size:.6rem;font-weight:900;letter-spacing:.06em;padding:2px 6px;border-radius:6px;text-transform:uppercase}
-  .gtag.M{background:rgba(47,123,255,.16);color:var(--blue2)} .gtag.F{background:rgba(226,59,59,.16);color:var(--red2)}
+  .gtag.M{background:rgba(47,181,110,.16);color:var(--green2)} .gtag.F{background:rgba(226,59,59,.16);color:var(--red2)}
   .psub{color:var(--muted);font-size:.82rem;margin-top:2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .tteam{font-size:.7rem;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
   .stars{font-size:.9rem;letter-spacing:1px;white-space:nowrap}
