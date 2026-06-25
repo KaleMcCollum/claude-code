@@ -192,6 +192,23 @@
   .editbanner{display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#eef5ee,#e3efe3);border:1px solid #cfe0cf;border-left:4px solid var(--green);border-radius:8px;padding:11px 16px;margin-bottom:16px;color:var(--green-deep);font-weight:600;box-shadow:var(--shadow)}
   .editbanner .pen{font-size:1.05rem}
   .editbanner b{font-weight:800}
+  .predict-form{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin-bottom:10px;box-shadow:var(--shadow)}
+  .pf-row{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .pf-row label{font-family:var(--label);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .pf-row input,.predict-form select{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;color:var(--ink);font-family:inherit;font-size:1rem;padding:11px 14px;width:100%;max-width:340px}
+  .pf-drink{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+  .pf-drink .nm{font-weight:600}
+  .pf-drink input{width:84px;background:var(--panel2);border:1px solid var(--line2);border-radius:10px;color:var(--ink);font-family:var(--num);font-size:1rem;padding:9px 12px;text-align:center}
+  .pred-result{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:14px 0 4px}
+  .pred-result .prow{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:3px 0;font-size:.92rem}
+  .pred-result .prow.final{border-top:1px solid var(--line2);margin-top:6px;padding-top:9px;font-size:1.05rem;font-weight:700}
+  .pred-result .big{font-family:var(--num);font-size:1.5rem;font-weight:700;color:var(--green-deep)}
+  .pred-result .num{font-family:var(--num);font-weight:700}
+  .pred-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:8px;padding:12px 16px;margin-bottom:10px;box-shadow:var(--shadow)}
+  .pred-card .padj{font-family:var(--num);font-weight:800;color:var(--green-deep);font-size:1.15rem}
+  .pred-card .ph{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+  .pred-card .pt{font-family:var(--serif,var(--display));font-size:1.15rem;font-weight:700;color:var(--green-deep)}
+  .pred-card .pscore{font-family:var(--num);font-weight:700}
   .voteintro{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
   .voteintro h2{font-family:var(--serif);font-weight:400;font-size:1.6rem;margin:0 0 6px}
   .namerow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
@@ -322,6 +339,7 @@
   <button class="tab" data-panel="teams">Team Rankings</button>
   <button class="tab" data-panel="players">Player Rankings</button>
   <button class="tab vote" data-panel="vote">⭐ Vote</button>
+  <button class="tab" data-panel="predict">🔮 Predictions</button>
   <button class="tab" data-panel="about">The Rules</button>
 </nav>
 
@@ -457,6 +475,29 @@
         <span class="hint" id="teamSubmitHint"></span>
       </div>
     </div>
+  </section>
+
+  <!-- PREDICTIONS -->
+  <section class="panel" id="panel-predict">
+    <div class="voteintro">
+      <h2>🔮 Prediction Calculator</h2>
+      <p class="hint" style="font-size:.92rem">Call it now. Pick a team, predict their <b>final score</b>, and guess how many <b>🍺 drinks</b> each teammate will put down. Hit submit and your call drops into <b>Recent Predictions</b> for everyone to judge on the 3rd.</p>
+    </div>
+    <div id="predictNotice"></div>
+    <div class="predict-form">
+      <div class="pf-row"><label>Your name</label><input id="predName" placeholder="Who's calling it?"></div>
+      <div class="pf-row"><label>Team</label><select id="predTeam" class="sel"></select></div>
+      <div class="pf-row"><label>Predicted final score (course is par 36)</label><input id="predScore" type="number" inputmode="numeric" placeholder="e.g. 38"></div>
+      <label style="font-family:var(--label);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700">🍺 Drinks per teammate <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)">— 3 required each; under 3 adds strokes, every 4 extra drinks takes one off</span></label>
+      <div id="predDrinks"></div>
+      <div class="pred-result" id="predResult"></div>
+      <div class="submitbar" style="margin-top:6px">
+        <button class="btn gold big" id="predSubmit">🔮 Submit prediction</button>
+        <span class="hint" id="predHint"></span>
+      </div>
+    </div>
+    <h3 style="font-family:var(--serif,var(--display));font-weight:400;font-size:1.4rem;margin:26px 0 12px">📣 Recent Predictions</h3>
+    <div id="predRecent"></div>
   </section>
 
   <!-- ABOUT -->
@@ -673,6 +714,7 @@ const SEED = {
    ========================================================= */
 let votes = [];          // rows from supabase
 let teamVotes = [];      // rows from team_votes
+let predictions = [];    // rows from predictions table (final-score + drink calls)
 let profiles = {};       // player_name -> {nickname,birthday,height,weight,photo}
 let aiData = null;       // {players:[...], teams:[{id,rank,score,blurb,report}], updatedAt}
 let teams = structuredClone(SEED.teams);
@@ -684,6 +726,7 @@ let committeeMember = sessionStorage.getItem("armoimc3_committee") || null;
 let dimension="overall", genderF="all", view="list", searchQ="", source="committee";
 let teamSource="ai", voteStep="players";
 let teamOrder=[1,2,3,4,5,6], teamCardState={}, championPick=null, teamTouched=false;
+let predTeamId=1, predDrinkState={};
 let aiModel="claude-sonnet-4-6";
 const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
 const MAX_LVL = 7;
@@ -795,6 +838,11 @@ async function fetchTeamVotes(){
   if(!sb) return;
   try{ const { data, error } = await sb.from('team_votes').select('*'); if(error){ console.warn('team_votes',error); return; } teamVotes=data||[]; }
   catch(e){ console.warn('team_votes',e); }
+}
+async function fetchPredictions(){
+  if(!sb) return;
+  try{ const { data, error } = await sb.from('predictions').select('*').order('created_at',{ascending:false}); if(error){ console.warn('predictions',error); return; } predictions=data||[]; }
+  catch(e){ console.warn('predictions',e); }
 }
 function initTeamBallot(){
   const mine=teamVotes.filter(v=>v.voter_id===activeId());
@@ -1295,7 +1343,107 @@ async function saveClaim(){
 }
 document.getElementById('claimSave').addEventListener('click',saveClaim);
 
-function renderAll(){ renderTeams(); renderPlayerView(); renderVote(); renderAbout(); }
+function renderAll(){ renderTeams(); renderPlayerView(); renderVote(); renderAbout(); renderPredict(); }
+
+/* =========================================================
+   PREDICTION CALCULATOR
+   ========================================================= */
+function renderPredictTeamOptions(){
+  const sel=document.getElementById('predTeam'); if(!sel) return;
+  const want=teams.map(t=>`${t.id}:${t.name}`).join('|');
+  if(sel.dataset.sig!==want){ sel.innerHTML=teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join(''); sel.dataset.sig=want; }
+  if(!teams.some(t=>t.id===predTeamId)) predTeamId=teams[0]?teams[0].id:1;
+  sel.value=predTeamId;
+}
+function renderPredictDrinks(){
+  const wrap=document.getElementById('predDrinks'); if(!wrap) return;
+  const ms=SEED.players.filter(p=>p.team===predTeamId);
+  wrap.innerHTML=ms.map(p=>`<div class="pf-drink"><span class="nm">${esc(p.name)}</span><input type="number" min="0" inputmode="numeric" data-pl="${esc(p.name)}" value="${predDrinkState[p.name]!=null?esc(String(predDrinkState[p.name])):''}" placeholder="0"></div>`).join('');
+  wrap.querySelectorAll('input[data-pl]').forEach(i=>i.addEventListener('input',e=>{ predDrinkState[e.target.dataset.pl]=e.target.value; updatePredResult(); }));
+  updatePredResult();
+}
+// Drinking scoring: par is 36. Each teammate must drink 3.
+// Under 3 → +1 stroke per drink short (penalty, worse). Drinks over 3 pool into
+// "bonus drinks"; every 4 bonus drinks = −1 stroke (rounded down). Final is to-par.
+const PRED_PAR=36, PRED_REQ=3;
+function predBreakdown(gross, drinks){
+  let penalty=0, bonus=0, total=0;
+  Object.values(drinks||{}).forEach(v=>{ const d=Math.max(0,parseInt(v,10)||0); total+=d; if(d<PRED_REQ) penalty+=(PRED_REQ-d); else bonus+=(d-PRED_REQ); });
+  const bonusOff=Math.floor(bonus/4);
+  const toPar=gross-PRED_PAR;
+  return { toPar, penalty, bonus, bonusOff, adjusted: toPar+penalty-bonusOff, total };
+}
+function fmtToPar(n){ return n===0?'E':(n>0?'+'+n:String(n)); }
+function currentDrinks(){ const ms=SEED.players.filter(p=>p.team===predTeamId); const d={}; ms.forEach(p=>{ d[p.name]=Math.max(0,parseInt(predDrinkState[p.name],10)||0); }); return d; }
+function updatePredResult(){
+  const el=document.getElementById('predResult'); if(!el) return;
+  const gross=parseInt((document.getElementById('predScore')||{}).value,10);
+  const drinks=currentDrinks();
+  if(isNaN(gross)){ const t=Object.values(drinks).reduce((s,v)=>s+v,0); el.innerHTML=`<span class="hint">Enter a predicted final score to see the adjusted result.${t?` (🍺 ${t} drinks so far)`:''}</span>`; return; }
+  const b=predBreakdown(gross,drinks);
+  el.innerHTML=`
+    <div class="prow"><span>To par <span class="hint">(${gross} − 36)</span></span><span class="num">${fmtToPar(b.toPar)}</span></div>
+    <div class="prow"><span>Under-3 drink penalty</span><span class="num">${b.penalty?'+'+b.penalty:'0'}</span></div>
+    <div class="prow"><span>Bonus drinks <span class="hint">(${b.bonus} over · ÷4 rounded down)</span></span><span class="num">${b.bonusOff?'−'+b.bonusOff:'0'}</span></div>
+    <div class="prow final"><span>Final predicted score</span><span class="big">${fmtToPar(b.adjusted)}</span></div>`;
+}
+function timeAgo(ts){ if(!ts) return ''; try{ const d=new Date(ts), now=new Date(); const s=Math.round((now-d)/1000); if(s<60)return 'just now'; const m=Math.round(s/60); if(m<60)return m+'m ago'; const h=Math.round(m/60); if(h<24)return h+'h ago'; const dy=Math.round(h/24); return dy+'d ago'; }catch(e){ return ''; } }
+function renderPredictRecent(){
+  const wrap=document.getElementById('predRecent'); if(!wrap) return;
+  if(!configured){ wrap.innerHTML='<p class="hint">🛠️ Predictions need the database connected.</p>'; return; }
+  if(!predictions.length){ wrap.innerHTML='<p class="hint">No predictions yet — be the first to call it.</p>'; return; }
+  wrap.innerHTML=predictions.map(p=>{
+    const t=teams.find(x=>x.id===p.team_id);
+    const drinks=p.drinks||{};
+    const gross=parseInt(p.final_score,10);
+    const b=isNaN(gross)?null:predBreakdown(gross,drinks);
+    const total=b?b.total:Object.values(drinks).reduce((s,v)=>s+(parseInt(v,10)||0),0);
+    const lines=Object.entries(drinks).map(([n,c])=>`${esc(n)} <b>${parseInt(c,10)||0}</b>`).join(' &nbsp;·&nbsp; ');
+    const when=timeAgo(p.created_at);
+    const adminDel = isAdmin && p.id!=null ? `<button class="btn ghost danger" data-preddel="${esc(String(p.id))}" style="padding:4px 10px;font-size:.8rem">🗑️</button>` : '';
+    const adj = b ? `<span class="padj">${fmtToPar(b.adjusted)}</span>` : '';
+    return `<div class="pred-card">
+      <div class="ph">
+        <span class="pt">${esc(t?t.name:'Team '+p.team_id)} ${adj}</span>
+        <span class="hint">${p.predictor?esc(p.predictor)+' &nbsp;·&nbsp; ':''}<span class="pscore">shot ${p.final_score!=null?esc(String(p.final_score)):'—'}</span> &nbsp;·&nbsp; 🍺 ${total} drinks${when?' &nbsp;·&nbsp; '+when:''} ${adminDel}</span>
+      </div>
+      ${lines?`<div class="hint" style="margin-top:6px">${lines}</div>`:''}
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('[data-preddel]').forEach(b=>b.addEventListener('click',()=>deletePrediction(b.dataset.preddel)));
+}
+function renderPredict(){ renderPredictTeamOptions(); renderPredictDrinks(); renderPredictRecent(); }
+async function submitPrediction(){
+  if(!sb){ flash('Not connected yet',true); return; }
+  const name=document.getElementById('predName').value.trim();
+  const scoreRaw=document.getElementById('predScore').value.trim();
+  if(scoreRaw===''){ flash('Enter a predicted final score',true); document.getElementById('predScore').focus(); return; }
+  const final_score=parseInt(scoreRaw,10);
+  if(isNaN(final_score)){ flash('Final score must be a number',true); return; }
+  const ms=SEED.players.filter(p=>p.team===predTeamId);
+  const drinks={}; ms.forEach(p=>{ drinks[p.name]=Math.max(0, parseInt(predDrinkState[p.name],10)||0); });
+  if(name){ localStorage.setItem('armoimc3_voter_name',name); }
+  const btn=document.getElementById('predSubmit'); btn.disabled=true; const t0=btn.textContent; btn.textContent='Saving…';
+  try{
+    const { error }=await sb.from('predictions').insert({ predictor:name||null, team_id:predTeamId, final_score, drinks, created_at:new Date().toISOString() });
+    if(error) throw error;
+    predDrinkState={}; document.getElementById('predScore').value='';
+    await fetchPredictions(); renderPredict();
+    flash('🔮 Prediction locked in!');
+    const rc=document.getElementById('predRecent'); if(rc) rc.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }catch(e){ console.error(e); flash('Save failed — run the predictions-table SQL ('+(e.message||e)+')',true); }
+  btn.disabled=false; btn.textContent=t0;
+}
+async function deletePrediction(id){
+  if(!sb || !isAdmin) return;
+  if(!confirm('Delete this prediction?')) return;
+  try{
+    const { data, error }=await sb.from('predictions').delete().eq('id',id).select();
+    if(error) throw error;
+    if(!data||!data.length){ flash('Nothing deleted — add a delete policy for predictions in the SQL.',true); return; }
+    await fetchPredictions(); renderPredictRecent(); flash('🗑️ Prediction deleted');
+  }catch(e){ console.error(e); flash('Delete failed: '+(e.message||e),true); }
+}
 
 /* =========================================================
    TABS + FILTERS
@@ -1310,6 +1458,11 @@ function goTab(panel){ const t=document.querySelector(`.tab[data-panel="${panel}
 document.querySelectorAll('.land-card').forEach(c=>c.addEventListener('click',()=>goTab(c.dataset.go)));
 document.getElementById('homeVoteBtn').addEventListener('click',()=>goTab('vote'));
 document.getElementById('homeClaimBtn').addEventListener('click',openClaim);
+// prediction calculator wiring
+document.getElementById('predTeam').addEventListener('change',e=>{ predTeamId=+e.target.value; renderPredictDrinks(); });
+document.getElementById('predScore').addEventListener('input',updatePredResult);
+document.getElementById('predSubmit').addEventListener('click',submitPrediction);
+document.querySelector('.tab[data-panel="predict"]').addEventListener('click',async()=>{ const pn=document.getElementById('predName'); if(pn && !pn.value && voterName) pn.value=voterName; if(sb){ await fetchPredictions(); } renderPredict(); });
 function seg(id,fn){ document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
   e.currentTarget.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); fn(b); renderPlayerView(); }); }
 seg('genderSeg',b=>genderF=b.dataset.g); seg('dimSeg',b=>dimension=b.dataset.d); seg('viewSeg',b=>view=b.dataset.view);
@@ -1569,7 +1722,7 @@ async function boot(){
   if(committeeMember){ document.body.classList.add('committee'); document.getElementById('cmName').textContent=committeeMember; }
   initBallotFromVotes(); initTeamBallot();    // defaults before any data
   renderAll();              // instant paint with seed/fallback
-  if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes(), fetchConfig()]); }
+  if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes(), fetchConfig(), fetchPredictions()]); }
   // default each view to wherever the data actually is, so it visibly reflects votes
   source = aiExists() ? 'ai' : (committeeExists() ? 'committee' : (peopleExists()?'people':'committee'));
   teamSource = teamAiExists() ? 'ai' : (teamVotes.some(v=>!v.committee)?'people':(teamVotes.some(v=>v.committee)?'committee':'ai'));
@@ -1583,7 +1736,9 @@ async function refreshData(){
   if(!sb || document.hidden) return;
   const active=document.querySelector('.panel.active');
   if(active && active.id==='panel-vote') return;
-  await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes(), fetchConfig()]);
+  await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes(), fetchConfig(), fetchPredictions()]);
+  // on the predictions tab, only refresh the recent list so an in-progress prediction isn't disturbed
+  if(active && active.id==='panel-predict'){ updateCStat(); renderPredictRecent(); return; }
   updateCStat(); renderAll();
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshData(); });
