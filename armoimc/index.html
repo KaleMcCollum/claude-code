@@ -663,7 +663,9 @@ function levelOptions(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS;
 let voterId = localStorage.getItem("armoimc3_voter_id");
 if(!voterId){ voterId = "v_"+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem("armoimc3_voter_id", voterId); }
 let voterName = localStorage.getItem("armoimc3_voter_name") || "";
-function activeId(){ return committeeMember ? 'cm_'+committeeMember : voterId; }
+function slug(s){ return String(s||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+// public ballots are keyed by NAME so a voter can return on any device and edit their ballot
+function activeId(){ if(committeeMember) return 'cm_'+committeeMember; const s=slug(voterName); return s?('pub_'+s):voterId; }
 function activeName(){ return committeeMember || voterName; }
 let voteGender = "M";              // which sub-tab: M | F
 let voteOrder = { M:[], F:[] };    // this voter's personal order (player names)
@@ -967,7 +969,7 @@ function renderVote(){
   const nameRow=document.querySelector('#panel-vote .namerow'); if(nameRow) nameRow.style.display=com?'none':'flex';
   document.getElementById('submitVotes').textContent=com?'📋 Submit official ranking':'🗳️ Submit my ballot';
   document.querySelectorAll('#voteGenderSeg button').forEach(b=>b.classList.toggle('active',b.dataset.vg===voteGender));
-  document.getElementById('submitHint').textContent = votes.some(v=>v.voter_id===activeId()) ? "Submitted — reorder/rate and re-submit to update." : "";
+  document.getElementById('submitHint').textContent = votes.some(v=>v.voter_id===activeId()) ? "✓ Your ballot is loaded — change anything and re-submit to update it." : "";
   voteList.innerHTML='';
   const order=voteOrder[voteGender]||[];
   order.forEach((name,idx)=>{
@@ -1015,7 +1017,7 @@ function renderTeamVote(){
   if(!configured){ notice.innerHTML='<div class="notice">🛠️ Team voting isn\'t connected yet.</div>'; list.innerHTML=''; bar.style.display='none'; return; }
   notice.innerHTML=''; bar.style.display='flex';
   document.getElementById('submitTeams').textContent=com?'📋 Submit Commission ranking':'🏁 Submit team picks';
-  document.getElementById('teamSubmitHint').textContent = teamVotes.some(v=>v.voter_id===activeId()) ? "Submitted — reorder/crown and re-submit to update." : "";
+  document.getElementById('teamSubmitHint').textContent = teamVotes.some(v=>v.voter_id===activeId()) ? "✓ Your team picks are loaded — change anything and re-submit to update." : "";
   list.innerHTML='';
   teamOrder.forEach((id,idx)=>{
     const t=teams.find(x=>x.id===id); if(!t) return;
@@ -1108,7 +1110,7 @@ async function submitVotes(){
   btn.disabled=false; btn.textContent=com?'📋 Submit official ranking':'🗳️ Submit my ballot';
 }
 document.getElementById('submitVotes').addEventListener('click',submitVotes);
-document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); });
+document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); initBallotFromVotes(); initTeamBallot(); renderVote(); });
 document.getElementById('voteGenderSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; voteGender=b.dataset.vg; renderVote(); });
 
 /* ----- Claim your player ----- */
