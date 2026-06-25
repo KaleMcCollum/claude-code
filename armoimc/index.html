@@ -211,7 +211,13 @@
   .rcard{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;transition:border-color .12s,box-shadow .12s}
   .rcard.dragging{opacity:.5;border-color:var(--gold)}
   .rcard.dragover{box-shadow:0 -3px 0 0 var(--gold)}
-  .rpos{font-family:var(--num);font-size:1.5rem;color:var(--gold);min-width:1.6ch;text-align:center;flex:none}
+  .rpos{font-family:var(--num);font-size:1.5rem;color:var(--gold);min-width:1.6ch;text-align:center;flex:none;position:relative;cursor:pointer;border-radius:6px;padding:2px}
+  .rpos:hover{background:rgba(14,90,58,.08)}
+  .rankpop{position:absolute;top:100%;left:0;z-index:30;background:var(--panel);border:1px solid var(--line2);border-radius:8px;box-shadow:var(--shadow);padding:7px;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;width:182px;text-align:center}
+  .rankpop .rphdr{grid-column:1/6;font-family:var(--label);font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);margin-bottom:2px}
+  .rankpop button{width:30px;height:28px;border:1px solid var(--line2);background:var(--panel2);border-radius:6px;font-family:var(--num);font-weight:700;font-size:.8rem;cursor:pointer;color:var(--ink);padding:0}
+  .rankpop button:hover{border-color:var(--green);color:var(--green)}
+  .rankpop button.cur{background:var(--green);color:#fff;border-color:transparent}
   .grip{cursor:grab;color:var(--muted2);font-size:1.25rem;flex:none;touch-action:none}
   .grip:active{cursor:grabbing}
   .rmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
@@ -975,7 +981,7 @@ function renderVote(){
   order.forEach((name,idx)=>{
     const pl=SEED.players.find(p=>p.name===name);
     const st=cardState[name]||(cardState[name]={golf:0,drink:0,comment:''});
-    const card=document.createElement('div'); card.className='rcard'; card.dataset.name=name; card.setAttribute('draggable','true');
+    const card=document.createElement('div'); card.className='rcard'; card.dataset.name=name; card.setAttribute('draggable','false');
     card.innerHTML=`
       <div class="rpos">${idx+1}</div>
       <div class="grip" title="Drag to reorder">⠿</div>
@@ -997,8 +1003,10 @@ function renderVote(){
       }; paint(); });
     card.querySelector('.rcomment2').addEventListener('input',e=>{ st.comment=e.target.value; touched[voteGender]=true; });
     card.querySelectorAll('.arrows button').forEach(b=>b.addEventListener('click',()=>moveCard(idx, b.dataset.act==='up'?-1:1)));
+    { const rp=card.querySelector('.rpos'); rp.title='Tap to set rank'; rp.addEventListener('click',ev=>{ ev.stopPropagation(); openRankPop(rp, order.length, idx, t=>setPlayerRank(name,t)); }); }
+    { const gr=card.querySelector('.grip'); if(gr){ gr.addEventListener('mousedown',()=>card.setAttribute('draggable','true')); gr.addEventListener('mouseup',()=>setTimeout(()=>card.setAttribute('draggable','false'),0)); } }
     card.addEventListener('dragstart',e=>{ dragName=name; card.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
-    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); document.querySelectorAll('.rcard.dragover').forEach(c=>c.classList.remove('dragover')); });
+    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); card.setAttribute('draggable','false'); document.querySelectorAll('.rcard.dragover').forEach(c=>c.classList.remove('dragover')); });
     card.addEventListener('dragover',e=>{ e.preventDefault(); card.classList.add('dragover'); });
     card.addEventListener('dragleave',()=>card.classList.remove('dragover'));
     card.addEventListener('drop',e=>{ e.preventDefault(); card.classList.remove('dragover'); dropOnCard(name); });
@@ -1006,6 +1014,18 @@ function renderVote(){
   });
 }
 function moveCard(idx,delta){ const arr=voteOrder[voteGender]; const j=idx+delta; if(j<0||j>=arr.length)return; [arr[idx],arr[j]]=[arr[j],arr[idx]]; touched[voteGender]=true; renderVote(); }
+// tap a rank number -> jump that item to a chosen position
+function openRankPop(rposEl, count, currentIdx, onPick){
+  document.querySelectorAll('.rankpop').forEach(p=>p.remove());
+  const pop=document.createElement('div'); pop.className='rankpop';
+  pop.innerHTML='<div class="rphdr">Move to rank…</div>';
+  for(let i=1;i<=count;i++){ const btn=document.createElement('button'); btn.type='button'; btn.textContent=i; if(i===currentIdx+1) btn.classList.add('cur');
+    btn.addEventListener('click',ev=>{ ev.stopPropagation(); onPick(i-1); }); pop.appendChild(btn); }
+  rposEl.appendChild(pop);
+  setTimeout(()=>document.addEventListener('click',function h(){ document.querySelectorAll('.rankpop').forEach(p=>p.remove()); document.removeEventListener('click',h); }),0);
+}
+function setPlayerRank(name,target){ const arr=voteOrder[voteGender]; const from=arr.indexOf(name); if(from<0)return; arr.splice(from,1); arr.splice(target,0,name); touched[voteGender]=true; renderVote(); }
+function setTeamRank(id,target){ const from=teamOrder.indexOf(id); if(from<0)return; teamOrder.splice(from,1); teamOrder.splice(target,0,id); teamTouched=true; renderTeamVote(); }
 function dropOnCard(target){ const arr=voteOrder[voteGender]; if(!dragName||dragName===target)return; const from=arr.indexOf(dragName), to=arr.indexOf(target); if(from<0||to<0)return; arr.splice(from,1); arr.splice(to,0,dragName); dragName=null; touched[voteGender]=true; renderVote(); }
 
 /* ---- Team ranking + champion ballot ---- */
@@ -1041,8 +1061,10 @@ function renderTeamVote(){
     card.querySelector('.rcomment2').addEventListener('input',e=>{ st.comment=e.target.value; teamTouched=true; });
     card.querySelector('.crownbtn').addEventListener('click',()=>{ championPick=(championPick===id?null:id); teamTouched=true; renderTeamVote(); });
     card.querySelectorAll('.arrows button').forEach(b=>b.addEventListener('click',()=>moveTeam(idx,b.dataset.act==='up'?-1:1)));
+    { const rp=card.querySelector('.rpos'); rp.title='Tap to set rank'; rp.addEventListener('click',ev=>{ ev.stopPropagation(); openRankPop(rp, teamOrder.length, idx, t=>setTeamRank(id,t)); }); }
+    { const gr=card.querySelector('.grip'); if(gr){ gr.addEventListener('mousedown',()=>card.setAttribute('draggable','true')); gr.addEventListener('mouseup',()=>setTimeout(()=>card.setAttribute('draggable','false'),0)); } }
     card.addEventListener('dragstart',e=>{ teamDragId=id; card.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
-    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); document.querySelectorAll('#teamVoteList .rcard.dragover').forEach(c=>c.classList.remove('dragover')); });
+    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); card.setAttribute('draggable','false'); document.querySelectorAll('#teamVoteList .rcard.dragover').forEach(c=>c.classList.remove('dragover')); });
     card.addEventListener('dragover',e=>{ e.preventDefault(); card.classList.add('dragover'); });
     card.addEventListener('dragleave',()=>card.classList.remove('dragover'));
     card.addEventListener('drop',e=>{ e.preventDefault(); card.classList.remove('dragover'); dropTeam(id); });
