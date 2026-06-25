@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ARMOIMC III — Rankings</title>
+<meta name="description" content="The 3rd Annual Rard Man Open Invitational Master Classic — team & player power rankings." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#08090c;
+    --bg2:#0e1014;
+    --panel:#14171d;
+    --panel2:#1b1f27;
+    --line:#252a34;
+    --line2:#333a47;
+    --ink:#f4f6fb;
+    --muted:#8b94a6;
+    --muted2:#5c6474;
+    --red:#e23b3b;
+    --red2:#ff5252;
+    --blue:#2f7bff;
+    --blue2:#5b9dff;
+    --gold:#f5c518;
+    --good:#2fd07a;
+    --shadow:0 10px 40px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(47,123,255,.10), transparent 60%),
+      radial-gradient(1000px 500px at 0% 0%, rgba(226,59,59,.10), transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  a{color:var(--blue2);text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 18px 80px}
+
+  /* ---------- Header ---------- */
+  header.hero{
+    position:relative;
+    padding:46px 18px 26px;
+    text-align:center;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(20,23,29,.6), transparent);
+    overflow:hidden;
+  }
+  .stripes{
+    position:absolute;inset:0;opacity:.06;pointer-events:none;
+    background:repeating-linear-gradient(90deg,var(--red) 0 8px,transparent 8px 16px,var(--blue) 16px 24px,transparent 24px 32px);
+  }
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700;
+    color:var(--muted);margin-bottom:10px;
+  }
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 12px var(--red)}
+  h1.title{
+    font-family:"Anton",Impact,sans-serif;font-weight:400;letter-spacing:.01em;
+    font-size:clamp(2.8rem,9vw,5.6rem);line-height:.92;margin:0;
+    background:linear-gradient(100deg,#fff 10%,#cdd6e6 40%,var(--blue2) 70%,var(--red2) 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 2px 30px rgba(47,123,255,.15);
+  }
+  .subtitle{margin:12px auto 0;max-width:680px;color:var(--muted);font-size:clamp(.85rem,2.4vw,1.02rem);font-weight:500}
+  .subtitle b{color:var(--ink)}
+  .flag{font-size:1.05em}
+
+  /* ---------- Tabs ---------- */
+  nav.tabs{
+    position:sticky;top:0;z-index:30;
+    display:flex;justify-content:center;gap:6px;flex-wrap:wrap;
+    padding:12px 10px;margin:0 -18px 26px;
+    background:rgba(8,9,12,.82);backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line);
+  }
+  .tab{
+    appearance:none;border:1px solid transparent;background:transparent;color:var(--muted);
+    font-family:inherit;font-weight:700;font-size:.92rem;letter-spacing:.02em;
+    padding:9px 18px;border-radius:999px;cursor:pointer;transition:.15s;
+  }
+  .tab:hover{color:var(--ink);background:var(--panel)}
+  .tab.active{color:#fff;background:linear-gradient(100deg,var(--red),var(--blue));box-shadow:0 6px 20px rgba(47,123,255,.3)}
+
+  /* ---------- Toolbar ---------- */
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .toolbar .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--muted);font-family:inherit;font-weight:600;font-size:.84rem;padding:8px 12px;cursor:pointer;transition:.12s}
+  .seg button.active{background:var(--panel2);color:var(--ink)}
+  .seg button:hover{color:var(--ink)}
+  .search{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font-family:inherit;font-size:.9rem;padding:9px 14px;min-width:180px;
+  }
+  .search::placeholder{color:var(--muted2)}
+  .search:focus{outline:none;border-color:var(--blue)}
+  .btn{
+    appearance:none;font-family:inherit;font-weight:700;font-size:.84rem;cursor:pointer;
+    padding:9px 14px;border-radius:10px;border:1px solid var(--line2);
+    background:var(--panel);color:var(--ink);transition:.15s;display:inline-flex;gap:7px;align-items:center;
+  }
+  .btn:hover{border-color:var(--blue);color:#fff}
+  .btn.on{background:linear-gradient(100deg,var(--red),var(--blue));border-color:transparent;color:#fff}
+  .btn.ghost{background:transparent;color:var(--muted)}
+  .btn.ghost:hover{color:var(--ink)}
+  .hint{color:var(--muted2);font-size:.78rem;margin:-8px 0 16px}
+
+  /* ---------- Team cards ---------- */
+  .panel{display:none;animation:fade .25s ease}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .teamcard{
+    position:relative;display:flex;gap:18px;align-items:stretch;
+    background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:14px;
+    box-shadow:var(--shadow);transition:.18s;cursor:pointer;overflow:hidden;
+  }
+  .teamcard:hover{transform:translateY(-2px);border-color:var(--line2)}
+  .teamcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent,var(--blue))}
+  .rankbig{
+    font-family:"Anton",Impact,sans-serif;font-size:clamp(3rem,9vw,5rem);line-height:.85;
+    min-width:1.6ch;color:var(--ink);opacity:.92;align-self:center;text-align:center;
+  }
+  .tc-body{flex:1;min-width:0}
+  .tc-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .tc-name{font-size:clamp(1.2rem,4vw,1.7rem);font-weight:900;letter-spacing:-.01em;margin:0}
+  .badge{font-size:.66rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+  .badge.fire{background:rgba(226,59,59,.14);border-color:rgba(226,59,59,.4);color:var(--red2)}
+  .badge.cold{background:rgba(47,123,255,.12);border-color:rgba(47,123,255,.4);color:var(--blue2)}
+  .tc-blurb{color:var(--muted);margin:8px 0 0;font-size:.95rem}
+  .roster{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .chip{font-size:.78rem;font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;color:#cdd6e6}
+  .chip .cap{color:var(--gold);font-weight:800}
+  .tc-right{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;min-width:96px}
+  .score{font-family:"Anton",sans-serif;font-size:2rem;line-height:1;color:#fff}
+  .score small{display:block;font-family:"Inter";font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);font-weight:700;margin-top:4px}
+  .delta{font-size:.74rem;font-weight:700}
+  .delta.up{color:var(--good)} .delta.down{color:var(--red2)} .delta.same{color:var(--muted2)}
+
+  /* reorder controls */
+  .mover{display:none;flex-direction:column;gap:4px;align-self:center;margin-right:2px}
+  .editing .mover{display:flex}
+  .mover button{width:30px;height:26px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--ink);cursor:pointer;font-size:.8rem;line-height:1}
+  .mover button:hover{border-color:var(--blue)}
+  .mover button:disabled{opacity:.3;cursor:default}
+  .editing .teamcard,.editing .prow{cursor:default}
+  [contenteditable="true"]{outline:1px dashed var(--line2);border-radius:6px;padding:2px 5px;background:rgba(47,123,255,.06)}
+  [contenteditable="true"]:focus{outline:1px solid var(--blue)}
+
+  /* ---------- Players ---------- */
+  .tierwrap{display:flex;flex-direction:column;gap:10px;margin-bottom:30px}
+  .tierrow{display:flex;gap:12px;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .tierlabel{
+    font-family:"Anton",sans-serif;font-size:1.8rem;display:flex;align-items:center;justify-content:center;
+    min-width:64px;color:#0a0a0a;
+  }
+  .tier-S .tierlabel{background:linear-gradient(160deg,#ffd75e,#f5a623)}
+  .tier-A .tierlabel{background:linear-gradient(160deg,#ff7a7a,#e23b3b);color:#fff}
+  .tier-B .tierlabel{background:linear-gradient(160deg,#6fb1ff,#2f7bff);color:#fff}
+  .tier-C .tierlabel{background:linear-gradient(160deg,#7d8aa0,#525c6e);color:#fff}
+  .tier-D .tierlabel{background:linear-gradient(160deg,#4a5160,#363c49);color:#fff}
+  .tiernames{display:flex;flex-wrap:wrap;gap:7px;padding:12px;align-items:center}
+  .tiername{font-size:.82rem;font-weight:700;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
+  .tiername .tnum{color:var(--muted2);font-weight:800;margin-right:5px}
+
+  .listhead{display:flex;align-items:center;gap:10px;color:var(--muted2);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;font-weight:800;padding:0 14px 8px}
+  .prow{
+    display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:11px 14px;margin-bottom:8px;transition:.15s;cursor:pointer;
+  }
+  .prow:hover{border-color:var(--line2);transform:translateX(2px)}
+  .prank{font-family:"Anton",sans-serif;font-size:1.5rem;min-width:1.8ch;text-align:center;color:var(--muted)}
+  .prow.top3 .prank{color:var(--gold)}
+  .pmeta{flex:1;min-width:0}
+  .pname{font-weight:800;font-size:1.02rem}
+  .psub{color:var(--muted);font-size:.82rem;margin-top:1px}
+  .tteam{font-size:.7rem;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+  .ttier{font-family:"Anton",sans-serif;font-size:1.1rem;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#0a0a0a}
+  .T-S{background:linear-gradient(160deg,#ffd75e,#f5a623)}
+  .T-A{background:linear-gradient(160deg,#ff7a7a,#e23b3b);color:#fff}
+  .T-B{background:linear-gradient(160deg,#6fb1ff,#2f7bff);color:#fff}
+  .T-C{background:linear-gradient(160deg,#7d8aa0,#525c6e);color:#fff}
+  .T-D{background:linear-gradient(160deg,#4a5160,#363c49);color:#fff}
+  .prmr{font-family:"Anton",sans-serif;font-size:1.5rem;min-width:2.4ch;text-align:right;color:#fff}
+  .prmr small{display:block;font-family:Inter;font-size:.58rem;letter-spacing:.12em;color:var(--muted2);font-weight:700;text-transform:uppercase}
+  .pblurb{display:none;color:var(--muted);font-size:.88rem;padding:0 14px 12px 14px;margin:-4px 0 8px;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;background:var(--bg2)}
+  .pblurb.open{display:block}
+
+  /* ---------- About ---------- */
+  .about-grid{display:grid;grid-template-columns:1fr;gap:16px}
+  .acard{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow)}
+  .acard h2{font-family:"Anton",sans-serif;font-weight:400;font-size:1.5rem;margin:0 0 4px;letter-spacing:.02em;display:flex;align-items:center;gap:10px}
+  .acard h2 .ic{font-size:1.3rem}
+  .acard h3{font-size:1rem;margin:18px 0 6px;color:var(--blue2);font-weight:800}
+  .acard p,.acard li{color:var(--muted);font-size:.95rem}
+  .acard ul,.acard ol{margin:6px 0;padding-left:20px}
+  .acard li{margin:5px 0}
+  .acard li b,.acard p b{color:var(--ink)}
+  .infogrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:8px}
+  .infobox{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:12px 14px}
+  .infobox .k{font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);font-weight:800}
+  .infobox .v{font-size:1.05rem;font-weight:800;margin-top:3px}
+  .todo{display:inline-block;font-size:.62rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#0a0a0a;background:var(--gold);border-radius:6px;padding:2px 7px;margin-left:8px;vertical-align:middle}
+
+  footer{text-align:center;color:var(--muted2);font-size:.78rem;margin-top:40px;padding-top:20px;border-top:1px solid var(--line)}
+  .savedflash{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--good);color:#062b16;font-weight:800;padding:10px 18px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
+  .savedflash.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media(max-width:560px){
+    .teamcard{padding:14px 14px;gap:12px}
+    .tc-right{min-width:64px}
+    .rankbig{font-size:2.6rem}
+    .prmr small{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="stripes"></div>
+  <div class="eyebrow"><span class="dot"></span> Est. 2024 &nbsp;•&nbsp; Vol. III</div>
+  <h1 class="title">ARMOIMC III</h1>
+  <p class="subtitle">
+    <span class="flag">🇺🇸</span> The <b>3rd Annual Rard Man Open Invitational Master Classic</b> <span class="flag">🇺🇸</span><br>
+    <b>July 4, 2026</b> &nbsp;•&nbsp; 6 teams &nbsp;•&nbsp; 30 competitors &nbsp;•&nbsp; one champion
+  </p>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-panel="teams">Team Rankings</button>
+  <button class="tab" data-panel="players">Player Rankings</button>
+  <button class="tab" data-panel="about">About</button>
+</nav>
+
+<div class="wrap">
+
+  <!-- ============ TEAMS ============ -->
+  <section class="panel active" id="panel-teams">
+    <div class="toolbar">
+      <div class="left">
+        <span class="hint" style="margin:0">Tap a team to expand the roster.</span>
+      </div>
+      <div class="left">
+        <button class="btn" id="editTeams">✎ Edit mode</button>
+        <button class="btn ghost" id="resetTeams" title="Reset to default rankings">↺ Reset</button>
+      </div>
+    </div>
+    <div id="teamList"></div>
+  </section>
+
+  <!-- ============ PLAYERS ============ -->
+  <section class="panel" id="panel-players">
+    <div class="toolbar">
+      <div class="left">
+        <div class="seg" id="viewSeg">
+          <button data-view="list" class="active">Power List</button>
+          <button data-view="tiers">Tier List</button>
+        </div>
+        <input class="search" id="playerSearch" placeholder="Search a player…" />
+        <div class="seg" id="teamFilter"></div>
+      </div>
+      <div class="left">
+        <button class="btn" id="editPlayers">✎ Edit mode</button>
+        <button class="btn ghost" id="resetPlayers" title="Reset to default rankings">↺ Reset</button>
+      </div>
+    </div>
+
+    <div id="tierView" style="display:none"></div>
+
+    <div id="listView">
+      <div class="listhead"><span style="min-width:1.8ch;text-align:center">#</span><span style="flex:1">Player</span><span>Tier</span><span style="min-width:2.4ch;text-align:right">RMR</span></div>
+      <div id="playerList"></div>
+    </div>
+  </section>
+
+  <!-- ============ ABOUT ============ -->
+  <section class="panel" id="panel-about">
+    <div class="toolbar">
+      <div class="left"><span class="hint" style="margin:0">Course info &amp; rules. Turn on edit mode to type in the real details.</span></div>
+      <div class="left">
+        <button class="btn" id="editAbout">✎ Edit mode</button>
+        <button class="btn ghost" id="resetAbout" title="Reset about text">↺ Reset</button>
+      </div>
+    </div>
+    <div class="about-grid" id="aboutWrap"></div>
+  </section>
+
+  <footer>
+    🇺🇸 ARMOIMC III &nbsp;•&nbsp; built for the squad &nbsp;•&nbsp; rankings are opinions, fight about them
+  </footer>
+</div>
+
+<div class="savedflash" id="flash">Saved ✓</div>
+
+<script>
+/* =========================================================
+   DATA — defaults. Anything edited in the browser is saved
+   to localStorage and overrides these on next load.
+   ========================================================= */
+
+const DEFAULT_TEAMS = [
+  { id:1, name:"Team 1", color:"#e23b3b",
+    roster:["Dillon J","Dylan M","Kyle F","Hunter B","Lucy M"],
+    captain:"Dillon J", score:91, delta:1, tag:"FAVORITE",
+    blurb:"Deep, balanced, and quietly terrifying. No glaring weakness on the card and a captain who actually keeps score straight. The line to beat." },
+  { id:2, name:"Team 2", color:"#2f7bff",
+    roster:["Trent O","Dylan B","Kyle O","Aiden L","Marissa T"],
+    captain:"Trent O", score:88, delta:2, tag:"RISING",
+    blurb:"Two Dylans, two Kyles between this squad and Team 1 — coincidence? They peak when it matters and have the best closer in the field." },
+  { id:3, name:"Team 3", color:"#f5c518",
+    roster:["Braden W","Tyler B","Brett B","Evan P","Paige H"],
+    captain:"Braden W", score:84, delta:0,
+    blurb:"The B-team, literally — three Bs in the lineup. High ceiling, occasionally high blood pressure. If the putts drop, they win it all." },
+  { id:4, name:"Team 4", color:"#2fd07a",
+    roster:["Drew T","Braedon S","Jonah S","Brady S","Erika P"],
+    captain:"Drew T", score:79, delta:-1,
+    blurb:"Three 'S' surnames and a whole lot of grit. Grind-it-out types who won't beat themselves. Dark horse if the weather turns ugly." },
+  { id:5, name:"Team 5", color:"#ff8a3d",
+    roster:["Kale M","Joe I","Mason G","Kellen","Haley R"],
+    captain:"Kale M", score:77, delta:1,
+    blurb:"The commissioner's own. Suspiciously well-organized, suspiciously confident. Either a sleeper champ or a cautionary tale — no in-between." },
+  { id:6, name:"Team 6", color:"#a855f7",
+    roster:["Shawn C","Cody T","Drew S","Tori H","Lauren"],
+    captain:"Shawn C", score:73, delta:-2, tag:"WILDCARD",
+    blurb:"Pure chaos energy and the most fun group on the course. On their day they beat anybody; on a bad day they're still winning the cooler." },
+];
+
+// Player power list — rank order top to bottom. tier S/A/B/C/D, rmr 0-100.
+const DEFAULT_PLAYERS = [
+  { name:"Dillon J",  team:1, role:"Captain · Team 1", tier:"S", rmr:94, blurb:"The total package and the reigning standard. Drives it long, putts it lights-out, and never melts down. Pencil him in for a trophy run." },
+  { name:"Trent O",   team:2, role:"Captain · Team 2", tier:"S", rmr:92, blurb:"Ice in the veins. Wants the ball in his hands on the last hole and usually delivers. A finisher in every sense." },
+  { name:"Braden W",  team:3, role:"Captain · Team 3", tier:"S", rmr:90, blurb:"Boom-or-bust firepower with the highest ceiling in the field. When he's on, the rest are playing for second." },
+  { name:"Kale M",    team:5, role:"Captain · Team 5", tier:"A", rmr:87, blurb:"The commissioner. Runs the show and somehow keeps finding fairways. Motivated, organized, and a little dangerous." },
+  { name:"Drew T",    team:4, role:"Captain · Team 4", tier:"A", rmr:86, blurb:"Heartbeat of his squad. Won't wow you off the tee but won't lose you a hole either. Mr. Reliable." },
+  { name:"Kyle O",    team:2, role:"Team 2", tier:"A", rmr:85, blurb:"Underrated grinder with a deadly short game. The glue that holds Team 2 together." },
+  { name:"Dylan M",   team:1, role:"Team 1", tier:"A", rmr:84, blurb:"Big arm, bigger swagger. Provides the highlight reel and just enough consistency to back it up." },
+  { name:"Shawn C",   team:6, role:"Captain · Team 6", tier:"A", rmr:83, blurb:"Captain of chaos. Wildly streaky, impossible to count out, and the reason Team 6 is a live underdog." },
+  { name:"Tyler B",   team:3, role:"Team 3", tier:"B", rmr:80, blurb:"Steady hand on a volatile team. The voice of reason between the big numbers." },
+  { name:"Dylan B",   team:2, role:"Team 2", tier:"B", rmr:79, blurb:"Quietly competent. Does the little things that don't show up on the scorecard but win matches." },
+  { name:"Kyle F",    team:1, role:"Team 1", tier:"B", rmr:78, blurb:"Sneaky good. Flies under the radar then quietly posts the best number in the group." },
+  { name:"Joe I",     team:5, role:"Team 5", tier:"B", rmr:77, blurb:"Reliable second banana with a clutch gene. Loves a pressure putt." },
+  { name:"Cody T",    team:6, role:"Team 6", tier:"B", rmr:76, blurb:"High-energy spark plug. Keeps the squad loose and occasionally goes nuclear." },
+  { name:"Brett B",   team:3, role:"Team 3", tier:"B", rmr:75, blurb:"Third B, first off the tee. Length to spare, just needs the wedges to cooperate." },
+  { name:"Braedon S", team:4, role:"Team 4", tier:"B", rmr:74, blurb:"Workhorse. Outlasts opponents through sheer refusal to lose a hole." },
+  { name:"Mason G",   team:5, role:"Team 5", tier:"B", rmr:73, blurb:"Quiet assassin. You forget he's there until he's two-under and grinning." },
+  { name:"Aiden L",   team:2, role:"Team 2", tier:"C", rmr:71, blurb:"Young legs, fearless swings. The upside is real if the nerves hold." },
+  { name:"Hunter B",  team:1, role:"Team 1", tier:"C", rmr:70, blurb:"Big moments bring out his best. Streaky but never scared." },
+  { name:"Drew S",    team:6, role:"Team 6", tier:"C", rmr:69, blurb:"The other Drew. Pure vibes, surprising touch around the greens." },
+  { name:"Jonah S",   team:4, role:"Team 4", tier:"C", rmr:68, blurb:"Grinder's grinder. Makes par from places you shouldn't make par." },
+  { name:"Kellen",    team:5, role:"Team 5", tier:"C", rmr:67, blurb:"Wildcard swing, fearless attitude. One hot stretch from stealing the show." },
+  { name:"Evan P",    team:3, role:"Team 3", tier:"C", rmr:66, blurb:"Solid contributor who thrives when the pressure's off the captains." },
+  { name:"Brady S",   team:4, role:"Team 4", tier:"C", rmr:65, blurb:"Third 'S' on the squad. Consistent, unbothered, quietly effective." },
+  { name:"Marissa T", team:2, role:"Team 2", tier:"C", rmr:64, blurb:"Steady and unflappable. The calm center of a high-strung lineup." },
+  { name:"Tori H",    team:6, role:"Team 6", tier:"C", rmr:62, blurb:"Brings the energy and a surprisingly pure putting stroke." },
+  { name:"Paige H",   team:3, role:"Team 3", tier:"D", rmr:60, blurb:"Improving fast. The kind of player who quietly becomes a problem by the back nine." },
+  { name:"Haley R",   team:5, role:"Team 5", tier:"D", rmr:59, blurb:"All gas, no brakes. Misses big and makes big — never boring." },
+  { name:"Lucy M",    team:1, role:"Team 1", tier:"D", rmr:58, blurb:"Secret weapon energy. Low expectations, high ceiling, loves to prove people wrong." },
+  { name:"Erika P",   team:4, role:"Team 4", tier:"D", rmr:57, blurb:"Glue-guy intangibles. Keeps Team 4 grounded and in good spirits." },
+  { name:"Lauren",    team:6, role:"Team 6", tier:"D", rmr:55, blurb:"Closes out the field but never the fun. Dark-horse for most-improved." },
+];
+
+const DEFAULT_ABOUT = [
+  { icon:"🏌️", title:"The Event", todo:false, html:
+    `<p>The <b>Rard Man Open Invitational Master Classic</b> is an annual 4th-of-July tradition: six squads, thirty competitors, one day of glory. Now in its third year, the ARMOIMC has grown from a backyard dare into the most prestigious title in the friend group (citation needed).</p>
+     <div class="infogrid">
+       <div class="infobox"><div class="k">Date</div><div class="v">July 4, 2026</div></div>
+       <div class="infobox"><div class="k">Format</div><div class="v">Team Scramble</div></div>
+       <div class="infobox"><div class="k">Teams</div><div class="v">6 × 5 players</div></div>
+       <div class="infobox"><div class="k">Tee Time</div><div class="v">TBD — edit me</div></div>
+     </div>` },
+  { icon:"📍", title:"Course Information", todo:true, html:
+    `<h3>Venue</h3>
+     <p><b>[Course name here]</b> — [address / city]. Replace this with the real spot.</p>
+     <h3>The Details</h3>
+     <ul>
+       <li><b>Course:</b> [9 / 18 holes] — [par 72]</li>
+       <li><b>Tees:</b> [which tees you're playing from]</li>
+       <li><b>Carts:</b> [included / rent / walking]</li>
+       <li><b>Check-in:</b> [time] — first group off at [time]</li>
+       <li><b>Cost:</b> [green fee + buy-in per person]</li>
+       <li><b>Parking / meet spot:</b> [where to gather]</li>
+     </ul>
+     <h3>What to bring</h3>
+     <p>Clubs, sunscreen, attitude, and a cooler. Replace with the real packing list.</p>` },
+  { icon:"📋", title:"Official Rules", todo:true, html:
+    `<p>Edit these to match how you actually run it — defaults below are a sensible scramble starting point.</p>
+     <h3>Format</h3>
+     <ol>
+       <li><b>Scramble:</b> everyone tees off, pick the best ball, all play from there. Repeat until holed.</li>
+       <li>Each player's drive must be used a <b>minimum of [3] times</b> over the round.</li>
+       <li>Ball must be placed <b>within one club length</b> of the chosen spot, no closer to the hole.</li>
+     </ol>
+     <h3>Scoring</h3>
+     <ul>
+       <li>Lowest team total wins. Ties broken by [back-nine / playoff hole].</li>
+       <li>[Handicap adjustment, if any].</li>
+     </ul>
+     <h3>The Important Stuff</h3>
+     <ul>
+       <li>🍺 <b>Beverage rule:</b> [your call].</li>
+       <li>🏆 <b>Prize:</b> eternal glory + [trophy / pot / bragging rights].</li>
+       <li>⚖️ <b>Commissioner's ruling is final.</b> The commissioner is Kale M. The commissioner is never wrong.</li>
+     </ul>` },
+];
+
+/* =========================================================
+   STATE + STORAGE
+   ========================================================= */
+const LS = {
+  teams:"armoimc3_teams", players:"armoimc3_players", about:"armoimc3_about"
+};
+function load(key, fallback){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : structuredClone(fallback); }
+  catch(e){ return structuredClone(fallback); }
+}
+function save(key,val){ try{ localStorage.setItem(key, JSON.stringify(val)); flash(); }catch(e){} }
+
+let teams = load(LS.teams, DEFAULT_TEAMS);
+let players = load(LS.players, DEFAULT_PLAYERS);
+let about = load(LS.about, DEFAULT_ABOUT);
+
+let edit = { teams:false, players:false, about:false };
+let view = "list";
+let filterTeam = 0;
+let searchQ = "";
+
+const flashEl = document.getElementById('flash');
+let flashT;
+function flash(){ flashEl.classList.add('show'); clearTimeout(flashT); flashT=setTimeout(()=>flashEl.classList.remove('show'),1200); }
+
+/* =========================================================
+   TABS
+   ========================================================= */
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-'+t.dataset.panel).classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+});
+
+/* =========================================================
+   TEAMS RENDER
+   ========================================================= */
+const teamList = document.getElementById('teamList');
+function deltaHTML(d){
+  if(d===undefined||d===0) return `<span class="delta same">—</span>`;
+  if(d>0) return `<span class="delta up">▲ ${d}</span>`;
+  return `<span class="delta down">▼ ${Math.abs(d)}</span>`;
+}
+function renderTeams(){
+  teamList.classList.toggle('editing', edit.teams);
+  teamList.innerHTML = '';
+  teams.forEach((t,i)=>{
+    const card = document.createElement('div');
+    card.className='teamcard';
+    card.style.setProperty('--accent', t.color||'var(--blue)');
+    const rosterChips = t.roster.map(r=>
+      `<span class="chip">${r===t.captain?'<span class="cap">★ </span>':''}${escapeHTML(r)}</span>`).join('');
+    const tag = t.tag ? `<span class="badge ${t.tag==='WILDCARD'?'cold':(i===0?'fire':'')}">${t.tag}</span>` : '';
+    card.innerHTML = `
+      <div class="mover">
+        <button data-act="up" ${i===0?'disabled':''}>▲</button>
+        <button data-act="down" ${i===teams.length-1?'disabled':''}>▼</button>
+      </div>
+      <div class="rankbig">${i+1}</div>
+      <div class="tc-body">
+        <div class="tc-top">
+          <h3 class="tc-name" ${edit.teams?'contenteditable="true" data-field="name"':''}>${escapeHTML(t.name)}</h3>
+          ${tag}
+        </div>
+        <p class="tc-blurb" ${edit.teams?'contenteditable="true" data-field="blurb"':''}>${escapeHTML(t.blurb)}</p>
+        <div class="roster">${rosterChips}</div>
+      </div>
+      <div class="tc-right">
+        <div class="score">${t.score}<small>Power</small></div>
+        ${deltaHTML(t.delta)}
+      </div>`;
+
+    // movers
+    card.querySelectorAll('.mover button').forEach(b=>{
+      b.addEventListener('click',(e)=>{
+        e.stopPropagation();
+        const dir = b.dataset.act==='up'?-1:1;
+        const j=i+dir;
+        if(j<0||j>=teams.length) return;
+        [teams[i],teams[j]]=[teams[j],teams[i]];
+        save(LS.teams,teams); renderTeams();
+      });
+    });
+    // contenteditable save
+    card.querySelectorAll('[contenteditable]').forEach(el=>{
+      el.addEventListener('blur',()=>{ t[el.dataset.field]=el.textContent.trim(); save(LS.teams,teams); });
+      el.addEventListener('click',e=>e.stopPropagation());
+    });
+    teamList.appendChild(card);
+  });
+}
+
+document.getElementById('editTeams').addEventListener('click',function(){
+  edit.teams=!edit.teams; this.classList.toggle('on',edit.teams);
+  this.textContent = edit.teams?'✓ Done':'✎ Edit mode';
+  renderTeams();
+});
+document.getElementById('resetTeams').addEventListener('click',()=>{
+  if(confirm('Reset team rankings to defaults?')){ teams=structuredClone(DEFAULT_TEAMS); save(LS.teams,teams); renderTeams(); }
+});
+
+/* =========================================================
+   PLAYERS RENDER
+   ========================================================= */
+const playerList = document.getElementById('playerList');
+const tierView = document.getElementById('tierView');
+const TEAM_COLORS = {1:"#e23b3b",2:"#2f7bff",3:"#f5c518",4:"#2fd07a",5:"#ff8a3d",6:"#a855f7"};
+
+function visiblePlayers(){
+  return players.map((p,idx)=>({p,idx}))
+    .filter(({p})=> (filterTeam===0||p.team===filterTeam) &&
+                    (!searchQ || p.name.toLowerCase().includes(searchQ)));
+}
+function renderPlayers(){
+  playerList.classList.toggle('editing', edit.players);
+  playerList.innerHTML='';
+  const vis = visiblePlayers();
+  if(!vis.length){ playerList.innerHTML='<p class="hint" style="text-align:center;padding:20px">No players match.</p>'; return; }
+  vis.forEach(({p,idx})=>{
+    const row=document.createElement('div');
+    row.className='prow'+(idx<3?' top3':'');
+    const c=TEAM_COLORS[p.team]||'#888';
+    row.innerHTML=`
+      <div class="mover">
+        <button data-act="up" ${idx===0?'disabled':''}>▲</button>
+        <button data-act="down" ${idx===players.length-1?'disabled':''}>▼</button>
+      </div>
+      <div class="prank">${idx+1}</div>
+      <div class="pmeta">
+        <div class="pname">${escapeHTML(p.name)}</div>
+        <div class="psub"><span class="tteam" style="border-color:${c};color:${c}">${escapeHTML(p.role)}</span></div>
+      </div>
+      <div class="ttier T-${p.tier}">${p.tier}</div>
+      <div class="prmr">${p.rmr}<small>RMR</small></div>`;
+    const blurb=document.createElement('div');
+    blurb.className='pblurb';
+    blurb.innerHTML = `<b>Scouting report:</b> ${escapeHTML(p.blurb)}`;
+
+    row.addEventListener('click',()=>{ if(!edit.players) blurb.classList.toggle('open'); });
+    row.querySelectorAll('.mover button').forEach(b=>{
+      b.addEventListener('click',(e)=>{
+        e.stopPropagation();
+        const dir=b.dataset.act==='up'?-1:1; const j=idx+dir;
+        if(j<0||j>=players.length) return;
+        [players[idx],players[j]]=[players[j],players[idx]];
+        save(LS.players,players); renderPlayers();
+      });
+    });
+    playerList.appendChild(row);
+    playerList.appendChild(blurb);
+  });
+}
+function renderTiers(){
+  const order=["S","A","B","C","D"];
+  tierView.innerHTML='<div class="tierwrap"></div>';
+  const wrap=tierView.querySelector('.tierwrap');
+  order.forEach(tier=>{
+    const members=players.map((p,i)=>({p,i})).filter(({p})=>p.tier===tier &&
+      (filterTeam===0||p.team===filterTeam) && (!searchQ||p.name.toLowerCase().includes(searchQ)));
+    if(!members.length) return;
+    const row=document.createElement('div');
+    row.className='tierrow tier-'+tier;
+    row.innerHTML=`<div class="tierlabel">${tier}</div>
+      <div class="tiernames">${members.map(({p,i})=>{
+        const c=TEAM_COLORS[p.team];
+        return `<span class="tiername" style="box-shadow:inset 3px 0 0 ${c}"><span class="tnum">${i+1}</span>${escapeHTML(p.name)}</span>`;
+      }).join('')}</div>`;
+    wrap.appendChild(row);
+  });
+}
+function renderPlayerView(){
+  if(view==='tiers'){ tierView.style.display='block'; document.getElementById('listView').style.display='none'; renderTiers(); }
+  else { tierView.style.display='none'; document.getElementById('listView').style.display='block'; renderPlayers(); }
+}
+
+// team filter chips
+const teamFilter=document.getElementById('teamFilter');
+function buildFilter(){
+  teamFilter.innerHTML='';
+  const mk=(label,val)=>{ const b=document.createElement('button'); b.textContent=label; if(val===filterTeam)b.classList.add('active');
+    b.addEventListener('click',()=>{ filterTeam=val; buildFilter(); renderPlayerView(); }); return b; };
+  teamFilter.appendChild(mk('All',0));
+  for(let i=1;i<=6;i++) teamFilter.appendChild(mk('T'+i,i));
+}
+document.getElementById('viewSeg').addEventListener('click',e=>{
+  if(e.target.dataset.view){ view=e.target.dataset.view;
+    document.querySelectorAll('#viewSeg button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+    renderPlayerView(); }
+});
+document.getElementById('playerSearch').addEventListener('input',e=>{ searchQ=e.target.value.toLowerCase().trim(); renderPlayerView(); });
+document.getElementById('editPlayers').addEventListener('click',function(){
+  edit.players=!edit.players; this.classList.toggle('on',edit.players);
+  this.textContent=edit.players?'✓ Done':'✎ Edit mode';
+  if(edit.players){ view='list'; document.querySelectorAll('#viewSeg button').forEach(b=>b.classList.toggle('active',b.dataset.view==='list')); }
+  renderPlayerView();
+});
+document.getElementById('resetPlayers').addEventListener('click',()=>{
+  if(confirm('Reset player rankings to defaults?')){ players=structuredClone(DEFAULT_PLAYERS); save(LS.players,players); renderPlayerView(); }
+});
+
+/* =========================================================
+   ABOUT RENDER
+   ========================================================= */
+const aboutWrap=document.getElementById('aboutWrap');
+function renderAbout(){
+  aboutWrap.innerHTML='';
+  about.forEach((sec,i)=>{
+    const card=document.createElement('div');
+    card.className='acard';
+    card.innerHTML=`<h2><span class="ic">${sec.icon}</span> <span ${edit.about?'contenteditable="true" data-f="title"':''}>${escapeHTML(sec.title)}</span>${sec.todo?'<span class="todo">edit me</span>':''}</h2>
+      <div class="abody" ${edit.about?'contenteditable="true" data-f="html"':''}>${sec.html}</div>`;
+    if(edit.about){
+      card.querySelector('[data-f="title"]').addEventListener('blur',e=>{ sec.title=e.target.textContent.trim(); save(LS.about,about); });
+      card.querySelector('[data-f="html"]').addEventListener('blur',e=>{ sec.html=e.target.innerHTML; save(LS.about,about); });
+    }
+    aboutWrap.appendChild(card);
+  });
+}
+document.getElementById('editAbout').addEventListener('click',function(){
+  edit.about=!edit.about; this.classList.toggle('on',edit.about);
+  this.textContent=edit.about?'✓ Done':'✎ Edit mode';
+  renderAbout();
+});
+document.getElementById('resetAbout').addEventListener('click',()=>{
+  if(confirm('Reset About text to defaults?')){ about=structuredClone(DEFAULT_ABOUT); save(LS.about,about); renderAbout(); }
+});
+
+/* =========================================================
+   UTIL + INIT
+   ========================================================= */
+function escapeHTML(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+buildFilter();
+renderTeams();
+renderPlayerView();
+renderAbout();
+</script>
+</body>
+</html>
