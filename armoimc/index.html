@@ -1335,6 +1335,7 @@ document.getElementById('adminLink').addEventListener('click',()=>{ if(isAdmin){
 /* ----- Ballot manager (admin: view + delete submitted ballots) ----- */
 const ballotModal=document.getElementById('ballotModal');
 let ballotFilter='all', ballotKind='player';
+const ballotOpen=new Set();
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function ballotGroups(kind){
   const rows = kind==='team' ? teamVotes : votes;
@@ -1349,6 +1350,35 @@ function ballotGroups(kind){
     const name = any.member || any.voter_name || (committee?'A committee member':'Anonymous');
     return { voter_id:g.voter_id, name, committee, rows:g.rows };
   }).sort((a,b)=> (b.committee-a.committee) || a.name.localeCompare(b.name));
+}
+function ballotDetailHtml(g){
+  const teamNm=id=>{ const t=teams.find(x=>x.id===id); return t?t.name:('Team '+id); };
+  if(ballotKind==='team'){
+    const ranked=g.rows.slice().sort((a,b)=>((a.team_rank||99)-(b.team_rank||99)));
+    const rows=ranked.map(r=>{
+      const crown = r.champion?' <span style="color:var(--gold);font-weight:800">👑 Champion</span>':'';
+      const cmt = r.comment&&r.comment.trim()?`<div class="hint" style="margin-top:2px">“${esc(r.comment)}”</div>`:'';
+      return `<div style="padding:7px 0;border-top:1px solid var(--line)">
+        <span style="font-family:var(--num);font-weight:700;color:var(--green-deep);margin-right:8px">${r.team_rank||'—'}</span><b>${esc(teamNm(r.team_id))}</b>${crown}${cmt}</div>`;
+    }).join('');
+    return `<div style="padding:6px 2px 10px">${rows}</div>`;
+  }
+  // player ballot: full ranked list with golf/drink/comment
+  const ranked=g.rows.slice().sort((a,b)=>((a.rank||999)-(b.rank||999)));
+  const rows=ranked.map(r=>{
+    const seed=SEED.players.find(p=>p.name===r.player_name);
+    const gender=seed?seed.gender:'M';
+    const golf = r.golf? `⛳ ${r.golf}/7 <span class="hint">${esc(levelLabel('golf',r.golf,gender))}</span>` : '<span class="hint">⛳ —</span>';
+    const drink= r.drink? `🍺 ${r.drink}/7 <span class="hint">${esc(levelLabel('drink',r.drink,gender))}</span>` : '<span class="hint">🍺 —</span>';
+    const cmt = r.comment&&r.comment.trim()?`<div class="hint" style="margin-top:2px">“${esc(r.comment)}”</div>`:'';
+    return `<div style="padding:7px 0;border-top:1px solid var(--line)">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+        <span style="font-family:var(--num);font-weight:700;color:var(--green-deep);min-width:2ch;text-align:right">${typeof r.rank==='number'?r.rank:'—'}</span>
+        <b style="min-width:90px">${esc(r.player_name)}</b>
+        <span>${golf}</span><span>${drink}</span>
+      </div>${cmt}</div>`;
+  }).join('');
+  return `<div style="padding:6px 2px 10px">${rows}</div>`;
 }
 function renderBallotManager(){
   const wrap=document.getElementById('ballotList'); if(!wrap) return;
@@ -1374,15 +1404,21 @@ function renderBallotManager(){
     const badge = g.committee
       ? '<span class="badge" style="background:#fdf4d6;color:#7a5a12;border:1px solid var(--gold)">🏛️ Committee</span>'
       : '<span class="badge" style="background:#eef3ee;color:var(--green);border:1px solid #cfe0cf">👥 People</span>';
-    return `<div class="ballot-row" style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line)">
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(g.name)} ${badge}</div>
-        <div class="hint" style="margin-top:3px">${detail}</div>
+    const key=ballotKind+':'+g.voter_id; const open=ballotOpen.has(key);
+    return `<div class="ballot-card" style="border-bottom:1px solid var(--line)">
+      <div class="ballot-row" data-toggle="${esc(key)}" style="display:flex;align-items:center;gap:12px;padding:11px 4px;cursor:pointer">
+        <span class="bcaret" style="flex:0 0 auto;color:var(--muted);transition:.15s;transform:rotate(${open?90:0}deg)">▸</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(g.name)} ${badge}</div>
+          <div class="hint" style="margin-top:3px">${detail}</div>
+        </div>
+        <button class="btn ghost danger" data-del-kind="${ballotKind}" data-del-id="${esc(g.voter_id)}" data-del-name="${esc(g.name)}" style="flex:0 0 auto">🗑️ Delete</button>
       </div>
-      <button class="btn ghost danger" data-del-kind="${ballotKind}" data-del-id="${esc(g.voter_id)}" data-del-name="${esc(g.name)}" style="flex:0 0 auto">🗑️ Delete</button>
+      <div class="ballot-detail" data-detail="${esc(key)}" style="display:${open?'block':'none'};padding:0 4px 8px 26px">${open?ballotDetailHtml(g):''}</div>
     </div>`;
   }).join('');
-  wrap.querySelectorAll('[data-del-id]').forEach(b=>b.addEventListener('click',()=>deleteBallot(b.dataset.delKind,b.dataset.delId,b.dataset.delName)));
+  wrap.querySelectorAll('[data-del-id]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); deleteBallot(b.dataset.delKind,b.dataset.delId,b.dataset.delName); }));
+  wrap.querySelectorAll('[data-toggle]').forEach(row=>row.addEventListener('click',()=>{ const k=row.dataset.toggle; if(ballotOpen.has(k)) ballotOpen.delete(k); else ballotOpen.add(k); renderBallotManager(); }));
 }
 async function deleteBallot(kind,voterId,name){
   if(!sb){ flash('Not connected to the database',true); return; }
