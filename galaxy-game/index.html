@@ -1894,6 +1894,7 @@ const Game = {
 function advanceTime(n){
   n=n||1;
   state.actions=(state.actions||0)+n;
+  checkAmbitions();                       // tick the long-arc objectives — latches any newly met
   tickTrades(n);                          // automated trade fleets bank their profit as time passes
   if(state.tradeRaid){ UI.render("traderaid"); return true; }   // raiders jumped a fleet — demand the player's call before time moves on
   tickEmpire(n);                          // your holdings produce goods (and rivals may stir)
@@ -2813,6 +2814,21 @@ const UI = {
       ${ctrl.length?`<p class="small green" style="margin-top:6px">&#9873; Systems under your full control: ${ctrl.map(id=>state.galaxy.systems[id].name).join(", ")}.</p>`:""}
     </div>`:"";
 
+    // --- ambitions: the long arc of objectives across every phase ---
+    checkAmbitions();
+    const ambDone=(state.ambitions&&state.ambitions.done)||{};
+    const ambDoneN=AMBITIONS.filter(a=>ambDone[a.id]).length;
+    const tierChips=[1,2,3,4].map(t=>{ const all=AMBITIONS.filter(a=>a.tier===t), d=all.filter(a=>ambDone[a.id]).length, T=AMB_TIERS[t];
+      return `<span class="chip" style="color:${T.color};border-color:${T.color}66">${T.name} ${d}/${all.length}</span>`; }).join("");
+    const ambOpen=AMBITIONS.filter(a=>!ambDone[a.id]).slice(0,6);
+    const ambRows=ambOpen.length?ambOpen.map(a=>{ const T=AMB_TIERS[a.tier];
+        return `<div class="krow"><span class="lbl"><span style="color:${T.color}">&#9633;</span> ${a.name} <span class="dim small">&middot; ${a.desc}</span></span><span class="kv"><span class="chip" style="color:${T.color};border-color:${T.color}66">${T.name}</span></span></div>`; }).join("")
+      :`<p class="small green">&#9733; Every ambition fulfilled — your name is legend across the stars.</p>`;
+    const ambitionsCard=`<div class="card sheet"><div class="row between"><h3>&#9733; Ambitions</h3><span class="dim small">Legacy <b class="gold">${legacyScore()}</b> &middot; ${ambDoneN}/${AMBITIONS.length}</span></div>
+      <div class="chips" style="margin:2px 0 8px">${tierChips}</div>
+      ${ambRows}
+      <p class="small dim" style="margin-top:6px">The long arc of your rise — from your first hull to ruling the stars. They complete themselves as you play; clear a tier to push into bigger ambitions.</p></div>`;
+
     return `${this.statHeader()}
     <div class="card">
       <div class="row between"><h2>&#128081; ${E.name||"Your Domain"}</h2>
@@ -2827,6 +2843,7 @@ const UI = {
           <p class="small dim" style="margin-top:7px">Holdings produce goods into your stockpile each turn; worlds you hold pay yearly taxes. Defend them, or rivals will take them.</p>`
         : `<p class="small dim" style="margin-top:6px">Build your own corner of the galaxy. Raise farms, mines and factories on the worlds you visit; take whole planets; hold systems — and defend it all. Start by landing on an inhabited world and raising your first building below.</p>`}
     </div>
+    ${ambitionsCard}
     ${threatCard}
     ${buildCard}
     ${stockCard}
@@ -6209,6 +6226,52 @@ function controlsSystem(sysId){ const sys=state.galaxy&&state.galaxy.systems[sys
   const inhab=sys.planets.map((p,i)=>({i,p})).filter(x=>x.p&&x.p.discovered&&isInhabited(x.p.world));
   return inhab.length>0 && inhab.every(x=>ownsPlanet(sysId,x.i)); }
 function hasHolding(sysId,slot){ return holdingsAt(sysId,slot).length>0 || ownsPlanet(sysId,slot); }
+
+/* ===================== AMBITIONS — the long arc of objectives =====================
+   A curated ladder of milestones that span the whole game: early footholds, mid-game
+   power, late-game dominion, and legendary feats. Each completes itself when its
+   condition is met (latched), nudging the player toward "what's next" at every phase
+   and giving a Legacy score that keeps climbing across a very long campaign. */
+const AMB_TIERS=[null,
+  {name:"Early",  pts:1,  color:"#7fd1a6"},
+  {name:"Mid",    pts:3,  color:"#5aa9ff"},
+  {name:"Late",   pts:8,  color:"#c9963f"},
+  {name:"Legend", pts:20, color:"#9a6cff"}];
+const racesDocumented=()=>Object.keys((state.codex&&state.codex.races)||{}).length;
+const AMBITIONS=[
+  // —— Tier 1: Early — find your feet ——
+  {id:"ship",     tier:1, name:"Spacefarer",        desc:"Own your first ship",                 check:s=>(s.vehicles||[]).length>=1},
+  {id:"crew",     tier:1, name:"A crew of your own", desc:"Hire your first crewmate",            check:s=>(s.crew||[]).length>=1},
+  {id:"arm",      tier:1, name:"Teeth",              desc:"Mount a weapon on a ship",            check:s=>(s.vehicles||[]).some(v=>(v.guns||[]).some(Boolean))},
+  {id:"explore",  tier:1, name:"Pathfinder",         desc:"Chart 3 star systems",                check:s=>((s.galaxy&&s.galaxy.systems)||[]).filter(x=>x.discovered).length>=3},
+  {id:"wealth50k",tier:1, name:"Getting by",         desc:"Hold 50,000 credits",                 check:s=>(s.credits||0)>=50000},
+  {id:"doc3",     tier:1, name:"Naturalist",         desc:"Document 3 species in your Codex",    check:s=>racesDocumented()>=3},
+  // —— Tier 2: Mid — build a power base ——
+  {id:"estate",   tier:2, name:"Landed",             desc:"Take your first world",               check:s=>(((s.empire||{}).estates)||[]).length>=1},
+  {id:"trade",    tier:2, name:"Merchant prince",    desc:"Run an automated trade fleet",        check:s=>(s.fleets||[]).some(f=>f.trade)},
+  {id:"officer",  tier:2, name:"Command staff",      desc:"Hire a Recruiter or Ordnance Officer",check:s=>(s.crew||[]).some(c=>c.career==="recruiter"||c.career==="ordnance")},
+  {id:"fleet3",   tier:2, name:"Flotilla",           desc:"Command a fleet of 3+ ships",         check:s=>(s.fleets||[]).some(f=>(f.shipIds||[]).length>=3)||(s.vehicles||[]).length>=3},
+  {id:"pledge",   tier:2, name:"Sworn",              desc:"Pledge allegiance to a power",        check:s=>!!(s.allegiance&&s.allegiance.govId)},
+  {id:"wealth1m", tier:2, name:"Millionaire",        desc:"Hold 1,000,000 credits",              check:s=>(s.credits||0)>=1000000},
+  {id:"doc10",    tier:2, name:"Xenographer",        desc:"Document 10 species",                 check:s=>racesDocumented()>=10},
+  // —— Tier 3: Late — carve out a dominion ——
+  {id:"ctrlsys",  tier:3, name:"Sovereign",          desc:"Control an entire system",            check:s=>ownedSystems().some(controlsSystem)},
+  {id:"worlds5",  tier:3, name:"Realm",              desc:"Hold 5 worlds",                       check:s=>(((s.empire||{}).estates)||[]).length>=5},
+  {id:"capital",  tier:3, name:"Flagship",           desc:"Own a capital-class warship",         check:s=>(s.vehicles||[]).some(v=>v.cls==="capital")},
+  {id:"wealth50m",tier:3, name:"Magnate",            desc:"Hold 50,000,000 credits",             check:s=>(s.credits||0)>=50000000},
+  {id:"doc30",    tier:3, name:"Loremaster",         desc:"Document 30 species",                 check:s=>racesDocumented()>=30},
+  // —— Tier 4: Legend — rule the stars ——
+  {id:"worlds20", tier:4, name:"Empire",             desc:"Hold 20 worlds",                      check:s=>(((s.empire||{}).estates)||[]).length>=20},
+  {id:"systems5", tier:4, name:"Star-lord",          desc:"Control 5 whole systems",             check:s=>ownedSystems().filter(controlsSystem).length>=5},
+  {id:"throne",   tier:4, name:"Kingslayer",         desc:"Seize a government's capital system",  check:s=>{const g=(s.galaxy&&s.galaxy.governments)||[]; return ownedSystems().some(sid=>g.some(x=>x.capitalSys===sid));}},
+  {id:"wealth1b", tier:4, name:"Tycoon of the stars",desc:"Hold 1,000,000,000 credits",          check:s=>(s.credits||0)>=1000000000},
+  {id:"doc100",   tier:4, name:"Galactic Codex",     desc:"Document 100 species",                check:s=>racesDocumented()>=100},
+];
+function checkAmbitions(){ if(!state) return; if(!state.ambitions) state.ambitions={done:{}};
+  const done=state.ambitions.done;
+  AMBITIONS.forEach(a=>{ if(done[a.id]) return; let ok=false; try{ ok=!!a.check(state); }catch(e){}
+    if(ok){ done[a.id]=state.actions||0; Game.logMsg(`&#9733; <b>Ambition achieved</b> — ${a.name}: ${a.desc}.`,"good"); } }); }
+function legacyScore(){ const done=(state.ambitions&&state.ambitions.done)||{}; return AMBITIONS.reduce((s,a)=>s+(done[a.id]?AMB_TIERS[a.tier].pts:0),0); }
 function planetDefense(e){ return 6 + holdingsAt(e.sysId,e.slot).reduce((s,h)=>{ const d=buildingDef(h.kind); return s+(d&&d.defense&&h.hp>0?d.defense*(h.lvl||1):0); },0); }
 /* how fast a held world's loyalty climbs per year — a heavier garrison pacifies a restless world faster */
 function loyaltyGrowth(e){ return 2 + clamp(Math.round((planetDefense(e)-6)/9*3), 0, 14); }
