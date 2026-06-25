@@ -129,6 +129,25 @@
   .submitbar{position:sticky;bottom:0;background:rgba(8,9,12,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line2);padding:14px;margin:8px -18px 0;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
   .notice{background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.4);color:#f5d97a;border-radius:12px;padding:16px 18px;font-size:.92rem}
   @media(max-width:680px){.vcard{grid-template-columns:1fr 1fr;gap:10px}.vcard .vn{grid-column:1/3}.vcomment{grid-column:1/3}}
+  /* drag-rank vote cards */
+  .votetabs{display:flex;gap:8px;margin-bottom:14px}
+  .votetabs button{flex:1;appearance:none;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-family:inherit;font-weight:800;font-size:.95rem;padding:12px;border-radius:12px;cursor:pointer;transition:.15s}
+  .votetabs button.active{background:linear-gradient(100deg,#f5a623,var(--gold));color:#0a0a0a;border-color:transparent}
+  .rcard{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;transition:border-color .12s,box-shadow .12s}
+  .rcard.dragging{opacity:.5;border-color:var(--gold)}
+  .rcard.dragover{box-shadow:0 -3px 0 0 var(--gold)}
+  .rpos{font-family:"Anton",sans-serif;font-size:1.5rem;color:var(--gold);min-width:1.6ch;text-align:center;flex:none}
+  .grip{cursor:grab;color:var(--muted2);font-size:1.25rem;flex:none;touch-action:none}
+  .grip:active{cursor:grabbing}
+  .rmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  .rmain .rn{font-weight:800}.rmain .rn small{color:var(--muted2);font-weight:600;font-size:.74rem;margin-left:6px}
+  .rrate{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .rrate .lab{font-size:.78rem;color:var(--muted)}
+  .rcomment2{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--ink);font-family:inherit;font-size:.82rem;padding:7px;resize:vertical;min-height:36px}
+  .arrows{display:flex;flex-direction:column;gap:4px;flex:none}
+  .arrows button{width:34px;height:28px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--ink);cursor:pointer;font-size:.8rem;line-height:1}
+  .arrows button:hover{border-color:var(--gold)} .arrows button:disabled{opacity:.3;cursor:default}
+  @media(max-width:560px){.grip{display:none}}
 
   .about-grid{display:grid;grid-template-columns:1fr;gap:16px}
   .acard{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow)}
@@ -247,12 +266,16 @@
   <section class="panel" id="panel-vote">
     <div class="voteintro">
       <h2>⭐ Cast your ballot</h2>
-      <p class="hint" style="font-size:.92rem">Rate every competitor: ⛳ <b>golf skill</b> and 🍺 <b>drinking game</b> (1–5 stars), and drop a comment if you want. Everyone's votes get pooled and the AI builds the official rankings from them. You can come back and change yours anytime.</p>
+      <p class="hint" style="font-size:.92rem"><b>Drag players into your personal order</b> — your #1 at the top, worst at the bottom (use the ↑↓ buttons on phone). Boys and girls are ranked on separate tabs. Add ⛳/🍺 star ratings &amp; a comment if you like. Everyone's ballots get pooled and the AI builds the official rankings. Come back and change yours anytime.</p>
       <div class="namerow">
         <input id="voterName" placeholder="Your name (so we can tally ballots)" />
       </div>
     </div>
     <div id="voteNotice"></div>
+    <div class="votetabs" id="voteGenderSeg" style="display:none">
+      <button data-vg="M" class="active">🧍‍♂️ Rank the Boys</button>
+      <button data-vg="F">🧍‍♀️ Rank the Girls</button>
+    </div>
     <div id="voteList"></div>
     <div class="submitbar" id="submitBar" style="display:none">
       <button class="btn gold big" id="submitVotes">🗳️ Submit my ballot</button>
@@ -404,7 +427,9 @@ const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
 let voterId = localStorage.getItem("armoimc3_voter_id");
 if(!voterId){ voterId = "v_"+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem("armoimc3_voter_id", voterId); }
 let voterName = localStorage.getItem("armoimc3_voter_name") || "";
-let myBallot = {}; // player_name -> {golf,drink,comment}
+let voteGender = "M";              // which sub-tab: M | F
+let voteOrder = { M:[], F:[] };    // this voter's personal order (player names)
+let cardState = {};                // name -> {golf,drink,comment}
 
 const flashEl=document.getElementById('flash'); let flashT;
 function flash(msg,bad){ flashEl.textContent=msg||"Saved ✓"; flashEl.classList.toggle('bad',!!bad); flashEl.classList.add('show'); clearTimeout(flashT); flashT=setTimeout(()=>flashEl.classList.remove('show'),1800); }
@@ -417,8 +442,23 @@ async function fetchVotes(){
   const { data, error } = await sb.from('votes').select('*');
   if(error){ console.warn('votes', error); return; }
   votes = data||[];
-  myBallot = {};
-  votes.filter(v=>v.voter_id===voterId).forEach(v=>{ myBallot[v.player_name]={golf:v.golf,drink:v.drink,comment:v.comment||''}; });
+  initBallotFromVotes();
+}
+// build this voter's personal order + card state from their saved votes (or defaults)
+function initBallotFromVotes(){
+  const mine={};
+  votes.filter(v=>v.voter_id===voterId).forEach(v=>{ mine[v.player_name]={golf:v.golf||0,drink:v.drink||0,comment:v.comment||'',rank:v.rank}; });
+  cardState={}; voteOrder={M:[],F:[]};
+  SEED.players.forEach(p=>{ const m=mine[p.name]||{}; cardState[p.name]={golf:m.golf||0,drink:m.drink||0,comment:m.comment||''}; });
+  ["M","F"].forEach(g=>{
+    const names=SEED.players.filter(p=>p.gender===g).map(p=>p.name);
+    const seedIdx=n=>SEED.players.findIndex(p=>p.name===n);
+    names.sort((a,b)=>{
+      const ra=(mine[a]&&mine[a].rank)?mine[a].rank:999, rb=(mine[b]&&mine[b].rank)?mine[b].rank:999;
+      return ra-rb || seedIdx(a)-seedIdx(b);
+    });
+    voteOrder[g]=names;
+  });
 }
 async function fetchAI(){
   if(!sb) return;
@@ -433,15 +473,14 @@ function votesFor(name){ return votes.filter(v=>v.player_name===name); }
 function players(){
   return SEED.players.map(seed=>{
     const vs = votesFor(seed.name);
-    let golf=seed.golf, drink=seed.drink, fromVotes=false, comments=[];
-    if(vs.length){
-      golf = vs.reduce((s,v)=>s+(v.golf||0),0)/vs.length;
-      drink= vs.reduce((s,v)=>s+(v.drink||0),0)/vs.length;
-      comments = vs.map(v=>v.comment).filter(Boolean);
-      fromVotes=true;
-    }
+    const gv=vs.filter(v=>v.golf>0), dv=vs.filter(v=>v.drink>0), rv=vs.filter(v=>typeof v.rank==='number'&&v.rank>0);
+    let golf=seed.golf, drink=seed.drink, fromVotes=false, rankAvg=null;
+    if(gv.length){ golf=gv.reduce((s,v)=>s+v.golf,0)/gv.length; fromVotes=true; }
+    if(dv.length){ drink=dv.reduce((s,v)=>s+v.drink,0)/dv.length; fromVotes=true; }
+    if(rv.length){ rankAvg=rv.reduce((s,v)=>s+v.rank,0)/rv.length; fromVotes=true; }
+    const comments = vs.map(v=>v.comment).filter(Boolean);
     const ai = aiData?.players?.find(p=>p.name.toLowerCase()===seed.name.toLowerCase()) || null;
-    return { ...seed, golf, drink, fromVotes, nVotes:vs.length, comments, ai };
+    return { ...seed, golf, drink, fromVotes, nVotes:vs.length, rankAvg, comments, ai };
   });
 }
 function aiExists(){ return !!(aiData && Array.isArray(aiData.players) && aiData.players.length); }
@@ -458,9 +497,13 @@ function blurbOf(p){ if(useAI()&&p.ai&&p.ai.blurb) return p.ai.blurb; return p.c
 function rankedPlayers(){
   let list = players().map(p=>({ ...p, _o:overallScore(p) }));
   list = list.filter(p=>(genderF==="all"||p.gender===genderF)&&(!searchQ||p.name.toLowerCase().includes(searchQ)));
+  const byRank = dimension==="overall" && !useAI() && genderF!=="all" && list.some(p=>p.rankAvg!=null);
   list.sort((a,b)=>{
-    const av=dimension==="golf"?a.golf:dimension==="drink"?a.drink:a._o;
-    const bv=dimension==="golf"?b.golf:dimension==="drink"?b.drink:b._o;
+    if(dimension==="overall"){
+      if(byRank){ const ar=a.rankAvg==null?1e9:a.rankAvg, br=b.rankAvg==null?1e9:b.rankAvg; return ar-br || b._o-a._o || a.name.localeCompare(b.name); }
+      return b._o-a._o || a.name.localeCompare(b.name);
+    }
+    const av=dimension==="golf"?a.golf:a.drink, bv=dimension==="golf"?b.golf:b.drink;
     return bv-av || b._o-a._o || a.name.localeCompare(b.name);
   });
   return list;
@@ -547,50 +590,81 @@ function renderAbout(){
 
 /* ---- VOTE tab ---- */
 const voteList=document.getElementById('voteList'), voteNotice=document.getElementById('voteNotice'), submitBar=document.getElementById('submitBar');
+let dragName=null;
+let touched={M:false,F:false};
 function renderVote(){
-  const nameInput=document.getElementById('voterName'); nameInput.value=voterName;
+  document.getElementById('voterName').value=voterName;
+  const seg=document.getElementById('voteGenderSeg');
   if(!configured){
-    voteNotice.innerHTML='<div class="notice">🛠️ Voting isn\'t connected yet. The organizer needs to add the database keys. Once that\'s done, refresh and you can rate everyone here.</div>';
-    voteList.innerHTML=''; submitBar.style.display='none'; return;
+    voteNotice.innerHTML='<div class="notice">🛠️ Voting isn\'t connected yet. The organizer just needs to finish the quick database setup. Once that\'s done, refresh and you can rank everyone here.</div>';
+    voteList.innerHTML=''; seg.style.display='none'; submitBar.style.display='none'; return;
   }
-  voteNotice.innerHTML=''; submitBar.style.display='flex';
-  document.getElementById('submitHint').textContent = Object.keys(myBallot).length? 'You\'ve voted — change anything and re-submit to update.' : '';
+  voteNotice.innerHTML=''; seg.style.display='flex'; submitBar.style.display='flex';
+  document.querySelectorAll('#voteGenderSeg button').forEach(b=>b.classList.toggle('active',b.dataset.vg===voteGender));
+  document.getElementById('submitHint').textContent = votes.some(v=>v.voter_id===voterId) ? "You've voted before — reorder/rate and re-submit to update." : "";
   voteList.innerHTML='';
-  SEED.players.forEach(pl=>{
-    const mine=myBallot[pl.name]||{golf:0,drink:0,comment:''};
-    const card=document.createElement('div'); card.className='vcard'; card.dataset.name=pl.name;
-    card.innerHTML=`<div class="vn">${esc(pl.name)}<small>Team ${pl.team} · ${pl.gender==='F'?'Girl':'Boy'}</small></div>
-      <div class="vrate"><span class="vlbl">⛳ Golf</span><div class="starset" data-k="golf"></div></div>
-      <div class="vrate"><span class="vlbl">🍺 Drinking</span><div class="starset" data-k="drink"></div></div>
-      <textarea class="vcomment" placeholder="Optional hot take…">${esc(mine.comment||'')}</textarea>`;
-    const state={golf:mine.golf||0, drink:mine.drink||0, comment:mine.comment||''};
+  const order=voteOrder[voteGender]||[];
+  order.forEach((name,idx)=>{
+    const pl=SEED.players.find(p=>p.name===name);
+    const st=cardState[name]||(cardState[name]={golf:0,drink:0,comment:''});
+    const card=document.createElement('div'); card.className='rcard'; card.dataset.name=name; card.setAttribute('draggable','true');
+    card.innerHTML=`
+      <div class="rpos">${idx+1}</div>
+      <div class="grip" title="Drag to reorder">⠿</div>
+      <div class="rmain">
+        <div class="rn">${esc(name)}<small>Team ${pl.team}</small></div>
+        <div class="rrate">
+          <span class="rstars"><span class="lab">⛳ Golf</span> <span class="starset" data-k="golf"></span></span>
+          <span class="rstars"><span class="lab">🍺 Drinking</span> <span class="starset" data-k="drink"></span></span>
+        </div>
+        <textarea class="rcomment2" placeholder="Optional take on ${esc(name)}…">${esc(st.comment||'')}</textarea>
+      </div>
+      <div class="arrows"><button data-act="up" ${idx===0?'disabled':''}>▲</button><button data-act="down" ${idx===order.length-1?'disabled':''}>▼</button></div>`;
     card.querySelectorAll('.starset').forEach(ss=>{ const k=ss.dataset.k;
-      const paint=()=>{ ss.innerHTML=''; for(let i=1;i<=5;i++){ const s=document.createElement('span'); s.textContent='★'; s.className=i<=state[k]?'on':'off';
-        s.addEventListener('click',()=>{ state[k]=i; paint(); }); ss.appendChild(s);} }; paint(); });
-    card.querySelector('.vcomment').addEventListener('input',e=>state.comment=e.target.value);
-    card._state=state;
+      const paint=()=>{ ss.innerHTML=''; for(let i=1;i<=5;i++){ const s=document.createElement('span'); s.textContent='★'; s.className=i<=st[k]?'on':'off';
+        s.addEventListener('click',()=>{ st[k]=(st[k]===i?i-1:i); touched[voteGender]=true; paint(); }); ss.appendChild(s);} }; paint(); });
+    card.querySelector('.rcomment2').addEventListener('input',e=>{ st.comment=e.target.value; touched[voteGender]=true; });
+    card.querySelectorAll('.arrows button').forEach(b=>b.addEventListener('click',()=>moveCard(idx, b.dataset.act==='up'?-1:1)));
+    card.addEventListener('dragstart',e=>{ dragName=name; card.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); document.querySelectorAll('.rcard.dragover').forEach(c=>c.classList.remove('dragover')); });
+    card.addEventListener('dragover',e=>{ e.preventDefault(); card.classList.add('dragover'); });
+    card.addEventListener('dragleave',()=>card.classList.remove('dragover'));
+    card.addEventListener('drop',e=>{ e.preventDefault(); card.classList.remove('dragover'); dropOnCard(name); });
     voteList.appendChild(card);
   });
+}
+function moveCard(idx,delta){ const arr=voteOrder[voteGender]; const j=idx+delta; if(j<0||j>=arr.length)return; [arr[idx],arr[j]]=[arr[j],arr[idx]]; touched[voteGender]=true; renderVote(); }
+function dropOnCard(target){ const arr=voteOrder[voteGender]; if(!dragName||dragName===target)return; const from=arr.indexOf(dragName), to=arr.indexOf(target); if(from<0||to<0)return; arr.splice(from,1); arr.splice(to,0,dragName); dragName=null; touched[voteGender]=true; renderVote(); }
+
+async function upsertVotes(rows){
+  try{
+    let { error } = await sb.from('votes').upsert(rows,{ onConflict:'voter_id,player_name' });
+    if(error && /rank/i.test(error.message||'')){
+      const stripped=rows.map(({rank,...r})=>r);
+      ({ error } = await sb.from('votes').upsert(stripped,{ onConflict:'voter_id,player_name' }));
+      if(!error){ flash('Saved — but ask the organizer to enable ordering.'); return true; }
+    }
+    if(error) throw error;
+    return true;
+  }catch(e){ console.error(e); flash('Save failed: '+(e.message||e),true); return false; }
 }
 async function submitVotes(){
   const name=document.getElementById('voterName').value.trim();
   if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; }
   voterName=name; localStorage.setItem('armoimc3_voter_name',name);
-  const rows=[]; document.querySelectorAll('#voteList .vcard').forEach(card=>{
-    const s=card._state; if(s.golf||s.drink||s.comment) rows.push({ voter_id:voterId, voter_name:name, player_name:card.dataset.name, golf:s.golf||0, drink:s.drink||0, comment:s.comment||null });
-  });
-  if(!rows.length){ flash('Rate at least one player',true); return; }
+  const already=votes.some(v=>v.voter_id===voterId);
+  const genders=["M","F"].filter(g=> touched[g] || already);
+  if(!genders.length){ flash('Drag some players or rate them first 🙂',true); return; }
+  const rows=[];
+  genders.forEach(g=> voteOrder[g].forEach((nm,i)=>{ const st=cardState[nm]||{golf:0,drink:0,comment:''};
+    rows.push({ voter_id:voterId, voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1 }); }));
   const btn=document.getElementById('submitVotes'); btn.disabled=true; btn.textContent='Saving…';
-  try{
-    const { error } = await sb.from('votes').upsert(rows,{ onConflict:'voter_id,player_name' });
-    if(error) throw error;
-    await fetchVotes(); renderAll();
-    flash('🗳️ Ballot saved — thanks '+name+'!');
-  }catch(e){ console.error(e); flash('Save failed: '+(e.message||e),true); }
+  if(await upsertVotes(rows)){ touched={M:false,F:false}; await fetchVotes(); renderAll(); flash('🗳️ Ballot saved — thanks '+name+'!'); }
   btn.disabled=false; btn.textContent='🗳️ Submit my ballot';
 }
 document.getElementById('submitVotes').addEventListener('click',submitVotes);
 document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); });
+document.getElementById('voteGenderSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; voteGender=b.dataset.vg; renderVote(); });
 
 function renderAll(){ renderTeams(); renderPlayerView(); renderVote(); renderAbout(); }
 
@@ -697,6 +771,7 @@ document.getElementById('aiGo').addEventListener('click',generateAI);
    ========================================================= */
 async function boot(){
   if(isAdmin) document.body.classList.add('admin');
+  initBallotFromVotes();    // default personal order before any data
   renderAll();              // instant paint with seed/fallback
   if(sb){ await Promise.all([fetchVotes(), fetchAI()]); }
   updateCStat(); renderAll();
