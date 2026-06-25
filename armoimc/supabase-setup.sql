@@ -23,11 +23,30 @@ create table if not exists ai_rankings (
   updated_at timestamptz default now()
 );
 
+-- 3) Player self-service profiles ("Claim your player").
+create table if not exists profiles (
+  player_name text primary key,
+  nickname    text,
+  birthday    date,
+  height      text,
+  weight      text,
+  photo       text,                    -- resized base64 image
+  updated_at  timestamptz default now()
+);
+
 -- Allow the public website (anon key) to read & write.
 -- NOTE: this is open by design so friends can vote without logging in.
 -- Fine for a friend-group event; don't store anything sensitive here.
 alter table votes        enable row level security;
 alter table ai_rankings  enable row level security;
+alter table profiles     enable row level security;
+
+drop policy if exists "anon read profiles"   on profiles;
+drop policy if exists "anon insert profiles" on profiles;
+drop policy if exists "anon update profiles" on profiles;
+create policy "anon read profiles"   on profiles for select using (true);
+create policy "anon insert profiles" on profiles for insert with check (true);
+create policy "anon update profiles" on profiles for update using (true) with check (true);
 
 drop policy if exists "anon read votes"   on votes;
 drop policy if exists "anon insert votes" on votes;
