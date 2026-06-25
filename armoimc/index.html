@@ -58,6 +58,26 @@
   .search::placeholder{color:var(--muted2)} .search:focus{outline:none;border-color:var(--blue)}
   .hint{color:var(--muted2);font-size:.8rem;margin:0}
 
+  /* landing / home */
+  .landing{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:780px){.landing{grid-template-columns:1fr}}
+  .land-card{position:relative;min-height:360px;border-radius:18px;overflow:hidden;cursor:pointer;border:1px solid var(--line2);display:flex;align-items:flex-end;box-shadow:var(--shadow);transition:transform .25s,border-color .25s;isolation:isolate}
+  .land-card:hover{transform:translateY(-5px);border-color:rgba(255,255,255,.35)}
+  .land-card .bg{position:absolute;inset:0;z-index:-3;transition:transform .35s}
+  .land-card:hover .bg{transform:scale(1.07)}
+  .land-card .bg::after{content:"";position:absolute;inset:0;opacity:.18;background:repeating-linear-gradient(135deg,rgba(255,255,255,.0) 0 14px,rgba(255,255,255,.06) 14px 28px)}
+  .land-card .ic{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9.5rem;z-index:-2;opacity:.18;filter:drop-shadow(0 6px 20px rgba(0,0,0,.4));transition:.35s}
+  .land-card:hover .ic{opacity:.3;transform:scale(1.1) rotate(-3deg)}
+  .land-card .ov{position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(0,0,0,.05) 25%,rgba(0,0,0,.78))}
+  .land-card .lbl{padding:24px;width:100%}
+  .land-card .lbl .sm{font-size:.7rem;letter-spacing:.26em;text-transform:uppercase;font-weight:800;color:rgba(255,255,255,.72);margin-bottom:4px}
+  .land-card .lbl .big{font-family:"Anton",sans-serif;font-size:clamp(2.2rem,6vw,3rem);line-height:.88;color:#fff;text-shadow:0 3px 24px rgba(0,0,0,.55)}
+  .land-card .lbl .go{margin-top:12px;font-weight:800;font-size:.86rem;color:#fff;opacity:0;transform:translateX(-6px);transition:.25s}
+  .land-card:hover .lbl .go{opacity:.95;transform:none}
+  .land-card.players .bg{background:radial-gradient(120% 80% at 50% 0%,#2aa356,#0c3d1d 70%)}
+  .land-card.teams .bg{background:radial-gradient(120% 80% at 50% 0%,#f3b21e,#6e4606 78%)}
+  .land-card.rules .bg{background:radial-gradient(120% 80% at 50% 0%,#3f8fc4,#0f3047 78%)}
+
   .panel{display:none;animation:fade .25s ease} .panel.active{display:block}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
@@ -251,19 +271,20 @@
 
 <header class="hero">
   <div class="stripes"></div>
-  <div class="eyebrow"><span class="dot"></span> Est. 2024 &nbsp;•&nbsp; Vol. III</div>
-  <h1 class="title">ARMOIMC III</h1>
+  <div class="eyebrow"><span class="dot"></span> Est. 2024 &nbsp;•&nbsp; Vol. III &nbsp;•&nbsp; ARMOIMC</div>
+  <h1 class="title">THE&nbsp;RARD&nbsp;MAN&nbsp;OPEN</h1>
   <p class="subtitle">
-    <span class="flag">🇺🇸</span> The <b>3rd Annual Rard Man Open Invitational Master Classic</b> <span class="flag">🇺🇸</span><br>
-    <b>July 3, 2026</b> &nbsp;•&nbsp; 6 teams &nbsp;•&nbsp; 30 competitors &nbsp;•&nbsp; one champion
+    <span class="flag">🇺🇸</span> <b>3rd Annual Invitational Master Classic</b> <span class="flag">🇺🇸</span><br>
+    <b>July 3, 2026</b> &nbsp;•&nbsp; Maple Hills G.C. &nbsp;•&nbsp; 6 teams &nbsp;•&nbsp; 30 competitors &nbsp;•&nbsp; one champion
   </p>
 </header>
 
 <nav class="tabs">
-  <button class="tab active" data-panel="teams">Team Rankings</button>
+  <button class="tab active" data-panel="home">🏠 Home</button>
+  <button class="tab" data-panel="teams">Team Rankings</button>
   <button class="tab" data-panel="players">Player Rankings</button>
   <button class="tab vote" data-panel="vote">⭐ Vote</button>
-  <button class="tab" data-panel="about">About</button>
+  <button class="tab" data-panel="about">The Rules</button>
 </nav>
 
 <div class="wrap">
@@ -287,8 +308,30 @@
     <button class="btn ghost" id="cmLogout">Log out</button>
   </div>
 
+  <!-- HOME -->
+  <section class="panel active" id="panel-home">
+    <div class="landing">
+      <div class="land-card players" data-go="players">
+        <div class="bg"></div><div class="ic">🏌️</div><div class="ov"></div>
+        <div class="lbl"><div class="sm">Power Rankings</div><div class="big">THE PLAYERS</div><div class="go">See the rankings →</div></div>
+      </div>
+      <div class="land-card teams" data-go="teams">
+        <div class="bg"></div><div class="ic">🍺</div><div class="ov"></div>
+        <div class="lbl"><div class="sm">Squad Power Index</div><div class="big">THE TEAMS</div><div class="go">See the standings →</div></div>
+      </div>
+      <div class="land-card rules" data-go="about">
+        <div class="bg"></div><div class="ic">📋</div><div class="ov"></div>
+        <div class="lbl"><div class="sm">Course &amp; Format</div><div class="big">THE RULES</div><div class="go">Read up →</div></div>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:22px">
+      <button class="btn gold big" id="homeVoteBtn">⭐ Cast your ballot</button>
+      <p class="hint" style="margin-top:10px">Rank the field, claim your player, and crown a champion.</p>
+    </div>
+  </section>
+
   <!-- TEAMS -->
-  <section class="panel active" id="panel-teams">
+  <section class="panel" id="panel-teams">
     <div class="toolbar"><span class="hint">Ranked by team Power Index — the average rating of each squad's five players.</span><span class="ballotnote" id="ballotNoteT"></span></div>
     <div id="teamList"></div>
   </section>
@@ -435,11 +478,11 @@ const ADMIN_HASH = "09e181239cdcb5185d13ed87bc83e49de9d428611efb0c05b3395fec6585
 
 /* Committee members + sha256 of their personal passwords (defaults; change anytime) */
 const COMMITTEE = [
-  { name:"Brett Braseth",  hash:"4cefa6b13a8f592f55bfd46b3719f879859c3eb348e20fe34ab86bcb5cb2ca27" }, // brett
-  { name:"Dylan McCollum", hash:"c0e7aec81a1a194e9f54f6b297f6544041188c741ae8f55c2133b5c510a7dc1d" }, // dylan
-  { name:"Evan Palmer",    hash:"ae74f72d212fb9871302a2459aeaf7b20bc2f792e4852be648a7d4e63967d9b1" }, // evan
-  { name:"Drew Thompson",  hash:"c850c75d30a9360f81eff0a01abcf9125ba034ef9a2dd9f95bbc073a60032299" }, // drew
-  { name:"Kale McCollum",  hash:"9857e117dd0722da68e8dbc1c35987456fc9cc0d9915a53984dda728c36bd1fe" }, // kale
+  { name:"Brett Braseth",  hash:"21323409e40265ad0a1c4aa4ec85c4ba3cb690d137a0c9aa2adb0011cd851e85" },
+  { name:"Dylan McCollum", hash:"0ad800d41f608607ee3dbf630530f6f839f90220085997de43e60583b178ebd5" },
+  { name:"Evan Palmer",    hash:"426ef88d70b556c33d65cfb386a9909bb36f12a65a80354240a459ed9f4642f2" },
+  { name:"Drew Thompson",  hash:"1f52a2b4139b9c7842102d9e32330c805687e3988b5de32468f7662a0b052e96" },
+  { name:"Kale McCollum",  hash:"f9a4f964b321786f80bc6742dd59bc24021b7740607ff8bea1509fca9866e934" },
 ];
 
 const configured = !SUPABASE_URL.startsWith("PASTE_") && !SUPABASE_ANON_KEY.startsWith("PASTE_");
@@ -906,6 +949,9 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   t.classList.add('active'); document.getElementById('panel-'+t.dataset.panel).classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
 }));
+function goTab(panel){ const t=document.querySelector(`.tab[data-panel="${panel}"]`); if(t) t.click(); }
+document.querySelectorAll('.land-card').forEach(c=>c.addEventListener('click',()=>goTab(c.dataset.go)));
+document.getElementById('homeVoteBtn').addEventListener('click',()=>goTab('vote'));
 function seg(id,fn){ document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
   e.currentTarget.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); fn(b); renderPlayerView(); }); }
 seg('genderSeg',b=>genderF=b.dataset.g); seg('dimSeg',b=>dimension=b.dataset.d); seg('viewSeg',b=>view=b.dataset.view);
