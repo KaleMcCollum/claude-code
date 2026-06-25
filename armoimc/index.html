@@ -7,40 +7,43 @@
 <meta name="description" content="The 3rd Annual Rard Man Open Invitational Master Classic — vote on players, AI builds the rankings." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
-    --bg:#08090c; --bg2:#0e1014; --panel:#14171d; --panel2:#1b1f27;
-    --line:#252a34; --line2:#333a47; --ink:#f4f6fb; --muted:#8b94a6; --muted2:#5c6474;
-    --red:#e23b3b; --red2:#ff5252; --blue:#2f7bff; --blue2:#5b9dff;
-    --gold:#f5c518; --good:#2fd07a; --shadow:0 10px 40px rgba(0,0,0,.55);
+    --bg:#07120b; --bg2:#0b1810; --panel:#101e15; --panel2:#16271b;
+    --line:#21362a; --line2:#31503c; --ink:#f2f7f1; --muted:#8fa394; --muted2:#5f7567;
+    --red:#d8392f; --red2:#ff5a4d; --blue:#2f6fff; --blue2:#5b9dff;
+    --green:#2f9e44; --green2:#46c463; --gold:#f3c23b; --good:#2fd07a;
+    --serif:"DM Serif Display",Georgia,serif;
+    --shadow:0 12px 40px rgba(0,0,0,.55);
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
     background:
-      radial-gradient(1200px 600px at 80% -10%, rgba(47,123,255,.10), transparent 60%),
-      radial-gradient(1000px 500px at 0% 0%, rgba(226,59,59,.10), transparent 55%),
+      radial-gradient(1300px 640px at 50% -12%, rgba(47,158,68,.20), transparent 62%),
+      radial-gradient(900px 500px at 88% 4%, rgba(47,111,255,.08), transparent 60%),
+      radial-gradient(900px 500px at 6% 2%, rgba(216,57,47,.08), transparent 60%),
       var(--bg);
     color:var(--ink);font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;
   }
-  a{color:var(--blue2);text-decoration:none}
+  a{color:var(--green2);text-decoration:none}
   .wrap{max-width:1080px;margin:0 auto;padding:0 18px 40px}
 
   header.hero{position:relative;padding:46px 18px 26px;text-align:center;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(20,23,29,.6),transparent);overflow:hidden}
   .stripes{position:absolute;inset:0;opacity:.06;pointer-events:none;background:repeating-linear-gradient(90deg,var(--red) 0 8px,transparent 8px 16px,var(--blue) 16px 24px,transparent 24px 32px)}
   .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700;color:var(--muted);margin-bottom:10px}
   .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 12px var(--red)}
-  h1.title{font-family:"Anton",Impact,sans-serif;font-weight:400;font-size:clamp(2.8rem,9vw,5.6rem);line-height:.92;margin:0;background:linear-gradient(100deg,#fff 10%,#cdd6e6 40%,var(--blue2) 70%,var(--red2) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  h1.title{font-family:var(--serif);font-weight:400;font-size:clamp(2.6rem,8.5vw,5.4rem);line-height:1.02;margin:0;letter-spacing:.005em;background:linear-gradient(100deg,#fff 8%,#dff0e2 32%,var(--green2) 56%,var(--blue2) 80%,var(--red2) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
   .subtitle{margin:12px auto 0;max-width:680px;color:var(--muted);font-size:clamp(.85rem,2.4vw,1.02rem);font-weight:500}
   .subtitle b{color:var(--ink)} .flag{font-size:1.05em}
 
   nav.tabs{position:sticky;top:0;z-index:30;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;padding:12px 10px;margin:0 0 22px;background:rgba(8,9,12,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
   .tab{appearance:none;border:1px solid transparent;background:transparent;color:var(--muted);font-family:inherit;font-weight:700;font-size:.92rem;padding:9px 18px;border-radius:999px;cursor:pointer;transition:.15s}
   .tab:hover{color:var(--ink);background:var(--panel)}
-  .tab.active{color:#fff;background:linear-gradient(100deg,var(--red),var(--blue));box-shadow:0 6px 20px rgba(47,123,255,.3)}
+  .tab.active{color:#fff;background:linear-gradient(100deg,var(--green),#1d7a32);box-shadow:0 6px 20px rgba(47,158,68,.35)}
   .tab.vote{border:1px solid rgba(245,197,24,.5);color:var(--gold)}
   .tab.vote.active{background:linear-gradient(100deg,#f5a623,var(--gold));color:#0a0a0a;border-color:transparent}
 
@@ -155,6 +158,7 @@
   .skill .ic{font-size:.95rem}
   .skill.active{border-color:#ff7a2f;color:#fff}
   .skill.tierchip{color:#0a0a0a;border:0;font-family:"Anton",sans-serif;letter-spacing:.04em}
+  .skill.toppick{background:rgba(243,194,59,.16);border-color:rgba(243,194,59,.5);color:var(--gold)}
   .pc-more{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:.88rem}
   .pc-more.open{display:block}
   .pc-pub{margin-top:10px;font-size:.84rem;color:var(--muted);line-height:1.45}
@@ -176,7 +180,7 @@
 
   /* VOTE */
   .voteintro{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
-  .voteintro h2{font-family:"Anton",sans-serif;font-weight:400;font-size:1.5rem;margin:0 0 6px}
+  .voteintro h2{font-family:var(--serif);font-weight:400;font-size:1.6rem;margin:0 0 6px}
   .namerow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
   .namerow input{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;color:var(--ink);font-family:inherit;font-size:1rem;padding:11px 14px;min-width:220px}
   .namerow input:focus{outline:none;border-color:var(--gold)}
@@ -212,7 +216,7 @@
 
   .about-grid{display:grid;grid-template-columns:1fr;gap:16px}
   .acard{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow)}
-  .acard h2{font-family:"Anton",sans-serif;font-weight:400;font-size:1.5rem;margin:0 0 4px;letter-spacing:.02em;display:flex;align-items:center;gap:10px}
+  .acard h2{font-family:var(--serif);font-weight:400;font-size:1.7rem;margin:0 0 4px;letter-spacing:.01em;display:flex;align-items:center;gap:10px}
   .acard h2 .ic{font-size:1.3rem}
   .acard h3{font-size:1rem;margin:18px 0 6px;color:var(--blue2);font-weight:800}
   .acard p,.acard li{color:var(--muted);font-size:.95rem}
@@ -238,7 +242,7 @@
   .btn{appearance:none;font-family:inherit;font-weight:700;font-size:.82rem;cursor:pointer;padding:8px 13px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);transition:.15s;display:inline-flex;gap:7px;align-items:center}
   .btn:hover{border-color:var(--blue);color:#fff}
   .btn:disabled{opacity:.5;cursor:default}
-  .btn.primary{background:linear-gradient(100deg,var(--red),var(--blue));border-color:transparent;color:#fff}
+  .btn.primary{background:linear-gradient(100deg,var(--green),#1d7a32);border-color:transparent;color:#fff}
   .btn.gold{background:linear-gradient(100deg,#f5a623,var(--gold));border-color:transparent;color:#0a0a0a}
   .btn.ghost{background:transparent;color:var(--muted)} .btn.ghost:hover{color:var(--ink)}
   .btn.big{font-size:1rem;padding:13px 26px}
@@ -348,9 +352,8 @@
         <div class="seg" id="viewSeg"><button data-view="list" class="active">List</button><button data-view="tiers">Tiers</button></div></div>
       <div class="fgroup" id="engineGroup" style="display:none"><span class="flabel">Ranking</span>
         <div class="seg" id="engineSeg">
-          <button data-e="committee" class="active">🏛️ Committee</button>
+          <button data-e="official" class="active">🏛️ Official</button>
           <button data-e="people">🗳️ People's Choice</button>
-          <button data-e="ai" style="display:none">✨ AI</button>
         </div></div>
       <div class="fgroup"><span class="flabel">Find</span><input class="search" id="playerSearch" placeholder="Search a player…" /></div>
     </div>
@@ -571,7 +574,7 @@ let about = structuredClone(SEED.about);
 let isAdmin = sessionStorage.getItem("armoimc3_admin")==="1";
 let committeeMember = sessionStorage.getItem("armoimc3_committee") || null;
 
-let dimension="overall", genderF="all", view="list", searchQ="", source="committee";
+let dimension="overall", genderF="all", view="list", searchQ="", source="official";
 let aiModel="claude-sonnet-4-6";
 const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
 const MAX_LVL = 7;
@@ -664,11 +667,15 @@ function players(){
     const all=votesFor(seed.name);
     const pub=all.filter(v=>!v.committee), com=all.filter(v=>v.committee);
     const people=aggSub(pub), committee=aggSub(com);
-    const comReports=com.filter(v=>v.comment).map(v=>({ member:v.member||v.voter_name||'Committee', comment:v.comment }));
+    // a member is "revealed" only if they ranked this player in their top 5 (guys) / top 3 (girls)
+    const topCut = seed.gender==='F' ? 3 : 5;
+    const isTop = v => typeof v.rank==='number' && v.rank>0 && v.rank<=topCut;
+    const comReports=com.filter(v=>v.comment).map(v=>({ member: isTop(v)?(v.member||'A committee member'):'Committee (anonymous)', comment:v.comment, top:isTop(v) }));
+    const topBy = com.filter(v=>isTop(v)&&v.member).map(v=>v.member);
     const pubComments=pub.map(v=>v.comment).filter(Boolean);
     const ai = aiData?.players?.find(p=>p.name.toLowerCase()===seed.name.toLowerCase()) || null;
     const pr = profiles[seed.name] || {};
-    return { ...seed, seedGolf:seed.golf, seedDrink:seed.drink, people, committee, comReports, pubComments, ai,
+    return { ...seed, seedGolf:seed.golf, seedDrink:seed.drink, people, committee, comReports, topBy, topCut, pubComments, ai,
       nickname:pr.nickname||null, photo:pr.photo||null, height:pr.height||null, weight:pr.weight||null, age:computeAge(pr.birthday) };
   });
 }
@@ -679,22 +686,25 @@ function peopleExists(){ return votes.some(v=>!v.committee); }
 /* =========================================================
    SCORING (source = committee | people | ai)
    ========================================================= */
-function srcOf(p){ return source==="committee" ? p.committee : p.people; }   // ai uses people for golf/drink
+function srcOf(p){ return source==="official" ? p.committee : p.people; }
 function effGolf(p){ const a=srcOf(p); return (a&&a.golf!=null)?a.golf:p.seedGolf; }
 function effDrink(p){ const a=srcOf(p); return (a&&a.drink!=null)?a.drink:p.seedDrink; }
 function effRankAvg(p){ const a=srcOf(p); return a?a.rankAvg:null; }
 function nVotes(p){ const a=srcOf(p); return a?a.n:0; }
 function fromVotes(p){ const a=srcOf(p); return !!(a&&a.n); }
 function formulaScore(p){ return Math.round((W_GOLF*effGolf(p) + (1-W_GOLF)*effDrink(p))/MAX_LVL*100); }
-function overallScore(p){ return (source==="ai"&&p.ai&&typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
+// official ranking uses the AI consensus (built from committee ballots) when available
+function aiOfficial(){ return source==="official" && aiExists(); }
+function overallScore(p){ return (aiOfficial()&&p.ai&&typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
 function tierOf(s){ return s>=90?"S":s>=80?"A":s>=70?"B":s>=60?"C":"D"; }
-function blurbOf(p){ if(source==="ai"&&p.ai&&p.ai.blurb) return p.ai.blurb;
-  const c=(source==="committee" ? (p.comReports[0]&&p.comReports[0].comment) : p.pubComments[0]); return c?('“'+c+'”'):''; }
+function blurbOf(p){ if(aiOfficial()&&p.ai&&p.ai.blurb) return p.ai.blurb;
+  if(source==="people"&&p.pubComments[0]) return '“'+p.pubComments[0]+'”';
+  return ''; }
 
 function rankedPlayers(){
   let list = players().map(p=>({ ...p, _o:overallScore(p) }));
   list = list.filter(p=>(genderF==="all"||p.gender===genderF)&&(!searchQ||p.name.toLowerCase().includes(searchQ)));
-  const byRank = dimension==="overall" && source!=="ai" && genderF!=="all" && list.some(p=>effRankAvg(p)!=null);
+  const byRank = dimension==="overall" && !aiOfficial() && genderF!=="all" && list.some(p=>effRankAvg(p)!=null);
   list.sort((a,b)=>{
     if(dimension==="overall"){
       if(byRank){ const ar=effRankAvg(a)==null?1e9:effRankAvg(a), br=effRankAvg(b)==null?1e9:effRankAvg(b); return ar-br || b._o-a._o || a.name.localeCompare(b.name); }
@@ -717,8 +727,7 @@ const TEAM_COLORS={1:"#e23b3b",2:"#2f7bff",3:"#f5c518",4:"#2fd07a",5:"#ff8a3d",6
 
 function ballotLine(){
   if(!configured) return "Preview mode — seeded ratings (voting not connected yet).";
-  if(source==="committee"){ const n=new Set(votes.filter(v=>v.committee).map(v=>v.voter_id)).size; return n?`🏛️ Official committee ranking · ${n} member${n>1?'s':''} weighing in`:"🏛️ Official committee ranking — no committee ballots yet (showing seeds)."; }
-  if(source==="ai") return "✨ AI-built ranking";
+  if(source==="official"){ const n=new Set(votes.filter(v=>v.committee).map(v=>v.voter_id)).size; return n?`🏛️ Official ranking · ${aiExists()?'AI consensus from ':''}${n} committee ballot${n>1?'s':''}`:"🏛️ Official ranking — awaiting committee ballots (showing seeds)."; }
   const n=new Set(votes.filter(v=>!v.committee).map(v=>v.voter_id)).size;
   return n?`🗳️ People's Choice · ${n} ballot${n>1?'s':''}`:"No public votes yet — be the first on the ⭐ Vote tab!";
 }
@@ -730,7 +739,7 @@ function renderTeams(){
     const ms=players().filter(p=>p.team===t.id);
     const chips=ms.map(m=>`<span class="chip">${m.name===t.captain?'<span class="cap">★</span>':''}${esc(m.name)}<span class="g">${m.gender==='F'?'♀':'♂'}</span></span>`).join('');
     const aiTeam=aiData?.teams?.find(x=>x.id===t.id);
-    const blurb=(source==="ai"&&aiTeam&&aiTeam.blurb)?aiTeam.blurb:t.blurb;
+    const blurb=(aiOfficial()&&aiTeam&&aiTeam.blurb)?aiTeam.blurb:t.blurb;
     const tag=t.tag?`<span class="badge ${t.tag==='WILDCARD'?'cold':(i===0?'fire':'')}">${esc(t.tag)}</span>`:'';
     const card=document.createElement('div'); card.className='teamcard'; card.style.setProperty('--accent',t.color||'var(--blue)');
     card.innerHTML=`<div class="rankbig">${i+1}</div>
@@ -779,7 +788,7 @@ function renderPlayers(){
         <div class="pc-right">
           <div class="pc-blurb">${esc(blurb)}</div>
           ${comNotes}
-          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${nVotes(p)?`<span class="skill"><span class="ic">🗳️</span>${nVotes(p)} ${source==='committee'?'committee ':''}vote${nVotes(p)>1?'s':''}</span>`:''}</div>
+          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${nVotes(p)?`<span class="skill"><span class="ic">🗳️</span>${nVotes(p)} ${source==='official'?'committee ':''}vote${nVotes(p)>1?'s':''}</span>`:''}${p.topBy&&p.topBy.length?`<span class="skill toppick"><span class="ic">⭐</span>Top-${p.topCut} pick: ${esc([...new Set(p.topBy)].join(', '))}</span>`:''}</div>
           ${(p.pubComments&&p.pubComments.length)?`<div class="pc-pub"><b>People's takes:</b> ${p.pubComments.slice(0,6).map(x=>'“'+esc(x)+'”').join(' · ')}</div>`:''}
         </div>
       </div>`;
@@ -885,7 +894,7 @@ async function submitVotes(){
   genders.forEach(g=> voteOrder[g].forEach((nm,i)=>{ const st=cardState[nm]||{golf:0,drink:0,comment:''};
     rows.push({ voter_id:activeId(), voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1, member:com?committeeMember:null, committee:com }); }));
   const btn=document.getElementById('submitVotes'); btn.disabled=true; btn.textContent='Saving…';
-  if(await upsertVotes(rows)){ touched={M:false,F:false}; await fetchVotes(); if(com) source='committee'; renderAll(); flash(com?('📋 Official ranking saved — thanks '+name+'!'):('🗳️ Ballot saved — thanks '+name+'!')); }
+  if(await upsertVotes(rows)){ touched={M:false,F:false}; await fetchVotes(); if(com) source='official'; renderAll(); flash(com?('📋 Official ranking saved — thanks '+name+'!'):('🗳️ Ballot saved — thanks '+name+'!')); }
   btn.disabled=false; btn.textContent=com?'📋 Submit official ranking':'🗳️ Submit my ballot';
 }
 document.getElementById('submitVotes').addEventListener('click',submitVotes);
@@ -959,8 +968,6 @@ document.getElementById('engineSeg').addEventListener('click',e=>{ const b=e.tar
 function syncSourceToggle(){
   const grp=document.getElementById('engineGroup');
   grp.style.display = configured ? '' : 'none';
-  document.querySelector('#engineSeg button[data-e="ai"]').style.display = aiExists()?'':'none';
-  if(source==='ai' && !aiExists()) source='committee';   // AI button hidden, don't leave it active
   document.querySelectorAll('#engineSeg button').forEach(x=>x.classList.toggle('active',x.dataset.e===source));
 }
 document.getElementById('playerSearch').addEventListener('input',e=>{ searchQ=e.target.value.toLowerCase().trim(); renderPlayerView(); });
@@ -1014,16 +1021,21 @@ document.getElementById('openAI').addEventListener('click',()=>{ aiKeyEl.value=l
 document.getElementById('aiModel').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; document.querySelectorAll('#aiModel button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); aiModel=b.dataset.m; });
 aiKeyEl.addEventListener('change',()=>{ if(aiKeyEl.value.trim()) localStorage.setItem(AI_KEY_LS,aiKeyEl.value.trim()); });
 document.getElementById('aiClear').addEventListener('click',async()=>{ if(!confirm('Remove AI rankings for everyone (revert to crowd average)?'))return;
-  aiData=null; source="people"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
+  aiData=null; source="official"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
 
 function buildAIPrompt(){
-  const ps=players().map(p=>({ name:p.name, team:p.team, gender:p.gender==='F'?'woman':'man',
-    golf_avg:+( (p.people.golf!=null?p.people.golf:p.seedGolf) ).toFixed(2), drink_avg:+( (p.people.drink!=null?p.people.drink:p.seedDrink) ).toFixed(2),
-    votes:p.people.n, comments:(p.pubComments||[]).slice(0,8) }));
+  const ps=SEED.players.map(seed=>{
+    const com=votes.filter(v=>v.committee && v.player_name===seed.name);
+    return { name:seed.name, team:seed.team, gender:seed.gender==='F'?'woman':'man',
+      committee_ranks: com.map(v=>v.rank).filter(x=>typeof x==='number'),   // each member's placement within this player's gender (1=best)
+      committee_golf: com.map(v=>v.golf).filter(x=>x>0),
+      committee_drink: com.map(v=>v.drink).filter(x=>x>0),
+      comments: com.map(v=>v.comment).filter(Boolean).slice(0,10) };
+  });
   const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain}));
   return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice; good-natured.
 
-These ratings are CROWD-SOURCED: friends ranked each competitor and rated them on a 1–7 scale for golf skill (1 = cart-jockey/beer-caddy, 7 = basically a pro) and drinking (1 = barely drinks, 7 = certified animal), and left comments. Use the averages as the backbone, weigh GOLF most for the overall (~60% golf / 40% drinking), and let the comments add nuance and color. Be playful and a little crude — this is a buddies' drinking-golf scramble.
+This is the COMMITTEE's official judging. Each committee member submitted a professional ranking of every competitor plus optional 1–7 golf/drinking ratings (golf 1=cart-jockey, 7=basically a pro; drink 1=barely drinks, 7=certified animal) and optional comments. "committee_ranks" lists where each member placed this player within their gender (1 = best). Synthesize a FAIR consensus: a player ranked highly by multiple members should score high; weigh golf skill most (~60% golf / 40% drinking/vibes) and use the comments for color. Be playful and a little crude — this is a buddies' drinking-golf scramble.
 
 For EACH of the ${ps.length} players output:
 - "name": exact name as given
@@ -1033,7 +1045,7 @@ For EACH of the ${ps.length} players output:
 
 Also a "teams" array: for each team {"id":<id>,"blurb": one fun sentence on their outlook}.
 
-Players (with vote averages + comments):
+Players (with committee ballots):
 ${JSON.stringify(ps)}
 
 Teams:
@@ -1057,7 +1069,7 @@ async function generateAI(){
     const a=text.indexOf('{'), z=text.lastIndexOf('}'); if(a>=0&&z>a) text=text.slice(a,z+1);
     const parsed=JSON.parse(text);
     parsed.updatedAt=new Date().toISOString();
-    aiData=parsed; source="ai";
+    aiData=parsed; source="official";
     aiLog(`✓ Built rankings for ${parsed.players?.length||0} players.`,'ok');
     if(data.usage) aiLog(`Tokens: ${data.usage.input_tokens} in / ${data.usage.output_tokens} out.`);
     if(sb){ const { error }=await sb.from('ai_rankings').upsert({id:1,data:parsed,updated_at:parsed.updatedAt}); if(error) aiLog('Saved locally but cloud save failed: '+error.message,'bad'); else aiLog('Saved to the cloud — everyone sees these now.','ok'); }
@@ -1077,7 +1089,7 @@ async function boot(){
   initBallotFromVotes();    // default personal order before any data
   renderAll();              // instant paint with seed/fallback
   if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles()]); }
-  source = committeeExists() ? 'committee' : (peopleExists() ? 'people' : 'committee');
+  source = 'official';
   initBallotFromVotes();
   updateCStat(); renderAll();
 }
