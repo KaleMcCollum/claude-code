@@ -32,3 +32,6 @@ drop policy if exists "anon update profiles" on profiles;
 create policy "anon read profiles"   on profiles for select using (true);
 create policy "anon insert profiles" on profiles for insert with check (true);
 create policy "anon update profiles" on profiles for update using (true) with check (true);
+
+-- 4) Rardman experience year (drives ROOKIE/SOPHOMORE/VETERAN badge)
+alter table profiles add column if not exists yrs int;
