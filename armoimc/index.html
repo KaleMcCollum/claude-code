@@ -680,7 +680,6 @@ async function fetchVotes(){
   const { data, error } = await sb.from('votes').select('*');
   if(error){ console.warn('votes', error); return; }
   votes = data||[];
-  initBallotFromVotes();
 }
 // build this voter's personal order + card state from their saved votes (or defaults)
 function initBallotFromVotes(){
@@ -713,7 +712,7 @@ async function fetchProfiles(){
 function computeAge(bday){ if(!bday) return null; try{ const d=new Date(bday); if(isNaN(d)) return null; const t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return (a>=0&&a<120)?a:null; }catch(e){ return null; } }
 async function fetchTeamVotes(){
   if(!sb) return;
-  try{ const { data, error } = await sb.from('team_votes').select('*'); if(error){ console.warn('team_votes',error); return; } teamVotes=data||[]; initTeamBallot(); }
+  try{ const { data, error } = await sb.from('team_votes').select('*'); if(error){ console.warn('team_votes',error); return; } teamVotes=data||[]; }
   catch(e){ console.warn('team_votes',e); }
 }
 function initTeamBallot(){
@@ -1300,10 +1299,24 @@ async function boot(){
   initBallotFromVotes(); initTeamBallot();    // defaults before any data
   renderAll();              // instant paint with seed/fallback
   if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes()]); }
-  source = 'official';
+  // default each view to wherever the data actually is, so it visibly reflects votes
+  source = (committeeExists()||aiExists()) ? 'official' : (peopleExists()?'people':'official');
+  teamSource = teamAiExists() ? 'ai' : (teamVotes.some(v=>!v.committee)?'people':(teamVotes.some(v=>v.committee)?'committee':'ai'));
   initBallotFromVotes(); initTeamBallot();
   updateCStat(); renderAll();
 }
+
+/* live-ish refresh: pull latest votes when the tab regains focus and every 30s,
+   but never while someone is on the Vote tab (so it can't disturb their ballot) */
+async function refreshData(){
+  if(!sb || document.hidden) return;
+  const active=document.querySelector('.panel.active');
+  if(active && active.id==='panel-vote') return;
+  await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes()]);
+  updateCStat(); renderAll();
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshData(); });
+setInterval(refreshData, 30000);
 boot();
 </script>
 </body>
