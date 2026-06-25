@@ -680,7 +680,6 @@ async function fetchVotes(){
   const { data, error } = await sb.from('votes').select('*');
   if(error){ console.warn('votes', error); return; }
   votes = data||[];
-  initBallotFromVotes();
 }
 // build this voter's personal order + card state from their saved votes (or defaults)
 function initBallotFromVotes(){
@@ -713,7 +712,7 @@ async function fetchProfiles(){
 function computeAge(bday){ if(!bday) return null; try{ const d=new Date(bday); if(isNaN(d)) return null; const t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return (a>=0&&a<120)?a:null; }catch(e){ return null; } }
 async function fetchTeamVotes(){
   if(!sb) return;
-  try{ const { data, error } = await sb.from('team_votes').select('*'); if(error){ console.warn('team_votes',error); return; } teamVotes=data||[]; initTeamBallot(); }
+  try{ const { data, error } = await sb.from('team_votes').select('*'); if(error){ console.warn('team_votes',error); return; } teamVotes=data||[]; }
   catch(e){ console.warn('team_votes',e); }
 }
 function initTeamBallot(){
@@ -1072,15 +1071,23 @@ document.getElementById('voteStepSeg').addEventListener('click',e=>{ const b=e.t
 document.getElementById('teamEngineSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; teamSource=b.dataset.te; renderTeams(); });
 
 async function upsertVotes(rows){
+  const up = r => sb.from('votes').upsert(r,{ onConflict:'voter_id,player_name' });
   try{
-    let { error } = await sb.from('votes').upsert(rows,{ onConflict:'voter_id,player_name' });
-    if(error && /rank/i.test(error.message||'')){
-      const stripped=rows.map(({rank,...r})=>r);
-      ({ error } = await sb.from('votes').upsert(stripped,{ onConflict:'voter_id,player_name' }));
-      if(!error){ flash('Saved — but ask the organizer to enable ordering.'); return true; }
+    let { error } = await up(rows);
+    // If a column from a not-yet-run migration is missing, degrade gracefully so the
+    // ballot still saves (rankings just lose that extra until the organizer runs the SQL).
+    if(error && /column|schema|rank|member|committee/i.test(error.message||'')){
+      const core = rows.map(({voter_id,voter_name,player_name,golf,drink,comment})=>({voter_id,voter_name,player_name,golf,drink,comment:comment??null}));
+      let r2 = await up(core);
+      if(r2.error && /column|schema|comment/i.test(r2.error.message||'')){
+        const min = rows.map(({voter_id,voter_name,player_name,golf,drink})=>({voter_id,voter_name,player_name,golf,drink}));
+        r2 = await up(min);
+      }
+      if(!r2.error){ flash('Saved! (Some extras need the DB update — tell the organizer.)'); return true; }
+      error = r2.error;
     }
     if(error && /check|constraint|violat/i.test(error.message||'')){
-      flash('Organizer must run the quick database update first (rating scale).',true); return false;
+      flash('Organizer must run the database update (rating scale).',true); return false;
     }
     if(error) throw error;
     return true;
@@ -1092,8 +1099,7 @@ async function submitVotes(){
   if(com){ name=committeeMember; }
   else { name=document.getElementById('voterName').value.trim(); if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; } voterName=name; localStorage.setItem('armoimc3_voter_name',name); }
   const already=votes.some(v=>v.voter_id===activeId());
-  const genders=["M","F"].filter(g=> touched[g] || already);
-  if(!genders.length){ flash('Drag some players or rate them first 🙂',true); return; }
+  const genders=["M","F"];   // always record a full ballot (their current order counts)
   const rows=[];
   genders.forEach(g=> voteOrder[g].forEach((nm,i)=>{ const st=cardState[nm]||{golf:0,drink:0,comment:''};
     rows.push({ voter_id:activeId(), voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1, member:com?committeeMember:null, committee:com }); }));
@@ -1300,10 +1306,24 @@ async function boot(){
   initBallotFromVotes(); initTeamBallot();    // defaults before any data
   renderAll();              // instant paint with seed/fallback
   if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes()]); }
-  source = 'official';
+  // default each view to wherever the data actually is, so it visibly reflects votes
+  source = (committeeExists()||aiExists()) ? 'official' : (peopleExists()?'people':'official');
+  teamSource = teamAiExists() ? 'ai' : (teamVotes.some(v=>!v.committee)?'people':(teamVotes.some(v=>v.committee)?'committee':'ai'));
   initBallotFromVotes(); initTeamBallot();
   updateCStat(); renderAll();
 }
+
+/* live-ish refresh: pull latest votes when the tab regains focus and every 30s,
+   but never while someone is on the Vote tab (so it can't disturb their ballot) */
+async function refreshData(){
+  if(!sb || document.hidden) return;
+  const active=document.querySelector('.panel.active');
+  if(active && active.id==='panel-vote') return;
+  await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes()]);
+  updateCStat(); renderAll();
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshData(); });
+setInterval(refreshData, 30000);
 boot();
 </script>
 </body>
