@@ -664,8 +664,21 @@ const DRINK_LEVELS = ["—",
   "Heavyweight (12–14)",
   "Wild one (15–18)",
   "Top 3 — total savage (19–21+)"];
-function levelLabel(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS; const i=Math.max(1,Math.min(MAX_LVL,Math.round(val||1))); return a[i]; }
-function levelOptions(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS; let h=`<option value="0" ${!val?'selected':''}>— pick one —</option>`; for(let i=1;i<=MAX_LVL;i++) h+=`<option value="${i}" ${val===i?'selected':''}>${a[i]}</option>`; return h; }
+const DRINK_LEVELS_F = ["—",
+  "Won't drink (0)",
+  "Lightweight (1–3)",
+  "Casual sipper (4–6)",
+  "Holds her own (7–9)",
+  "Heavyweight (10–12)",
+  "Wild one (13–14)",
+  "Top 3 — total savage (15–16)"];
+function drinkLevels(gender){ return gender==='F'?DRINK_LEVELS_F:DRINK_LEVELS; }
+function levelArr(kind,gender){ return kind==='golf'?GOLF_LEVELS:drinkLevels(gender); }
+function levelLabel(kind,val,gender){ const a=levelArr(kind,gender); const i=Math.max(1,Math.min(MAX_LVL,Math.round(val||1))); return a[i]; }
+// committee reveal label by the rank a member gave (guys: 1st/2nd/3rd/Top 5/Top 10; girls: 1st/2nd/3rd only)
+function pickLabel(rank,gender){ if(typeof rank!=='number'||rank<1) return null;
+  if(rank===1) return '1st Pick'; if(rank===2) return '2nd Pick'; if(rank===3) return '3rd Pick';
+  if(gender==='F') return null; if(rank<=5) return 'Top 5'; if(rank<=10) return 'Top 10'; return null; }
 
 // voter identity
 let voterId = localStorage.getItem("armoimc3_voter_id");
@@ -768,15 +781,14 @@ function players(){
     const all=votesFor(seed.name);
     const pub=all.filter(v=>!v.committee), com=all.filter(v=>v.committee);
     const people=aggSub(pub), committee=aggSub(com);
-    // a member is "revealed" only if they ranked this player in their top 5 (guys) / top 3 (girls)
-    const topCut = seed.gender==='F' ? 3 : 5;
-    const isTop = v => typeof v.rank==='number' && v.rank>0 && v.rank<=topCut;
-    const comReports=com.filter(v=>v.comment).map(v=>({ member: isTop(v)?(v.member||'A committee member'):'Committee (anonymous)', comment:v.comment, top:isTop(v) }));
-    const topBy = com.filter(v=>isTop(v)&&v.member).map(v=>v.member);
+    // a member is "revealed" only if their pick rank earns a label (guys: 1st/2nd/3rd/Top5/Top10; girls: 1st/2nd/3rd)
+    const lblOf = v => pickLabel(v.rank, seed.gender);
+    const comReports=com.filter(v=>v.comment).map(v=>{ const lbl=lblOf(v); return { member: lbl?(v.member||'A committee member'):'Committee (anonymous)', comment:v.comment, label:lbl }; });
+    const picks=com.filter(v=>lblOf(v)&&v.member).map(v=>({ member:v.member, label:lblOf(v), rank:v.rank })).sort((a,b)=>a.rank-b.rank);
     const pubComments=pub.map(v=>v.comment).filter(Boolean);
     const ai = aiData?.players?.find(p=>p.name.toLowerCase()===seed.name.toLowerCase()) || null;
     const pr = profiles[seed.name] || {};
-    return { ...seed, seedGolf:seed.golf, seedDrink:seed.drink, people, committee, comReports, topBy, topCut, pubComments, ai,
+    return { ...seed, seedGolf:seed.golf, seedDrink:seed.drink, people, committee, comReports, picks, pubComments, ai,
       yrs:(pr.yrs!=null?pr.yrs:(seed.yrs||1)),
       nickname:pr.nickname||null, photo:pr.photo||null, height:pr.height||null, weight:pr.weight||null, age:computeAge(pr.birthday) };
   });
@@ -927,11 +939,12 @@ function renderPlayers(){
   list.forEach((p,i)=>{
     const c=TEAM_COLORS[p.team]||'#888'; const cap=teams.find(t=>t.id===p.team)?.captain===p.name;
     const o=p._o, tier=tierOf(o); const exp=expBadge(p.yrs); const g=effGolf(p), d=effDrink(p);
-    const golfChip=`<span class="skill ${dimension==='golf'?'active':''}"><span class="ic">⛳</span>${esc(levelLabel('golf',g))}</span>`;
-    const drinkChip=`<span class="skill ${dimension==='drink'?'active':''}"><span class="ic">🍺</span>${esc(levelLabel('drink',d))}</span>`;
+    const golfChip=`<span class="skill ${dimension==='golf'?'active':''}"><span class="ic">⛳</span>${esc(levelLabel('golf',g,p.gender))}</span>`;
+    const drinkChip=`<span class="skill ${dimension==='drink'?'active':''}"><span class="ic">🍺</span>${esc(levelLabel('drink',d,p.gender))}</span>`;
     const tierChip=`<span class="skill tierchip T-${tier}">TIER ${tier}</span>`;
     const blurb=blurbOf(p)||(fromVotes(p)?'':'No scouting yet.');
-    const comNotes=p.comReports.length?`<div class="committee-notes">${p.comReports.map(r=>`<div class="cnote"><span class="cm">🏛️ ${esc(r.member)}</span> “${esc(r.comment)}”</div>`).join('')}</div>`:'';
+    const comNotes=p.comReports.length?`<div class="committee-notes">${p.comReports.map(r=>`<div class="cnote"><span class="cm">🏛️ ${esc(r.member)}${r.label?` · ${esc(r.label)}`:''}</span> “${esc(r.comment)}”</div>`).join('')}</div>`:'';
+    const pickChips=(p.picks&&p.picks.length)?p.picks.map(pk=>`<span class="skill toppick"><span class="ic">⭐</span>${esc(pk.member)}'s ${esc(pk.label)}</span>`).join(''):'';
     const card=document.createElement('div'); card.className='pcard'+(i<3?' top3':'');
     card.innerHTML=`
       <div class="pc-head">
@@ -952,7 +965,7 @@ function renderPlayers(){
         <div class="pc-right">
           <div class="pc-blurb">${esc(blurb)}</div>
           ${comNotes}
-          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${nVotes(p)?`<span class="skill"><span class="ic">🗳️</span>${nVotes(p)} ${source==='official'?'committee ':''}vote${nVotes(p)>1?'s':''}</span>`:''}${p.topBy&&p.topBy.length?`<span class="skill toppick"><span class="ic">⭐</span>Top-${p.topCut} pick: ${esc([...new Set(p.topBy)].join(', '))}</span>`:''}</div>
+          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${nVotes(p)?`<span class="skill"><span class="ic">🗳️</span>${nVotes(p)} ${source==='official'?'committee ':''}vote${nVotes(p)>1?'s':''}</span>`:''}${pickChips}</div>
           ${(p.pubComments&&p.pubComments.length)?`<div class="pc-pub"><b>People's takes:</b> ${p.pubComments.slice(0,6).map(x=>'“'+esc(x)+'”').join(' · ')}</div>`:''}
         </div>
       </div>`;
@@ -1026,8 +1039,8 @@ function renderVote(){
       const paint=()=>{ sc.innerHTML=''; for(let i=1;i<=MAX_LVL;i++){ const btn=document.createElement('button'); btn.type='button'; btn.textContent=i;
         if(st[k]===i){ btn.classList.add('on'); btn.style.background=i<=2?'var(--red)':i<=4?'var(--gold)':'var(--green)'; }
         btn.addEventListener('click',()=>{ st[k]=(st[k]===i?0:i); touched[voteGender]=true; paint(); }); sc.appendChild(btn); }
-        if(st[k]){ cap.textContent=`${st[k]} — ${levelLabel(k,st[k])}`; cap.classList.add('set'); }
-        else { cap.textContent=`1 = ${(k==='golf'?GOLF_LEVELS:DRINK_LEVELS)[1]}  →  7 = ${(k==='golf'?GOLF_LEVELS:DRINK_LEVELS)[7]}`; cap.classList.remove('set'); }
+        if(st[k]){ cap.textContent=`${st[k]} — ${levelLabel(k,st[k],pl.gender)}`; cap.classList.add('set'); }
+        else { const arr=levelArr(k,pl.gender); cap.textContent=`1 = ${arr[1]}  →  7 = ${arr[7]}`; cap.classList.remove('set'); }
       }; paint(); });
     card.querySelector('.rcomment2').addEventListener('input',e=>{ st.comment=e.target.value; touched[voteGender]=true; });
     card.querySelectorAll('.arrows button').forEach(b=>b.addEventListener('click',()=>moveCard(idx, b.dataset.act==='up'?-1:1)));
