@@ -102,6 +102,9 @@
   .badge.fire{background:rgba(226,59,59,.14);border-color:rgba(226,59,59,.4);color:var(--red2)}
   .badge.cold{background:rgba(47,123,255,.12);border-color:rgba(47,123,255,.4);color:var(--blue2)}
   .tc-blurb{color:var(--muted);margin:8px 0 0;font-size:.95rem}
+  .tc-report{margin:10px 0 0;padding:10px 12px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:0 8px 8px 0}
+  .tc-report .flabel{display:block;margin-bottom:2px}
+  .tc-report p{margin:0;color:var(--ink);font-size:.92rem;line-height:1.5}
   .roster{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
   .chip{font-size:.78rem;font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;color:var(--ink);display:inline-flex;gap:6px;align-items:center}
   .chip .cap{color:var(--gold);font-weight:800} .chip .g{font-size:.7rem;color:var(--muted2)}
@@ -350,14 +353,22 @@
       </div>
     </div>
     <div style="text-align:center;margin-top:22px">
-      <button class="btn gold big" id="homeVoteBtn">⭐ Cast your ballot</button>
+      <button class="btn gold big" id="homeVoteBtn">⭐ Rank players &amp; crown your champion</button>
       <p class="hint" style="margin-top:10px">Rank the field, claim your player, and crown a champion.</p>
     </div>
   </section>
 
   <!-- TEAMS -->
   <section class="panel" id="panel-teams">
-    <div class="toolbar"><span class="hint">Ranked by team Power Index — the average rating of each squad's five players.</span><span class="ballotnote" id="ballotNoteT"></span></div>
+    <div class="filters">
+      <div class="fgroup"><span class="flabel">Ranking</span>
+        <div class="seg" id="teamEngineSeg">
+          <button data-te="ai" class="active">🤖 AI's Rankings</button>
+          <button data-te="people">🗳️ People's Choice</button>
+          <button data-te="committee">🏛️ Commission</button>
+        </div></div>
+    </div>
+    <div class="toolbar"><span class="ballotnote" id="ballotNoteT"></span></div>
     <div id="teamList"></div>
   </section>
 
@@ -387,26 +398,46 @@
 
   <!-- VOTE -->
   <section class="panel" id="panel-vote">
-    <div class="voteintro">
-      <h2>⭐ Cast your ballot</h2>
-      <p class="hint" style="font-size:.92rem"><b>Drag players into your personal order</b> — your #1 at the top, worst at the bottom (use the ↑↓ buttons on phone). Boys and girls are ranked on separate tabs. Rate each player's ⛳ golf &amp; 🍺 drinking on a 1–7 scale (1 = worst, 7 = best — the labels show as you tap) and drop a comment if you like. Everyone's ballots get pooled and the AI builds the official rankings. Come back and change yours anytime.</p>
-      <div class="namerow">
-        <input id="voterName" placeholder="Your name (so we can tally ballots)" />
+    <div class="votetabs" id="voteStepSeg">
+      <button data-step="players" class="active">⭐ Rank your players</button>
+      <button data-step="teams">🏆 Rank teams &amp; champion</button>
+    </div>
+
+    <div id="votePlayersView">
+      <div class="voteintro">
+        <h2 id="voteH2">⭐ Rank your players</h2>
+        <p class="hint" style="font-size:.92rem"><b>Drag players into your personal order</b> — your #1 at the top, worst at the bottom (use the ↑↓ buttons on phone). Boys and girls are ranked on separate tabs. Rate each player's ⛳ golf &amp; 🍺 drinking on a 1–7 scale (1 = worst, 7 = best — the labels show as you tap) and drop a comment if you like. Everyone's ballots get pooled and the AI builds the official rankings. Come back and change yours anytime.</p>
+        <div class="namerow">
+          <input id="voterName" placeholder="Your name (so we can tally ballots)" />
+        </div>
+      </div>
+      <div id="voteNotice"></div>
+      <div class="votetabs" id="voteGenderSeg" style="display:none">
+        <button data-vg="M" class="active">🧍‍♂️ Rank the Boys</button>
+        <button data-vg="F">🧍‍♀️ Rank the Girls</button>
+      </div>
+      <div id="voteList"></div>
+      <div class="submitbar" id="submitBar" style="display:none">
+        <button class="btn gold big" id="submitVotes">🗳️ Submit my ballot</button>
+        <span class="hint" id="submitHint"></span>
+      </div>
+      <div id="claimWrap" style="display:none;text-align:center;margin-top:40px;padding-top:24px;border-top:1px solid var(--line)">
+        <p class="hint" style="margin-bottom:10px">Are you one of the 30 competitors? Add your photo &amp; stats so your player card looks legit.</p>
+        <button class="btn gold" id="openClaim">📸 Claim your player</button>
       </div>
     </div>
-    <div id="voteNotice"></div>
-    <div class="votetabs" id="voteGenderSeg" style="display:none">
-      <button data-vg="M" class="active">🧍‍♂️ Rank the Boys</button>
-      <button data-vg="F">🧍‍♀️ Rank the Girls</button>
-    </div>
-    <div id="voteList"></div>
-    <div class="submitbar" id="submitBar" style="display:none">
-      <button class="btn gold big" id="submitVotes">🗳️ Submit my ballot</button>
-      <span class="hint" id="submitHint"></span>
-    </div>
-    <div id="claimWrap" style="display:none;text-align:center;margin-top:40px;padding-top:24px;border-top:1px solid var(--line)">
-      <p class="hint" style="margin-bottom:10px">Are you one of the 30 competitors? Add your photo &amp; stats so your player card looks legit.</p>
-      <button class="btn gold" id="openClaim">📸 Claim your player</button>
+
+    <div id="voteTeamsView" style="display:none">
+      <div class="voteintro">
+        <h2 id="voteTeamsH2">🏆 Rank the teams &amp; crown your champion</h2>
+        <p class="hint" style="font-size:.92rem">Drag the six squads into your predicted <b>finish order</b> — your pick to win at the top. Then tap one team's <b>👑 Crown</b> to call your champion.</p>
+      </div>
+      <div id="teamVoteNotice"></div>
+      <div id="teamVoteList"></div>
+      <div class="submitbar" id="teamSubmitBar" style="display:none">
+        <button class="btn gold big" id="submitTeams">🏁 Submit team picks</button>
+        <span class="hint" id="teamSubmitHint"></span>
+      </div>
     </div>
   </section>
 
@@ -594,14 +625,17 @@ const SEED = {
    STATE
    ========================================================= */
 let votes = [];          // rows from supabase
+let teamVotes = [];      // rows from team_votes
 let profiles = {};       // player_name -> {nickname,birthday,height,weight,photo}
-let aiData = null;       // {players:[{name,score,tier,blurb}], teams:[{id,blurb}], updatedAt}
+let aiData = null;       // {players:[...], teams:[{id,rank,score,blurb,report}], updatedAt}
 let teams = structuredClone(SEED.teams);
 let about = structuredClone(SEED.about);
 let isAdmin = sessionStorage.getItem("armoimc3_admin")==="1";
 let committeeMember = sessionStorage.getItem("armoimc3_committee") || null;
 
 let dimension="overall", genderF="all", view="list", searchQ="", source="official";
+let teamSource="ai", voteStep="players";
+let teamOrder=[1,2,3,4,5,6], teamCardState={}, championPick=null, teamTouched=false;
 let aiModel="claude-sonnet-4-6";
 const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
 const MAX_LVL = 7;
@@ -677,6 +711,19 @@ async function fetchProfiles(){
   profiles={}; (data||[]).forEach(r=>profiles[r.player_name]=r);
 }
 function computeAge(bday){ if(!bday) return null; try{ const d=new Date(bday); if(isNaN(d)) return null; const t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return (a>=0&&a<120)?a:null; }catch(e){ return null; } }
+async function fetchTeamVotes(){
+  if(!sb) return;
+  try{ const { data, error } = await sb.from('team_votes').select('*'); if(error){ console.warn('team_votes',error); return; } teamVotes=data||[]; initTeamBallot(); }
+  catch(e){ console.warn('team_votes',e); }
+}
+function initTeamBallot(){
+  const mine=teamVotes.filter(v=>v.voter_id===activeId());
+  teamCardState={}; championPick=null;
+  const order=[1,2,3,4,5,6];
+  if(mine.length){ const rankOf={}; mine.forEach(v=>{ rankOf[v.team_id]=v.team_rank; if(v.champion) championPick=v.team_id; if(v.comment) teamCardState[v.team_id]={comment:v.comment}; });
+    order.sort((a,b)=>{ const ra=rankOf[a]||99, rb=rankOf[b]||99; return ra-rb||a-b; }); }
+  teamOrder=order;
+}
 function ballotCount(){ return new Set(votes.map(v=>v.voter_id)).size; }
 function votesFor(name){ return votes.filter(v=>v.player_name===name); }
 
@@ -746,6 +793,55 @@ function rankedPlayers(){
 function teamPower(id){ const ms=players().filter(p=>p.team===id); return ms.length?Math.round(ms.reduce((s,p)=>s+overallScore(p),0)/ms.length):0; }
 function rankedTeams(){ return teams.map(t=>({ ...t, _power:teamPower(t.id) })).sort((a,b)=>b._power-a._power||a.name.localeCompare(b.name)); }
 
+/* ===== TEAM ranking sources: ai | people | committee ===== */
+let _teamPub={byTeam:{},ballots:0}, _teamCom={byTeam:{},ballots:0};
+function teamBallotAgg(committeeFlag){
+  const rows=teamVotes.filter(v=>!!v.committee===committeeFlag);
+  const byTeam={}; for(let id=1;id<=6;id++) byTeam[id]={points:0,n1:0,rankN:0,champ:0};
+  rows.forEach(v=>{ const b=byTeam[v.team_id]; if(!b) return;
+    if(typeof v.team_rank==='number'&&v.team_rank>=1&&v.team_rank<=6){ b.points+=(7-v.team_rank); b.rankN++; if(v.team_rank===1) b.n1++; }
+    if(v.champion) b.champ++; });
+  return { byTeam, ballots:new Set(rows.map(v=>v.voter_id)).size };
+}
+function refreshTeamAgg(){ _teamPub=teamBallotAgg(false); _teamCom=teamBallotAgg(true); }
+function teamAiInfo(id){ return (aiData&&Array.isArray(aiData.teams))?aiData.teams.find(t=>t.id===id):null; }
+function teamAiExists(){ return teams.some(t=>{ const a=teamAiInfo(t.id); return a&&typeof a.score==='number'; }); }
+function teamDisplay(t){
+  if(teamSource==='ai'){ const ai=teamAiInfo(t.id); if(ai&&typeof ai.score==='number') return {num:ai.score,label:'AI Score'}; return {num:teamPower(t.id),label:'Power Index'}; }
+  const agg=(teamSource==='committee'?_teamCom:_teamPub); const b=agg.byTeam[t.id];
+  const label=teamSource==='committee'?'Commission Score':"People's Approval";
+  if(!agg.ballots||!b||b.rankN===0) return {num:null,label};
+  return { num:Math.round(100*b.points/(agg.ballots*6)), label };
+}
+function rankedTeamsBySource(){
+  refreshTeamAgg();
+  const list=teams.map(t=>({...t,_power:teamPower(t.id),_d:teamDisplay(t)}));
+  if(teamSource==='ai'){
+    const anyAi=teamAiExists();
+    list.sort((a,b)=>{ if(anyAi){ const as=(teamAiInfo(a.id)||{}).score??-1, bs=(teamAiInfo(b.id)||{}).score??-1; return bs-as||b._power-a._power||a.name.localeCompare(b.name); } return b._power-a._power||a.name.localeCompare(b.name); });
+  } else {
+    const agg=teamSource==='committee'?_teamCom:_teamPub;
+    list.sort((a,b)=>{ const ba=agg.byTeam[a.id]||{points:0,n1:0}, bb=agg.byTeam[b.id]||{points:0,n1:0}; return bb.points-ba.points||bb.n1-ba.n1||a.name.localeCompare(b.name); });
+  }
+  return list;
+}
+function teamChampion(){
+  if(teamSource==='ai'){ const r=rankedTeamsBySource(); return r[0]?r[0].id:null; }
+  const agg=teamSource==='committee'?_teamCom:_teamPub; if(!agg.ballots) return null;
+  let best=null,bc=0,bp=-1; for(let id=1;id<=6;id++){ const b=agg.byTeam[id]; if(!b||!b.champ) continue; if(b.champ>bc||(b.champ===bc&&b.points>bp)){ best=id;bc=b.champ;bp=b.points; } }
+  return best;
+}
+function teamBallotLine(){
+  if(!configured) return "Preview mode — team votes not connected yet.";
+  refreshTeamAgg();
+  const champ=teamChampion(); const cn=champ?(teams.find(t=>t.id===champ)||{}).name:null;
+  if(teamSource==='ai') return teamAiExists()?`🤖 AI's team rankings${cn?` · 🏆 AI's pick: ${cn}`:''}`:"🤖 AI's team rankings — awaiting AI build (showing Power Index).";
+  const agg=teamSource==='committee'?_teamCom:_teamPub;
+  if(!agg.ballots) return teamSource==='committee'?"🏛️ Commission — awaiting committee team ballots (showing Power Index).":"🗳️ People's Choice — no team votes yet, be the first on the Vote tab!";
+  const b=champ?agg.byTeam[champ]:null;
+  return `${teamSource==='committee'?'🏛️ Commission':"🗳️ People's Choice"} · ${agg.ballots} ballot${agg.ballots>1?'s':''}${cn?` · 🏆 Champion: ${cn}${b?` (${b.champ})`:''}`:''}`;
+}
+
 /* =========================================================
    RENDER
    ========================================================= */
@@ -761,20 +857,25 @@ function ballotLine(){
 }
 const teamList=document.getElementById('teamList');
 function renderTeams(){
-  document.getElementById('ballotNoteT').textContent=ballotLine();
-  const ranked=rankedTeams(); teamList.innerHTML='';
+  document.getElementById('ballotNoteT').textContent=teamBallotLine();
+  document.querySelectorAll('#teamEngineSeg button').forEach(b=>b.classList.toggle('active',b.dataset.te===teamSource));
+  const ranked=rankedTeamsBySource(); const champ=teamChampion(); teamList.innerHTML='';
   ranked.forEach((t,i)=>{
     const ms=players().filter(p=>p.team===t.id);
     const chips=ms.map(m=>`<span class="chip">${m.name===t.captain?'<span class="cap">★</span>':''}${esc(m.name)}<span class="g">${m.gender==='F'?'♀':'♂'}</span></span>`).join('');
-    const aiTeam=aiData?.teams?.find(x=>x.id===t.id);
-    const blurb=(aiOfficial()&&aiTeam&&aiTeam.blurb)?aiTeam.blurb:t.blurb;
+    const aiTeam=teamAiInfo(t.id);
+    const blurb=(teamSource==='ai'&&aiTeam&&aiTeam.blurb)?aiTeam.blurb:t.blurb;
+    const report=(teamSource==='ai'&&aiTeam&&aiTeam.report)?`<div class="tc-report"><span class="flabel">Scouting report</span><p>${esc(aiTeam.report)}</p></div>`:'';
+    const crown=(champ===t.id)?`<span class="badge fire">🏆 Champion</span>`:'';
     const tag=t.tag?`<span class="badge ${t.tag==='WILDCARD'?'cold':(i===0?'fire':'')}">${esc(t.tag)}</span>`:'';
-    const card=document.createElement('div'); card.className='teamcard'; card.style.setProperty('--accent',t.color||'var(--blue)');
+    const d=t._d; const num=(d.num==null)?'—':d.num;
+    const card=document.createElement('div'); card.className='teamcard'; card.style.setProperty('--accent',t.color||'var(--green)');
     card.innerHTML=`<div class="rankbig">${i+1}</div>
-      <div class="tc-body"><div class="tc-top"><h3 class="tc-name" ${isAdmin?`contenteditable="true" data-tid="${t.id}" data-field="name"`:''}>${esc(t.name)}</h3>${tag}</div>
-      <p class="tc-blurb" ${isAdmin?`contenteditable="true" data-tid="${t.id}" data-field="blurb"`:''}>${esc(blurb)}</p>
+      <div class="tc-body"><div class="tc-top"><h3 class="tc-name" ${isAdmin?`contenteditable="true" data-tid="${t.id}" data-field="name"`:''}>${esc(t.name)}</h3>${crown}${tag}</div>
+      <p class="tc-blurb" ${isAdmin&&teamSource!=='ai'?`contenteditable="true" data-tid="${t.id}" data-field="blurb"`:''}>${esc(blurb)}</p>
+      ${report}
       <div class="roster">${chips}</div></div>
-      <div class="tc-right"><div class="score">${t._power}<small>Power Index</small></div></div>`;
+      <div class="tc-right"><div class="score">${num}<small>${d.label}</small></div></div>`;
     if(isAdmin) card.querySelectorAll('[contenteditable]').forEach(el=>{ el.addEventListener('click',e=>e.stopPropagation());
       el.addEventListener('blur',()=>{ const team=teams.find(x=>x.id==el.dataset.tid); team[el.dataset.field]=el.textContent.trim(); }); });
     teamList.appendChild(card);
@@ -849,6 +950,13 @@ const voteList=document.getElementById('voteList'), voteNotice=document.getEleme
 let dragName=null;
 let touched={M:false,F:false};
 function renderVote(){
+  const com=!!committeeMember;
+  document.getElementById('votePlayersView').style.display = voteStep==='players'?'':'none';
+  document.getElementById('voteTeamsView').style.display = voteStep==='teams'?'':'none';
+  document.querySelectorAll('#voteStepSeg button').forEach(b=>b.classList.toggle('active',b.dataset.step===voteStep));
+  document.querySelector('#voteStepSeg button[data-step="players"]').textContent = com?'📋 Rank players (Official)':'⭐ Rank your players';
+  document.querySelector('#voteStepSeg button[data-step="teams"]').textContent = com?'📋 Rank teams (Commission)':'🏆 Rank teams & champion';
+  renderTeamVote();
   document.getElementById('voterName').value=voterName;
   const seg=document.getElementById('voteGenderSeg');
   if(!configured){
@@ -856,9 +964,8 @@ function renderVote(){
     voteList.innerHTML=''; seg.style.display='none'; submitBar.style.display='none'; document.getElementById('claimWrap').style.display='none'; return;
   }
   voteNotice.innerHTML=''; seg.style.display='flex'; submitBar.style.display='flex'; document.getElementById('claimWrap').style.display='block';
-  const com=!!committeeMember;
+  const introH=document.getElementById('voteH2'); if(introH) introH.textContent=com?`🏛️ ${committeeMember} — Official Player Ranking`:'⭐ Rank your players';
   const nameRow=document.querySelector('#panel-vote .namerow'); if(nameRow) nameRow.style.display=com?'none':'flex';
-  const introH=document.querySelector('#panel-vote .voteintro h2'); if(introH) introH.textContent=com?`🏛️ ${committeeMember} — Official Pro Ranking`:'⭐ Cast your ballot';
   document.getElementById('submitVotes').textContent=com?'📋 Submit official ranking':'🗳️ Submit my ballot';
   document.querySelectorAll('#voteGenderSeg button').forEach(b=>b.classList.toggle('active',b.dataset.vg===voteGender));
   document.getElementById('submitHint').textContent = votes.some(v=>v.voter_id===activeId()) ? "Submitted — reorder/rate and re-submit to update." : "";
@@ -899,6 +1006,70 @@ function renderVote(){
 }
 function moveCard(idx,delta){ const arr=voteOrder[voteGender]; const j=idx+delta; if(j<0||j>=arr.length)return; [arr[idx],arr[j]]=[arr[j],arr[idx]]; touched[voteGender]=true; renderVote(); }
 function dropOnCard(target){ const arr=voteOrder[voteGender]; if(!dragName||dragName===target)return; const from=arr.indexOf(dragName), to=arr.indexOf(target); if(from<0||to<0)return; arr.splice(from,1); arr.splice(to,0,dragName); dragName=null; touched[voteGender]=true; renderVote(); }
+
+/* ---- Team ranking + champion ballot ---- */
+let teamDragId=null;
+function renderTeamVote(){
+  const com=!!committeeMember;
+  const notice=document.getElementById('teamVoteNotice'), list=document.getElementById('teamVoteList'), bar=document.getElementById('teamSubmitBar');
+  const h=document.getElementById('voteTeamsH2'); if(h) h.textContent=com?`🏛️ ${committeeMember} — Commission Team Ranking`:'🏆 Rank the teams & crown your champion';
+  if(!configured){ notice.innerHTML='<div class="notice">🛠️ Team voting isn\'t connected yet.</div>'; list.innerHTML=''; bar.style.display='none'; return; }
+  notice.innerHTML=''; bar.style.display='flex';
+  document.getElementById('submitTeams').textContent=com?'📋 Submit Commission ranking':'🏁 Submit team picks';
+  document.getElementById('teamSubmitHint').textContent = teamVotes.some(v=>v.voter_id===activeId()) ? "Submitted — reorder/crown and re-submit to update." : "";
+  list.innerHTML='';
+  teamOrder.forEach((id,idx)=>{
+    const t=teams.find(x=>x.id===id); if(!t) return;
+    const st=teamCardState[id]||(teamCardState[id]={comment:''});
+    const ms=players().filter(p=>p.team===id);
+    const chips=ms.map(m=>`<span class="chip">${m.name===t.captain?'<span class="cap">★</span>':''}${esc(m.name)}</span>`).join('');
+    const crowned=championPick===id;
+    const card=document.createElement('div'); card.className='rcard'; card.dataset.tid=id; card.setAttribute('draggable','true'); card.style.setProperty('--accent',t.color||'var(--green)');
+    card.innerHTML=`
+      <div class="rpos">${idx+1}</div>
+      <div class="grip" title="Drag to reorder">⠿</div>
+      <div class="rmain">
+        <div class="rn">${esc(t.name)}<small>Captain ${esc(t.captain||'')}</small></div>
+        <div class="roster" style="margin-top:6px">${chips}</div>
+        <textarea class="rcomment2" placeholder="Optional take on ${esc(t.name)}…">${esc(st.comment||'')}</textarea>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;flex:none">
+        <button type="button" class="btn ${crowned?'gold':'ghost'} crownbtn">${crowned?'👑 Champion':'👑 Crown'}</button>
+        <div class="arrows"><button data-act="up" ${idx===0?'disabled':''}>▲</button><button data-act="down" ${idx===teamOrder.length-1?'disabled':''}>▼</button></div>
+      </div>`;
+    card.querySelector('.rcomment2').addEventListener('input',e=>{ st.comment=e.target.value; teamTouched=true; });
+    card.querySelector('.crownbtn').addEventListener('click',()=>{ championPick=(championPick===id?null:id); teamTouched=true; renderTeamVote(); });
+    card.querySelectorAll('.arrows button').forEach(b=>b.addEventListener('click',()=>moveTeam(idx,b.dataset.act==='up'?-1:1)));
+    card.addEventListener('dragstart',e=>{ teamDragId=id; card.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); document.querySelectorAll('#teamVoteList .rcard.dragover').forEach(c=>c.classList.remove('dragover')); });
+    card.addEventListener('dragover',e=>{ e.preventDefault(); card.classList.add('dragover'); });
+    card.addEventListener('dragleave',()=>card.classList.remove('dragover'));
+    card.addEventListener('drop',e=>{ e.preventDefault(); card.classList.remove('dragover'); dropTeam(id); });
+    list.appendChild(card);
+  });
+}
+function moveTeam(idx,delta){ const j=idx+delta; if(j<0||j>=teamOrder.length)return; [teamOrder[idx],teamOrder[j]]=[teamOrder[j],teamOrder[idx]]; teamTouched=true; renderTeamVote(); }
+function dropTeam(target){ if(teamDragId==null||teamDragId===target)return; const from=teamOrder.indexOf(teamDragId), to=teamOrder.indexOf(target); if(from<0||to<0)return; teamOrder.splice(from,1); teamOrder.splice(to,0,teamDragId); teamDragId=null; teamTouched=true; renderTeamVote(); }
+async function upsertTeamVotes(rows){
+  try{ let { error }=await sb.from('team_votes').upsert(rows,{ onConflict:'voter_id,team_id' });
+    if(error && /champion|column|schema/i.test(error.message||'')){ const stripped=rows.map(({champion,...r})=>r); ({ error }=await sb.from('team_votes').upsert(stripped,{ onConflict:'voter_id,team_id' })); if(!error){ flash('Saved — ask the organizer to run the team-ranking update.'); return true; } }
+    if(error) throw error; return true;
+  }catch(e){ console.error(e); flash('Save failed: '+(e.message||e),true); return false; }
+}
+async function submitTeamVotes(){
+  const com=!!committeeMember;
+  let name = com?committeeMember:(document.getElementById('voterName').value.trim()||voterName);
+  if(!com && !name){ flash('Enter your name on the players tab first',true); voteStep='players'; renderVote(); document.getElementById('voterName').focus(); return; }
+  if(!com){ voterName=name; localStorage.setItem('armoimc3_voter_name',name); }
+  if(!sb){ flash('Not connected yet',true); return; }
+  const rows=teamOrder.map((id,i)=>({ voter_id:activeId(), voter_name:name, team_id:id, team_rank:i+1, champion:(championPick===id), comment:(teamCardState[id]&&teamCardState[id].comment)||null, member:com?committeeMember:null, committee:com }));
+  const btn=document.getElementById('submitTeams'); btn.disabled=true; btn.textContent='Saving…';
+  if(await upsertTeamVotes(rows)){ teamTouched=false; await fetchTeamVotes(); renderAll(); flash(com?'📋 Commission team ranking saved!':'🏁 Team picks saved — thanks '+name+'!'); }
+  btn.disabled=false; btn.textContent=com?'📋 Submit Commission ranking':'🏁 Submit team picks';
+}
+document.getElementById('submitTeams').addEventListener('click',submitTeamVotes);
+document.getElementById('voteStepSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; voteStep=b.dataset.step; renderVote(); });
+document.getElementById('teamEngineSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; teamSource=b.dataset.te; renderTeams(); });
 
 async function upsertVotes(rows){
   try{
@@ -1026,7 +1197,7 @@ document.getElementById('logoutBtn').addEventListener('click',()=>{ isAdmin=fals
 document.getElementById('refreshBtn').addEventListener('click',async()=>{ await fetchVotes(); await fetchAI(); renderAll(); flash('Refreshed'); });
 
 /* ----- Committee auth ----- */
-function setCommittee(name){ committeeMember=name; if(name){ sessionStorage.setItem('armoimc3_committee',name); document.body.classList.add('committee'); document.getElementById('cmName').textContent=name; } else { sessionStorage.removeItem('armoimc3_committee'); document.body.classList.remove('committee'); } initBallotFromVotes(); }
+function setCommittee(name){ committeeMember=name; if(name){ sessionStorage.setItem('armoimc3_committee',name); document.body.classList.add('committee'); document.getElementById('cmName').textContent=name; } else { sessionStorage.removeItem('armoimc3_committee'); document.body.classList.remove('committee'); } initBallotFromVotes(); initTeamBallot(); }
 document.getElementById('committeeLink').addEventListener('click',()=>{
   if(committeeMember){ openProForm(); return; }
   const sel=document.getElementById('cmSelect'); sel.innerHTML=COMMITTEE.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('');
@@ -1067,7 +1238,7 @@ function buildAIPrompt(){
       committee_drink: com.map(v=>v.drink).filter(x=>x>0),
       comments: com.map(v=>v.comment).filter(Boolean).slice(0,10) };
   });
-  const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain}));
+  const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain,players:ps.filter(p=>p.team===t.id)}));
   return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice; good-natured.
 
 This is the COMMITTEE's official judging. Each committee member submitted a professional ranking of every competitor plus optional 1–7 golf/drinking ratings (golf 1=won't golf, 7=top-3 ringer; drink 1=won't drink, 7=top-3 savage) and optional comments. "committee_ranks" lists where each member placed this player within their gender (1 = best). Synthesize a FAIR consensus: a player ranked highly by multiple members should score high; weigh golf skill most (~60% golf / 40% drinking/vibes) and use the comments for color. Be playful and a little crude — this is a buddies' drinking-golf scramble.
@@ -1078,15 +1249,20 @@ For EACH of the ${ps.length} players output:
 - "tier": "S"(90+),"A"(80-89),"B"(70-79),"C"(60-69) or "D"(<60), consistent with score
 - "blurb": ONE punchy scouting sentence (max ~22 words), can reference the vibe from comments
 
-Also a "teams" array: for each team {"id":<id>,"blurb": one fun sentence on their outlook}.
+ALSO produce a TEAMS power ranking. Each team has five players (under team.players) with their committee golf/drink ratings and placement ranks. Judge a team by the strength of its whole roster using the SAME committee data (~60% golf skill / 40% drinking + vibes), rewarding depth and a strong captain; have fun with chemistry and chaos. For EACH of the 6 teams output:
+- "id": the given team id
+- "rank": integer 1-6 overall power ranking (1 = best, each value used exactly once)
+- "score": integer 0-100 team strength, CONSISTENT with rank (the #1 team has the highest score)
+- "blurb": ONE short punchy card line (max ~16 words)
+- "report": a 1-2 sentence TEAM SCOUTING REPORT naming their strongest player and biggest question mark; Ringer/ESPN voice, playful and a little crude. The team you rank #1 is your pick to win the whole Classic.
 
 Players (with committee ballots):
 ${JSON.stringify(ps)}
 
-Teams:
+Teams (with their players):
 ${JSON.stringify(ts)}
 
-Respond with ONLY minified JSON: {"players":[{"name":"","score":0,"tier":"","blurb":""}],"teams":[{"id":1,"blurb":""}]}`;
+Respond with ONLY minified JSON: {"players":[{"name":"","score":0,"tier":"","blurb":""}],"teams":[{"id":1,"rank":1,"score":0,"blurb":"","report":""}]}`;
 }
 async function generateAI(){
   const key=aiKeyEl.value.trim()||localStorage.getItem(AI_KEY_LS)||'';
@@ -1121,11 +1297,11 @@ document.getElementById('aiGo').addEventListener('click',generateAI);
 async function boot(){
   if(isAdmin) document.body.classList.add('admin');
   if(committeeMember){ document.body.classList.add('committee'); document.getElementById('cmName').textContent=committeeMember; }
-  initBallotFromVotes();    // default personal order before any data
+  initBallotFromVotes(); initTeamBallot();    // defaults before any data
   renderAll();              // instant paint with seed/fallback
-  if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles()]); }
+  if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes()]); }
   source = 'official';
-  initBallotFromVotes();
+  initBallotFromVotes(); initTeamBallot();
   updateCStat(); renderAll();
 }
 boot();

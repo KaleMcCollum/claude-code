@@ -63,3 +63,18 @@ drop policy if exists "anon update ai" on ai_rankings;
 create policy "anon read ai"   on ai_rankings for select using (true);
 create policy "anon insert ai" on ai_rankings for insert with check (true);
 create policy "anon update ai" on ai_rankings for update using (true) with check (true);
+
+-- Team rankings + champion picks
+create table if not exists team_votes (
+  voter_id text not null, voter_name text, team_id int not null check (team_id between 1 and 6),
+  team_rank int check (team_rank between 1 and 6), champion boolean not null default false,
+  comment text, member text, committee boolean not null default false,
+  updated_at timestamptz not null default now(), primary key (voter_id, team_id)
+);
+alter table team_votes enable row level security;
+drop policy if exists "anon read team_votes" on team_votes;
+drop policy if exists "anon insert team_votes" on team_votes;
+drop policy if exists "anon update team_votes" on team_votes;
+create policy "anon read team_votes" on team_votes for select using (true);
+create policy "anon insert team_votes" on team_votes for insert with check (true);
+create policy "anon update team_votes" on team_votes for update using (true) with check (true);

@@ -35,3 +35,25 @@ create policy "anon update profiles" on profiles for update using (true) with ch
 
 -- 4) Rardman experience year (drives ROOKIE/SOPHOMORE/VETERAN badge)
 alter table profiles add column if not exists yrs int;
+
+-- 5) team rankings + champion picks (run once; safe to re-run)
+create table if not exists team_votes (
+  voter_id    text not null,
+  voter_name  text,
+  team_id     int  not null check (team_id between 1 and 6),
+  team_rank   int  check (team_rank between 1 and 6),
+  champion    boolean not null default false,
+  comment     text,
+  member      text,
+  committee   boolean not null default false,
+  updated_at  timestamptz not null default now(),
+  primary key (voter_id, team_id)
+);
+alter table team_votes add column if not exists champion boolean not null default false;
+alter table team_votes enable row level security;
+drop policy if exists "anon read team_votes"   on team_votes;
+drop policy if exists "anon insert team_votes" on team_votes;
+drop policy if exists "anon update team_votes" on team_votes;
+create policy "anon read team_votes"   on team_votes for select using (true);
+create policy "anon insert team_votes" on team_votes for insert with check (true);
+create policy "anon update team_votes" on team_votes for update using (true) with check (true);
