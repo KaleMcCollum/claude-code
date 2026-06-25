@@ -82,3 +82,17 @@ create policy "anon insert team_votes" on team_votes for insert with check (true
 create policy "anon update team_votes" on team_votes for update using (true) with check (true);
 drop policy if exists "anon delete team_votes" on team_votes;
 create policy "anon delete team_votes" on team_votes for delete using (true);
+
+-- Prediction calculator (final-score + per-teammate drink predictions)
+create table if not exists predictions (
+  id bigint generated always as identity primary key, predictor text,
+  team_id int not null check (team_id between 1 and 6), final_score int,
+  drinks jsonb, created_at timestamptz default now()
+);
+alter table predictions enable row level security;
+drop policy if exists "anon read predictions"   on predictions;
+drop policy if exists "anon insert predictions" on predictions;
+drop policy if exists "anon delete predictions" on predictions;
+create policy "anon read predictions"   on predictions for select using (true);
+create policy "anon insert predictions" on predictions for insert with check (true);
+create policy "anon delete predictions" on predictions for delete using (true);
