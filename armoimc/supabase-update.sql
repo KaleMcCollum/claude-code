@@ -67,3 +67,9 @@ drop policy if exists "anon update config" on config;
 create policy "anon read config"   on config for select using (true);
 create policy "anon insert config" on config for insert with check (true);
 create policy "anon update config" on config for update using (true) with check (true);
+
+-- 7) admin ballot manager: allow deleting ballots (spam / messed-up cleanup)
+drop policy if exists "anon delete votes"      on votes;
+drop policy if exists "anon delete team_votes" on team_votes;
+create policy "anon delete votes"      on votes      for delete using (true);
+create policy "anon delete team_votes" on team_votes for delete using (true);

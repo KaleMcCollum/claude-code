@@ -268,6 +268,7 @@
   .btn.primary{background:linear-gradient(100deg,var(--green),#1d7a32);border-color:transparent;color:#fff}
   .btn.gold{background:linear-gradient(100deg,#f5a623,var(--gold));border-color:transparent;color:#0a0a0a}
   .btn.ghost{background:transparent;color:var(--muted)} .btn.ghost:hover{color:var(--ink)}
+  .btn.danger{color:var(--red);border-color:rgba(158,43,37,.45)} .btn.danger:hover{background:var(--red);color:#fff;border-color:var(--red)}
   .btn.big{font-size:1rem;padding:13px 26px}
   .spacer{flex:1}
 
@@ -328,6 +329,7 @@
     <span class="cstat" id="cstat"><span class="d"></span><span id="cstatText">checking…</span></span>
     <button class="btn primary" id="saveConfigBtn">💾 Save &amp; publish edits</button>
     <button class="btn gold" id="openAI">✨ Build AI Rankings</button>
+    <button class="btn ghost" id="openBallots">🗳️ Manage ballots</button>
     <button class="btn ghost" id="refreshBtn">↻ Refresh votes</button>
     <span class="hint">Edit team names/blurbs &amp; the Rules tab inline, then hit Save &amp; publish.</span>
     <span class="spacer"></span>
@@ -391,7 +393,8 @@
         <div class="seg" id="viewSeg"><button data-view="list" class="active">List</button><button data-view="tiers">Tiers</button></div></div>
       <div class="fgroup" id="engineGroup" style="display:none"><span class="flabel">Ranking</span>
         <div class="seg" id="engineSeg">
-          <button data-e="official" class="active">🏛️ Official</button>
+          <button data-e="ai" style="display:none">🤖 AI's Rankings</button>
+          <button data-e="committee" class="active">🏛️ Committee</button>
           <button data-e="people">🗳️ People's Choice</button>
         </div></div>
       <div class="fgroup"><span class="flabel">Find</span><input class="search" id="playerSearch" placeholder="Search a player…" /></div>
@@ -484,6 +487,26 @@
         <button class="btn ghost" id="aiClear" title="Remove AI rankings (revert to crowd average)">Clear AI rankings</button>
       </div>
       <div class="ailog" id="aiLog"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BALLOT MANAGER MODAL -->
+<div class="modal" id="ballotModal">
+  <div class="sheet" style="max-width:680px">
+    <header><h2>🗳️ Manage ballots</h2><button class="x" data-close>×</button></header>
+    <div class="body">
+      <p class="hint" style="margin-bottom:12px">Every submitted ballot that's feeding the rankings. Delete spam or messed-up ones to keep things honest — deleting removes that person's whole ballot and the rankings update immediately.</p>
+      <div class="seg" id="ballotFilterSeg" style="margin-bottom:6px">
+        <button data-f="all" class="active">All</button>
+        <button data-f="committee">🏛️ Committee</button>
+        <button data-f="people">👥 People</button>
+      </div>
+      <div class="seg" id="ballotKindSeg" style="margin-bottom:14px">
+        <button data-k="player" class="active">⛳ Player ballots</button>
+        <button data-k="team">🏆 Team ballots</button>
+      </div>
+      <div id="ballotList"></div>
     </div>
   </div>
 </div>
@@ -641,7 +664,7 @@ let configData = null;   // admin-published team/about overrides
 let isAdmin = sessionStorage.getItem("armoimc3_admin")==="1";
 let committeeMember = sessionStorage.getItem("armoimc3_committee") || null;
 
-let dimension="overall", genderF="all", view="list", searchQ="", source="official";
+let dimension="overall", genderF="all", view="list", searchQ="", source="committee";
 let teamSource="ai", voteStep="players";
 let teamOrder=[1,2,3,4,5,6], teamCardState={}, championPick=null, teamTouched=false;
 let aiModel="claude-sonnet-4-6";
@@ -800,7 +823,7 @@ function peopleExists(){ return votes.some(v=>!v.committee); }
 /* =========================================================
    SCORING (source = committee | people | ai)
    ========================================================= */
-function srcOf(p){ return source==="official" ? p.committee : p.people; }
+function srcOf(p){ return source==="people" ? p.people : p.committee; }  // ai + committee read committee aggregates
 function effGolf(p){ const a=srcOf(p); return (a&&a.golf!=null)?a.golf:p.seedGolf; }
 function effDrink(p){ const a=srcOf(p); return (a&&a.drink!=null)?a.drink:p.seedDrink; }
 function effRankAvg(p){ const a=srcOf(p); return a?a.rankAvg:null; }
@@ -812,7 +835,7 @@ function genderCount(g){ return SEED.players.filter(x=>x.gender===g).length || 1
 // ranking reflects the committee's ACTUAL ordering even on a rank-only ballot
 function rankScore(p, agg){ if(!agg||agg.rankAvg==null) return null; const N=genderCount(p.gender); return Math.round(100*(N-agg.rankAvg+1)/N); }
 // official ranking uses the AI consensus (built from committee ballots) when available
-function aiOfficial(){ return source==="official" && aiExists(); }
+function aiOfficial(){ return source==="ai" && aiExists(); }
 function overallScore(p){
   if(aiOfficial()&&p.ai&&typeof p.ai.score==='number') return p.ai.score;
   const rs=rankScore(p, srcOf(p)); if(rs!=null) return rs;   // committee/people rank order drives the score
@@ -898,7 +921,8 @@ const TEAM_COLORS={1:"#e23b3b",2:"#2f7bff",3:"#f5c518",4:"#2fd07a",5:"#ff8a3d",6
 
 function ballotLine(){
   if(!configured) return "Preview mode — seeded ratings (voting not connected yet).";
-  if(source==="official"){ const n=new Set(votes.filter(v=>v.committee).map(v=>v.voter_id)).size; return n?`🏛️ Official ranking · ${aiExists()?'AI consensus from ':''}${n} committee ballot${n>1?'s':''}`:"🏛️ Official ranking — awaiting committee ballots (showing seeds)."; }
+  if(source==="ai") return aiExists()?"🤖 AI's rankings (built from the committee ballots)":"🤖 AI's rankings — not built yet (showing committee/seed).";
+  if(source==="committee"){ const n=new Set(votes.filter(v=>v.committee).map(v=>v.voter_id)).size; return n?`🏛️ Committee ranking · ${n} committee ballot${n>1?'s':''}`:"🏛️ Committee ranking — awaiting committee ballots (showing seeds)."; }
   const n=new Set(votes.filter(v=>!v.committee).map(v=>v.voter_id)).size;
   return n?`🗳️ People's Choice · ${n} ballot${n>1?'s':''}`:"No public votes yet — be the first on the ⭐ Vote tab!";
 }
@@ -965,7 +989,7 @@ function renderPlayers(){
         <div class="pc-right">
           <div class="pc-blurb">${esc(blurb)}</div>
           ${comNotes}
-          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${nVotes(p)?`<span class="skill"><span class="ic">🗳️</span>${nVotes(p)} ${source==='official'?'committee ':''}vote${nVotes(p)>1?'s':''}</span>`:''}${pickChips}</div>
+          <div class="pc-skills">${golfChip}${drinkChip}${tierChip}<span class="skill"><span class="ic">${p.gender==='F'?'♀':'♂'}</span>${p.gender==='F'?'Girl':'Boy'}</span>${nVotes(p)?`<span class="skill"><span class="ic">🗳️</span>${nVotes(p)} ${source!=='people'?'committee ':''}vote${nVotes(p)>1?'s':''}</span>`:''}${pickChips}</div>
           ${(p.pubComments&&p.pubComments.length)?`<div class="pc-pub"><b>People's takes:</b> ${p.pubComments.slice(0,6).map(x=>'“'+esc(x)+'”').join(' · ')}</div>`:''}
         </div>
       </div>`;
@@ -1178,7 +1202,7 @@ async function submitVotes(){
   genders.forEach(g=> voteOrder[g].forEach((nm,i)=>{ const st=cardState[nm]||{golf:0,drink:0,comment:''};
     rows.push({ voter_id:activeId(), voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1, member:com?committeeMember:null, committee:com }); }));
   const btn=document.getElementById('submitVotes'); btn.disabled=true; btn.textContent='Saving…';
-  if(await upsertVotes(rows)){ touched={M:false,F:false}; await fetchVotes(); if(com) source='official'; renderAll(); flash(com?('📋 Official ranking saved — thanks '+name+'!'):('🗳️ Ballot saved — thanks '+name+'!')); }
+  if(await upsertVotes(rows)){ touched={M:false,F:false}; await fetchVotes(); if(com) source='committee'; renderAll(); flash(com?('📋 Official ranking saved — thanks '+name+'!'):('🗳️ Ballot saved — thanks '+name+'!')); }
   btn.disabled=false; btn.textContent=com?'📋 Submit official ranking':'🗳️ Submit my ballot';
 }
 document.getElementById('submitVotes').addEventListener('click',submitVotes);
@@ -1254,6 +1278,8 @@ document.getElementById('engineSeg').addEventListener('click',e=>{ const b=e.tar
 function syncSourceToggle(){
   const grp=document.getElementById('engineGroup');
   grp.style.display = configured ? '' : 'none';
+  document.querySelector('#engineSeg button[data-e="ai"]').style.display = aiExists()?'':'none';
+  if(source==='ai' && !aiExists()) source='committee';
   document.querySelectorAll('#engineSeg button').forEach(x=>x.classList.toggle('active',x.dataset.e===source));
 }
 document.getElementById('playerSearch').addEventListener('input',e=>{ searchQ=e.target.value.toLowerCase().trim(); renderPlayerView(); });
@@ -1266,6 +1292,79 @@ function openM(m){m.classList.add('open')} function closeM(m){m.classList.remove
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',e=>closeM(e.target.closest('.modal'))));
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeM(m)}));
 document.getElementById('adminLink').addEventListener('click',()=>{ if(isAdmin){ openM(aiModal); } else { openM(loginModal); setTimeout(()=>document.getElementById('pwInput').focus(),50);} });
+
+/* ----- Ballot manager (admin: view + delete submitted ballots) ----- */
+const ballotModal=document.getElementById('ballotModal');
+let ballotFilter='all', ballotKind='player';
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ballotGroups(kind){
+  const rows = kind==='team' ? teamVotes : votes;
+  const map = new Map();
+  rows.forEach(r=>{
+    const id=r.voter_id; if(!map.has(id)) map.set(id,{voter_id:id, rows:[]});
+    map.get(id).rows.push(r);
+  });
+  return [...map.values()].map(g=>{
+    const any=g.rows[0]||{};
+    const committee = g.rows.some(r=>r.committee);
+    const name = any.member || any.voter_name || (committee?'A committee member':'Anonymous');
+    return { voter_id:g.voter_id, name, committee, rows:g.rows };
+  }).sort((a,b)=> (b.committee-a.committee) || a.name.localeCompare(b.name));
+}
+function renderBallotManager(){
+  const wrap=document.getElementById('ballotList'); if(!wrap) return;
+  if(!sb){ wrap.innerHTML='<p class="hint">Not connected to the database.</p>'; return; }
+  let groups=ballotGroups(ballotKind);
+  if(ballotFilter==='committee') groups=groups.filter(g=>g.committee);
+  else if(ballotFilter==='people') groups=groups.filter(g=>!g.committee);
+  if(!groups.length){ wrap.innerHTML='<p class="hint">No ballots match this filter yet.</p>'; return; }
+  wrap.innerHTML = groups.map(g=>{
+    let detail;
+    if(ballotKind==='team'){
+      const ranked=g.rows.filter(r=>typeof r.team_rank==='number').sort((a,b)=>a.team_rank-b.team_rank);
+      const champ=g.rows.find(r=>r.champion);
+      const nm=id=>{ const t=teams.find(x=>x.id===id); return t?t.name:('Team '+id); };
+      detail = ranked.map(r=>r.team_rank+'. '+esc(nm(r.team_id))).join(' &nbsp;·&nbsp; ') || '<span class="hint">no order saved</span>';
+      if(champ) detail += ' <b style="color:var(--gold)">👑 '+esc(nm(champ.team_id))+'</b>';
+    } else {
+      const rated=g.rows.filter(r=>r.golf||r.drink).length;
+      const ranked=g.rows.filter(r=>typeof r.rank==='number').length;
+      const cmts=g.rows.filter(r=>r.comment&&r.comment.trim()).length;
+      detail = `${g.rows.length} players · ${rated} rated · ${ranked} ranked${cmts?` · ${cmts} comment${cmts>1?'s':''}`:''}`;
+    }
+    const badge = g.committee
+      ? '<span class="badge" style="background:#fdf4d6;color:#7a5a12;border:1px solid var(--gold)">🏛️ Committee</span>'
+      : '<span class="badge" style="background:#eef3ee;color:var(--green);border:1px solid #cfe0cf">👥 People</span>';
+    return `<div class="ballot-row" style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(g.name)} ${badge}</div>
+        <div class="hint" style="margin-top:3px">${detail}</div>
+      </div>
+      <button class="btn ghost danger" data-del-kind="${ballotKind}" data-del-id="${esc(g.voter_id)}" data-del-name="${esc(g.name)}" style="flex:0 0 auto">🗑️ Delete</button>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('[data-del-id]').forEach(b=>b.addEventListener('click',()=>deleteBallot(b.dataset.delKind,b.dataset.delId,b.dataset.delName)));
+}
+async function deleteBallot(kind,voterId,name){
+  if(!sb){ flash('Not connected to the database',true); return; }
+  if(!confirm(`Delete ${name}'s ${kind==='team'?'team':'player'} ballot? This removes it from the rankings for everyone.`)) return;
+  const table = kind==='team'?'team_votes':'votes';
+  try{
+    const { error } = await sb.from(table).delete().eq('voter_id',voterId);
+    if(error) throw error;
+    await Promise.all([fetchVotes(),fetchTeamVotes()]);
+    renderBallotManager(); renderAll(); updateCStat();
+    flash('🗑️ Ballot deleted');
+  }catch(e){ console.error(e); flash('Delete failed — run the delete-policy SQL ('+(e.message||e)+')',true); }
+}
+document.getElementById('ballotFilterSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; document.querySelectorAll('#ballotFilterSeg button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); ballotFilter=b.dataset.f; renderBallotManager(); });
+document.getElementById('ballotKindSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; document.querySelectorAll('#ballotKindSeg button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); ballotKind=b.dataset.k; renderBallotManager(); });
+document.getElementById('openBallots').addEventListener('click',async()=>{
+  openM(ballotModal);
+  document.getElementById('ballotList').innerHTML='<p class="hint">Loading ballots…</p>';
+  if(sb){ try{ await Promise.all([fetchVotes(),fetchTeamVotes()]); }catch(e){} }
+  renderBallotManager();
+});
 
 async function sha256(s){ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
 async function tryLogin(){ const pw=document.getElementById('pwInput').value; const err=document.getElementById('loginErr'); err.textContent='';
@@ -1308,7 +1407,7 @@ document.getElementById('openAI').addEventListener('click',()=>{ aiKeyEl.value=l
 document.getElementById('aiModel').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; document.querySelectorAll('#aiModel button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); aiModel=b.dataset.m; });
 aiKeyEl.addEventListener('change',()=>{ if(aiKeyEl.value.trim()) localStorage.setItem(AI_KEY_LS,aiKeyEl.value.trim()); });
 document.getElementById('aiClear').addEventListener('click',async()=>{ if(!confirm('Remove AI rankings for everyone (revert to crowd average)?'))return;
-  aiData=null; source="official"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
+  aiData=null; source="committee"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
 
 function buildAIPrompt(){
   const ps=SEED.players.map(seed=>{
@@ -1361,7 +1460,7 @@ async function generateAI(){
     const a=text.indexOf('{'), z=text.lastIndexOf('}'); if(a>=0&&z>a) text=text.slice(a,z+1);
     const parsed=JSON.parse(text);
     parsed.updatedAt=new Date().toISOString();
-    aiData=parsed; source="official";
+    aiData=parsed; source="ai";
     aiLog(`✓ Built rankings for ${parsed.players?.length||0} players.`,'ok');
     if(data.usage) aiLog(`Tokens: ${data.usage.input_tokens} in / ${data.usage.output_tokens} out.`);
     if(sb){ const { error }=await sb.from('ai_rankings').upsert({id:1,data:parsed,updated_at:parsed.updatedAt}); if(error) aiLog('Saved locally but cloud save failed: '+error.message,'bad'); else aiLog('Saved to the cloud — everyone sees these now.','ok'); }
@@ -1382,7 +1481,7 @@ async function boot(){
   renderAll();              // instant paint with seed/fallback
   if(sb){ await Promise.all([fetchVotes(), fetchAI(), fetchProfiles(), fetchTeamVotes(), fetchConfig()]); }
   // default each view to wherever the data actually is, so it visibly reflects votes
-  source = (committeeExists()||aiExists()) ? 'official' : (peopleExists()?'people':'official');
+  source = aiExists() ? 'ai' : (committeeExists() ? 'committee' : (peopleExists()?'people':'committee'));
   teamSource = teamAiExists() ? 'ai' : (teamVotes.some(v=>!v.committee)?'people':(teamVotes.some(v=>v.committee)?'committee':'ai'));
   initBallotFromVotes(); initTeamBallot();
   updateCStat(); renderAll();
