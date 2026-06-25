@@ -1071,15 +1071,23 @@ document.getElementById('voteStepSeg').addEventListener('click',e=>{ const b=e.t
 document.getElementById('teamEngineSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; teamSource=b.dataset.te; renderTeams(); });
 
 async function upsertVotes(rows){
+  const up = r => sb.from('votes').upsert(r,{ onConflict:'voter_id,player_name' });
   try{
-    let { error } = await sb.from('votes').upsert(rows,{ onConflict:'voter_id,player_name' });
-    if(error && /rank/i.test(error.message||'')){
-      const stripped=rows.map(({rank,...r})=>r);
-      ({ error } = await sb.from('votes').upsert(stripped,{ onConflict:'voter_id,player_name' }));
-      if(!error){ flash('Saved — but ask the organizer to enable ordering.'); return true; }
+    let { error } = await up(rows);
+    // If a column from a not-yet-run migration is missing, degrade gracefully so the
+    // ballot still saves (rankings just lose that extra until the organizer runs the SQL).
+    if(error && /column|schema|rank|member|committee/i.test(error.message||'')){
+      const core = rows.map(({voter_id,voter_name,player_name,golf,drink,comment})=>({voter_id,voter_name,player_name,golf,drink,comment:comment??null}));
+      let r2 = await up(core);
+      if(r2.error && /column|schema|comment/i.test(r2.error.message||'')){
+        const min = rows.map(({voter_id,voter_name,player_name,golf,drink})=>({voter_id,voter_name,player_name,golf,drink}));
+        r2 = await up(min);
+      }
+      if(!r2.error){ flash('Saved! (Some extras need the DB update — tell the organizer.)'); return true; }
+      error = r2.error;
     }
     if(error && /check|constraint|violat/i.test(error.message||'')){
-      flash('Organizer must run the quick database update first (rating scale).',true); return false;
+      flash('Organizer must run the database update (rating scale).',true); return false;
     }
     if(error) throw error;
     return true;
@@ -1091,8 +1099,7 @@ async function submitVotes(){
   if(com){ name=committeeMember; }
   else { name=document.getElementById('voterName').value.trim(); if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; } voterName=name; localStorage.setItem('armoimc3_voter_name',name); }
   const already=votes.some(v=>v.voter_id===activeId());
-  const genders=["M","F"].filter(g=> touched[g] || already);
-  if(!genders.length){ flash('Drag some players or rate them first 🙂',true); return; }
+  const genders=["M","F"];   // always record a full ballot (their current order counts)
   const rows=[];
   genders.forEach(g=> voteOrder[g].forEach((nm,i)=>{ const st=cardState[nm]||{golf:0,drink:0,comment:''};
     rows.push({ voter_id:activeId(), voter_name:name, player_name:nm, golf:st.golf||0, drink:st.drink||0, comment:st.comment||null, rank:i+1, member:com?committeeMember:null, committee:com }); }));
