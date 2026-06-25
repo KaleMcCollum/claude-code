@@ -57,3 +57,13 @@ drop policy if exists "anon update team_votes" on team_votes;
 create policy "anon read team_votes"   on team_votes for select using (true);
 create policy "anon insert team_votes" on team_votes for insert with check (true);
 create policy "anon update team_votes" on team_votes for update using (true) with check (true);
+
+-- 6) admin-published site config (team names/blurbs + Rules text)
+create table if not exists config (id int primary key, data jsonb, updated_at timestamptz default now());
+alter table config enable row level security;
+drop policy if exists "anon read config"   on config;
+drop policy if exists "anon insert config" on config;
+drop policy if exists "anon update config" on config;
+create policy "anon read config"   on config for select using (true);
+create policy "anon insert config" on config for insert with check (true);
+create policy "anon update config" on config for update using (true) with check (true);
