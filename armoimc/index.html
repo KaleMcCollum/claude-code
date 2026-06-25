@@ -366,7 +366,10 @@
     </div>
     <div style="text-align:center;margin-top:22px">
       <button class="btn gold big" id="homeVoteBtn">⭐ Rank players &amp; crown your champion</button>
-      <p class="hint" style="margin-top:10px">Rank the field, claim your player, and crown a champion.</p>
+      <div style="margin-top:14px">
+        <button class="btn ghost" id="homeClaimBtn">📸 Claim your player</button>
+      </div>
+      <p class="hint" style="margin-top:10px">Rank the field &amp; crown a champion — or <b>claim your player</b> to add your photo &amp; stats.</p>
     </div>
   </section>
 
@@ -1297,6 +1300,7 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
 function goTab(panel){ const t=document.querySelector(`.tab[data-panel="${panel}"]`); if(t) t.click(); }
 document.querySelectorAll('.land-card').forEach(c=>c.addEventListener('click',()=>goTab(c.dataset.go)));
 document.getElementById('homeVoteBtn').addEventListener('click',()=>goTab('vote'));
+document.getElementById('homeClaimBtn').addEventListener('click',openClaim);
 function seg(id,fn){ document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
   e.currentTarget.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); fn(b); renderPlayerView(); }); }
 seg('genderSeg',b=>genderF=b.dataset.g); seg('dimSeg',b=>dimension=b.dataset.d); seg('viewSeg',b=>view=b.dataset.view);
