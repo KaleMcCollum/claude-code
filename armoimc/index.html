@@ -53,6 +53,12 @@
   .tab.active{color:var(--green);border-bottom-color:var(--green)}
   .tab.vote{color:var(--gold-ink)}
   .tab.vote.active{color:var(--gold-ink);border-bottom-color:var(--gold)}
+  .morewrap{position:relative;display:flex}
+  .moremenu{display:none;position:absolute;top:100%;right:0;min-width:188px;background:var(--panel);border:1px solid var(--line2);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:6px;z-index:60}
+  .moremenu.open{display:block}
+  .moreitem{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);font-family:var(--label);font-weight:600;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;padding:11px 14px;border-radius:8px;cursor:pointer;transition:.12s}
+  .moreitem:hover{background:var(--panel2);color:var(--green)}
+  .moreitem.active{background:var(--green);color:#fff}
 
   .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
   .ballotnote{font-size:.82rem;color:var(--muted);font-weight:600}
@@ -351,10 +357,15 @@
   <button class="tab active" data-panel="home">🏠 Home</button>
   <button class="tab" data-panel="teams">Team Rankings</button>
   <button class="tab" data-panel="players">Player Rankings</button>
-  <button class="tab vote" data-panel="vote">⭐ Vote</button>
-  <button class="tab" data-panel="predict">🔮 Predictions</button>
-  <button class="tab" data-panel="play">🎮 Play</button>
   <button class="tab" data-panel="about">The Rules</button>
+  <div class="morewrap">
+    <button class="tab moretab" id="moreTab" aria-haspopup="true">⋯ More ▾</button>
+    <div class="moremenu" id="moreMenu">
+      <button class="moreitem" data-panel="vote">⭐ Vote</button>
+      <button class="moreitem" data-panel="predict">🔮 Predictions</button>
+      <button class="moreitem" data-panel="play">🎮 Play the Course</button>
+    </div>
+  </div>
 </nav>
 
 <div class="wrap">
@@ -1487,17 +1498,21 @@ async function deletePrediction(id){
 /* =========================================================
    MINI GOLF GAME (top-down)  — pick club, lock power, lock aim
    ========================================================= */
+// bend = lateral offset of the fairway midpoint (signed: +right / -left); greenX = lateral of the green.
+// hazards: {type:'water'|'bunker', x0,x1,y0,y1} in yards (along=y, lateral=x).
 const GOLF_COURSE = [
-  { num:1, par:4, yards:306, hazards:[{x0:-24,x1:-4,y0:120,y1:215}] },  // water left of landing
-  { num:2, par:4, yards:323, hazards:[] },
-  { num:3, par:3, yards:142, hazards:[] },
-  { num:4, par:4, yards:326, hazards:[] },
-  { num:5, par:4, yards:349, hazards:[] },
-  { num:6, par:5, yards:407, hazards:[] },
-  { num:7, par:3, yards:156, hazards:[] },
-  { num:8, par:5, yards:437, hazards:[] },
-  { num:9, par:4, yards:276, hazards:[] },
+  { num:1, par:4, yards:306, bend:6,   greenX:8,   hazards:[{type:'water', x0:-26,x1:-4,y0:120,y1:215}] },
+  { num:2, par:4, yards:323, bend:-26, greenX:-22, hazards:[{type:'bunker',x0:-30,x1:-20,y0:285,y1:305}] },          // dogleg left
+  { num:3, par:3, yards:142, bend:0,   greenX:0,   hazards:[{type:'bunker',x0:-14,x1:-5,y0:118,y1:132}] },
+  { num:4, par:4, yards:326, bend:8,   greenX:10,  hazards:[] },
+  { num:5, par:4, yards:349, bend:4,   greenX:0,   hazards:[] },
+  { num:6, par:5, yards:407, bend:-16, greenX:6,   hazards:[{type:'bunker',x0:2,x1:12,y0:385,y1:402}] },
+  { num:7, par:3, yards:156, bend:0,   greenX:0,   hazards:[{type:'bunker',x0:6,x1:16,y0:120,y1:140},{type:'bunker',x0:-14,x1:-6,y0:70,y1:84}] },
+  { num:8, par:5, yards:437, bend:26,  greenX:20,  hazards:[{type:'bunker',x0:10,x1:20,y0:415,y1:435}] },           // dogleg right
+  { num:9, par:4, yards:276, bend:2,   greenX:0,   hazards:[{type:'bunker',x0:-16,x1:-6,y0:228,y1:252},{type:'bunker',x0:8,x1:18,y0:232,y1:256}] },
 ];
+// fairway centerline (quadratic): lateral offset at forward distance `by`
+function holeCenterX(hole, by){ const t=Math.max(0,Math.min(1, by/hole.yards)); const c=hole.bend||0, g=hole.greenX||0; return 2*(1-t)*t*c + t*t*g; }
 const GOLF_CLUBS = [
   {name:'DR',yds:265},{name:'3W',yds:235},{name:'5W',yds:210},{name:'4i',yds:190},
   {name:'6i',yds:170},{name:'8i',yds:145},{name:'PW',yds:120},{name:'SW',yds:80},{name:'PT',yds:16},
@@ -1511,32 +1526,44 @@ function golfDims(){ const c=golfCv(); const W=c.width, H=c.height, topM=46, bot
 function gx(bx){ const {W,xScale}=golfDims(); return W/2 + bx*xScale; }
 function gy(by){ const {H,botM,yScale}=golfDims(); return H-botM - by*yScale; }
 function golfDraw(){
-  const c=golfCv(); if(!c) return; const ctx=c.getContext('2d'); const {W,H,hole}=golfDims();
+  const c=golfCv(); if(!c) return; const ctx=c.getContext('2d'); const {W,H,hole,xScale}=golfDims();
   ctx.clearRect(0,0,W,H);
   // rough background
   ctx.fillStyle='#3c7438'; ctx.fillRect(0,0,W,H);
-  // subtle texture stripes
   ctx.fillStyle='rgba(255,255,255,.03)'; for(let i=0;i<H;i+=22) ctx.fillRect(0,i,W,11);
-  // fairway corridor
-  const fwHalf=26; ctx.fillStyle='#5aa04e'; ctx.beginPath();
-  const xl=gx(-fwHalf), xr=gx(fwHalf), yTee=gy(-6), yGrn=gy(hole.yards+4);
-  roundRectPath(ctx, xl, yGrn, xr-xl, yTee-yGrn, 26); ctx.fill();
-  // hazards (water)
-  (hole.hazards||[]).forEach(hz=>{ ctx.fillStyle='#2f6d8c'; const hx=gx(hz.x0), hw=gx(hz.x1)-gx(hz.x0), hy=gy(hz.y1), hh=gy(hz.y0)-gy(hz.y1); roundRectPath(ctx,hx,hy,hw,hh,10); ctx.fill(); });
+  // fairway: thick stroked ribbon following the curved centerline
+  const fwHalf=24; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle='#5aa04e'; ctx.lineWidth=fwHalf*2*xScale;
+  ctx.beginPath();
+  for(let s=0;s<=24;s++){ const by=(hole.yards+6)*(s/24)-3; const X=gx(holeCenterX(hole,by)); const Y=gy(by); if(s===0)ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }
+  ctx.stroke();
+  // lighter mow stripe down the middle
+  ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.lineWidth=fwHalf*0.9*xScale; ctx.stroke();
+  // hazards
+  (hole.hazards||[]).forEach(hz=>{ const hx=gx(hz.x0), hw=gx(hz.x1)-gx(hz.x0), hy=gy(hz.y1), hh=gy(hz.y0)-gy(hz.y1);
+    if(hz.type==='bunker'){ ctx.fillStyle='#e6d6a8'; ctx.strokeStyle='#cdbb84'; ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(hx+hw/2,hy+hh/2,Math.abs(hw)/2,Math.abs(hh)/2,0,0,7); ctx.fill(); ctx.stroke(); }
+    else { ctx.fillStyle='#2f6d8c'; roundRectPath(ctx,hx,hy,hw,hh,10); ctx.fill(); } });
+  // trees (decoration, precomputed per hole)
+  (G.trees||[]).forEach(t=>{ const tx=gx(t.x), ty=gy(t.y), r=t.r*xScale; ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.arc(tx+2,ty+2,r,0,7); ctx.fill(); ctx.fillStyle=t.c; ctx.beginPath(); ctx.arc(tx,ty,r,0,7); ctx.fill(); ctx.fillStyle='rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(tx-r*0.3,ty-r*0.3,r*0.5,0,7); ctx.fill(); });
   // green
-  ctx.fillStyle='#7ec46a'; ctx.beginPath(); ctx.arc(gx(0),gy(hole.yards),13*golfDims().xScale,0,7); ctx.fill();
+  const gX=hole.greenX||0; ctx.fillStyle='#7ec46a'; ctx.beginPath(); ctx.arc(gx(gX),gy(hole.yards),13*xScale,0,7); ctx.fill();
   // pin + flag
-  const px=gx(0), py=gy(hole.yards); ctx.strokeStyle='#eee'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py-20); ctx.stroke();
+  const px=gx(gX), py=gy(hole.yards); ctx.strokeStyle='#eee'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py-20); ctx.stroke();
   ctx.fillStyle='#d33'; ctx.beginPath(); ctx.moveTo(px,py-20); ctx.lineTo(px+14,py-15); ctx.lineTo(px,py-10); ctx.fill();
   ctx.fillStyle='#1a1a1a'; ctx.beginPath(); ctx.arc(px,py,3,0,7); ctx.fill();
   // ball
   const bxp=gx(G.bx), byp=gy(G.by); ctx.fillStyle='#fff'; ctx.strokeStyle='rgba(0,0,0,.3)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(bxp,byp,5,0,7); ctx.fill(); ctx.stroke();
-  // aim guide line toward pin (faint) when aiming/ready
+  // aim guide toward pin
   if(G.phase==='ready'||G.phase==='power'){ ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.setLineDash([4,5]); ctx.beginPath(); ctx.moveTo(bxp,byp); ctx.lineTo(px,py); ctx.stroke(); ctx.setLineDash([]); }
-  // ---- meters ----
   if(G.phase==='power'){ drawPowerMeter(ctx,W,H); }
   if(G.phase==='aim'){ drawAimMeter(ctx,W,H,bxp,byp); }
 }
+// deterministic tree line along both edges of the fairway for the current hole
+function golfBuildTrees(hole){ let s=(hole.num*9301+49297)%233280; const rnd=()=>{ s=(s*9301+49297)%233280; return s/233280; };
+  const trees=[]; const cols=['#2f5d2b','#356a30','#2a5527'];
+  for(let by=14; by<hole.yards-6; by+=16){ const cx=holeCenterX(hole,by);
+    [-1,1].forEach(side=>{ if(rnd()<0.22) return; const off=26+rnd()*16; trees.push({x:cx+side*off, y:by+rnd()*8-4, r:5+rnd()*4, c:cols[(by+side)%3<0?0:Math.floor(rnd()*3)]}); }); }
+  return trees; }
 function roundRectPath(ctx,x,y,w,h,r){ r=Math.min(r,Math.abs(w)/2,Math.abs(h)/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawPowerMeter(ctx,W,H){ const x=16,y=110,w=20,h=320; ctx.fillStyle='rgba(0,0,0,.35)'; roundRectPath(ctx,x,y,w,h,8); ctx.fill();
   const fillH=h*G.meter; const grad=ctx.createLinearGradient(0,y+h,0,y); grad.addColorStop(0,'#2ecc71'); grad.addColorStop(.7,'#f1c40f'); grad.addColorStop(1,'#e74c3c');
@@ -1560,19 +1587,24 @@ function golfApplyShot(){
   const hole=GOLF_COURSE[G.hole]; const club=GOLF_CLUBS[G.club];
   const dist=Math.max(2, club.yds*G.power);
   const maxDeg=(6+club.yds/265*7); const ang=G.aim*maxDeg*Math.PI/180;
-  const base=Math.atan2(0-G.bx, Math.max(1,hole.yards-G.by));
+  // base aim ALWAYS points straight at the hole (green); the aim meter only adds left/right error
+  const gX=hole.greenX||0;
+  const base=Math.atan2(gX-G.bx, Math.max(1,hole.yards-G.by));
   const theta=base+ang;
   let nby=G.by + dist*Math.cos(theta);
   let nbx=G.bx + dist*Math.sin(theta);
   let penalty=0, msg='';
-  // water hazard check (endpoint inside zone)
-  for(const hz of (hole.hazards||[])){ if(nbx>=hz.x0&&nbx<=hz.x1&&nby>=hz.y0&&nby<=hz.y1){ penalty=1; nby=hz.y0-6; nbx=0; msg='💦 Splash! +1 penalty'; break; } }
+  // water = penalty + drop short; bunkers are playable (no penalty)
+  for(const hz of (hole.hazards||[])){ if(nbx>=hz.x0&&nbx<=hz.x1&&nby>=hz.y0&&nby<=hz.y1){
+    if(hz.type==='water'){ penalty=1; nby=hz.y0-6; nbx=Math.max(-20,Math.min(20,gX)); msg='💦 Splash! +1 penalty'; }
+    else { msg='🏖️ In the bunker — tough lie.'; }
+    break; } }
   // off-line into deep rough / lost
   if(Math.abs(nbx)>54){ if(Math.abs(nbx)>72){ penalty=penalty||1; msg=msg||'🌲 Lost it — +1 penalty'; } nbx=Math.max(-46,Math.min(46,nbx)); }
   if(nby<0) nby=0;
   return { from:{x:G.bx,y:G.by}, to:{x:nbx,y:nby}, penalty, msg, dist };
 }
-function golfDistToPin(x,y){ const hole=GOLF_COURSE[G.hole]; return Math.hypot(x-0, y-hole.yards); }
+function golfDistToPin(x,y){ const hole=GOLF_COURSE[G.hole]; return Math.hypot(x-(hole.greenX||0), y-hole.yards); }
 function golfResolve(){
   const r=golfApplyShot();
   G.strokes += 1 + r.penalty;
@@ -1626,7 +1658,8 @@ function golfLock(){
   else if(G.phase==='aim'){ golfStop(); golfResolve(); golfSetButtons(); }
 }
 function golfLoadHole(i){ G.hole=i; G.strokes=0; G.by=0; G.bx=0; G.onGreen=false; G.phase='ready';
-  G.club=golfSuggestClub(GOLF_COURSE[i].yards); setGolfMsg(GOLF_COURSE[i].placeholder?`Hole ${GOLF_COURSE[i].num} (layout TBD) — give it a rip!`:`Hole ${GOLF_COURSE[i].num} — give it a rip!`);
+  G.trees=golfBuildTrees(GOLF_COURSE[i]);
+  G.club=golfSuggestClub(GOLF_COURSE[i].yards); setGolfMsg(`Hole ${GOLF_COURSE[i].num} — give it a rip!`);
   renderGolfClubs(); golfUpdateHud(); golfDraw(); golfSetButtons(); }
 function golfNextHole(){ if(G.hole<GOLF_COURSE.length-1) golfLoadHole(G.hole+1); }
 function golfReset(){ G.scores=[]; golfStop(); if(G.anim) cancelAnimationFrame(G.anim); golfLoadHole(0); }
@@ -1642,13 +1675,25 @@ function golfInit(){ if(golfInited) return; golfInited=true; G.scores=[]; golfLo
 /* =========================================================
    TABS + FILTERS
    ========================================================= */
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+const MORE_PANELS=['vote','predict','play'];
+function closeMoreMenu(){ const m=document.getElementById('moreMenu'); if(m) m.classList.remove('open'); }
+function showPanel(panel){
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active'); document.getElementById('panel-'+t.dataset.panel).classList.add('active');
+  const pEl=document.getElementById('panel-'+panel); if(pEl) pEl.classList.add('active');
+  if(MORE_PANELS.includes(panel)){ const mt=document.getElementById('moreTab'); if(mt) mt.classList.add('active'); }
+  else { const tb=document.querySelector(`.tab[data-panel="${panel}"]`); if(tb) tb.classList.add('active'); }
+  closeMoreMenu();
   window.scrollTo({top:0,behavior:'smooth'});
-}));
-function goTab(panel){ const t=document.querySelector(`.tab[data-panel="${panel}"]`); if(t) t.click(); }
+  // per-tab side effects
+  if(panel==='predict'){ const pn=document.getElementById('predName'); if(pn && !pn.value && voterName) pn.value=voterName; (async()=>{ if(sb) await fetchPredictions(); renderPredict(); })(); }
+  if(panel==='play'){ golfInit(); golfDraw(); }
+}
+function goTab(panel){ showPanel(panel); }
+document.querySelectorAll('.tab[data-panel]').forEach(t=>t.addEventListener('click',()=>showPanel(t.dataset.panel)));
+document.getElementById('moreTab').addEventListener('click',e=>{ e.stopPropagation(); document.getElementById('moreMenu').classList.toggle('open'); });
+document.querySelectorAll('.moreitem').forEach(b=>b.addEventListener('click',()=>showPanel(b.dataset.panel)));
+document.addEventListener('click',e=>{ if(!e.target.closest('.morewrap')) closeMoreMenu(); });
 document.querySelectorAll('.land-card').forEach(c=>c.addEventListener('click',()=>goTab(c.dataset.go)));
 document.getElementById('homeVoteBtn').addEventListener('click',()=>goTab('vote'));
 document.getElementById('homeClaimBtn').addEventListener('click',openClaim);
@@ -1656,7 +1701,6 @@ document.getElementById('homeClaimBtn').addEventListener('click',openClaim);
 document.getElementById('predTeam').addEventListener('change',e=>{ predTeamId=+e.target.value; renderPredictDrinks(); });
 document.getElementById('predScore').addEventListener('input',updatePredResult);
 document.getElementById('predSubmit').addEventListener('click',submitPrediction);
-document.querySelector('.tab[data-panel="predict"]').addEventListener('click',async()=>{ const pn=document.getElementById('predName'); if(pn && !pn.value && voterName) pn.value=voterName; if(sb){ await fetchPredictions(); } renderPredict(); });
 function seg(id,fn){ document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
   e.currentTarget.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); fn(b); renderPlayerView(); }); }
 seg('genderSeg',b=>genderF=b.dataset.g); seg('dimSeg',b=>dimension=b.dataset.d); seg('viewSeg',b=>view=b.dataset.view);
@@ -1816,7 +1860,7 @@ async function cmTryLogin(){
 document.getElementById('cmGo').addEventListener('click',cmTryLogin);
 document.getElementById('cmPw').addEventListener('keydown',e=>{if(e.key==='Enter')cmTryLogin();});
 document.getElementById('cmLogout').addEventListener('click',()=>{ setCommittee(null); renderAll(); flash('Logged out of committee'); });
-function openProForm(){ document.querySelector('.tab[data-panel="vote"]').click(); window.scrollTo({top:0,behavior:'smooth'}); }
+function openProForm(){ goTab('vote'); window.scrollTo({top:0,behavior:'smooth'}); }
 document.getElementById('openProForm').addEventListener('click',openProForm);
 
 function updateCStat(){ const el=document.getElementById('cstat'), txt=document.getElementById('cstatText');
