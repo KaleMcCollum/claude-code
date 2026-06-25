@@ -1,11 +1,16 @@
-name: Deploy ranch-game to GitHub Pages
+name: Deploy site to GitHub Pages
 
-# Publishes ranch-game/ to GitHub Pages on every push to the dev branch,
-# so a single URL (https://<user>.github.io/claude-code/) always shows the latest build.
+# Publishes static sites to GitHub Pages on every push to main:
+#   ranch-game/  -> site root   (https://<user>.github.io/claude-code/)
+#   armoimc/     -> /armoimc/   (https://<user>.github.io/claude-code/armoimc/)
 on:
   push:
     branches: ["main"]
-    paths: ["ranch-game/**", ".github/workflows/deploy-ranch-game.yml", ".nojekyll"]
+    paths:
+      - "ranch-game/**"
+      - "armoimc/**"
+      - ".github/workflows/deploy-ranch-game.yml"
+      - ".nojekyll"
   workflow_dispatch:
 
 permissions:
@@ -26,12 +31,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Assemble site (ranch-game at root, armoimc at /armoimc)
+        run: |
+          mkdir -p _site/armoimc
+          cp -r ranch-game/. _site/
+          cp -r armoimc/. _site/armoimc/
+          touch _site/.nojekyll
       - name: Configure Pages
         uses: actions/configure-pages@v5
-      - name: Upload ranch-game as the site
+      - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ranch-game
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
