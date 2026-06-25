@@ -8,8 +8,8 @@ create table if not exists votes (
   voter_id    text not null,           -- random id saved in the voter's browser
   voter_name  text,                    -- the name they typed
   player_name text not null,           -- which competitor they're rating
-  golf        int check (golf between 0 and 5),
-  drink       int check (drink between 0 and 5),
+  golf        int check (golf between 0 and 7),
+  drink       int check (drink between 0 and 7),
   rank        int,                     -- this voter's personal ranking position
   comment     text,
   created_at  timestamptz default now(),

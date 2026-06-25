@@ -92,7 +92,14 @@
   .tteam{font-size:.7rem;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
   .stars{font-size:.9rem;letter-spacing:1px;white-space:nowrap}
   .stars .on{color:var(--gold)} .stars .off{color:var(--line2)}
-  .metric{display:flex;flex-direction:column;align-items:flex-end;min-width:110px;gap:2px}
+  .metric{display:flex;flex-direction:column;align-items:flex-end;min-width:120px;gap:2px}
+  .lvl{font-size:.78rem;font-weight:700;color:#cdd6e6;text-align:right} .lvl small{color:var(--muted2);font-weight:600}
+  .pick{display:flex;flex-direction:column;gap:3px;min-width:200px;flex:1}
+  .pick .lab{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);font-weight:800}
+  .sel{appearance:none;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--ink);font-family:inherit;font-size:.85rem;padding:8px 10px;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 14px,calc(100% - 11px) 14px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:30px}
+  .sel:focus{outline:none;border-color:var(--gold)}
+  .sel.set{border-color:var(--gold)}
+  .sel option{background:var(--bg2);color:var(--ink)}
   .ttier{font-family:"Anton",sans-serif;font-size:1.1rem;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#0a0a0a;flex:none}
   .T-S{background:linear-gradient(160deg,#ffd75e,#f5a623)} .T-A{background:linear-gradient(160deg,#ff7a7a,#e23b3b);color:#fff}
   .T-B{background:linear-gradient(160deg,#6fb1ff,#2f7bff);color:#fff} .T-C{background:linear-gradient(160deg,#7d8aa0,#525c6e);color:#fff}
@@ -266,7 +273,7 @@
   <section class="panel" id="panel-vote">
     <div class="voteintro">
       <h2>⭐ Cast your ballot</h2>
-      <p class="hint" style="font-size:.92rem"><b>Drag players into your personal order</b> — your #1 at the top, worst at the bottom (use the ↑↓ buttons on phone). Boys and girls are ranked on separate tabs. Add ⛳/🍺 star ratings &amp; a comment if you like. Everyone's ballots get pooled and the AI builds the official rankings. Come back and change yours anytime.</p>
+      <p class="hint" style="font-size:.92rem"><b>Drag players into your personal order</b> — your #1 at the top, worst at the bottom (use the ↑↓ buttons on phone). Boys and girls are ranked on separate tabs. Pick each player's ⛳ golf &amp; 🍺 drinking vibe from the dropdowns (and drop a comment) if you like. Everyone's ballots get pooled and the AI builds the official rankings. Come back and change yours anytime.</p>
       <div class="namerow">
         <input id="voterName" placeholder="Your name (so we can tally ballots)" />
       </div>
@@ -422,6 +429,26 @@ let isAdmin = sessionStorage.getItem("armoimc3_admin")==="1";
 let dimension="overall", genderF="all", view="list", searchQ="", engine="ai";
 let aiModel="claude-sonnet-4-6";
 const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
+const MAX_LVL = 7;
+// index 1..7 (0 = not rated)
+const GOLF_LEVELS = ["—",
+  "Cart jockey & beer caddy",
+  "Swings like hell, hits like shit",
+  "Blind squirrel finds a nut now and then",
+  "Chips in a couple clutch balls",
+  "Legit helps the squad",
+  "Lowkey a sandbagging ringer",
+  "Basically a pro — top 3 stick"];
+const DRINK_LEVELS = ["—",
+  "Sober Sally, nursing a seltzer (0–2)",
+  "Lightweight — two and done (3–5)",
+  "Respectable buzz (6–8)",
+  "Pulling their weight (9–11)",
+  "Heavyweight (12–14)",
+  "Liver of steel (15–18)",
+  "Certified animal — top 3 (19–21+)"];
+function levelLabel(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS; const i=Math.max(1,Math.min(MAX_LVL,Math.round(val||1))); return a[i]; }
+function levelOptions(kind,val){ const a=kind==='golf'?GOLF_LEVELS:DRINK_LEVELS; let h=`<option value="0" ${!val?'selected':''}>— pick one —</option>`; for(let i=1;i<=MAX_LVL;i++) h+=`<option value="${i}" ${val===i?'selected':''}>${a[i]}</option>`; return h; }
 
 // voter identity
 let voterId = localStorage.getItem("armoimc3_voter_id");
@@ -489,7 +516,7 @@ function useAI(){ return engine==="ai" && aiExists(); }
 /* =========================================================
    SCORING
    ========================================================= */
-function formulaScore(p){ return Math.round((W_GOLF*p.golf + (1-W_GOLF)*p.drink)*20); }
+function formulaScore(p){ return Math.round((W_GOLF*p.golf + (1-W_GOLF)*p.drink)/MAX_LVL*100); }
 function overallScore(p){ return (useAI()&&p.ai&&typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
 function tierOf(s){ return s>=90?"S":s>=80?"A":s>=70?"B":s>=60?"C":"D"; }
 function blurbOf(p){ if(useAI()&&p.ai&&p.ai.blurb) return p.ai.blurb; return p.comments&&p.comments.length?('“'+p.comments[0]+'”'):''; }
@@ -554,7 +581,9 @@ function renderPlayers(){
   list.forEach((p,i)=>{
     const c=TEAM_COLORS[p.team]||'#888'; const cap=teams.find(t=>t.id===p.team)?.captain===p.name;
     const o=p._o, tier=tierOf(o);
-    const metricStars=dimension==="overall"?`<span class="stars" style="font-size:.78rem">⛳${starHTML(p.golf)} 🍺${starHTML(p.drink)}</span>`:starHTML(dimension==="golf"?p.golf:p.drink);
+    const metricStars=dimension==="overall"
+      ? `<span class="lvl">⛳ ${p.golf.toFixed(1)} · 🍺 ${p.drink.toFixed(1)}<small> /7</small></span>`
+      : `<span class="lvl">${esc(levelLabel(dimension, dimension==="golf"?p.golf:p.drink))}</span>`;
     const row=document.createElement('div'); row.className='prow'+(i<3?' top3':'');
     row.innerHTML=`<div class="prank">${i+1}</div>
       <div class="pmeta"><div class="pname">${esc(p.name)} <span class="gtag ${p.gender}">${p.gender==='F'?'Girl':'Boy'}</span></div>
@@ -563,7 +592,7 @@ function renderPlayers(){
     const blurb=document.createElement('div'); blurb.className='pblurb';
     const label=(useAI()&&p.ai&&p.ai.blurb)?'✨ AI scouting report':'Notes';
     const extra=(p.comments&&p.comments.length>1)?`<div style="margin-top:6px"><b>Other comments:</b> ${p.comments.slice(1,4).map(c=>'“'+esc(c)+'”').join(' · ')}</div>`:'';
-    blurb.innerHTML=`<div class="scoreline"><span>⛳ Golf: ${starHTML(p.golf)} (${p.golf.toFixed(1)})</span><span>🍺 Drinking: ${starHTML(p.drink)} (${p.drink.toFixed(1)})</span><span>Overall: <b>${o}</b> · Tier ${tier}</span></div><b>${label}:</b> ${esc(blurbOf(p))||'—'}${extra}`;
+    blurb.innerHTML=`<div class="scoreline"><span>⛳ ${esc(levelLabel('golf',p.golf))} <small>(${p.golf.toFixed(1)}/7)</small></span><span>🍺 ${esc(levelLabel('drink',p.drink))} <small>(${p.drink.toFixed(1)}/7)</small></span><span>Overall <b>${o}</b> · Tier ${tier}</span></div><b>${label}:</b> ${esc(blurbOf(p))||'—'}${extra}`;
     row.addEventListener('click',()=>blurb.classList.toggle('open'));
     playerList.appendChild(row); playerList.appendChild(blurb);
   });
@@ -614,15 +643,14 @@ function renderVote(){
       <div class="rmain">
         <div class="rn">${esc(name)}<small>Team ${pl.team}</small></div>
         <div class="rrate">
-          <span class="rstars"><span class="lab">⛳ Golf</span> <span class="starset" data-k="golf"></span></span>
-          <span class="rstars"><span class="lab">🍺 Drinking</span> <span class="starset" data-k="drink"></span></span>
+          <label class="pick"><span class="lab">⛳ Golf</span><select class="sel${st.golf?' set':''}" data-k="golf">${levelOptions('golf',st.golf)}</select></label>
+          <label class="pick"><span class="lab">🍺 Drinking</span><select class="sel${st.drink?' set':''}" data-k="drink">${levelOptions('drink',st.drink)}</select></label>
         </div>
         <textarea class="rcomment2" placeholder="Optional take on ${esc(name)}…">${esc(st.comment||'')}</textarea>
       </div>
       <div class="arrows"><button data-act="up" ${idx===0?'disabled':''}>▲</button><button data-act="down" ${idx===order.length-1?'disabled':''}>▼</button></div>`;
-    card.querySelectorAll('.starset').forEach(ss=>{ const k=ss.dataset.k;
-      const paint=()=>{ ss.innerHTML=''; for(let i=1;i<=5;i++){ const s=document.createElement('span'); s.textContent='★'; s.className=i<=st[k]?'on':'off';
-        s.addEventListener('click',()=>{ st[k]=(st[k]===i?i-1:i); touched[voteGender]=true; paint(); }); ss.appendChild(s);} }; paint(); });
+    card.querySelectorAll('.sel').forEach(sel=>{ const k=sel.dataset.k;
+      sel.addEventListener('change',()=>{ st[k]=parseInt(sel.value,10)||0; sel.classList.toggle('set',!!st[k]); touched[voteGender]=true; }); });
     card.querySelector('.rcomment2').addEventListener('input',e=>{ st.comment=e.target.value; touched[voteGender]=true; });
     card.querySelectorAll('.arrows button').forEach(b=>b.addEventListener('click',()=>moveCard(idx, b.dataset.act==='up'?-1:1)));
     card.addEventListener('dragstart',e=>{ dragName=name; card.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
@@ -643,6 +671,9 @@ async function upsertVotes(rows){
       const stripped=rows.map(({rank,...r})=>r);
       ({ error } = await sb.from('votes').upsert(stripped,{ onConflict:'voter_id,player_name' }));
       if(!error){ flash('Saved — but ask the organizer to enable ordering.'); return true; }
+    }
+    if(error && /check|constraint|violat/i.test(error.message||'')){
+      flash('Organizer must run the quick database update first (rating scale).',true); return false;
     }
     if(error) throw error;
     return true;
@@ -721,7 +752,7 @@ function buildAIPrompt(){
   const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain}));
   return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice; good-natured.
 
-These ratings are CROWD-SOURCED: friends voted 1-5 stars on each competitor's golf skill and drinking game, and left comments. Use the averages as the backbone, weigh GOLF most for the overall (~60% golf / 40% drinking), and let the comments add nuance and color.
+These ratings are CROWD-SOURCED: friends ranked each competitor and rated them on a 1–7 scale for golf skill (1 = cart-jockey/beer-caddy, 7 = basically a pro) and drinking (1 = barely drinks, 7 = certified animal), and left comments. Use the averages as the backbone, weigh GOLF most for the overall (~60% golf / 40% drinking), and let the comments add nuance and color. Be playful and a little crude — this is a buddies' drinking-golf scramble.
 
 For EACH of the ${ps.length} players output:
 - "name": exact name as given
