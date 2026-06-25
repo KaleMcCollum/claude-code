@@ -23,9 +23,22 @@ Rankings are **derived automatically** from the per-player ratings you set in th
 - **Tiers:** S ≥ 90, A ≥ 80, B ≥ 70, C ≥ 60, D below.
 - **Team Power Index** = the average Overall of that team's five players.
 
-> Note: this is a static page, so the ranking "engine" is a transparent scoring formula rather than
-> a live LLM call (which would need a server + API key to be safe on a public page). If you want a
-> real AI write-up of each player from the comments, that can be added with a small backend later.
+### ✨ AI rankings (real Claude, no backend)
+In admin mode, **✨ AI Rankings** sends every player's stars + your scouting comments straight to the
+Claude API from your browser and gets back the **official** overall score, tier, and a scouting
+blurb for each player, plus a blurb for every team.
+
+- Paste a **Claude API key** — it's stored only in your browser (`localStorage`) and is **never**
+  included when you Publish.
+- Pick a model (Sonnet 4.6 for speed, Opus 4.8 for the best writeups).
+- The AI results are baked into your data; once you Publish, **visitors see them with no key needed.**
+- A **Engine: ✨ AI / Formula** toggle appears on the rankings so you can compare the AI ordering with
+  the raw star formula. **Clear AI data** reverts to the formula.
+
+> Security note: a browser-side API key can be read by anyone with access to that device, which is why
+> Anthropic calls this "dangerous direct browser access." Only the commissioner uses it, on their own
+> device, and it never leaves the browser or gets published — fine for this use case. Use a key you
+> can rotate. (A server-side proxy is the move if you ever want zero key exposure.)
 
 ## Admin mode (editing)
 The public can only view. To edit, click the faint **· admin ·** link at the very bottom of the page.

@@ -161,6 +161,8 @@
   .login-row input{flex:1;background:var(--panel);border:1px solid var(--line2);border-radius:10px;color:var(--ink);font-family:inherit;font-size:1rem;padding:11px 14px}
   .login-row input:focus{outline:none;border-color:var(--blue)}
   .err{color:var(--red2);font-size:.85rem;margin-top:8px;min-height:1em}
+  .ailog{margin-top:14px;font-size:.82rem;color:var(--muted);white-space:pre-wrap;max-height:180px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .ailog .ok{color:var(--good)} .ailog .bad{color:var(--red2)}
 
   /* rank editor */
   .reditor{display:flex;flex-direction:column;gap:0}
@@ -217,6 +219,7 @@
   <div id="adminBar">
     <span class="who">★ Admin mode</span>
     <button class="btn primary" id="openRank">⭐ Rank Players</button>
+    <button class="btn primary" id="openAI">✨ AI Rankings</button>
     <span class="hint">Team names, blurbs &amp; the About tab are now editable inline.</span>
     <span class="spacer"></span>
     <span class="unpub">● Unpublished changes</span>
@@ -257,6 +260,13 @@
         <div class="seg" id="viewSeg">
           <button data-view="list" class="active">List</button>
           <button data-view="tiers">Tiers</button>
+        </div>
+      </div>
+      <div class="fgroup" id="engineGroup" style="display:none">
+        <span class="flabel">Engine</span>
+        <div class="seg" id="engineSeg">
+          <button data-e="ai" class="active">✨ AI</button>
+          <button data-e="formula">Formula</button>
         </div>
       </div>
       <div class="fgroup">
@@ -315,6 +325,33 @@
       <div class="reditor" id="rankEditor">
         <div class="rhead"><span>Player</span><span>Gender</span><span>⛳ Golf</span><span>🍺 Drinking</span><span>Comments</span></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI RANKINGS MODAL -->
+<div class="modal" id="aiModal">
+  <div class="sheet" style="max-width:560px">
+    <header><h2>✨ AI Rankings</h2><button class="x" data-close>×</button></header>
+    <div class="body">
+      <p class="hint" style="margin-bottom:12px">Claude reads every player's gender, ⛳/🍺 star ratings and your scouting comments, then writes the <b>official</b> overall score, tier, and a punchy scouting report for each — plus a blurb for every team. Results are saved into your data and become public when you Publish.</p>
+      <div class="aikeyrow">
+        <label class="flabel" style="display:block;margin-bottom:5px">Claude API key <span class="hint" style="font-weight:500">(stored only in this browser — never published)</span></label>
+        <div class="login-row" style="margin-top:0">
+          <input type="password" id="aiKey" placeholder="sk-ant-..." autocomplete="off">
+        </div>
+      </div>
+      <label class="flabel" style="display:block;margin:14px 0 5px">Model</label>
+      <div class="seg" id="aiModel">
+        <button data-m="claude-sonnet-4-6" class="active">Sonnet 4.6 (fast)</button>
+        <button data-m="claude-opus-4-8">Opus 4.8 (best)</button>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+        <button class="btn primary" id="aiGo">✨ Generate official rankings</button>
+        <button class="btn ghost" id="aiClear" title="Remove AI scores and revert to the formula">Clear AI data</button>
+      </div>
+      <div class="ailog" id="aiLog"></div>
+      <p class="hint" style="margin-top:14px">Heads up: a browser-side API key can be read by anyone with access to this device. Use a key you can rotate, and the key is <b>never</b> included when you Publish.</p>
     </div>
   </div>
 </div>
@@ -432,6 +469,7 @@ let dimension = "overall"; // overall | golf | drink
 let genderF = "all";       // all | M | F
 let view = "list";
 let searchQ = "";
+let engine = "ai";         // ai | formula (AI used only when AI data exists)
 
 const flashEl = document.getElementById('flash'); let flashT;
 function flash(msg){ flashEl.textContent = msg||"Saved ✓"; flashEl.classList.add('show'); clearTimeout(flashT); flashT=setTimeout(()=>flashEl.classList.remove('show'),1300); }
@@ -466,9 +504,12 @@ function mergeData(j){
    SCORING ENGINE — stars -> official rankings
    ========================================================= */
 function wGolf(){ return (DATA.weights?.golf ?? 60)/100; }
-function overallScore(p){ const g=wGolf(); return Math.round((g*p.golf + (1-g)*p.drink)*20); }
+function formulaScore(p){ const g=wGolf(); return Math.round((g*p.golf + (1-g)*p.drink)*20); }
+function aiExists(){ return DATA.players.some(p=>p.ai && typeof p.ai.score==='number'); }
+function useAI(){ return engine==="ai" && aiExists(); }
+function overallScore(p){ return (useAI() && p.ai && typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
 function tierOf(score){ return score>=90?"S":score>=80?"A":score>=70?"B":score>=60?"C":"D"; }
-function metricVal(p){ return dimension==="golf"?p.golf : dimension==="drink"?p.drink : overallScore(p); }
+function blurbOf(p){ return (useAI() && p.ai && p.ai.blurb) ? p.ai.blurb : (p.comments||''); }
 
 function rankedPlayers(){
   let list = DATA.players.map((p)=>({ ...p, _o:overallScore(p) }));
@@ -528,7 +569,8 @@ const playerList=document.getElementById('playerList');
 const tierView=document.getElementById('tierView');
 const metricHead=document.getElementById('metricHead');
 function renderPlayers(){
-  metricHead.textContent = dimension==="golf"?"⛳ Golf" : dimension==="drink"?"🍺 Drinking" : "Rating";
+  document.getElementById('engineGroup').style.display = aiExists() ? '' : 'none';
+  metricHead.textContent = dimension==="golf"?"⛳ Golf" : dimension==="drink"?"🍺 Drinking" : (useAI()?"✨ Rating":"Rating");
   const list=rankedPlayers();
   playerList.innerHTML='';
   if(!list.length){ playerList.innerHTML='<p class="hint" style="text-align:center;padding:24px">No players match.</p>'; return; }
@@ -550,7 +592,8 @@ function renderPlayers(){
       <div class="prmr">${o}<small>RMR</small></div>`;
     const blurb=document.createElement('div');
     blurb.className='pblurb';
-    blurb.innerHTML=`<div class="scoreline"><span>⛳ Golf: ${starHTML(p.golf)}</span><span>🍺 Drinking: ${starHTML(p.drink)}</span><span>Overall: <b>${o}</b> · Tier ${tier}</span></div><b>Scouting report:</b> ${esc(p.comments||'—')}`;
+    const reportLabel = (useAI() && p.ai && p.ai.blurb) ? '✨ AI scouting report' : 'Scouting report';
+    blurb.innerHTML=`<div class="scoreline"><span>⛳ Golf: ${starHTML(p.golf)}</span><span>🍺 Drinking: ${starHTML(p.drink)}</span><span>Overall: <b>${o}</b> · Tier ${tier}</span></div><b>${reportLabel}:</b> ${esc(blurbOf(p)||'—')}`;
     row.addEventListener('click',()=>blurb.classList.toggle('open'));
     playerList.appendChild(row); playerList.appendChild(blurb);
   });
@@ -605,6 +648,8 @@ function segHandler(id,fn){ document.getElementById(id).addEventListener('click'
 segHandler('genderSeg', b=> genderF=b.dataset.g);
 segHandler('dimSeg', b=> dimension=b.dataset.d);
 segHandler('viewSeg', b=> view=b.dataset.view);
+document.getElementById('engineSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  document.querySelectorAll('#engineSeg button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); engine=b.dataset.e; renderAll(); });
 document.getElementById('playerSearch').addEventListener('input',e=>{ searchQ=e.target.value.toLowerCase().trim(); renderPlayerView(); });
 
 /* =========================================================
@@ -667,6 +712,93 @@ function openRankEditor(){
   openModal(rankModal);
 }
 document.getElementById('openRank').addEventListener('click',openRankEditor);
+
+/* =========================================================
+   ADMIN: AI rankings (direct browser -> Claude API)
+   ========================================================= */
+const AI_KEY_LS = "armoimc3_apikey";
+let aiModel = "claude-sonnet-4-6";
+const aiKeyEl = document.getElementById('aiKey');
+const aiLogEl = document.getElementById('aiLog');
+function aiLog(msg,cls){ const line=document.createElement('div'); if(cls)line.className=cls; line.textContent=msg; aiLogEl.appendChild(line); aiLogEl.scrollTop=aiLogEl.scrollHeight; }
+
+document.getElementById('openAI').addEventListener('click',()=>{
+  aiKeyEl.value = localStorage.getItem(AI_KEY_LS) || '';
+  aiLogEl.innerHTML='';
+  openModal(document.getElementById('aiModal'));
+});
+document.getElementById('aiModel').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  document.querySelectorAll('#aiModel button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); aiModel=b.dataset.m; });
+aiKeyEl.addEventListener('change',()=>{ if(aiKeyEl.value.trim()) localStorage.setItem(AI_KEY_LS,aiKeyEl.value.trim()); });
+
+document.getElementById('aiClear').addEventListener('click',()=>{
+  if(!confirm('Remove all AI scores/blurbs and revert to the star formula?')) return;
+  DATA.players.forEach(p=>{ delete p.ai; }); DATA.teams.forEach(t=>{ if(t.aiBlurb) delete t.aiBlurb; });
+  engine="formula"; markDirty(); renderAll(); flash('AI data cleared');
+});
+
+function buildAIPrompt(){
+  const g=DATA.weights?.golf ?? 60;
+  const roster = DATA.players.map(p=>({ name:p.name, team:p.team, gender:p.gender==='F'?'woman':'man', golf_stars:p.golf, drink_stars:p.drink, note:p.comments||'' }));
+  const teams = DATA.teams.map(t=>({ id:t.id, name:t.name, captain:t.captain }));
+  return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice. Keep it good-natured.
+
+Rank all ${roster.length} competitors. Each has a golf rating and a drinking rating (1-5 stars) and a short scouting note from the commissioner. Weigh GOLF skill most for the overall (about ${g}% golf / ${100-g}% drinking/vibes), but let the scouting notes nuance the score and the writeup.
+
+For EACH player produce:
+- "name": exact name as given
+- "score": integer 0-100 overall rating
+- "tier": one of "S","A","B","C","D" (S=90+, A=80-89, B=70-79, C=60-69, D<60; keep tiers consistent with scores)
+- "blurb": ONE punchy sentence (max ~22 words) scouting report
+
+For EACH team produce a "teamBlurb": { "id": <teamId>, "blurb": one fun sentence about the squad's outlook }.
+
+Players:
+${JSON.stringify(roster)}
+
+Teams:
+${JSON.stringify(teams)}
+
+Respond with ONLY valid minified JSON, no markdown, of the form:
+{"players":[{"name":"","score":0,"tier":"","blurb":""}],"teams":[{"id":1,"blurb":""}]}`;
+}
+
+async function generateAI(){
+  const key = aiKeyEl.value.trim() || localStorage.getItem(AI_KEY_LS) || '';
+  if(!key){ aiLog('No API key entered.','bad'); return; }
+  localStorage.setItem(AI_KEY_LS, key);
+  const btn=document.getElementById('aiGo'); btn.disabled=true;
+  aiLogEl.innerHTML=''; aiLog(`Asking ${aiModel} to rank ${DATA.players.length} players…`);
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{ 'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({ model:aiModel, max_tokens:4096, messages:[{role:'user',content:buildAIPrompt()}] })
+    });
+    if(!res.ok){ const t=await res.text(); aiLog('API error '+res.status+': '+t.slice(0,300),'bad'); btn.disabled=false; return; }
+    const data = await res.json();
+    let text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    text = text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+    const start=text.indexOf('{'), end=text.lastIndexOf('}');
+    if(start>=0&&end>start) text=text.slice(start,end+1);
+    const parsed = JSON.parse(text);
+    let applied=0;
+    (parsed.players||[]).forEach(ai=>{
+      const p = DATA.players.find(x=>x.name.toLowerCase()===String(ai.name||'').toLowerCase());
+      if(p && typeof ai.score==='number'){ p.ai={ score:Math.max(0,Math.min(100,Math.round(ai.score))), tier:ai.tier||tierOf(ai.score), blurb:ai.blurb||'' }; applied++; }
+    });
+    (parsed.teams||[]).forEach(tb=>{ const t=DATA.teams.find(x=>x.id===tb.id); if(t&&tb.blurb){ t.blurb=tb.blurb; } });
+    aiLog(`✓ Applied AI rankings to ${applied}/${DATA.players.length} players + team blurbs.`,'ok');
+    if(data.usage) aiLog(`Tokens: ${data.usage.input_tokens} in / ${data.usage.output_tokens} out.`);
+    engine="ai"; markDirty(); renderAll();
+    aiLog('Rankings updated. Review them, then Publish to make it public.','ok');
+  }catch(err){
+    aiLog('Failed: '+err.message,'bad');
+    aiLog('If this is a CORS/network error, check the key and that direct browser access is allowed.','bad');
+  }
+  btn.disabled=false;
+}
+document.getElementById('aiGo').addEventListener('click',generateAI);
 
 /* =========================================================
    ADMIN: publish / import / discard
