@@ -1585,11 +1585,15 @@ function golfLoop(){ G.raf=0;
 // ---- shot resolution (deterministic; testable) ----
 function golfApplyShot(){
   const hole=GOLF_COURSE[G.hole]; const club=GOLF_CLUBS[G.club];
-  const dist=Math.max(2, club.yds*G.power);
-  const maxDeg=(6+club.yds/265*7); const ang=G.aim*maxDeg*Math.PI/180;
-  // base aim ALWAYS points straight at the hole (green); the aim meter only adds left/right error
   const gX=hole.greenX||0;
-  const base=Math.atan2(gX-G.bx, Math.max(1,hole.yards-G.by));
+  // putter distance scales to how far is left, so a putt can't rocket past the cup
+  let maxd=club.yds;
+  if(club.name==='PT'){ maxd=Math.max(4, golfDistToPin(G.bx,G.by)*1.3); }
+  const dist=Math.max(0.5, maxd*G.power);
+  const maxDeg=(club.name==='PT'?4:(6+club.yds/265*7)); const ang=G.aim*maxDeg*Math.PI/180;
+  // base aim ALWAYS points straight at the hole — use the TRUE vector to the pin
+  // (no forward clamp, so it works when the ball is level with or past the cup)
+  const base=Math.atan2(gX-G.bx, hole.yards-G.by);
   const theta=base+ang;
   let nby=G.by + dist*Math.cos(theta);
   let nbx=G.bx + dist*Math.sin(theta);
@@ -1620,7 +1624,7 @@ function golfResolve(){
 function golfAfterShot(r){
   const hole=GOLF_COURSE[G.hole]; const d=golfDistToPin(G.bx,G.by); G.onGreen = d<=12;
   let msg=r.msg;
-  if(d<=2.2){ // holed
+  if(d<=2.6){ // holed (slightly generous cup so good putts drop)
     G.scores[G.hole]=G.strokes; const rel=G.strokes-hole.par; G.phase='holed';
     setGolfMsg(`${golfHoleResultName(G.strokes,hole.par)} — holed in ${G.strokes}!`);
     golfUpdateHud(); golfDraw(); golfSetButtons(); return;
