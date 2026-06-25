@@ -4,10 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ARMOIMC III — Rankings</title>
-<meta name="description" content="The 3rd Annual Rard Man Open Invitational Master Classic — team & player power rankings." />
+<meta name="description" content="The 3rd Annual Rard Man Open Invitational Master Classic — vote on players, AI builds the rankings." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg:#08090c; --bg2:#0e1014; --panel:#14171d; --panel2:#1b1f27;
@@ -22,14 +23,12 @@
       radial-gradient(1200px 600px at 80% -10%, rgba(47,123,255,.10), transparent 60%),
       radial-gradient(1000px 500px at 0% 0%, rgba(226,59,59,.10), transparent 55%),
       var(--bg);
-    color:var(--ink);
-    font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color:var(--ink);font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;
   }
   a{color:var(--blue2);text-decoration:none}
   .wrap{max-width:1080px;margin:0 auto;padding:0 18px 40px}
 
-  /* Header */
   header.hero{position:relative;padding:46px 18px 26px;text-align:center;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(20,23,29,.6),transparent);overflow:hidden}
   .stripes{position:absolute;inset:0;opacity:.06;pointer-events:none;background:repeating-linear-gradient(90deg,var(--red) 0 8px,transparent 8px 16px,var(--blue) 16px 24px,transparent 24px 32px)}
   .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700;color:var(--muted);margin-bottom:10px}
@@ -38,29 +37,30 @@
   .subtitle{margin:12px auto 0;max-width:680px;color:var(--muted);font-size:clamp(.85rem,2.4vw,1.02rem);font-weight:500}
   .subtitle b{color:var(--ink)} .flag{font-size:1.05em}
 
-  /* Tabs */
-  nav.tabs{position:sticky;top:0;z-index:30;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;padding:12px 10px;margin:0 0 26px;background:rgba(8,9,12,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  nav.tabs{position:sticky;top:0;z-index:30;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;padding:12px 10px;margin:0 0 22px;background:rgba(8,9,12,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
   .tab{appearance:none;border:1px solid transparent;background:transparent;color:var(--muted);font-family:inherit;font-weight:700;font-size:.92rem;padding:9px 18px;border-radius:999px;cursor:pointer;transition:.15s}
   .tab:hover{color:var(--ink);background:var(--panel)}
   .tab.active{color:#fff;background:linear-gradient(100deg,var(--red),var(--blue));box-shadow:0 6px 20px rgba(47,123,255,.3)}
+  .tab.vote{border:1px solid rgba(245,197,24,.5);color:var(--gold)}
+  .tab.vote.active{background:linear-gradient(100deg,#f5a623,var(--gold));color:#0a0a0a;border-color:transparent}
 
-  /* Toolbar / filters */
-  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
-  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .ballotnote{font-size:.82rem;color:var(--muted);font-weight:600}
+  .ballotnote b{color:var(--gold)}
+  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px}
   .fgroup{display:flex;flex-direction:column;gap:5px}
   .flabel{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);font-weight:800;padding-left:4px}
   .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;flex-wrap:wrap}
   .seg button{appearance:none;border:0;background:transparent;color:var(--muted);font-family:inherit;font-weight:600;font-size:.82rem;padding:8px 12px;cursor:pointer;transition:.12s;white-space:nowrap}
   .seg button.active{background:var(--panel2);color:var(--ink)}
   .seg button:hover{color:var(--ink)}
-  .search{background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);font-family:inherit;font-size:.9rem;padding:9px 14px;min-width:170px}
+  .search{background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);font-family:inherit;font-size:.9rem;padding:9px 14px;min-width:160px}
   .search::placeholder{color:var(--muted2)} .search:focus{outline:none;border-color:var(--blue)}
   .hint{color:var(--muted2);font-size:.8rem;margin:0}
 
   .panel{display:none;animation:fade .25s ease} .panel.active{display:block}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-  /* Team cards */
   .teamcard{position:relative;display:flex;gap:18px;align-items:stretch;background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow);transition:.18s;cursor:pointer;overflow:hidden}
   .teamcard:hover{transform:translateY(-2px);border-color:var(--line2)}
   .teamcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent,var(--blue))}
@@ -74,13 +74,11 @@
   .tc-blurb{color:var(--muted);margin:8px 0 0;font-size:.95rem}
   .roster{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
   .chip{font-size:.78rem;font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;color:#cdd6e6;display:inline-flex;gap:6px;align-items:center}
-  .chip .cap{color:var(--gold);font-weight:800}
-  .chip .g{font-size:.7rem;color:var(--muted2)}
+  .chip .cap{color:var(--gold);font-weight:800} .chip .g{font-size:.7rem;color:var(--muted2)}
   .tc-right{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;min-width:96px}
   .score{font-family:"Anton",sans-serif;font-size:2rem;line-height:1;color:#fff}
   .score small{display:block;font-family:"Inter";font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);font-weight:700;margin-top:4px}
 
-  /* Player list */
   .listhead{display:flex;align-items:center;gap:14px;color:var(--muted2);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;font-weight:800;padding:0 14px 8px}
   .prow{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-bottom:8px;transition:.15s;cursor:pointer}
   .prow:hover{border-color:var(--line2);transform:translateX(2px)}
@@ -89,14 +87,12 @@
   .pmeta{flex:1;min-width:0}
   .pname{font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px}
   .gtag{font-size:.6rem;font-weight:900;letter-spacing:.06em;padding:2px 6px;border-radius:6px;text-transform:uppercase}
-  .gtag.M{background:rgba(47,123,255,.16);color:var(--blue2)}
-  .gtag.F{background:rgba(226,59,59,.16);color:var(--red2)}
+  .gtag.M{background:rgba(47,123,255,.16);color:var(--blue2)} .gtag.F{background:rgba(226,59,59,.16);color:var(--red2)}
   .psub{color:var(--muted);font-size:.82rem;margin-top:2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .tteam{font-size:.7rem;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
   .stars{font-size:.9rem;letter-spacing:1px;white-space:nowrap}
   .stars .on{color:var(--gold)} .stars .off{color:var(--line2)}
   .metric{display:flex;flex-direction:column;align-items:flex-end;min-width:110px;gap:2px}
-  .metric .mlabel{font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);font-weight:800}
   .ttier{font-family:"Anton",sans-serif;font-size:1.1rem;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#0a0a0a;flex:none}
   .T-S{background:linear-gradient(160deg,#ffd75e,#f5a623)} .T-A{background:linear-gradient(160deg,#ff7a7a,#e23b3b);color:#fff}
   .T-B{background:linear-gradient(160deg,#6fb1ff,#2f7bff);color:#fff} .T-C{background:linear-gradient(160deg,#7d8aa0,#525c6e);color:#fff}
@@ -107,8 +103,7 @@
   .pblurb.open{display:block}
   .pblurb .scoreline{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;color:var(--ink);font-weight:600;font-size:.85rem}
 
-  /* Tier list */
-  .tierwrap{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+  .tierwrap{display:flex;flex-direction:column;gap:10px}
   .tierrow{display:flex;gap:12px;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
   .tierlabel{font-family:"Anton",sans-serif;font-size:1.8rem;display:flex;align-items:center;justify-content:center;min-width:64px;color:#0a0a0a}
   .tier-S .tierlabel{background:linear-gradient(160deg,#ffd75e,#f5a623)} .tier-A .tierlabel{background:linear-gradient(160deg,#ff7a7a,#e23b3b);color:#fff}
@@ -118,7 +113,23 @@
   .tiername{font-size:.82rem;font-weight:700;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
   .tiername .tnum{color:var(--muted2);font-weight:800;margin-right:5px}
 
-  /* About */
+  /* VOTE */
+  .voteintro{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .voteintro h2{font-family:"Anton",sans-serif;font-weight:400;font-size:1.5rem;margin:0 0 6px}
+  .namerow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  .namerow input{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;color:var(--ink);font-family:inherit;font-size:1rem;padding:11px 14px;min-width:220px}
+  .namerow input:focus{outline:none;border-color:var(--gold)}
+  .vcard{display:grid;grid-template-columns:1.3fr auto auto 2fr;gap:14px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:8px}
+  .vcard .vn{font-weight:800} .vcard .vn small{display:block;color:var(--muted2);font-weight:600;font-size:.74rem}
+  .vlbl{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);font-weight:800;text-align:center}
+  .vrate{display:flex;flex-direction:column;align-items:center;gap:3px}
+  .vcomment{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--ink);font-family:inherit;font-size:.85rem;padding:8px;resize:vertical;min-height:42px}
+  .starset{font-size:1.5rem;letter-spacing:3px;cursor:pointer;user-select:none}
+  .starset .on{color:var(--gold)} .starset .off{color:var(--line2)}
+  .submitbar{position:sticky;bottom:0;background:rgba(8,9,12,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line2);padding:14px;margin:8px -18px 0;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+  .notice{background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.4);color:#f5d97a;border-radius:12px;padding:16px 18px;font-size:.92rem}
+  @media(max-width:680px){.vcard{grid-template-columns:1fr 1fr;gap:10px}.vcard .vn{grid-column:1/3}.vcomment{grid-column:1/3}}
+
   .about-grid{display:grid;grid-template-columns:1fr;gap:16px}
   .acard{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow)}
   .acard h2{font-family:"Anton",sans-serif;font-weight:400;font-size:1.5rem;margin:0 0 4px;letter-spacing:.02em;display:flex;align-items:center;gap:10px}
@@ -133,26 +144,27 @@
   .infobox .v{font-size:1.05rem;font-weight:800;margin-top:3px}
   .todo{display:inline-block;font-size:.62rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#0a0a0a;background:var(--gold);border-radius:6px;padding:2px 7px;margin-left:8px;vertical-align:middle}
 
-  /* admin editable */
   [contenteditable="true"]{outline:1px dashed var(--line2);border-radius:6px;padding:2px 5px;background:rgba(47,123,255,.06)}
   [contenteditable="true"]:focus{outline:1px solid var(--blue)}
 
-  /* admin bar */
   #adminBar{display:none;position:sticky;top:54px;z-index:25;margin:0 0 16px;padding:10px 14px;background:linear-gradient(100deg,rgba(226,59,59,.16),rgba(47,123,255,.16));border:1px solid var(--line2);border-radius:12px;align-items:center;gap:10px;flex-wrap:wrap}
   body.admin #adminBar{display:flex}
   #adminBar .who{font-weight:800;font-size:.85rem;color:var(--gold)}
+  .cstat{font-size:.76rem;font-weight:700;display:inline-flex;align-items:center;gap:6px}
+  .cstat .d{width:8px;height:8px;border-radius:50%;background:var(--muted2)}
+  .cstat.ok .d{background:var(--good)} .cstat.bad .d{background:var(--red2)}
   .btn{appearance:none;font-family:inherit;font-weight:700;font-size:.82rem;cursor:pointer;padding:8px 13px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);transition:.15s;display:inline-flex;gap:7px;align-items:center}
   .btn:hover{border-color:var(--blue);color:#fff}
+  .btn:disabled{opacity:.5;cursor:default}
   .btn.primary{background:linear-gradient(100deg,var(--red),var(--blue));border-color:transparent;color:#fff}
+  .btn.gold{background:linear-gradient(100deg,#f5a623,var(--gold));border-color:transparent;color:#0a0a0a}
   .btn.ghost{background:transparent;color:var(--muted)} .btn.ghost:hover{color:var(--ink)}
+  .btn.big{font-size:1rem;padding:13px 26px}
   .spacer{flex:1}
-  .unpub{display:none;font-size:.78rem;color:var(--gold);font-weight:700}
-  body.dirty .unpub{display:inline}
 
-  /* modal */
   .modal{display:none;position:fixed;inset:0;z-index:60;background:rgba(4,5,8,.78);backdrop-filter:blur(4px);padding:20px;overflow:auto}
   .modal.open{display:flex;align-items:flex-start;justify-content:center}
-  .sheet{background:var(--bg2);border:1px solid var(--line2);border-radius:16px;max-width:860px;width:100%;margin:40px auto;box-shadow:var(--shadow)}
+  .sheet{background:var(--bg2);border:1px solid var(--line2);border-radius:16px;max-width:560px;width:100%;margin:40px auto;box-shadow:var(--shadow)}
   .sheet header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg2);border-radius:16px 16px 0 0;z-index:2}
   .sheet header h2{font-family:"Anton",sans-serif;font-weight:400;font-size:1.4rem;margin:0;letter-spacing:.02em}
   .sheet .body{padding:18px 22px}
@@ -161,38 +173,15 @@
   .login-row input{flex:1;background:var(--panel);border:1px solid var(--line2);border-radius:10px;color:var(--ink);font-family:inherit;font-size:1rem;padding:11px 14px}
   .login-row input:focus{outline:none;border-color:var(--blue)}
   .err{color:var(--red2);font-size:.85rem;margin-top:8px;min-height:1em}
-  .ailog{margin-top:14px;font-size:.82rem;color:var(--muted);white-space:pre-wrap;max-height:180px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .ailog{margin-top:14px;font-size:.82rem;color:var(--muted);white-space:pre-wrap;max-height:200px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace}
   .ailog .ok{color:var(--good)} .ailog .bad{color:var(--red2)}
-
-  /* rank editor */
-  .reditor{display:flex;flex-direction:column;gap:0}
-  .rhead,.rrow{display:grid;grid-template-columns:1.4fr .7fr 1.2fr 1.2fr 2fr;gap:10px;align-items:center;padding:10px 8px}
-  .rhead{font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);font-weight:800;border-bottom:1px solid var(--line);position:sticky;top:60px;background:var(--bg2);z-index:1}
-  .rrow{border-bottom:1px solid var(--line)}
-  .rrow .rn{font-weight:800;font-size:.92rem}
-  .rrow .rn small{display:block;color:var(--muted2);font-weight:600;font-size:.72rem}
-  .gtoggle{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;width:fit-content}
-  .gtoggle button{appearance:none;border:0;background:var(--panel);color:var(--muted);font-family:inherit;font-weight:800;font-size:.72rem;padding:6px 10px;cursor:pointer}
-  .gtoggle button.on{color:#fff}
-  .gtoggle button.on[data-g="M"]{background:var(--blue)} .gtoggle button.on[data-g="F"]{background:var(--red)}
-  .starset{font-size:1.25rem;letter-spacing:2px;cursor:pointer;user-select:none}
-  .starset .on{color:var(--gold)} .starset .off{color:var(--line2)}
-  .rcomment{width:100%;background:var(--panel);border:1px solid var(--line2);border-radius:8px;color:var(--ink);font-family:inherit;font-size:.82rem;padding:8px;resize:vertical;min-height:42px}
-  .weights{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:16px}
-  .weights label{font-size:.8rem;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:8px}
-  .weights input[type=range]{accent-color:var(--blue)}
-  @media(max-width:680px){
-    .rhead{display:none}
-    .rrow{grid-template-columns:1fr 1fr;gap:8px;padding:14px 4px}
-    .rrow .rn{grid-column:1/3}
-    .rcomment{grid-column:1/3}
-  }
 
   footer{text-align:center;color:var(--muted2);font-size:.78rem;margin-top:40px;padding-top:20px;border-top:1px solid var(--line)}
   .adminlink{display:inline-block;margin-top:18px;color:var(--muted2);font-size:.72rem;opacity:.5;cursor:pointer;letter-spacing:.05em}
   .adminlink:hover{opacity:1;color:var(--muted)}
-  .savedflash{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--good);color:#062b16;font-weight:800;padding:10px 18px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none;z-index:70}
+  .savedflash{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--good);color:#062b16;font-weight:800;padding:10px 18px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none;z-index:70;max-width:90vw;text-align:center}
   .savedflash.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .savedflash.bad{background:var(--red2);color:#2b0606}
   @media(max-width:560px){.teamcard{padding:14px;gap:12px}.tc-right{min-width:64px}.rankbig{font-size:2.6rem}.metric{min-width:74px}}
 </style>
 </head>
@@ -211,70 +200,42 @@
 <nav class="tabs">
   <button class="tab active" data-panel="teams">Team Rankings</button>
   <button class="tab" data-panel="players">Player Rankings</button>
+  <button class="tab vote" data-panel="vote">⭐ Vote</button>
   <button class="tab" data-panel="about">About</button>
 </nav>
 
 <div class="wrap">
 
   <div id="adminBar">
-    <span class="who">★ Admin mode</span>
-    <button class="btn primary" id="openRank">⭐ Rank Players</button>
-    <button class="btn primary" id="openAI">✨ AI Rankings</button>
-    <span class="hint">Team names, blurbs &amp; the About tab are now editable inline.</span>
+    <span class="who">★ Admin</span>
+    <span class="cstat" id="cstat"><span class="d"></span><span id="cstatText">checking…</span></span>
+    <button class="btn gold" id="openAI">✨ Build AI Rankings</button>
+    <button class="btn ghost" id="refreshBtn">↻ Refresh votes</button>
+    <span class="hint">Team names, blurbs &amp; the About tab are editable inline.</span>
     <span class="spacer"></span>
-    <span class="unpub">● Unpublished changes</span>
-    <button class="btn" id="publishBtn">⬇ Publish (export)</button>
-    <button class="btn ghost" id="importBtn">⬆ Import</button>
-    <button class="btn ghost" id="discardBtn">Discard local</button>
     <button class="btn ghost" id="logoutBtn">Log out</button>
-    <input type="file" id="importFile" accept="application/json" hidden>
   </div>
 
   <!-- TEAMS -->
   <section class="panel active" id="panel-teams">
-    <div class="toolbar"><span class="hint">Ranked by team Power Index — the average rating of each squad's five players. Tap to expand.</span></div>
+    <div class="toolbar"><span class="hint">Ranked by team Power Index — the average rating of each squad's five players.</span><span class="ballotnote" id="ballotNoteT"></span></div>
     <div id="teamList"></div>
   </section>
 
   <!-- PLAYERS -->
   <section class="panel" id="panel-players">
+    <div class="toolbar"><span class="ballotnote" id="ballotNoteP"></span></div>
     <div class="filters">
-      <div class="fgroup">
-        <span class="flabel">Show</span>
-        <div class="seg" id="genderSeg">
-          <button data-g="all" class="active">Everyone</button>
-          <button data-g="M">Boys</button>
-          <button data-g="F">Girls</button>
-        </div>
-      </div>
-      <div class="fgroup">
-        <span class="flabel">Rank by</span>
-        <div class="seg" id="dimSeg">
-          <button data-d="overall" class="active">Overall</button>
-          <button data-d="golf">Best Golfers</button>
-          <button data-d="drink">Best Drinkers</button>
-        </div>
-      </div>
-      <div class="fgroup">
-        <span class="flabel">View</span>
-        <div class="seg" id="viewSeg">
-          <button data-view="list" class="active">List</button>
-          <button data-view="tiers">Tiers</button>
-        </div>
-      </div>
-      <div class="fgroup" id="engineGroup" style="display:none">
-        <span class="flabel">Engine</span>
-        <div class="seg" id="engineSeg">
-          <button data-e="ai" class="active">✨ AI</button>
-          <button data-e="formula">Formula</button>
-        </div>
-      </div>
-      <div class="fgroup">
-        <span class="flabel">Find</span>
-        <input class="search" id="playerSearch" placeholder="Search a player…" />
-      </div>
+      <div class="fgroup"><span class="flabel">Show</span>
+        <div class="seg" id="genderSeg"><button data-g="all" class="active">Everyone</button><button data-g="M">Boys</button><button data-g="F">Girls</button></div></div>
+      <div class="fgroup"><span class="flabel">Rank by</span>
+        <div class="seg" id="dimSeg"><button data-d="overall" class="active">Overall</button><button data-d="golf">Best Golfers</button><button data-d="drink">Best Drinkers</button></div></div>
+      <div class="fgroup"><span class="flabel">View</span>
+        <div class="seg" id="viewSeg"><button data-view="list" class="active">List</button><button data-view="tiers">Tiers</button></div></div>
+      <div class="fgroup" id="engineGroup" style="display:none"><span class="flabel">Source</span>
+        <div class="seg" id="engineSeg"><button data-e="ai" class="active">✨ AI</button><button data-e="crowd">Crowd avg</button></div></div>
+      <div class="fgroup"><span class="flabel">Find</span><input class="search" id="playerSearch" placeholder="Search a player…" /></div>
     </div>
-
     <div id="tierView" style="display:none"></div>
     <div id="listView">
       <div class="listhead"><span style="min-width:1.8ch;text-align:center">#</span><span style="flex:1">Player</span><span id="metricHead">Rating</span><span>Tier</span><span style="min-width:2.4ch;text-align:right">RMR</span></div>
@@ -282,10 +243,25 @@
     </div>
   </section>
 
-  <!-- ABOUT -->
-  <section class="panel" id="panel-about">
-    <div class="about-grid" id="aboutWrap"></div>
+  <!-- VOTE -->
+  <section class="panel" id="panel-vote">
+    <div class="voteintro">
+      <h2>⭐ Cast your ballot</h2>
+      <p class="hint" style="font-size:.92rem">Rate every competitor: ⛳ <b>golf skill</b> and 🍺 <b>drinking game</b> (1–5 stars), and drop a comment if you want. Everyone's votes get pooled and the AI builds the official rankings from them. You can come back and change yours anytime.</p>
+      <div class="namerow">
+        <input id="voterName" placeholder="Your name (so we can tally ballots)" />
+      </div>
+    </div>
+    <div id="voteNotice"></div>
+    <div id="voteList"></div>
+    <div class="submitbar" id="submitBar" style="display:none">
+      <button class="btn gold big" id="submitVotes">🗳️ Submit my ballot</button>
+      <span class="hint" id="submitHint"></span>
+    </div>
   </section>
+
+  <!-- ABOUT -->
+  <section class="panel" id="panel-about"><div class="about-grid" id="aboutWrap"></div></section>
 
   <footer>
     🇺🇸 ARMOIMC III &nbsp;•&nbsp; built for the squad &nbsp;•&nbsp; rankings are opinions, fight about them
@@ -298,60 +274,28 @@
   <div class="sheet" style="max-width:420px">
     <header><h2>🔒 Admin login</h2><button class="x" data-close>×</button></header>
     <div class="body">
-      <p class="hint">Enter the commissioner password to edit rankings, ratings, and course info.</p>
-      <div class="login-row">
-        <input type="password" id="pwInput" placeholder="Password" autocomplete="current-password">
-        <button class="btn primary" id="loginGo">Enter</button>
-      </div>
+      <p class="hint">Enter the commissioner password to build the AI rankings and edit course info.</p>
+      <div class="login-row"><input type="password" id="pwInput" placeholder="Password" autocomplete="current-password"><button class="btn primary" id="loginGo">Enter</button></div>
       <div class="err" id="loginErr"></div>
     </div>
   </div>
 </div>
 
-<!-- RANK PLAYERS MODAL -->
-<div class="modal" id="rankModal">
-  <div class="sheet">
-    <header>
-      <h2>⭐ Rank the Players</h2>
-      <button class="x" data-close>×</button>
-    </header>
-    <div class="body">
-      <p class="hint" style="margin-bottom:12px">Set each player's gender, ⛳ golf rating, and 🍺 drinking rating (1–5 stars), plus a scouting comment. The official Overall, Best Golfers &amp; Best Drinkers rankings recompute automatically from these.</p>
-      <div class="weights">
-        <b style="color:var(--ink);font-size:.82rem">Overall formula:</b>
-        <label>⛳ Golf weight <input type="range" id="wGolf" min="0" max="100" step="5"> <span id="wGolfV"></span>%</label>
-        <label>🍺 Drink weight <span id="wDrinkV"></span>%</label>
-      </div>
-      <div class="reditor" id="rankEditor">
-        <div class="rhead"><span>Player</span><span>Gender</span><span>⛳ Golf</span><span>🍺 Drinking</span><span>Comments</span></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- AI RANKINGS MODAL -->
+<!-- AI MODAL -->
 <div class="modal" id="aiModal">
-  <div class="sheet" style="max-width:560px">
-    <header><h2>✨ AI Rankings</h2><button class="x" data-close>×</button></header>
+  <div class="sheet">
+    <header><h2>✨ Build AI Rankings</h2><button class="x" data-close>×</button></header>
     <div class="body">
-      <p class="hint" style="margin-bottom:12px">Claude reads every player's gender, ⛳/🍺 star ratings and your scouting comments, then writes the <b>official</b> overall score, tier, and a punchy scouting report for each — plus a blurb for every team. Results are saved into your data and become public when you Publish.</p>
-      <div class="aikeyrow">
-        <label class="flabel" style="display:block;margin-bottom:5px">Claude API key <span class="hint" style="font-weight:500">(stored only in this browser — never published)</span></label>
-        <div class="login-row" style="margin-top:0">
-          <input type="password" id="aiKey" placeholder="sk-ant-..." autocomplete="off">
-        </div>
-      </div>
+      <p class="hint" style="margin-bottom:12px">Claude reads the pooled votes (everyone's ⛳/🍺 averages + comments) and writes the <b>official</b> overall score, tier, and a scouting report for each player, plus a team blurb. The result is saved to the cloud so <b>everyone sees the same rankings</b> — no key needed to view.</p>
+      <label class="flabel" style="display:block;margin-bottom:5px">Claude API key <span class="hint" style="font-weight:500">(stored only in this browser — never shared)</span></label>
+      <div class="login-row" style="margin-top:0"><input type="password" id="aiKey" placeholder="sk-ant-..." autocomplete="off"></div>
       <label class="flabel" style="display:block;margin:14px 0 5px">Model</label>
-      <div class="seg" id="aiModel">
-        <button data-m="claude-sonnet-4-6" class="active">Sonnet 4.6 (fast)</button>
-        <button data-m="claude-opus-4-8">Opus 4.8 (best)</button>
-      </div>
-      <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
-        <button class="btn primary" id="aiGo">✨ Generate official rankings</button>
-        <button class="btn ghost" id="aiClear" title="Remove AI scores and revert to the formula">Clear AI data</button>
+      <div class="seg" id="aiModel"><button data-m="claude-sonnet-4-6" class="active">Sonnet 4.6 (fast)</button><button data-m="claude-opus-4-8">Opus 4.8 (best)</button></div>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn gold" id="aiGo">✨ Build official rankings</button>
+        <button class="btn ghost" id="aiClear" title="Remove AI rankings (revert to crowd average)">Clear AI rankings</button>
       </div>
       <div class="ailog" id="aiLog"></div>
-      <p class="hint" style="margin-top:14px">Heads up: a browser-side API key can be read by anyone with access to this device. Use a key you can rotate, and the key is <b>never</b> included when you Publish.</p>
     </div>
   </div>
 </div>
@@ -360,62 +304,55 @@
 
 <script>
 /* =========================================================
-   DEFAULT DATA (authoritative fallback; ./data.json overrides
-   when present; the admin's local edits overlay on top).
+   CONFIG — paste your Supabase values here.
+   Both are safe to be public (the anon key is meant for browsers).
+   Until filled in, the site shows seeded rankings and voting is paused.
    ========================================================= */
-const DEFAULTS = {
-  meta:{ title:"ARMOIMC III", date:"July 4, 2026" },
-  weights:{ golf:60 }, // drink = 100 - golf
+const SUPABASE_URL = "PASTE_YOUR_SUPABASE_URL";       // e.g. https://abcd1234.supabase.co
+const SUPABASE_ANON_KEY = "PASTE_YOUR_SUPABASE_ANON_KEY";
+const ADMIN_HASH = "09e181239cdcb5185d13ed87bc83e49de9d428611efb0c05b3395fec65854423"; // sha256("armoimc2026")
+
+const configured = !SUPABASE_URL.startsWith("PASTE_") && !SUPABASE_ANON_KEY.startsWith("PASTE_");
+let sb = null;
+try{ if(configured && window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }catch(e){ console.warn(e); }
+
+/* =========================================================
+   ROSTER / STATIC CONTENT  (people, teams, course info)
+   Ratings come from votes; this is the fixed roster + fallback.
+   ========================================================= */
+const SEED = {
   teams:[
-    { id:1, name:"Team 1", color:"#e23b3b", captain:"Dillon J", tag:"FAVORITE",
-      blurb:"Deep, balanced, and quietly terrifying. No glaring weakness on the card and a captain who actually keeps score straight. The line to beat." },
-    { id:2, name:"Team 2", color:"#2f7bff", captain:"Trent O", tag:"RISING",
-      blurb:"Two Dylans, two Kyles between this squad and Team 1 — coincidence? They peak when it matters and have the best closer in the field." },
-    { id:3, name:"Team 3", color:"#f5c518", captain:"Braden W", tag:"",
-      blurb:"The B-team, literally — three Bs in the lineup. High ceiling, occasionally high blood pressure. If the putts drop, they win it all." },
-    { id:4, name:"Team 4", color:"#2fd07a", captain:"Drew T", tag:"",
-      blurb:"Three 'S' surnames and a whole lot of grit. Grind-it-out types who won't beat themselves. Dark horse if the weather turns ugly." },
-    { id:5, name:"Team 5", color:"#ff8a3d", captain:"Kale M", tag:"",
-      blurb:"The commissioner's own. Suspiciously well-organized, suspiciously confident. Either a sleeper champ or a cautionary tale — no in-between." },
-    { id:6, name:"Team 6", color:"#a855f7", captain:"Shawn C", tag:"WILDCARD",
-      blurb:"Pure chaos energy and the most fun group on the course. On their day they beat anybody; on a bad day they're still winning the cooler." },
+    { id:1, name:"Team 1", color:"#e23b3b", captain:"Dillon J", tag:"FAVORITE", blurb:"Deep, balanced, and quietly terrifying. The line to beat." },
+    { id:2, name:"Team 2", color:"#2f7bff", captain:"Trent O", tag:"RISING", blurb:"They peak when it matters and have the best closer in the field." },
+    { id:3, name:"Team 3", color:"#f5c518", captain:"Braden W", tag:"", blurb:"High ceiling, occasionally high blood pressure. If the putts drop, they win it all." },
+    { id:4, name:"Team 4", color:"#2fd07a", captain:"Drew T", tag:"", blurb:"Grind-it-out types who won't beat themselves. Dark horse if the weather turns ugly." },
+    { id:5, name:"Team 5", color:"#ff8a3d", captain:"Kale M", tag:"", blurb:"The commissioner's own. Either a sleeper champ or a cautionary tale — no in-between." },
+    { id:6, name:"Team 6", color:"#a855f7", captain:"Shawn C", tag:"WILDCARD", blurb:"Pure chaos energy and the most fun group on the course." },
   ],
-  // gender M/F, golf 1-5, drink 1-5
+  // gender + fallback golf/drink (used until votes come in)
   players:[
-    { name:"Dillon J", team:1, gender:"M", golf:5, drink:4, comments:"The total package and the reigning standard. Long off the tee, lights-out putter, never melts down." },
-    { name:"Dylan M",  team:1, gender:"M", golf:4, drink:5, comments:"Big arm, bigger swagger. Highlight reel guy who can also close a tab." },
-    { name:"Kyle F",   team:1, gender:"M", golf:4, drink:3, comments:"Sneaky good. Flies under the radar then quietly posts the best number in the group." },
-    { name:"Hunter B", team:1, gender:"M", golf:3, drink:4, comments:"Big moments bring out his best. Streaky but never scared." },
-    { name:"Lucy M",   team:1, gender:"F", golf:3, drink:3, comments:"Secret-weapon energy. Low expectations, high ceiling, loves to prove people wrong." },
-    { name:"Trent O",   team:2, gender:"M", golf:5, drink:4, comments:"Ice in the veins. Wants the ball on the last hole and usually delivers." },
-    { name:"Dylan B",   team:2, gender:"M", golf:4, drink:4, comments:"Quietly competent. Does the little things that win matches." },
-    { name:"Kyle O",    team:2, gender:"M", golf:4, drink:5, comments:"Deadly short game, deadlier at the cooler. The glue of Team 2." },
-    { name:"Aiden L",   team:2, gender:"M", golf:3, drink:3, comments:"Young legs, fearless swings. Real upside if the nerves hold." },
-    { name:"Marissa T", team:2, gender:"F", golf:3, drink:2, comments:"Steady and unflappable. The calm center of a high-strung lineup." },
-    { name:"Braden W",  team:3, gender:"M", golf:5, drink:3, comments:"Boom-or-bust firepower with the highest ceiling in the field." },
-    { name:"Tyler B",   team:3, gender:"M", golf:4, drink:4, comments:"Steady hand on a volatile team. The voice of reason." },
-    { name:"Brett B",   team:3, gender:"M", golf:4, drink:5, comments:"Length to spare and a bottomless cooler. Just needs the wedges to cooperate." },
-    { name:"Evan P",    team:3, gender:"M", golf:3, drink:3, comments:"Solid contributor who thrives when pressure's off the captains." },
-    { name:"Paige H",   team:3, gender:"F", golf:2, drink:3, comments:"Improving fast. Quietly becomes a problem by the back nine." },
-    { name:"Drew T",    team:4, gender:"M", golf:4, drink:4, comments:"Heartbeat of his squad. Mr. Reliable — won't lose you a hole." },
-    { name:"Braedon S", team:4, gender:"M", golf:4, drink:4, comments:"Workhorse. Outlasts opponents through sheer refusal to lose." },
-    { name:"Jonah S",   team:4, gender:"M", golf:3, drink:3, comments:"Grinder's grinder. Makes par from places you shouldn't." },
-    { name:"Brady S",   team:4, gender:"M", golf:3, drink:4, comments:"Consistent, unbothered, quietly effective. The third S." },
-    { name:"Erika P",   team:4, gender:"F", golf:2, drink:3, comments:"Glue-guy intangibles. Keeps Team 4 grounded and loose." },
-    { name:"Kale M",    team:5, gender:"M", golf:5, drink:4, comments:"The commissioner. Runs the show and keeps finding fairways. A little dangerous." },
-    { name:"Joe I",     team:5, gender:"M", golf:4, drink:4, comments:"Reliable second banana with a clutch gene. Loves a pressure putt." },
-    { name:"Mason G",   team:5, gender:"M", golf:4, drink:3, comments:"Quiet assassin. You forget he's there until he's two-under and grinning." },
-    { name:"Kellen",    team:5, gender:"M", golf:3, drink:5, comments:"Wildcard swing, fearless attitude. One hot stretch from stealing the show." },
-    { name:"Haley R",   team:5, gender:"F", golf:2, drink:4, comments:"All gas, no brakes. Misses big and makes big — never boring." },
-    { name:"Shawn C",   team:6, gender:"M", golf:4, drink:5, comments:"Captain of chaos. Wildly streaky and the heart of a live underdog." },
-    { name:"Cody T",    team:6, gender:"M", golf:3, drink:5, comments:"High-energy spark plug. Keeps the squad loose and occasionally goes nuclear." },
-    { name:"Drew S",    team:6, gender:"M", golf:3, drink:4, comments:"The other Drew. Pure vibes, surprising touch around the greens." },
-    { name:"Tori H",    team:6, gender:"F", golf:2, drink:4, comments:"Brings the energy and a surprisingly pure putting stroke." },
-    { name:"Lauren",    team:6, gender:"F", golf:2, drink:3, comments:"Closes out the field but never the fun. Dark-horse for most-improved." },
+    { name:"Dillon J", team:1, gender:"M", golf:5, drink:4 }, { name:"Dylan M", team:1, gender:"M", golf:4, drink:5 },
+    { name:"Kyle F", team:1, gender:"M", golf:4, drink:3 }, { name:"Hunter B", team:1, gender:"M", golf:3, drink:4 },
+    { name:"Lucy M", team:1, gender:"F", golf:3, drink:3 },
+    { name:"Trent O", team:2, gender:"M", golf:5, drink:4 }, { name:"Dylan B", team:2, gender:"M", golf:4, drink:4 },
+    { name:"Kyle O", team:2, gender:"M", golf:4, drink:5 }, { name:"Aiden L", team:2, gender:"M", golf:3, drink:3 },
+    { name:"Marissa T", team:2, gender:"F", golf:3, drink:2 },
+    { name:"Braden W", team:3, gender:"M", golf:5, drink:3 }, { name:"Tyler B", team:3, gender:"M", golf:4, drink:4 },
+    { name:"Brett B", team:3, gender:"M", golf:4, drink:5 }, { name:"Evan P", team:3, gender:"M", golf:3, drink:3 },
+    { name:"Paige H", team:3, gender:"F", golf:2, drink:3 },
+    { name:"Drew T", team:4, gender:"M", golf:4, drink:4 }, { name:"Braedon S", team:4, gender:"M", golf:4, drink:4 },
+    { name:"Jonah S", team:4, gender:"M", golf:3, drink:3 }, { name:"Brady S", team:4, gender:"M", golf:3, drink:4 },
+    { name:"Erika P", team:4, gender:"F", golf:2, drink:3 },
+    { name:"Kale M", team:5, gender:"M", golf:5, drink:4 }, { name:"Joe I", team:5, gender:"M", golf:4, drink:4 },
+    { name:"Mason G", team:5, gender:"M", golf:4, drink:3 }, { name:"Kellen", team:5, gender:"M", golf:3, drink:5 },
+    { name:"Haley R", team:5, gender:"F", golf:2, drink:4 },
+    { name:"Shawn C", team:6, gender:"M", golf:4, drink:5 }, { name:"Cody T", team:6, gender:"M", golf:3, drink:5 },
+    { name:"Drew S", team:6, gender:"M", golf:3, drink:4 }, { name:"Tori H", team:6, gender:"F", golf:2, drink:4 },
+    { name:"Lauren", team:6, gender:"F", golf:2, drink:3 },
   ],
   about:[
     { icon:"🏌️", title:"The Event", todo:false, html:
-      `<p>The <b>Rard Man Open Invitational Master Classic</b> is an annual 4th-of-July tradition: six squads, thirty competitors, one day of glory. Now in its third year, the ARMOIMC has grown from a backyard dare into the most prestigious title in the friend group (citation needed).</p>
+      `<p>The <b>Rard Man Open Invitational Master Classic</b> is an annual 4th-of-July tradition: six squads, thirty competitors, one day of glory.</p>
        <div class="infogrid">
          <div class="infobox"><div class="k">Date</div><div class="v">July 4, 2026</div></div>
          <div class="infobox"><div class="k">Format</div><div class="v">Team Scramble</div></div>
@@ -423,219 +360,228 @@ const DEFAULTS = {
          <div class="infobox"><div class="k">Tee Time</div><div class="v">TBD — edit me</div></div>
        </div>` },
     { icon:"📍", title:"Course Information", todo:true, html:
-      `<h3>Venue</h3>
-       <p><b>[Course name here]</b> — [address / city]. Replace this with the real spot.</p>
+      `<h3>Venue</h3><p><b>[Course name here]</b> — [address / city].</p>
        <h3>The Details</h3>
-       <ul>
-         <li><b>Course:</b> [9 / 18 holes] — [par 72]</li>
-         <li><b>Tees:</b> [which tees you're playing from]</li>
-         <li><b>Carts:</b> [included / rent / walking]</li>
-         <li><b>Check-in:</b> [time] — first group off at [time]</li>
-         <li><b>Cost:</b> [green fee + buy-in per person]</li>
-         <li><b>Parking / meet spot:</b> [where to gather]</li>
-       </ul>` },
+       <ul><li><b>Course:</b> [9 / 18 holes] — [par 72]</li><li><b>Tees:</b> [which tees]</li>
+       <li><b>Carts:</b> [included / rent / walking]</li><li><b>Check-in:</b> [time] — first group off at [time]</li>
+       <li><b>Cost:</b> [green fee + buy-in]</li><li><b>Meet spot:</b> [where to gather]</li></ul>` },
     { icon:"📋", title:"Official Rules", todo:true, html:
-      `<p>Edit these to match how you actually run it — defaults below are a sensible scramble starting point.</p>
-       <h3>Format</h3>
-       <ol>
-         <li><b>Scramble:</b> everyone tees off, pick the best ball, all play from there. Repeat until holed.</li>
-         <li>Each player's drive must be used a <b>minimum of [3] times</b> over the round.</li>
-         <li>Ball placed <b>within one club length</b> of the chosen spot, no closer to the hole.</li>
-       </ol>
-       <h3>Scoring</h3>
-       <ul><li>Lowest team total wins. Ties broken by [back-nine / playoff hole].</li></ul>
-       <h3>The Important Stuff</h3>
-       <ul>
-         <li>🍺 <b>Beverage rule:</b> [your call].</li>
-         <li>🏆 <b>Prize:</b> eternal glory + [trophy / pot / bragging rights].</li>
-         <li>⚖️ <b>Commissioner's ruling is final.</b> The commissioner is Kale M. The commissioner is never wrong.</li>
-       </ul>` },
+      `<h3>Format</h3><ol><li><b>Scramble:</b> everyone tees off, pick the best ball, all play from there.</li>
+       <li>Each player's drive used a <b>minimum of [3] times</b>.</li><li>Ball placed <b>within one club length</b>, no closer to the hole.</li></ol>
+       <h3>The Important Stuff</h3><ul><li>🍺 <b>Beverage rule:</b> [your call].</li><li>🏆 <b>Prize:</b> eternal glory + [trophy / pot].</li>
+       <li>⚖️ <b>Commissioner's ruling is final.</b> The commissioner is Kale M.</li></ul>` },
   ],
 };
 
-/* ----- Admin password: sha256("armoimc2026"). Change instructions in README. ----- */
-const ADMIN_HASH = "09e181239cdcb5185d13ed87bc83e49de9d428611efb0c05b3395fec65854423";
+/* =========================================================
+   STATE
+   ========================================================= */
+let votes = [];          // rows from supabase
+let aiData = null;       // {players:[{name,score,tier,blurb}], teams:[{id,blurb}], updatedAt}
+let teams = structuredClone(SEED.teams);
+let about = structuredClone(SEED.about);
+let isAdmin = sessionStorage.getItem("armoimc3_admin")==="1";
+
+let dimension="overall", genderF="all", view="list", searchQ="", engine="ai";
+let aiModel="claude-sonnet-4-6";
+const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
+
+// voter identity
+let voterId = localStorage.getItem("armoimc3_voter_id");
+if(!voterId){ voterId = "v_"+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem("armoimc3_voter_id", voterId); }
+let voterName = localStorage.getItem("armoimc3_voter_name") || "";
+let myBallot = {}; // player_name -> {golf,drink,comment}
+
+const flashEl=document.getElementById('flash'); let flashT;
+function flash(msg,bad){ flashEl.textContent=msg||"Saved ✓"; flashEl.classList.toggle('bad',!!bad); flashEl.classList.add('show'); clearTimeout(flashT); flashT=setTimeout(()=>flashEl.classList.remove('show'),1800); }
 
 /* =========================================================
-   STATE / STORAGE
+   DATA LOAD / AGGREGATE
    ========================================================= */
-const LS_KEY = "armoimc3_data_v2";
-let DATA = structuredClone(DEFAULTS);
-let dirty = false;
-let isAdmin = sessionStorage.getItem("armoimc3_admin") === "1";
-
-const TEAM_COLORS = {1:"#e23b3b",2:"#2f7bff",3:"#f5c518",4:"#2fd07a",5:"#ff8a3d",6:"#a855f7"};
-let dimension = "overall"; // overall | golf | drink
-let genderF = "all";       // all | M | F
-let view = "list";
-let searchQ = "";
-let engine = "ai";         // ai | formula (AI used only when AI data exists)
-
-const flashEl = document.getElementById('flash'); let flashT;
-function flash(msg){ flashEl.textContent = msg||"Saved ✓"; flashEl.classList.add('show'); clearTimeout(flashT); flashT=setTimeout(()=>flashEl.classList.remove('show'),1300); }
-
-function markDirty(){ dirty=true; document.body.classList.add('dirty'); localStorage.setItem(LS_KEY, JSON.stringify(DATA)); }
-
-async function boot(){
-  // 1) try published data.json
-  try{
-    const r = await fetch('./data.json', {cache:'no-store'});
-    if(r.ok){ const j = await r.json(); DATA = mergeData(j); }
-  }catch(e){}
-  // 2) overlay local admin edits
-  try{
-    const local = localStorage.getItem(LS_KEY);
-    if(local){ DATA = mergeData(JSON.parse(local)); dirty=true; document.body.classList.add('dirty'); }
-  }catch(e){}
-  if(isAdmin) document.body.classList.add('admin');
-  renderAll();
+async function fetchVotes(){
+  if(!sb) return;
+  const { data, error } = await sb.from('votes').select('*');
+  if(error){ console.warn('votes', error); return; }
+  votes = data||[];
+  myBallot = {};
+  votes.filter(v=>v.voter_id===voterId).forEach(v=>{ myBallot[v.player_name]={golf:v.golf,drink:v.drink,comment:v.comment||''}; });
 }
-function mergeData(j){
-  const d = structuredClone(DEFAULTS);
-  if(j.meta) Object.assign(d.meta, j.meta);
-  if(j.weights) Object.assign(d.weights, j.weights);
-  if(Array.isArray(j.teams)) d.teams = j.teams;
-  if(Array.isArray(j.players)) d.players = j.players;
-  if(Array.isArray(j.about)) d.about = j.about;
-  return d;
+async function fetchAI(){
+  if(!sb) return;
+  const { data, error } = await sb.from('ai_rankings').select('data').eq('id',1).maybeSingle();
+  if(error){ console.warn('ai', error); return; }
+  aiData = data?.data || null;
 }
+function ballotCount(){ return new Set(votes.map(v=>v.voter_id)).size; }
+function votesFor(name){ return votes.filter(v=>v.player_name===name); }
 
-/* =========================================================
-   SCORING ENGINE — stars -> official rankings
-   ========================================================= */
-function wGolf(){ return (DATA.weights?.golf ?? 60)/100; }
-function formulaScore(p){ const g=wGolf(); return Math.round((g*p.golf + (1-g)*p.drink)*20); }
-function aiExists(){ return DATA.players.some(p=>p.ai && typeof p.ai.score==='number'); }
+// effective player list: ratings from votes (avg) or seed fallback; ai overlay
+function players(){
+  return SEED.players.map(seed=>{
+    const vs = votesFor(seed.name);
+    let golf=seed.golf, drink=seed.drink, fromVotes=false, comments=[];
+    if(vs.length){
+      golf = vs.reduce((s,v)=>s+(v.golf||0),0)/vs.length;
+      drink= vs.reduce((s,v)=>s+(v.drink||0),0)/vs.length;
+      comments = vs.map(v=>v.comment).filter(Boolean);
+      fromVotes=true;
+    }
+    const ai = aiData?.players?.find(p=>p.name.toLowerCase()===seed.name.toLowerCase()) || null;
+    return { ...seed, golf, drink, fromVotes, nVotes:vs.length, comments, ai };
+  });
+}
+function aiExists(){ return !!(aiData && Array.isArray(aiData.players) && aiData.players.length); }
 function useAI(){ return engine==="ai" && aiExists(); }
-function overallScore(p){ return (useAI() && p.ai && typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
-function tierOf(score){ return score>=90?"S":score>=80?"A":score>=70?"B":score>=60?"C":"D"; }
-function blurbOf(p){ return (useAI() && p.ai && p.ai.blurb) ? p.ai.blurb : (p.comments||''); }
+
+/* =========================================================
+   SCORING
+   ========================================================= */
+function formulaScore(p){ return Math.round((W_GOLF*p.golf + (1-W_GOLF)*p.drink)*20); }
+function overallScore(p){ return (useAI()&&p.ai&&typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
+function tierOf(s){ return s>=90?"S":s>=80?"A":s>=70?"B":s>=60?"C":"D"; }
+function blurbOf(p){ if(useAI()&&p.ai&&p.ai.blurb) return p.ai.blurb; return p.comments&&p.comments.length?('“'+p.comments[0]+'”'):''; }
 
 function rankedPlayers(){
-  let list = DATA.players.map((p)=>({ ...p, _o:overallScore(p) }));
-  // filter
-  list = list.filter(p => (genderF==="all"||p.gender===genderF) && (!searchQ||p.name.toLowerCase().includes(searchQ)));
-  // sort by chosen dimension (desc), tiebreak overall then name
+  let list = players().map(p=>({ ...p, _o:overallScore(p) }));
+  list = list.filter(p=>(genderF==="all"||p.gender===genderF)&&(!searchQ||p.name.toLowerCase().includes(searchQ)));
   list.sort((a,b)=>{
-    const av = dimension==="golf"?a.golf : dimension==="drink"?a.drink : a._o;
-    const bv = dimension==="golf"?b.golf : dimension==="drink"?b.drink : b._o;
+    const av=dimension==="golf"?a.golf:dimension==="drink"?a.drink:a._o;
+    const bv=dimension==="golf"?b.golf:dimension==="drink"?b.drink:b._o;
     return bv-av || b._o-a._o || a.name.localeCompare(b.name);
   });
   return list;
 }
-function teamPower(teamId){
-  const ms = DATA.players.filter(p=>p.team===teamId);
-  if(!ms.length) return 0;
-  return Math.round(ms.reduce((s,p)=>s+overallScore(p),0)/ms.length);
-}
-function rankedTeams(){
-  return DATA.teams.map(t=>({ ...t, _power:teamPower(t.id) }))
-                   .sort((a,b)=> b._power-a._power || a.name.localeCompare(b.name));
-}
+function teamPower(id){ const ms=players().filter(p=>p.team===id); return ms.length?Math.round(ms.reduce((s,p)=>s+overallScore(p),0)/ms.length):0; }
+function rankedTeams(){ return teams.map(t=>({ ...t, _power:teamPower(t.id) })).sort((a,b)=>b._power-a._power||a.name.localeCompare(b.name)); }
 
 /* =========================================================
    RENDER
    ========================================================= */
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function starHTML(n){ let h=''; for(let i=1;i<=5;i++) h+=`<span class="${i<=n?'on':'off'}">★</span>`; return `<span class="stars">${h}</span>`; }
+function starHTML(n){ const r=Math.round(n); let h=''; for(let i=1;i<=5;i++) h+=`<span class="${i<=r?'on':'off'}">★</span>`; return `<span class="stars">${h}</span>`; }
+const TEAM_COLORS={1:"#e23b3b",2:"#2f7bff",3:"#f5c518",4:"#2fd07a",5:"#ff8a3d",6:"#a855f7"};
 
+function ballotLine(){
+  if(!configured) return "Preview mode — seeded ratings (voting not connected yet).";
+  const n=ballotCount(); return n? `Based on ${n} ballot${n>1?'s':''}${aiExists()?' · ✨ AI-ranked':''}` : "No votes yet — be the first on the ⭐ Vote tab!";
+}
 const teamList=document.getElementById('teamList');
 function renderTeams(){
-  const ranked=rankedTeams();
-  teamList.innerHTML='';
+  document.getElementById('ballotNoteT').textContent=ballotLine();
+  const ranked=rankedTeams(); teamList.innerHTML='';
   ranked.forEach((t,i)=>{
-    const members=DATA.players.filter(p=>p.team===t.id);
-    const chips=members.map(m=>`<span class="chip">${m.name===t.captain?'<span class="cap">★</span>':''}${esc(m.name)}<span class="g">${m.gender==='F'?'♀':'♂'}</span></span>`).join('');
+    const ms=players().filter(p=>p.team===t.id);
+    const chips=ms.map(m=>`<span class="chip">${m.name===t.captain?'<span class="cap">★</span>':''}${esc(m.name)}<span class="g">${m.gender==='F'?'♀':'♂'}</span></span>`).join('');
+    const aiTeam=aiData?.teams?.find(x=>x.id===t.id);
+    const blurb=(useAI()&&aiTeam&&aiTeam.blurb)?aiTeam.blurb:t.blurb;
     const tag=t.tag?`<span class="badge ${t.tag==='WILDCARD'?'cold':(i===0?'fire':'')}">${esc(t.tag)}</span>`:'';
-    const card=document.createElement('div');
-    card.className='teamcard'; card.style.setProperty('--accent',t.color||'var(--blue)');
-    card.innerHTML=`
-      <div class="rankbig">${i+1}</div>
-      <div class="tc-body">
-        <div class="tc-top"><h3 class="tc-name" ${isAdmin?`contenteditable="true" data-tid="${t.id}" data-field="name"`:''}>${esc(t.name)}</h3>${tag}</div>
-        <p class="tc-blurb" ${isAdmin?`contenteditable="true" data-tid="${t.id}" data-field="blurb"`:''}>${esc(t.blurb)}</p>
-        <div class="roster">${chips}</div>
-      </div>
+    const card=document.createElement('div'); card.className='teamcard'; card.style.setProperty('--accent',t.color||'var(--blue)');
+    card.innerHTML=`<div class="rankbig">${i+1}</div>
+      <div class="tc-body"><div class="tc-top"><h3 class="tc-name" ${isAdmin?`contenteditable="true" data-tid="${t.id}" data-field="name"`:''}>${esc(t.name)}</h3>${tag}</div>
+      <p class="tc-blurb" ${isAdmin?`contenteditable="true" data-tid="${t.id}" data-field="blurb"`:''}>${esc(blurb)}</p>
+      <div class="roster">${chips}</div></div>
       <div class="tc-right"><div class="score">${t._power}<small>Power Index</small></div></div>`;
-    if(isAdmin) card.querySelectorAll('[contenteditable]').forEach(el=>{
-      el.addEventListener('click',e=>e.stopPropagation());
-      el.addEventListener('blur',()=>{ const team=DATA.teams.find(x=>x.id==el.dataset.tid); team[el.dataset.field]=el.textContent.trim(); markDirty(); });
-    });
+    if(isAdmin) card.querySelectorAll('[contenteditable]').forEach(el=>{ el.addEventListener('click',e=>e.stopPropagation());
+      el.addEventListener('blur',()=>{ const team=teams.find(x=>x.id==el.dataset.tid); team[el.dataset.field]=el.textContent.trim(); }); });
     teamList.appendChild(card);
   });
 }
 
-const playerList=document.getElementById('playerList');
-const tierView=document.getElementById('tierView');
-const metricHead=document.getElementById('metricHead');
+const playerList=document.getElementById('playerList'), tierView=document.getElementById('tierView'), metricHead=document.getElementById('metricHead');
 function renderPlayers(){
-  document.getElementById('engineGroup').style.display = aiExists() ? '' : 'none';
-  metricHead.textContent = dimension==="golf"?"⛳ Golf" : dimension==="drink"?"🍺 Drinking" : (useAI()?"✨ Rating":"Rating");
-  const list=rankedPlayers();
-  playerList.innerHTML='';
+  document.getElementById('ballotNoteP').textContent=ballotLine();
+  document.getElementById('engineGroup').style.display=aiExists()?'':'none';
+  metricHead.textContent=dimension==="golf"?"⛳ Golf":dimension==="drink"?"🍺 Drinking":(useAI()?"✨ Rating":"Rating");
+  const list=rankedPlayers(); playerList.innerHTML='';
   if(!list.length){ playerList.innerHTML='<p class="hint" style="text-align:center;padding:24px">No players match.</p>'; return; }
   list.forEach((p,i)=>{
-    const c=TEAM_COLORS[p.team]||'#888';
-    const cap = DATA.teams.find(t=>t.id===p.team)?.captain===p.name;
+    const c=TEAM_COLORS[p.team]||'#888'; const cap=teams.find(t=>t.id===p.team)?.captain===p.name;
     const o=p._o, tier=tierOf(o);
-    const metricStars = dimension==="overall" ? `<span class="stars" style="font-size:.78rem">⛳${starHTML(p.golf)} 🍺${starHTML(p.drink)}</span>` : starHTML(dimension==="golf"?p.golf:p.drink);
-    const row=document.createElement('div');
-    row.className='prow'+(i<3?' top3':'');
-    row.innerHTML=`
-      <div class="prank">${i+1}</div>
-      <div class="pmeta">
-        <div class="pname">${esc(p.name)} <span class="gtag ${p.gender}">${p.gender==='F'?'Girl':'Boy'}</span></div>
-        <div class="psub"><span class="tteam" style="border-color:${c};color:${c}">${cap?'★ Captain · ':''}Team ${p.team}</span></div>
-      </div>
-      <div class="metric">${metricStars}</div>
-      <div class="ttier T-${tier}">${tier}</div>
-      <div class="prmr">${o}<small>RMR</small></div>`;
-    const blurb=document.createElement('div');
-    blurb.className='pblurb';
-    const reportLabel = (useAI() && p.ai && p.ai.blurb) ? '✨ AI scouting report' : 'Scouting report';
-    blurb.innerHTML=`<div class="scoreline"><span>⛳ Golf: ${starHTML(p.golf)}</span><span>🍺 Drinking: ${starHTML(p.drink)}</span><span>Overall: <b>${o}</b> · Tier ${tier}</span></div><b>${reportLabel}:</b> ${esc(blurbOf(p)||'—')}`;
+    const metricStars=dimension==="overall"?`<span class="stars" style="font-size:.78rem">⛳${starHTML(p.golf)} 🍺${starHTML(p.drink)}</span>`:starHTML(dimension==="golf"?p.golf:p.drink);
+    const row=document.createElement('div'); row.className='prow'+(i<3?' top3':'');
+    row.innerHTML=`<div class="prank">${i+1}</div>
+      <div class="pmeta"><div class="pname">${esc(p.name)} <span class="gtag ${p.gender}">${p.gender==='F'?'Girl':'Boy'}</span></div>
+      <div class="psub"><span class="tteam" style="border-color:${c};color:${c}">${cap?'★ Captain · ':''}Team ${p.team}</span>${p.nVotes?`<span class="hint">${p.nVotes} vote${p.nVotes>1?'s':''}</span>`:''}</div></div>
+      <div class="metric">${metricStars}</div><div class="ttier T-${tier}">${tier}</div><div class="prmr">${o}<small>RMR</small></div>`;
+    const blurb=document.createElement('div'); blurb.className='pblurb';
+    const label=(useAI()&&p.ai&&p.ai.blurb)?'✨ AI scouting report':'Notes';
+    const extra=(p.comments&&p.comments.length>1)?`<div style="margin-top:6px"><b>Other comments:</b> ${p.comments.slice(1,4).map(c=>'“'+esc(c)+'”').join(' · ')}</div>`:'';
+    blurb.innerHTML=`<div class="scoreline"><span>⛳ Golf: ${starHTML(p.golf)} (${p.golf.toFixed(1)})</span><span>🍺 Drinking: ${starHTML(p.drink)} (${p.drink.toFixed(1)})</span><span>Overall: <b>${o}</b> · Tier ${tier}</span></div><b>${label}:</b> ${esc(blurbOf(p))||'—'}${extra}`;
     row.addEventListener('click',()=>blurb.classList.toggle('open'));
     playerList.appendChild(row); playerList.appendChild(blurb);
   });
 }
 function renderTiers(){
-  const list=rankedPlayers();
-  const byTier={S:[],A:[],B:[],C:[],D:[]};
-  list.forEach((p,i)=>byTier[tierOf(p._o)].push({p,i}));
-  tierView.innerHTML='<div class="tierwrap"></div>';
-  const wrap=tierView.querySelector('.tierwrap');
-  ["S","A","B","C","D"].forEach(tier=>{
-    if(!byTier[tier].length) return;
-    const row=document.createElement('div'); row.className='tierrow tier-'+tier;
-    row.innerHTML=`<div class="tierlabel">${tier}</div><div class="tiernames">${
-      byTier[tier].map(({p,i})=>{const c=TEAM_COLORS[p.team];return `<span class="tiername" style="box-shadow:inset 3px 0 0 ${c}"><span class="tnum">${i+1}</span>${esc(p.name)}</span>`;}).join('')
-    }</div>`;
-    wrap.appendChild(row);
-  });
+  const list=rankedPlayers(); const byT={S:[],A:[],B:[],C:[],D:[]};
+  list.forEach((p,i)=>byT[tierOf(p._o)].push({p,i}));
+  tierView.innerHTML='<div class="tierwrap"></div>'; const wrap=tierView.querySelector('.tierwrap');
+  ["S","A","B","C","D"].forEach(t=>{ if(!byT[t].length)return; const row=document.createElement('div'); row.className='tierrow tier-'+t;
+    row.innerHTML=`<div class="tierlabel">${t}</div><div class="tiernames">${byT[t].map(({p,i})=>{const c=TEAM_COLORS[p.team];return `<span class="tiername" style="box-shadow:inset 3px 0 0 ${c}"><span class="tnum">${i+1}</span>${esc(p.name)}</span>`;}).join('')}</div>`;
+    wrap.appendChild(row); });
 }
-function renderPlayerView(){
-  if(view==='tiers'){ tierView.style.display='block'; document.getElementById('listView').style.display='none'; renderTiers(); }
-  else { tierView.style.display='none'; document.getElementById('listView').style.display='block'; renderPlayers(); }
-}
+function renderPlayerView(){ if(view==='tiers'){ tierView.style.display='block'; document.getElementById('listView').style.display='none'; renderTiers(); } else { tierView.style.display='none'; document.getElementById('listView').style.display='block'; renderPlayers(); } }
 
 const aboutWrap=document.getElementById('aboutWrap');
 function renderAbout(){
   aboutWrap.innerHTML='';
-  DATA.about.forEach((sec,i)=>{
-    const card=document.createElement('div'); card.className='acard';
-    card.innerHTML=`<h2><span class="ic">${sec.icon}</span> <span ${isAdmin?`contenteditable="true" data-ai="${i}" data-f="title"`:''}>${esc(sec.title)}</span>${sec.todo?'<span class="todo">edit me</span>':''}</h2>
-      <div class="abody" ${isAdmin?`contenteditable="true" data-ai="${i}" data-f="html"`:''}>${sec.html}</div>`;
-    if(isAdmin){
-      card.querySelector('[data-f="title"]').addEventListener('blur',e=>{ DATA.about[i].title=e.target.textContent.trim(); markDirty(); });
-      card.querySelector('[data-f="html"]').addEventListener('blur',e=>{ DATA.about[i].html=e.target.innerHTML; DATA.about[i].todo=false; markDirty(); });
-    }
-    aboutWrap.appendChild(card);
+  about.forEach((sec,i)=>{ const card=document.createElement('div'); card.className='acard';
+    card.innerHTML=`<h2><span class="ic">${sec.icon}</span> <span ${isAdmin?`contenteditable="true" data-ai="${i}" data-f="title"`:''}>${esc(sec.title)}</span>${sec.todo?'<span class="todo">edit me</span>':''}</h2><div ${isAdmin?`contenteditable="true" data-ai="${i}" data-f="html"`:''}>${sec.html}</div>`;
+    if(isAdmin){ card.querySelector('[data-f="title"]').addEventListener('blur',e=>{about[i].title=e.target.textContent.trim();});
+      card.querySelector('[data-f="html"]').addEventListener('blur',e=>{about[i].html=e.target.innerHTML;about[i].todo=false;}); }
+    aboutWrap.appendChild(card); });
+}
+
+/* ---- VOTE tab ---- */
+const voteList=document.getElementById('voteList'), voteNotice=document.getElementById('voteNotice'), submitBar=document.getElementById('submitBar');
+function renderVote(){
+  const nameInput=document.getElementById('voterName'); nameInput.value=voterName;
+  if(!configured){
+    voteNotice.innerHTML='<div class="notice">🛠️ Voting isn\'t connected yet. The organizer needs to add the database keys. Once that\'s done, refresh and you can rate everyone here.</div>';
+    voteList.innerHTML=''; submitBar.style.display='none'; return;
+  }
+  voteNotice.innerHTML=''; submitBar.style.display='flex';
+  document.getElementById('submitHint').textContent = Object.keys(myBallot).length? 'You\'ve voted — change anything and re-submit to update.' : '';
+  voteList.innerHTML='';
+  SEED.players.forEach(pl=>{
+    const mine=myBallot[pl.name]||{golf:0,drink:0,comment:''};
+    const card=document.createElement('div'); card.className='vcard'; card.dataset.name=pl.name;
+    card.innerHTML=`<div class="vn">${esc(pl.name)}<small>Team ${pl.team} · ${pl.gender==='F'?'Girl':'Boy'}</small></div>
+      <div class="vrate"><span class="vlbl">⛳ Golf</span><div class="starset" data-k="golf"></div></div>
+      <div class="vrate"><span class="vlbl">🍺 Drinking</span><div class="starset" data-k="drink"></div></div>
+      <textarea class="vcomment" placeholder="Optional hot take…">${esc(mine.comment||'')}</textarea>`;
+    const state={golf:mine.golf||0, drink:mine.drink||0, comment:mine.comment||''};
+    card.querySelectorAll('.starset').forEach(ss=>{ const k=ss.dataset.k;
+      const paint=()=>{ ss.innerHTML=''; for(let i=1;i<=5;i++){ const s=document.createElement('span'); s.textContent='★'; s.className=i<=state[k]?'on':'off';
+        s.addEventListener('click',()=>{ state[k]=i; paint(); }); ss.appendChild(s);} }; paint(); });
+    card.querySelector('.vcomment').addEventListener('input',e=>state.comment=e.target.value);
+    card._state=state;
+    voteList.appendChild(card);
   });
 }
-function renderAll(){ renderTeams(); renderPlayerView(); renderAbout(); }
+async function submitVotes(){
+  const name=document.getElementById('voterName').value.trim();
+  if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; }
+  voterName=name; localStorage.setItem('armoimc3_voter_name',name);
+  const rows=[]; document.querySelectorAll('#voteList .vcard').forEach(card=>{
+    const s=card._state; if(s.golf||s.drink||s.comment) rows.push({ voter_id:voterId, voter_name:name, player_name:card.dataset.name, golf:s.golf||0, drink:s.drink||0, comment:s.comment||null });
+  });
+  if(!rows.length){ flash('Rate at least one player',true); return; }
+  const btn=document.getElementById('submitVotes'); btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const { error } = await sb.from('votes').upsert(rows,{ onConflict:'voter_id,player_name' });
+    if(error) throw error;
+    await fetchVotes(); renderAll();
+    flash('🗳️ Ballot saved — thanks '+name+'!');
+  }catch(e){ console.error(e); flash('Save failed: '+(e.message||e),true); }
+  btn.disabled=false; btn.textContent='🗳️ Submit my ballot';
+}
+document.getElementById('submitVotes').addEventListener('click',submitVotes);
+document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); });
+
+function renderAll(){ renderTeams(); renderPlayerView(); renderVote(); renderAbout(); }
 
 /* =========================================================
-   FILTER / TAB EVENTS
+   TABS + FILTERS
    ========================================================= */
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -643,183 +589,104 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   t.classList.add('active'); document.getElementById('panel-'+t.dataset.panel).classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
 }));
-function segHandler(id,fn){ document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+function seg(id,fn){ document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
   e.currentTarget.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); fn(b); renderPlayerView(); }); }
-segHandler('genderSeg', b=> genderF=b.dataset.g);
-segHandler('dimSeg', b=> dimension=b.dataset.d);
-segHandler('viewSeg', b=> view=b.dataset.view);
+seg('genderSeg',b=>genderF=b.dataset.g); seg('dimSeg',b=>dimension=b.dataset.d); seg('viewSeg',b=>view=b.dataset.view);
 document.getElementById('engineSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
   document.querySelectorAll('#engineSeg button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); engine=b.dataset.e; renderAll(); });
 document.getElementById('playerSearch').addEventListener('input',e=>{ searchQ=e.target.value.toLowerCase().trim(); renderPlayerView(); });
 
 /* =========================================================
-   ADMIN: login / logout
+   ADMIN
    ========================================================= */
-const loginModal=document.getElementById('loginModal');
-const rankModal=document.getElementById('rankModal');
-function openModal(m){ m.classList.add('open'); }
-function closeModal(m){ m.classList.remove('open'); }
-document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',e=>closeModal(e.target.closest('.modal'))));
-document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) closeModal(m); }));
+const loginModal=document.getElementById('loginModal'), aiModal=document.getElementById('aiModal');
+function openM(m){m.classList.add('open')} function closeM(m){m.classList.remove('open')}
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',e=>closeM(e.target.closest('.modal'))));
+document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeM(m)}));
+document.getElementById('adminLink').addEventListener('click',()=>{ if(isAdmin){ openM(aiModal); } else { openM(loginModal); setTimeout(()=>document.getElementById('pwInput').focus(),50);} });
 
-document.getElementById('adminLink').addEventListener('click',()=>{ if(isAdmin){ openRankEditor(); } else { openModal(loginModal); setTimeout(()=>document.getElementById('pwInput').focus(),50);} });
-
-async function sha256(s){ const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
-async function tryLogin(){
-  const pw=document.getElementById('pwInput').value;
-  const err=document.getElementById('loginErr'); err.textContent='';
-  const h=await sha256(pw);
-  if(h===ADMIN_HASH){ isAdmin=true; sessionStorage.setItem('armoimc3_admin','1'); document.body.classList.add('admin'); closeModal(loginModal); document.getElementById('pwInput').value=''; renderAll(); flash('Welcome, Commissioner ★'); }
-  else { err.textContent='Wrong password.'; }
-}
+async function sha256(s){ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+async function tryLogin(){ const pw=document.getElementById('pwInput').value; const err=document.getElementById('loginErr'); err.textContent='';
+  if(await sha256(pw)===ADMIN_HASH){ isAdmin=true; sessionStorage.setItem('armoimc3_admin','1'); document.body.classList.add('admin'); closeM(loginModal); document.getElementById('pwInput').value=''; updateCStat(); renderAll(); flash('Welcome, Commissioner ★'); }
+  else err.textContent='Wrong password.'; }
 document.getElementById('loginGo').addEventListener('click',tryLogin);
-document.getElementById('pwInput').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
+document.getElementById('pwInput').addEventListener('keydown',e=>{if(e.key==='Enter')tryLogin();});
 document.getElementById('logoutBtn').addEventListener('click',()=>{ isAdmin=false; sessionStorage.removeItem('armoimc3_admin'); document.body.classList.remove('admin'); renderAll(); });
+document.getElementById('refreshBtn').addEventListener('click',async()=>{ await fetchVotes(); await fetchAI(); renderAll(); flash('Refreshed'); });
 
-/* =========================================================
-   ADMIN: rank players editor
-   ========================================================= */
-const wGolfEl=document.getElementById('wGolf'), wGolfV=document.getElementById('wGolfV'), wDrinkV=document.getElementById('wDrinkV');
-function syncWeights(){ const g=DATA.weights.golf??60; wGolfEl.value=g; wGolfV.textContent=g; wDrinkV.textContent=100-g; }
-wGolfEl.addEventListener('input',()=>{ DATA.weights.golf=+wGolfEl.value; wGolfV.textContent=wGolfEl.value; wDrinkV.textContent=100-wGolfEl.value; markDirty(); renderAll(); });
+function updateCStat(){ const el=document.getElementById('cstat'), txt=document.getElementById('cstatText');
+  if(!configured){ el.className='cstat bad'; txt.textContent='DB not connected'; }
+  else { el.className='cstat ok'; txt.textContent=`Connected · ${ballotCount()} ballots`; } }
 
-function openRankEditor(){
-  syncWeights();
-  const ed=document.getElementById('rankEditor');
-  ed.querySelectorAll('.rrow').forEach(n=>n.remove());
-  DATA.players.forEach((p,idx)=>{
-    const row=document.createElement('div'); row.className='rrow';
-    row.innerHTML=`
-      <div class="rn">${esc(p.name)}<small>Team ${p.team}</small></div>
-      <div class="gtoggle"><button data-g="M" class="${p.gender==='M'?'on':''}">Boy</button><button data-g="F" class="${p.gender==='F'?'on':''}">Girl</button></div>
-      <div class="starset" data-k="golf"></div>
-      <div class="starset" data-k="drink"></div>
-      <textarea class="rcomment" placeholder="Scouting comment…">${esc(p.comments||'')}</textarea>`;
-    // gender
-    row.querySelectorAll('.gtoggle button').forEach(b=>b.addEventListener('click',()=>{
-      p.gender=b.dataset.g; row.querySelectorAll('.gtoggle button').forEach(x=>x.classList.toggle('on',x.dataset.g===p.gender)); markDirty(); renderAll();
-    }));
-    // stars
-    row.querySelectorAll('.starset').forEach(ss=>{
-      const k=ss.dataset.k;
-      const paint=()=>{ ss.innerHTML=''; for(let i=1;i<=5;i++){ const s=document.createElement('span'); s.textContent='★'; s.className=i<=p[k]?'on':'off'; s.addEventListener('click',()=>{ p[k]=i; paint(); markDirty(); renderAll(); }); ss.appendChild(s);} };
-      paint();
-    });
-    // comment
-    row.querySelector('.rcomment').addEventListener('input',e=>{ p.comments=e.target.value; markDirty(); });
-    ed.appendChild(row);
-  });
-  openModal(rankModal);
-}
-document.getElementById('openRank').addEventListener('click',openRankEditor);
-
-/* =========================================================
-   ADMIN: AI rankings (direct browser -> Claude API)
-   ========================================================= */
-const AI_KEY_LS = "armoimc3_apikey";
-let aiModel = "claude-sonnet-4-6";
-const aiKeyEl = document.getElementById('aiKey');
-const aiLogEl = document.getElementById('aiLog');
-function aiLog(msg,cls){ const line=document.createElement('div'); if(cls)line.className=cls; line.textContent=msg; aiLogEl.appendChild(line); aiLogEl.scrollTop=aiLogEl.scrollHeight; }
-
-document.getElementById('openAI').addEventListener('click',()=>{
-  aiKeyEl.value = localStorage.getItem(AI_KEY_LS) || '';
-  aiLogEl.innerHTML='';
-  openModal(document.getElementById('aiModal'));
-});
-document.getElementById('aiModel').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
-  document.querySelectorAll('#aiModel button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); aiModel=b.dataset.m; });
+/* ----- AI ----- */
+const aiKeyEl=document.getElementById('aiKey'), aiLogEl=document.getElementById('aiLog'); const AI_KEY_LS="armoimc3_apikey";
+function aiLog(m,c){ const l=document.createElement('div'); if(c)l.className=c; l.textContent=m; aiLogEl.appendChild(l); aiLogEl.scrollTop=aiLogEl.scrollHeight; }
+document.getElementById('openAI').addEventListener('click',()=>{ aiKeyEl.value=localStorage.getItem(AI_KEY_LS)||''; aiLogEl.innerHTML=''; openM(aiModal); });
+document.getElementById('aiModel').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; document.querySelectorAll('#aiModel button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); aiModel=b.dataset.m; });
 aiKeyEl.addEventListener('change',()=>{ if(aiKeyEl.value.trim()) localStorage.setItem(AI_KEY_LS,aiKeyEl.value.trim()); });
-
-document.getElementById('aiClear').addEventListener('click',()=>{
-  if(!confirm('Remove all AI scores/blurbs and revert to the star formula?')) return;
-  DATA.players.forEach(p=>{ delete p.ai; }); DATA.teams.forEach(t=>{ if(t.aiBlurb) delete t.aiBlurb; });
-  engine="formula"; markDirty(); renderAll(); flash('AI data cleared');
-});
+document.getElementById('aiClear').addEventListener('click',async()=>{ if(!confirm('Remove AI rankings for everyone (revert to crowd average)?'))return;
+  aiData=null; engine="crowd"; if(sb){ try{ await sb.from('ai_rankings').upsert({id:1,data:null,updated_at:new Date().toISOString()}); }catch(e){} } renderAll(); flash('AI rankings cleared'); });
 
 function buildAIPrompt(){
-  const g=DATA.weights?.golf ?? 60;
-  const roster = DATA.players.map(p=>({ name:p.name, team:p.team, gender:p.gender==='F'?'woman':'man', golf_stars:p.golf, drink_stars:p.drink, note:p.comments||'' }));
-  const teams = DATA.teams.map(t=>({ id:t.id, name:t.name, captain:t.captain }));
-  return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice. Keep it good-natured.
+  const ps=players().map(p=>({ name:p.name, team:p.team, gender:p.gender==='F'?'woman':'man',
+    golf_avg:+p.golf.toFixed(2), drink_avg:+p.drink.toFixed(2), votes:p.nVotes, comments:(p.comments||[]).slice(0,8) }));
+  const ts=teams.map(t=>({id:t.id,name:t.name,captain:t.captain}));
+  return `You are the official analyst for the ARMOIMC III — the 3rd Annual Rard Man Open Invitational Master Classic, a 4th-of-July team golf scramble among friends. Tone: confident, funny, ESPN/The-Ringer power-rankings voice; good-natured.
 
-Rank all ${roster.length} competitors. Each has a golf rating and a drinking rating (1-5 stars) and a short scouting note from the commissioner. Weigh GOLF skill most for the overall (about ${g}% golf / ${100-g}% drinking/vibes), but let the scouting notes nuance the score and the writeup.
+These ratings are CROWD-SOURCED: friends voted 1-5 stars on each competitor's golf skill and drinking game, and left comments. Use the averages as the backbone, weigh GOLF most for the overall (~60% golf / 40% drinking), and let the comments add nuance and color.
 
-For EACH player produce:
+For EACH of the ${ps.length} players output:
 - "name": exact name as given
-- "score": integer 0-100 overall rating
-- "tier": one of "S","A","B","C","D" (S=90+, A=80-89, B=70-79, C=60-69, D<60; keep tiers consistent with scores)
-- "blurb": ONE punchy sentence (max ~22 words) scouting report
+- "score": integer 0-100 overall
+- "tier": "S"(90+),"A"(80-89),"B"(70-79),"C"(60-69) or "D"(<60), consistent with score
+- "blurb": ONE punchy scouting sentence (max ~22 words), can reference the vibe from comments
 
-For EACH team produce a "teamBlurb": { "id": <teamId>, "blurb": one fun sentence about the squad's outlook }.
+Also a "teams" array: for each team {"id":<id>,"blurb": one fun sentence on their outlook}.
 
-Players:
-${JSON.stringify(roster)}
+Players (with vote averages + comments):
+${JSON.stringify(ps)}
 
 Teams:
-${JSON.stringify(teams)}
+${JSON.stringify(ts)}
 
-Respond with ONLY valid minified JSON, no markdown, of the form:
-{"players":[{"name":"","score":0,"tier":"","blurb":""}],"teams":[{"id":1,"blurb":""}]}`;
+Respond with ONLY minified JSON: {"players":[{"name":"","score":0,"tier":"","blurb":""}],"teams":[{"id":1,"blurb":""}]}`;
 }
-
 async function generateAI(){
-  const key = aiKeyEl.value.trim() || localStorage.getItem(AI_KEY_LS) || '';
+  const key=aiKeyEl.value.trim()||localStorage.getItem(AI_KEY_LS)||'';
   if(!key){ aiLog('No API key entered.','bad'); return; }
-  localStorage.setItem(AI_KEY_LS, key);
-  const btn=document.getElementById('aiGo'); btn.disabled=true;
-  aiLogEl.innerHTML=''; aiLog(`Asking ${aiModel} to rank ${DATA.players.length} players…`);
+  localStorage.setItem(AI_KEY_LS,key);
+  const btn=document.getElementById('aiGo'); btn.disabled=true; aiLogEl.innerHTML='';
+  const n=ballotCount(); aiLog(`Reading ${n} ballot${n===1?'':'s'} and asking ${aiModel}…`);
   try{
-    const res = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{ 'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
-      body: JSON.stringify({ model:aiModel, max_tokens:4096, messages:[{role:'user',content:buildAIPrompt()}] })
-    });
-    if(!res.ok){ const t=await res.text(); aiLog('API error '+res.status+': '+t.slice(0,300),'bad'); btn.disabled=false; return; }
-    const data = await res.json();
-    let text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    text = text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
-    const start=text.indexOf('{'), end=text.lastIndexOf('}');
-    if(start>=0&&end>start) text=text.slice(start,end+1);
-    const parsed = JSON.parse(text);
-    let applied=0;
-    (parsed.players||[]).forEach(ai=>{
-      const p = DATA.players.find(x=>x.name.toLowerCase()===String(ai.name||'').toLowerCase());
-      if(p && typeof ai.score==='number'){ p.ai={ score:Math.max(0,Math.min(100,Math.round(ai.score))), tier:ai.tier||tierOf(ai.score), blurb:ai.blurb||'' }; applied++; }
-    });
-    (parsed.teams||[]).forEach(tb=>{ const t=DATA.teams.find(x=>x.id===tb.id); if(t&&tb.blurb){ t.blurb=tb.blurb; } });
-    aiLog(`✓ Applied AI rankings to ${applied}/${DATA.players.length} players + team blurbs.`,'ok');
+    const res=await fetch('https://api.anthropic.com/v1/messages',{ method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({ model:aiModel, max_tokens:4096, messages:[{role:'user',content:buildAIPrompt()}] }) });
+    if(!res.ok){ aiLog('API error '+res.status+': '+(await res.text()).slice(0,300),'bad'); btn.disabled=false; return; }
+    const data=await res.json();
+    let text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+    const a=text.indexOf('{'), z=text.lastIndexOf('}'); if(a>=0&&z>a) text=text.slice(a,z+1);
+    const parsed=JSON.parse(text);
+    parsed.updatedAt=new Date().toISOString();
+    aiData=parsed; engine="ai";
+    aiLog(`✓ Built rankings for ${parsed.players?.length||0} players.`,'ok');
     if(data.usage) aiLog(`Tokens: ${data.usage.input_tokens} in / ${data.usage.output_tokens} out.`);
-    engine="ai"; markDirty(); renderAll();
-    aiLog('Rankings updated. Review them, then Publish to make it public.','ok');
-  }catch(err){
-    aiLog('Failed: '+err.message,'bad');
-    aiLog('If this is a CORS/network error, check the key and that direct browser access is allowed.','bad');
-  }
+    if(sb){ const { error }=await sb.from('ai_rankings').upsert({id:1,data:parsed,updated_at:parsed.updatedAt}); if(error) aiLog('Saved locally but cloud save failed: '+error.message,'bad'); else aiLog('Saved to the cloud — everyone sees these now.','ok'); }
+    else aiLog('(No database connected — rankings shown locally only.)','bad');
+    renderAll();
+  }catch(err){ aiLog('Failed: '+err.message,'bad'); aiLog('Check the API key / that the model id is valid.','bad'); }
   btn.disabled=false;
 }
 document.getElementById('aiGo').addEventListener('click',generateAI);
 
 /* =========================================================
-   ADMIN: publish / import / discard
+   INIT
    ========================================================= */
-document.getElementById('publishBtn').addEventListener('click',()=>{
-  const out={ meta:DATA.meta, weights:DATA.weights, teams:DATA.teams, players:DATA.players, about:DATA.about };
-  const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='data.json'; a.click();
-  flash('Exported data.json — commit it to armoimc/ to publish');
-});
-document.getElementById('importBtn').addEventListener('click',()=>document.getElementById('importFile').click());
-document.getElementById('importFile').addEventListener('change',e=>{
-  const f=e.target.files[0]; if(!f) return; const r=new FileReader();
-  r.onload=()=>{ try{ DATA=mergeData(JSON.parse(r.result)); markDirty(); syncWeights(); renderAll(); flash('Imported ✓'); }catch(err){ alert('Invalid JSON file.'); } };
-  r.readAsText(f);
-});
-document.getElementById('discardBtn').addEventListener('click',()=>{
-  if(!confirm('Discard local unpublished changes and reload published data?')) return;
-  localStorage.removeItem(LS_KEY); location.reload();
-});
-
+async function boot(){
+  if(isAdmin) document.body.classList.add('admin');
+  renderAll();              // instant paint with seed/fallback
+  if(sb){ await Promise.all([fetchVotes(), fetchAI()]); }
+  updateCStat(); renderAll();
+}
 boot();
 </script>
 </body>
