@@ -189,6 +189,9 @@
   .tiername .tnum{color:var(--muted2);font-weight:800;margin-right:5px}
 
   /* VOTE */
+  .editbanner{display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#eef5ee,#e3efe3);border:1px solid #cfe0cf;border-left:4px solid var(--green);border-radius:8px;padding:11px 16px;margin-bottom:16px;color:var(--green-deep);font-weight:600;box-shadow:var(--shadow)}
+  .editbanner .pen{font-size:1.05rem}
+  .editbanner b{font-weight:800}
   .voteintro{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
   .voteintro h2{font-family:var(--serif);font-weight:400;font-size:1.6rem;margin:0 0 6px}
   .namerow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
@@ -412,6 +415,8 @@
       <button data-step="players" class="active">⭐ Rank your players</button>
       <button data-step="teams">🏆 Rank teams &amp; champion</button>
     </div>
+
+    <div id="editingBanner" style="display:none"></div>
 
     <div id="votePlayersView">
       <div class="voteintro">
@@ -1021,6 +1026,20 @@ function renderAbout(){
 const voteList=document.getElementById('voteList'), voteNotice=document.getElementById('voteNotice'), submitBar=document.getElementById('submitBar');
 let dragName=null;
 let touched={M:false,F:false};
+function updateEditBanner(){
+  const el=document.getElementById('editingBanner'); if(!el) return;
+  const com=!!committeeMember;
+  const who = com?committeeMember:voterName;
+  const hasPlayer = votes.some(v=>v.voter_id===activeId());
+  const hasTeam = teamVotes.some(v=>v.voter_id===activeId());
+  if(!configured || !who || (!hasPlayer && !hasTeam)){ el.style.display='none'; return; }
+  const both = hasPlayer && hasTeam;
+  const which = voteStep==='teams' ? (hasTeam?'team ballot':(hasPlayer?'player ballot':'')) : (hasPlayer?'player ballot':(hasTeam?'team ballot':''));
+  const kind = com ? 'official ranking' : (both ? 'ballots' : which);
+  el.className='editbanner';
+  el.innerHTML = `<span class="pen">✏️</span><span>Editing <b>${esc(who)}</b>'s ${kind} — make any changes and re-submit to update. Nothing resets.</span>`;
+  el.style.display='flex';
+}
 function renderVote(){
   const com=!!committeeMember;
   document.getElementById('votePlayersView').style.display = voteStep==='players'?'':'none';
@@ -1029,6 +1048,7 @@ function renderVote(){
   document.querySelector('#voteStepSeg button[data-step="players"]').textContent = com?'📋 Rank players (Official)':'⭐ Rank your players';
   document.querySelector('#voteStepSeg button[data-step="teams"]').textContent = com?'📋 Rank teams (Commission)':'🏆 Rank teams & champion';
   renderTeamVote();
+  updateEditBanner();
   document.getElementById('voterName').value=voterName;
   const seg=document.getElementById('voteGenderSeg');
   if(!configured){
