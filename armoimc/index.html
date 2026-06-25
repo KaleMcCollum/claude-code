@@ -1350,11 +1350,12 @@ async function deleteBallot(kind,voterId,name){
   if(!confirm(`Delete ${name}'s ${kind==='team'?'team':'player'} ballot? This removes it from the rankings for everyone.`)) return;
   const table = kind==='team'?'team_votes':'votes';
   try{
-    const { error } = await sb.from(table).delete().eq('voter_id',voterId);
+    const { data, error } = await sb.from(table).delete().eq('voter_id',voterId).select();
     if(error) throw error;
+    if(!data || !data.length){ flash("Nothing deleted — your database is blocking deletes. Run the delete-policy SQL in supabase-update.sql, then try again.",true); return; }
     await Promise.all([fetchVotes(),fetchTeamVotes()]);
     renderBallotManager(); renderAll(); updateCStat();
-    flash('🗑️ Ballot deleted');
+    flash(`🗑️ Ballot deleted (${data.length} row${data.length>1?'s':''})`);
   }catch(e){ console.error(e); flash('Delete failed — run the delete-policy SQL ('+(e.message||e)+')',true); }
 }
 document.getElementById('ballotFilterSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; document.querySelectorAll('#ballotFilterSeg button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); ballotFilter=b.dataset.f; renderBallotManager(); });
