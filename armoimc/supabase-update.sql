@@ -5,6 +5,10 @@
 -- 1) store each voter's personal ranking position
 alter table votes add column if not exists rank int;
 
+-- 1b) committee (official) ballots: who submitted + flag
+alter table votes add column if not exists member text;
+alter table votes add column if not exists committee boolean default false;
+
 -- 2) allow the new 1–7 golf/drinking scale (old setup capped values at 5)
 alter table votes drop constraint if exists votes_golf_check;
 alter table votes drop constraint if exists votes_drink_check;

@@ -11,6 +11,8 @@ create table if not exists votes (
   golf        int check (golf between 0 and 7),
   drink       int check (drink between 0 and 7),
   rank        int,                     -- this voter's personal ranking position
+  member      text,                    -- committee member name (official ballots)
+  committee   boolean default false,   -- true = official committee ballot
   comment     text,
   created_at  timestamptz default now(),
   primary key (voter_id, player_name)  -- re-voting updates instead of duplicating
