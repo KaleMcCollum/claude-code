@@ -795,9 +795,17 @@ function effRankAvg(p){ const a=srcOf(p); return a?a.rankAvg:null; }
 function nVotes(p){ const a=srcOf(p); return a?a.n:0; }
 function fromVotes(p){ const a=srcOf(p); return !!(a&&a.n); }
 function formulaScore(p){ return Math.round((W_GOLF*effGolf(p) + (1-W_GOLF)*effDrink(p))/MAX_LVL*100); }
+function genderCount(g){ return SEED.players.filter(x=>x.gender===g).length || 1; }
+// committee rank turned into a 0-100 score (rank 1 in a gender ≈ 100) so the official
+// ranking reflects the committee's ACTUAL ordering even on a rank-only ballot
+function rankScore(p, agg){ if(!agg||agg.rankAvg==null) return null; const N=genderCount(p.gender); return Math.round(100*(N-agg.rankAvg+1)/N); }
 // official ranking uses the AI consensus (built from committee ballots) when available
 function aiOfficial(){ return source==="official" && aiExists(); }
-function overallScore(p){ return (aiOfficial()&&p.ai&&typeof p.ai.score==='number') ? p.ai.score : formulaScore(p); }
+function overallScore(p){
+  if(aiOfficial()&&p.ai&&typeof p.ai.score==='number') return p.ai.score;
+  const rs=rankScore(p, srcOf(p)); if(rs!=null) return rs;   // committee/people rank order drives the score
+  return formulaScore(p);
+}
 function tierOf(s){ return s>=90?"S":s>=80?"A":s>=70?"B":s>=60?"C":"D"; }
 function blurbOf(p){ if(aiOfficial()&&p.ai&&p.ai.blurb) return p.ai.blurb;
   if(source==="people"&&p.pubComments[0]) return '“'+p.pubComments[0]+'”';
@@ -1142,13 +1150,15 @@ async function submitVotes(){
   let name;
   if(com){ name=committeeMember; }
   else { name=document.getElementById('voterName').value.trim(); if(!name){ flash('Enter your name first',true); document.getElementById('voterName').focus(); return; } voterName=name; localStorage.setItem('armoimc3_voter_name',name); }
-  // require a golf AND drinking rating on every player before submitting
-  const unrated=SEED.players.filter(p=>{ const st=cardState[p.name]; return !st || !st.golf || !st.drink; });
-  if(unrated.length){
-    const firstG=unrated[0].gender;
-    if(voteGender!==firstG){ voteGender=firstG; renderVote(); }
-    flash(`Rate every player first — ${unrated.length} still need ⛳ & 🍺 (check the ${firstG==='F'?'Girls':'Boys'} tab)`,true);
-    return;
+  // public voters must rate every player (golf + drinking); committee may submit a rank-only ballot
+  if(!com){
+    const unrated=SEED.players.filter(p=>{ const st=cardState[p.name]; return !st || !st.golf || !st.drink; });
+    if(unrated.length){
+      const firstG=unrated[0].gender;
+      if(voteGender!==firstG){ voteGender=firstG; renderVote(); }
+      flash(`Rate every player first — ${unrated.length} still need ⛳ & 🍺 (check the ${firstG==='F'?'Girls':'Boys'} tab)`,true);
+      return;
+    }
   }
   const genders=["M","F"];
   const rows=[];
