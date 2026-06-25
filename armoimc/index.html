@@ -206,6 +206,19 @@
   .pred-result .num{font-family:var(--num);font-weight:700}
   .pred-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:8px;padding:12px 16px;margin-bottom:10px;box-shadow:var(--shadow)}
   .pred-card .padj{font-family:var(--num);font-weight:800;color:var(--green-deep);font-size:1.15rem}
+  .golf-wrap{max-width:420px;margin:0 auto}
+  .golf-hud{display:flex;justify-content:space-between;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;box-shadow:var(--shadow)}
+  .golf-hud>div{display:flex;flex-direction:column;align-items:center;gap:1px;flex:1;text-align:center}
+  .golf-hud .gh-k{font-family:var(--label);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .golf-hud b{font-family:var(--num);font-size:1.25rem;color:var(--green-deep);line-height:1}
+  .golf-hud .gh-sub{font-size:.62rem;color:var(--muted)}
+  #golfCanvas{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line2);box-shadow:var(--shadow);touch-action:manipulation;cursor:pointer;background:#3f7a3a}
+  .golf-msg{min-height:22px;text-align:center;font-weight:700;color:var(--green-deep);margin:8px 0 2px}
+  .golf-clubs{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:6px 0 12px}
+  .golf-clubs button{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--ink);font-family:var(--label);font-size:.72rem;font-weight:700;padding:7px 10px;cursor:pointer;transition:.12s}
+  .golf-clubs button.on{background:var(--green);color:#fff;border-color:var(--green)}
+  .golf-clubs button:disabled{opacity:.4;cursor:default}
+  .golf-controls{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
   .pred-card .ph{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
   .pred-card .pt{font-family:var(--serif,var(--display));font-size:1.15rem;font-weight:700;color:var(--green-deep)}
   .pred-card .pscore{font-family:var(--num);font-weight:700}
@@ -340,6 +353,7 @@
   <button class="tab" data-panel="players">Player Rankings</button>
   <button class="tab vote" data-panel="vote">⭐ Vote</button>
   <button class="tab" data-panel="predict">🔮 Predictions</button>
+  <button class="tab" data-panel="play">🎮 Play</button>
   <button class="tab" data-panel="about">The Rules</button>
 </nav>
 
@@ -498,6 +512,31 @@
     </div>
     <h3 style="font-family:var(--serif,var(--display));font-weight:400;font-size:1.4rem;margin:26px 0 12px">📣 Recent Predictions</h3>
     <div id="predRecent"></div>
+  </section>
+
+  <!-- PLAY (mini golf) -->
+  <section class="panel" id="panel-play">
+    <div class="voteintro" style="text-align:center">
+      <h2>🎮 Maple Hills — Play the Course</h2>
+      <p class="hint" style="font-size:.92rem">Top-down 9-hole scramble. <b>Pick a club</b>, tap to lock your <b>power</b> (swings up/down), then tap to lock your <b>aim</b> (swings side to side — faster the longer the shot). Get it in the cup in as few strokes as you can.</p>
+    </div>
+    <div class="golf-wrap">
+      <div class="golf-hud" id="golfHud">
+        <div><span class="gh-k">Hole</span> <b id="ghHole">1</b><span class="gh-sub" id="ghPar">Par 4 · 306y</span></div>
+        <div><span class="gh-k">Strokes</span> <b id="ghStrokes">0</b></div>
+        <div><span class="gh-k">To pin</span> <b id="ghDist">—</b></div>
+        <div><span class="gh-k">Total</span> <b id="ghTotal">E</b></div>
+      </div>
+      <canvas id="golfCanvas" width="360" height="540"></canvas>
+      <div class="golf-msg" id="golfMsg"></div>
+      <div class="golf-clubs" id="golfClubs"></div>
+      <div class="golf-controls">
+        <button class="btn gold big" id="golfAction">Start swing</button>
+        <button class="btn ghost" id="golfNext" style="display:none">Next hole →</button>
+        <button class="btn ghost" id="golfReset">↺ Restart round</button>
+      </div>
+      <p class="hint" style="text-align:center;margin-top:8px">Tip: time the power meter at the top for max distance, and lock aim when it's centered. Tap the canvas or hit the button (or press <b>Space</b>) to lock.</p>
+    </div>
   </section>
 
   <!-- ABOUT -->
@@ -1446,6 +1485,161 @@ async function deletePrediction(id){
 }
 
 /* =========================================================
+   MINI GOLF GAME (top-down)  — pick club, lock power, lock aim
+   ========================================================= */
+const GOLF_COURSE = [
+  { num:1, par:4, yards:306, hazards:[{x0:-24,x1:-4,y0:120,y1:215}] },  // water left of landing
+  { num:2, par:4, yards:323, hazards:[] },
+  { num:3, par:3, yards:142, hazards:[] },
+  { num:4, par:4, yards:326, hazards:[] },
+  { num:5, par:4, yards:349, hazards:[] },
+  { num:6, par:5, yards:407, hazards:[] },
+  { num:7, par:3, yards:156, hazards:[] },
+  { num:8, par:5, yards:437, hazards:[] },
+  { num:9, par:4, yards:276, hazards:[] },
+];
+const GOLF_CLUBS = [
+  {name:'DR',yds:265},{name:'3W',yds:235},{name:'5W',yds:210},{name:'4i',yds:190},
+  {name:'6i',yds:170},{name:'8i',yds:145},{name:'PW',yds:120},{name:'SW',yds:80},{name:'PT',yds:16},
+];
+const G = { hole:0, strokes:0, scores:[], by:0, bx:0, phase:'ready', club:0, meter:0, dir:1, power:1, aim:0, raf:0, anim:null, onGreen:false, lastMsg:'' };
+const golfCv=()=>document.getElementById('golfCanvas');
+// ---- geometry: yards -> canvas px ----
+function golfDims(){ const c=golfCv(); const W=c.width, H=c.height, topM=46, botM=52; const hole=GOLF_COURSE[G.hole];
+  const dispLen=hole.yards*1.10; const yScale=(H-topM-botM)/dispLen; const xHalf=58; const xScale=(W/2-14)/xHalf;
+  return {W,H,topM,botM,yScale,xScale,hole}; }
+function gx(bx){ const {W,xScale}=golfDims(); return W/2 + bx*xScale; }
+function gy(by){ const {H,botM,yScale}=golfDims(); return H-botM - by*yScale; }
+function golfDraw(){
+  const c=golfCv(); if(!c) return; const ctx=c.getContext('2d'); const {W,H,hole}=golfDims();
+  ctx.clearRect(0,0,W,H);
+  // rough background
+  ctx.fillStyle='#3c7438'; ctx.fillRect(0,0,W,H);
+  // subtle texture stripes
+  ctx.fillStyle='rgba(255,255,255,.03)'; for(let i=0;i<H;i+=22) ctx.fillRect(0,i,W,11);
+  // fairway corridor
+  const fwHalf=26; ctx.fillStyle='#5aa04e'; ctx.beginPath();
+  const xl=gx(-fwHalf), xr=gx(fwHalf), yTee=gy(-6), yGrn=gy(hole.yards+4);
+  roundRectPath(ctx, xl, yGrn, xr-xl, yTee-yGrn, 26); ctx.fill();
+  // hazards (water)
+  (hole.hazards||[]).forEach(hz=>{ ctx.fillStyle='#2f6d8c'; const hx=gx(hz.x0), hw=gx(hz.x1)-gx(hz.x0), hy=gy(hz.y1), hh=gy(hz.y0)-gy(hz.y1); roundRectPath(ctx,hx,hy,hw,hh,10); ctx.fill(); });
+  // green
+  ctx.fillStyle='#7ec46a'; ctx.beginPath(); ctx.arc(gx(0),gy(hole.yards),13*golfDims().xScale,0,7); ctx.fill();
+  // pin + flag
+  const px=gx(0), py=gy(hole.yards); ctx.strokeStyle='#eee'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py-20); ctx.stroke();
+  ctx.fillStyle='#d33'; ctx.beginPath(); ctx.moveTo(px,py-20); ctx.lineTo(px+14,py-15); ctx.lineTo(px,py-10); ctx.fill();
+  ctx.fillStyle='#1a1a1a'; ctx.beginPath(); ctx.arc(px,py,3,0,7); ctx.fill();
+  // ball
+  const bxp=gx(G.bx), byp=gy(G.by); ctx.fillStyle='#fff'; ctx.strokeStyle='rgba(0,0,0,.3)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(bxp,byp,5,0,7); ctx.fill(); ctx.stroke();
+  // aim guide line toward pin (faint) when aiming/ready
+  if(G.phase==='ready'||G.phase==='power'){ ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.setLineDash([4,5]); ctx.beginPath(); ctx.moveTo(bxp,byp); ctx.lineTo(px,py); ctx.stroke(); ctx.setLineDash([]); }
+  // ---- meters ----
+  if(G.phase==='power'){ drawPowerMeter(ctx,W,H); }
+  if(G.phase==='aim'){ drawAimMeter(ctx,W,H,bxp,byp); }
+}
+function roundRectPath(ctx,x,y,w,h,r){ r=Math.min(r,Math.abs(w)/2,Math.abs(h)/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function drawPowerMeter(ctx,W,H){ const x=16,y=110,w=20,h=320; ctx.fillStyle='rgba(0,0,0,.35)'; roundRectPath(ctx,x,y,w,h,8); ctx.fill();
+  const fillH=h*G.meter; const grad=ctx.createLinearGradient(0,y+h,0,y); grad.addColorStop(0,'#2ecc71'); grad.addColorStop(.7,'#f1c40f'); grad.addColorStop(1,'#e74c3c');
+  ctx.fillStyle=grad; roundRectPath(ctx,x,y+h-fillH,w,fillH,8); ctx.fill();
+  // sweet zone marker near top
+  ctx.strokeStyle='#fff'; ctx.lineWidth=2; const sz=y+h*0.12; ctx.beginPath(); ctx.moveTo(x-3,sz); ctx.lineTo(x+w+3,sz); ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.fillText('PWR',x+w/2,y-6); }
+function drawAimMeter(ctx,W,H,bxp,byp){ const w=Math.min(240,W-60), x=(W-w)/2, y=H-30, h=14; ctx.fillStyle='rgba(0,0,0,.35)'; roundRectPath(ctx,x,y,w,h,7); ctx.fill();
+  // center tick
+  ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x+w/2,y-3); ctx.lineTo(x+w/2,y+h+3); ctx.stroke();
+  const mx=x+w/2 + G.aim*(w/2-6); ctx.fillStyle='#f1c40f'; ctx.beginPath(); ctx.arc(mx,y+h/2,7,0,7); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.fillText('◄ AIM ►',x+w/2,y-6); }
+// ---- loop ----
+function golfStop(){ if(G.raf){ cancelAnimationFrame(G.raf); G.raf=0; } }
+function golfLoop(){ G.raf=0;
+  if(G.phase==='power'){ const sp=0.022; G.meter+=G.dir*sp; if(G.meter>=1){G.meter=1;G.dir=-1;} if(G.meter<=0){G.meter=0;G.dir=1;} golfDraw(); G.raf=requestAnimationFrame(golfLoop); }
+  else if(G.phase==='aim'){ const dist=GOLF_CLUBS[G.club].yds*G.power; const sp=0.014+Math.min(0.05,dist/265*0.05); G.aim+=G.dir*sp; if(G.aim>=1){G.aim=1;G.dir=-1;} if(G.aim<=-1){G.aim=-1;G.dir=1;} golfDraw(); G.raf=requestAnimationFrame(golfLoop); }
+}
+// ---- shot resolution (deterministic; testable) ----
+function golfApplyShot(){
+  const hole=GOLF_COURSE[G.hole]; const club=GOLF_CLUBS[G.club];
+  const dist=Math.max(2, club.yds*G.power);
+  const maxDeg=(6+club.yds/265*7); const ang=G.aim*maxDeg*Math.PI/180;
+  const base=Math.atan2(0-G.bx, Math.max(1,hole.yards-G.by));
+  const theta=base+ang;
+  let nby=G.by + dist*Math.cos(theta);
+  let nbx=G.bx + dist*Math.sin(theta);
+  let penalty=0, msg='';
+  // water hazard check (endpoint inside zone)
+  for(const hz of (hole.hazards||[])){ if(nbx>=hz.x0&&nbx<=hz.x1&&nby>=hz.y0&&nby<=hz.y1){ penalty=1; nby=hz.y0-6; nbx=0; msg='💦 Splash! +1 penalty'; break; } }
+  // off-line into deep rough / lost
+  if(Math.abs(nbx)>54){ if(Math.abs(nbx)>72){ penalty=penalty||1; msg=msg||'🌲 Lost it — +1 penalty'; } nbx=Math.max(-46,Math.min(46,nbx)); }
+  if(nby<0) nby=0;
+  return { from:{x:G.bx,y:G.by}, to:{x:nbx,y:nby}, penalty, msg, dist };
+}
+function golfDistToPin(x,y){ const hole=GOLF_COURSE[G.hole]; return Math.hypot(x-0, y-hole.yards); }
+function golfResolve(){
+  const r=golfApplyShot();
+  G.strokes += 1 + r.penalty;
+  // animate ball travel
+  const steps=26; let i=0; const fromX=r.from.x, fromY=r.from.y, toX=r.to.x, toY=r.to.y;
+  G.phase='resolve'; golfStop();
+  (function step(){ i++; const t=Math.min(1,i/steps); const e=1-Math.pow(1-t,2);
+    G.bx=fromX+(toX-fromX)*e; G.by=fromY+(toY-fromY)*e; golfDraw();
+    if(i<steps){ G.anim=requestAnimationFrame(step); }
+    else { G.bx=toX; G.by=toY; golfAfterShot(r); }
+  })();
+}
+function golfAfterShot(r){
+  const hole=GOLF_COURSE[G.hole]; const d=golfDistToPin(G.bx,G.by); G.onGreen = d<=12;
+  let msg=r.msg;
+  if(d<=2.2){ // holed
+    G.scores[G.hole]=G.strokes; const rel=G.strokes-hole.par; G.phase='holed';
+    setGolfMsg(`${golfHoleResultName(G.strokes,hole.par)} — holed in ${G.strokes}!`);
+    golfUpdateHud(); golfDraw(); golfSetButtons(); return;
+  }
+  if(!msg){ msg = G.onGreen ? `On the green — ${Math.round(d)} yd to the pin. Putter up.` : `${Math.round(d)} yd to the pin.`; }
+  // auto-pick a sensible club
+  G.club = G.onGreen ? GOLF_CLUBS.length-1 : golfSuggestClub(d);
+  G.phase='ready'; setGolfMsg(msg); golfUpdateHud(); renderGolfClubs(); golfDraw(); golfSetButtons();
+}
+function golfSuggestClub(d){ let best=0,bd=1e9; GOLF_CLUBS.forEach((c,i)=>{ if(c.name==='PT')return; const diff=Math.abs(c.yds-d); if(diff<bd){bd=diff;best=i;} }); return best; }
+function golfHoleResultName(s,par){ const r=s-par; if(s===1)return '🕳️ HOLE IN ONE!'; if(r<=-3)return '🦅 Albatross'; if(r===-2)return '🦅 Eagle'; if(r===-1)return '🐦 Birdie'; if(r===0)return '✅ Par'; if(r===1)return 'Bogey'; if(r===2)return 'Double bogey'; return `+${r}`; }
+function setGolfMsg(m){ G.lastMsg=m; const el=document.getElementById('golfMsg'); if(el) el.textContent=m; }
+function golfTotalRel(){ let rel=0; G.scores.forEach((s,i)=>{ if(s!=null) rel+=s-GOLF_COURSE[i].par; }); return rel; }
+function golfUpdateHud(){ const hole=GOLF_COURSE[G.hole];
+  const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  set('ghHole', hole.num); set('ghPar', `Par ${hole.par} · ${hole.yards}y${hole.placeholder?' *':''}`);
+  set('ghStrokes', G.strokes); const d=golfDistToPin(G.bx,G.by); set('ghDist', G.phase==='holed'?'in!':Math.round(d)+'y');
+  set('ghTotal', fmtToPar(golfTotalRel())); }
+function renderGolfClubs(){ const wrap=document.getElementById('golfClubs'); if(!wrap) return;
+  const lock=(G.phase==='power'||G.phase==='aim'||G.phase==='resolve');
+  wrap.innerHTML=GOLF_CLUBS.map((c,i)=>`<button data-club="${i}" class="${i===G.club?'on':''}" ${lock?'disabled':''}>${c.name}<br><span style="font-weight:500;font-size:.62rem;opacity:.8">${c.yds}y</span></button>`).join('');
+  wrap.querySelectorAll('[data-club]').forEach(b=>b.addEventListener('click',()=>{ if(lock)return; G.club=+b.dataset.club; renderGolfClubs(); golfDraw(); })); }
+function golfSetButtons(){ const a=document.getElementById('golfAction'), n=document.getElementById('golfNext');
+  if(!a) return;
+  if(G.phase==='ready'){ a.style.display=''; a.disabled=false; a.textContent='Start swing'; n.style.display='none'; }
+  else if(G.phase==='power'){ a.textContent='Lock power'; n.style.display='none'; }
+  else if(G.phase==='aim'){ a.textContent='Lock aim'; n.style.display='none'; }
+  else if(G.phase==='resolve'){ a.disabled=true; a.textContent='…'; }
+  else if(G.phase==='holed'){ a.style.display='none'; n.style.display = G.hole<GOLF_COURSE.length-1?'':'none';
+    if(G.hole>=GOLF_COURSE.length-1){ a.style.display=''; a.disabled=true; a.textContent='Round complete'; setGolfMsg(`🏁 Round complete — you finished ${fmtToPar(golfTotalRel())}!`); n.style.display='none'; } }
+}
+function golfLock(){
+  if(G.phase==='ready'){ G.phase='power'; G.meter=0; G.dir=1; renderGolfClubs(); golfSetButtons(); golfStop(); golfLoop(); }
+  else if(G.phase==='power'){ G.power=Math.max(0.05,G.meter); G.phase='aim'; G.aim=0; G.dir=1; golfSetButtons(); golfStop(); golfLoop(); }
+  else if(G.phase==='aim'){ golfStop(); golfResolve(); golfSetButtons(); }
+}
+function golfLoadHole(i){ G.hole=i; G.strokes=0; G.by=0; G.bx=0; G.onGreen=false; G.phase='ready';
+  G.club=golfSuggestClub(GOLF_COURSE[i].yards); setGolfMsg(GOLF_COURSE[i].placeholder?`Hole ${GOLF_COURSE[i].num} (layout TBD) — give it a rip!`:`Hole ${GOLF_COURSE[i].num} — give it a rip!`);
+  renderGolfClubs(); golfUpdateHud(); golfDraw(); golfSetButtons(); }
+function golfNextHole(){ if(G.hole<GOLF_COURSE.length-1) golfLoadHole(G.hole+1); }
+function golfReset(){ G.scores=[]; golfStop(); if(G.anim) cancelAnimationFrame(G.anim); golfLoadHole(0); }
+let golfInited=false;
+function golfInit(){ if(golfInited) return; golfInited=true; G.scores=[]; golfLoadHole(0);
+  document.getElementById('golfAction').addEventListener('click',golfLock);
+  document.getElementById('golfNext').addEventListener('click',golfNextHole);
+  document.getElementById('golfReset').addEventListener('click',golfReset);
+  golfCv().addEventListener('click',()=>{ if(G.phase==='ready'||G.phase==='power'||G.phase==='aim') golfLock(); });
+  document.addEventListener('keydown',e=>{ const p=document.querySelector('.panel.active'); if(p&&p.id==='panel-play'&&e.code==='Space'){ e.preventDefault(); if(G.phase==='ready'||G.phase==='power'||G.phase==='aim') golfLock(); } });
+}
+
+/* =========================================================
    TABS + FILTERS
    ========================================================= */
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
@@ -1727,7 +1921,7 @@ async function boot(){
   source = aiExists() ? 'ai' : (committeeExists() ? 'committee' : (peopleExists()?'people':'committee'));
   teamSource = teamAiExists() ? 'ai' : (teamVotes.some(v=>!v.committee)?'people':(teamVotes.some(v=>v.committee)?'committee':'ai'));
   initBallotFromVotes(); initTeamBallot();
-  updateCStat(); renderAll();
+  updateCStat(); renderAll(); golfInit();
 }
 
 /* live-ish refresh: pull latest votes when the tab regains focus and every 30s,
