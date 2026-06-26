@@ -739,7 +739,7 @@ let teamSource="ai", voteStep="players";
 let teamOrder=[1,2,3,4,5,6], teamCardState={}, championPick=null, teamTouched=false;
 let predTeamId=1, predDrinkState={};
 let aiModel="claude-sonnet-4-6";
-const W_GOLF = 0.6; // crowd-average overall = 60% golf / 40% drink
+const W_GOLF = 0.5; // overall = 50% golf / 50% drink
 const MAX_LVL = 7;
 // index 1..7 (0 = not rated)
 const GOLF_LEVELS = ["—",
@@ -1691,7 +1691,7 @@ How to read the data per player:
 - 1–7 scale meaning — golf: 1=won't golf, 7=top-3 ringer; drink: 1=won't drink, 7=top-3 savage. "*_voters" tells you how many ballots back each number (more voters = more trust; ignore empty/zero fields).
 - "*_comments": flavor for the scouting line.
 
-Synthesize a FAIR consensus across all of it. Within a player's overall grade, weigh GOLF skill most (~60% golf ability / 40% drinking ability + vibes). A player ranked highly by both committee and crowd, with strong golf and drinking numbers, should score near the top. Be playful and a little crude — this is a buddies' drinking-golf scramble.
+Synthesize a FAIR consensus across all of it. Within a player's overall grade, weigh golf ability and drinking ability EQUALLY (50% golf / 50% drinking + vibes). A player ranked highly by both committee and crowd, with strong golf and drinking numbers, should score near the top. Be playful and a little crude — this is a buddies' drinking-golf scramble.
 
 For EACH of the ${ps.length} players output:
 - "name": exact name as given
@@ -1699,7 +1699,7 @@ For EACH of the ${ps.length} players output:
 - "tier": "S"(90+),"A"(80-89),"B"(70-79),"C"(60-69) or "D"(<60), consistent with score
 - "blurb": ONE punchy scouting sentence (max ~22 words), can reference the vibe from comments
 
-ALSO produce a TEAMS power ranking. Each team has five players (under team.players) with their full committee + people golf/drink ratings and placement ranks. Judge a team by the strength of its whole roster using the SAME blended data (~60% golf skill / 40% drinking + vibes), rewarding depth and a strong captain; have fun with chemistry and chaos. For EACH of the 6 teams output:
+ALSO produce a TEAMS power ranking. Each team has five players (under team.players) with their full committee + people golf/drink ratings and placement ranks. Judge a team by the strength of its whole roster using the SAME blended data (50% golf skill / 50% drinking + vibes), rewarding depth and a strong captain; have fun with chemistry and chaos. For EACH of the 6 teams output:
 - "id": the given team id
 - "rank": integer 1-6 overall power ranking (1 = best, each value used exactly once)
 - "score": integer 0-100 team strength, CONSISTENT with rank (the #1 team has the highest score)
