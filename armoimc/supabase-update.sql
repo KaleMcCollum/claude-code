@@ -90,3 +90,19 @@ drop policy if exists "anon delete predictions" on predictions;
 create policy "anon read predictions"   on predictions for select using (true);
 create policy "anon insert predictions" on predictions for insert with check (true);
 create policy "anon delete predictions" on predictions for delete using (true);
+
+-- 9) mini-golf leaderboard (final score vs par)
+create table if not exists golf_scores (
+  id         bigint generated always as identity primary key,
+  player     text,
+  strokes    int,
+  relative   int,
+  created_at timestamptz default now()
+);
+alter table golf_scores enable row level security;
+drop policy if exists "anon read golf_scores"   on golf_scores;
+drop policy if exists "anon insert golf_scores" on golf_scores;
+drop policy if exists "anon delete golf_scores" on golf_scores;
+create policy "anon read golf_scores"   on golf_scores for select using (true);
+create policy "anon insert golf_scores" on golf_scores for insert with check (true);
+create policy "anon delete golf_scores" on golf_scores for delete using (true);
