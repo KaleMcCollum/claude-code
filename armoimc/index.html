@@ -1302,8 +1302,14 @@ async function submitVotes(){
 document.getElementById('submitVotes').addEventListener('click',submitVotes);
 // save the name on every keystroke so it's never lost before submit (esp. on mobile)
 document.getElementById('voterName').addEventListener('input',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); });
-// on blur, reload any ballot saved under this name so returning voters can edit it
-document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName); initBallotFromVotes(); initTeamBallot(); renderVote(); });
+// on blur, ONLY reload a ballot that's already saved under this name (so returning
+// voters can edit it). For a new name with nothing saved, keep what they've entered
+// so typing your name never wipes ratings you already filled in.
+document.getElementById('voterName').addEventListener('change',e=>{ voterName=e.target.value.trim(); localStorage.setItem('armoimc3_voter_name',voterName);
+  const id=activeId();
+  if(votes.some(v=>v.voter_id===id)) initBallotFromVotes();
+  if(teamVotes.some(v=>v.voter_id===id)) initTeamBallot();
+  renderVote(); });
 document.getElementById('voteGenderSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; voteGender=b.dataset.vg; renderVote(); });
 
 /* ----- Claim your player ----- */
