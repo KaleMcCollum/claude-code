@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>4th of July 2026 — Lake Weekend</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#0d1b2a; --panel:#12263a; --grid:#22384f;
+    --cream:#f5efe1; --sand:#e8dcc0; --muted:#8fa6bd;
+    --red:#d64550; --blue:#3d7ea6; --gold:#e8b04b; --white:#f5efe1;
+    --n3:#d64550; --n2:#3d7ea6; --green:#5aa469;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(circle at 20% -10%, #1b3a5c 0%, transparent 45%),
+      radial-gradient(circle at 90% 0%, #3a1f2e 0%, transparent 40%),
+      var(--bg);
+    color:var(--cream);
+    font-family:"Helvetica Neue",Arial,sans-serif;
+    min-height:100vh; padding:24px 20px 64px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+  .eyebrow{font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:8px}
+  h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(32px,5.5vw,54px);line-height:.95;font-weight:800;letter-spacing:-.01em}
+  h1 .yr{color:var(--red)}
+  .sub{color:var(--muted);margin-top:10px;font-size:15px;max-width:640px}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;margin:24px 0 22px;border-bottom:1px solid var(--grid)}
+  .tab{
+    background:none;border:none;color:var(--muted);font-family:inherit;
+    font-size:14px;font-weight:600;letter-spacing:.04em;padding:12px 18px;cursor:pointer;
+    border-bottom:2px solid transparent;margin-bottom:-1px;
+  }
+  .tab:hover{color:var(--sand)}
+  .tab.active{color:var(--cream);border-bottom-color:var(--gold)}
+  .page{display:none}
+  .page.active{display:block}
+
+  /* ---------- TIMELINE ---------- */
+  .legend{display:flex;gap:22px;flex-wrap:wrap;margin:4px 0 18px;font-size:13px}
+  .legend span{display:inline-flex;align-items:center;gap:8px;color:var(--sand)}
+  .dot{width:14px;height:14px;border-radius:3px;display:inline-block}
+  .swatch3{background:var(--n3)} .swatch2{background:var(--n2)}
+  .pin{width:9px;height:9px;border-radius:50%}
+  .pin.arr{background:var(--gold)} .pin.dep{background:var(--white);border:2px solid var(--muted)}
+  .chart{overflow-x:auto;padding-bottom:8px}
+  .inner{min-width:760px}
+  .days{display:grid;grid-template-columns:190px repeat(4,1fr);border-bottom:1px solid var(--grid);padding-bottom:10px;margin-bottom:6px}
+  .days .corner{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);align-self:end}
+  .dayh{text-align:center;position:relative}
+  .dayh .dow{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .dayh .dnum{font-family:Georgia,serif;font-size:26px;font-weight:700}
+  .dayh.j4 .dnum{color:var(--red)}
+  .dayh.j4::after{content:"★";position:absolute;top:-6px;right:14px;color:var(--gold);font-size:14px}
+  .row{display:grid;grid-template-columns:190px repeat(4,1fr);align-items:center;min-height:46px;border-bottom:1px solid rgba(34,56,79,.5)}
+  .row:hover{background:rgba(255,255,255,.03)}
+  .name{display:flex;align-items:center;gap:10px;padding-right:12px}
+  .name .who{font-weight:600;font-size:15px;line-height:1.1}
+  .name .meta{font-size:11px;color:var(--muted)}
+  .badge{font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;min-width:30px;text-align:center}
+  .badge.n3{background:var(--n3);color:#fff} .badge.n2{background:var(--n2);color:#fff}
+  .mode{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .track{grid-column:2 / span 4;position:relative;height:46px}
+  .bar{position:absolute;top:50%;transform:translateY(-50%);height:16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+  .bar.n3{background:linear-gradient(90deg,#d64550,#b8323d)}
+  .bar.n2{background:linear-gradient(90deg,#3d7ea6,#2f6284)}
+  .cap{position:absolute;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%}
+  .cap.arr{background:var(--gold);left:-3px}
+  .cap.dep{background:#fff;right:-3px}
+  .ttime{position:absolute;font-size:10px;color:var(--muted);white-space:nowrap;top:-2px}
+
+  /* ---------- BEDS ---------- */
+  .capbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:2px 0 20px}
+
+  .savebar{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--grid);border-radius:12px;padding:12px 16px;margin-bottom:16px;
+  }
+  .sstatus{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--sand)}
+  .sdot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none;transition:background .2s}
+  .sdot.ok{background:var(--green)} .sdot.saving{background:var(--gold)} .sdot.err{background:var(--red)}
+  .sdot.local{background:var(--blue)}
+  .savebtn{
+    background:var(--gold);color:#0d1b2a;border:none;font-family:inherit;font-weight:700;font-size:14px;
+    padding:10px 20px;border-radius:9px;cursor:pointer;letter-spacing:.02em;transition:opacity .15s,transform .1s;
+  }
+  .savebtn:hover{opacity:.9} .savebtn:active{transform:scale(.97)}
+  .savebtn:disabled{opacity:.45;cursor:default}
+  .savebtn.saved{background:var(--green);color:#fff}
+  .chip{font-size:13px;background:var(--panel);border:1px solid var(--grid);padding:7px 13px;border-radius:20px;color:var(--sand)}
+  .chip b{color:var(--cream)}
+  .chip.warn{border-color:var(--gold);color:var(--gold)}
+  .chip.ok{border-color:var(--green);color:#8fd6a0}
+
+  .bedlayout{display:grid;grid-template-columns:1fr;gap:22px}
+  @media(min-width:720px){.bedlayout{grid-template-columns:1fr 300px}}
+
+  .rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;align-content:start}
+  .room{background:var(--panel);border:1px solid var(--grid);border-radius:14px;padding:16px}
+  .room h3{font-family:Georgia,serif;font-size:19px;margin-bottom:2px;display:flex;align-items:center;gap:8px}
+  .room .rsub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin-bottom:14px}
+  .room.tbd{border-style:dashed;opacity:.85}
+  .bed{
+    border:1px solid var(--grid);border-radius:10px;padding:10px 12px;margin-bottom:10px;
+    background:#0e2033;min-height:52px;transition:border-color .15s,background .15s;
+  }
+  .bed:last-child{margin-bottom:0}
+  .bed.over{border-color:var(--gold);background:#13293f}
+  .bed .bedname{font-size:12px;color:var(--muted);letter-spacing:.06em;display:flex;justify-content:space-between;margin-bottom:6px}
+  .bed .cap-label{font-size:10px;color:var(--muted)}
+  .slots{display:flex;flex-wrap:wrap;gap:6px;min-height:26px}
+  .locked-tag{color:var(--gold);font-size:10px;letter-spacing:.1em}
+
+  .person{
+    display:inline-flex;align-items:center;gap:6px;background:#173250;border:1px solid #244a6e;
+    color:var(--cream);font-size:13px;font-weight:600;padding:5px 9px;border-radius:8px;cursor:pointer;user-select:none;
+    transition:transform .1s,box-shadow .15s,border-color .15s;
+  }
+  .person:active{transform:scale(.96)}
+  .person .nn{font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px}
+  .person .nn.n3{background:var(--n3)} .person .nn.n2{background:var(--n2)}
+  .person.locked{border-color:var(--gold);background:#2a2a17;cursor:default}
+  .person.selected{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 6px 18px rgba(232,176,75,.35);background:#20364f}
+
+  /* bed states while a person is selected */
+  .bed{cursor:default}
+  body.picking .bed.open{border-color:var(--green);background:#0f2a1e;cursor:pointer;box-shadow:0 0 0 1px rgba(90,164,105,.4)}
+  body.picking .bed.open:hover{background:#123526}
+  body.picking .bed.open .bedname::after{content:"tap to place";color:#8fd6a0;font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+  body.picking .bed.blocked{opacity:.4}
+  body.picking .bed.cur{border-color:var(--gold);opacity:.7}
+  body.picking .pool.open{border-color:var(--green);box-shadow:0 0 0 1px rgba(90,164,105,.4)}
+  body.picking .pool.open::after{content:"tap here to unassign";display:block;margin-top:8px;font-size:11px;color:#8fd6a0;text-align:center}
+
+  .pool{background:var(--panel);border:1px solid var(--grid);border-radius:14px;padding:16px;align-self:start;position:sticky;top:16px}
+  .pool h3{font-family:Georgia,serif;font-size:18px;margin-bottom:4px}
+  .pool .psub{font-size:11px;color:var(--muted);margin-bottom:14px}
+  .pool .slots{min-height:60px}
+  .pool.over{border-color:var(--gold)}
+  .resetbtn{margin-top:14px;width:100%;background:none;border:1px solid var(--grid);color:var(--muted);font-family:inherit;font-size:12px;padding:9px;border-radius:8px;cursor:pointer}
+  .resetbtn:hover{color:var(--sand);border-color:var(--muted)}
+
+  .foot{margin-top:26px;font-size:12px;color:var(--muted);line-height:1.7}
+  .foot b{color:var(--sand)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Lake Weekend · July 2–5</div>
+  <h1>The Fourth<span class="yr"> · 2026</span></h1>
+  <p class="sub">Two views: the arrival/departure timeline, and a drag-and-drop sleeping chart. Nights stayed drive who gets which bed.</p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="timeline">Timeline</button>
+    <button class="tab" data-tab="beds">Sleeping Chart</button>
+  </div>
+
+  <!-- ============ TIMELINE PAGE ============ -->
+  <section class="page active" id="timeline">
+    <div class="legend">
+      <span><i class="dot swatch3"></i>3 nights</span>
+      <span><i class="dot swatch2"></i>2 nights</span>
+      <span><i class="dot pin arr"></i>Arrives</span>
+      <span><i class="dot pin dep"></i>Departs</span>
+    </div>
+    <div class="chart"><div class="inner">
+      <div class="days">
+        <div class="corner">Guest · Nights · Mode</div>
+        <div class="dayh"><div class="dow">Thu</div><div class="dnum">2</div></div>
+        <div class="dayh"><div class="dow">Fri</div><div class="dnum">3</div></div>
+        <div class="dayh j4"><div class="dow">Sat</div><div class="dnum">4</div></div>
+        <div class="dayh"><div class="dow">Sun</div><div class="dnum">5</div></div>
+      </div>
+      <div id="rows"></div>
+    </div></div>
+    <div class="foot">
+      <b>Note:</b> Tyler Born's form said June — read as July to match the group; confirm with him.
+    </div>
+  </section>
+
+  <!-- ============ BEDS PAGE ============ -->
+  <section class="page" id="beds">
+    <div class="savebar" id="savebar">
+      <div class="sstatus" id="sstatus"><span class="sdot" id="sdot"></span><span id="stext">Connecting…</span></div>
+      <div class="sactions">
+        <button class="savebtn" id="saveBtn">Save changes</button>
+      </div>
+    </div>
+    <div class="capbar" id="capbar"></div>
+    <div class="bedlayout">
+      <div class="rooms" id="rooms"></div>
+      <div class="pool" id="pool">
+        <h3>Unassigned</h3>
+        <div class="psub">Tap a person, then tap an open bed to place them. Tap the person again to deselect.</div>
+        <div class="slots" id="poolSlots" data-bed="__pool"></div>
+        <button class="resetbtn" id="resetBtn">Reset all assignments</button>
+      </div>
+    </div>
+    <div class="foot">
+      <b>Bed logic:</b> the 2-night guests (Lauren, Kellen, Jonah) leave Saturday morning — good candidates for the camper or fish houses so the house/loft beds stay put for the 3-night crew.<br>
+      <b>Still to add:</b> Fish House 1 &amp; 2 bed counts — tell me how many each sleeps and I'll wire them up.
+    </div>
+  </section>
+</div>
+
+<script>
+/* ---------------- DATA ---------------- */
+const people = [
+  {id:"shawn",   n:"Shawn Cena",       m:"Driving", nights:3, a:"07-02 15:00", d:"07-05 23:59"},
+  {id:"lucy",    n:"Lucy Martin",      m:"Riding",  nights:3, a:"07-02 15:00", d:"07-05 23:59"},
+  {id:"drewt",   n:"Drew Thompson",    m:"Driving", nights:3, a:"07-02 16:00", d:"07-05 07:00"},
+  {id:"evan",    n:"Evan Palmer",      m:"Driving", nights:3, a:"07-02 17:30", d:"07-05 10:00"},
+  {id:"braedon", n:"Braedon Stebleton",m:"Driving", nights:3, a:"07-02 18:00", d:"07-05 10:00"},
+  {id:"tori",    n:"Tori Hilmanowski", m:"Driving", nights:3, a:"07-02 19:00", d:"07-05 09:00"},
+  {id:"tyler",   n:"Tyler Born",       m:"Riding",  nights:3, a:"07-02 19:00", d:"07-05 09:00"},
+  {id:"trent",   n:"Trent Oberreit",   m:"Driving", nights:3, a:"07-02 19:30", d:"07-05 10:00"},
+  {id:"marissa", n:"Marissa Thompson", m:"Riding",  nights:3, a:"07-02 20:00", d:"07-05 11:00"},
+  {id:"drews",   n:"Drew Stalboerger", m:"Driving", nights:3, a:"07-02 21:00", d:"07-05 10:00"},
+  {id:"lauren",  n:"Lauren Literski",  m:"Riding",  nights:2, a:"07-02 18:00", d:"07-04 09:00"},
+  {id:"kellen",  n:"Kellen Sergent",   m:"Driving", nights:2, a:"07-02 19:00", d:"07-04 09:00"},
+  {id:"jonah",   n:"Jonah Sather",     m:"Driving", nights:2, a:"07-02 21:30", d:"07-04 10:00"},
+  // Not on the form yet — arrival/departure TBD, update when they submit.
+  {id:"hailey",  n:"Hailey",           m:"TBD", nights:null, a:null, d:null, tbd:true},
+  {id:"jasmine", n:"Jasmine",          m:"TBD", nights:null, a:null, d:null, tbd:true},
+  {id:"aiden",   n:"Aiden",            m:"TBD", nights:null, a:null, d:null, tbd:true},
+  {id:"kylef",   n:"Kyle F",           m:"TBD", nights:null, a:null, d:null, tbd:true},
+  {id:"callie",  n:"Callie",           m:"TBD", nights:null, a:null, d:null, tbd:true},
+];
+const P = Object.fromEntries(people.map(p=>[p.id,p]));
+
+// rooms & beds. cap = how many people sleep in that bed.
+const rooms = [
+  {name:"In House", sub:"Main cabin", beds:[
+    {id:"house_up",   label:"Upstairs — King",        cap:2},
+    {id:"house_down", label:"Downstairs Bedroom — King",cap:2},
+  ]},
+  {name:"Loft", sub:"Above the house", beds:[
+    {id:"loft_k1", label:"King Bed 1", cap:2},
+    {id:"loft_k2", label:"King Bed 2", cap:2},
+    {id:"loft_t1", label:"Twin Bed 1", cap:1},
+    {id:"loft_t2", label:"Twin Bed 2", cap:1},
+    {id:"loft_t3", label:"Twin Bed 3", cap:1},
+    {id:"loft_t4", label:"Twin Bed 4", cap:1},
+  ]},
+  {name:"Camper", sub:"Outside", beds:[
+    {id:"camp_q1", label:"Queen Bed 1", cap:2},
+    {id:"camp_q2", label:"Queen Bed 2", cap:2},
+  ]},
+  {name:"Kyle & Callie's Camper", sub:"Their own rig", beds:[
+    {id:"kc_bed", label:"Camper Bed", cap:2},
+  ]},
+  {name:"Fish House 1", sub:"Beds TBD", tbd:true, beds:[]},
+  {name:"Fish House 2", sub:"Beds TBD", tbd:true, beds:[]},
+];
+const bedCap = {}; rooms.forEach(r=>r.beds.forEach(b=>bedCap[b.id]=b.cap));
+
+// assignments: bedId -> [personId]. pool holds the rest.
+let assign = {};   // personId -> bedId ('__pool' = unassigned)
+function initAssign(){
+  assign = {}; people.forEach(p=>assign[p.id]="__pool");
+  assign["shawn"]="loft_k1"; assign["lucy"]="loft_k1"; // requested lock
+  assign["braedon"]="camp_q1"; assign["hailey"]="camp_q1";
+  assign["jasmine"]="camp_q2"; assign["aiden"]="camp_q2";
+  assign["kylef"]="kc_bed"; assign["callie"]="kc_bed";
+}
+const LOCKED = new Set(["shawn","lucy","braedon","hailey","jasmine","aiden","kylef","callie"]);
+initAssign();
+
+/* ================= SUPABASE SYNC =================
+   ONE-TIME SETUP (see instructions file):
+   1. Create a free project at supabase.com
+   2. Paste your Project URL and anon public key below
+   3. Run the SQL from the setup guide to make the table
+================================================== */
+const SUPABASE_URL = "https://fuygapwichknckahccsc.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_4YAXlKXZAmBF8ICRwWkSfw_oYvMRQKB";
+const ROOM_ID = "july4-2026"; // one shared plan; change to run a second event
+
+let sb=null, online=false, dirty=false, saveTimer=null, applyingRemote=false;
+
+function isConfigured(){
+  return SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length>20;
+}
+
+function setStatus(state, text){
+  const dot=document.getElementById("sdot"), t=document.getElementById("stext");
+  dot.className="sdot "+state;
+  t.textContent=text;
+}
+
+async function initSync(){
+  if(!isConfigured()){
+    online=false;
+    setStatus("local","Local mode — add Supabase keys to sync (changes save on this device only)");
+    loadLocal();
+    return;
+  }
+  try{
+    sb=supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    setStatus("saving","Loading shared plan…");
+    const {data,error}=await sb.from("plans").select("assignments").eq("id",ROOM_ID).maybeSingle();
+    if(error)throw error;
+    if(data&&data.assignments){
+      applyRemote(data.assignments);
+    }else{
+      // first time — create the row from current defaults
+      await sb.from("plans").upsert({id:ROOM_ID,assignments:assign});
+    }
+    online=true;
+    setStatus("ok","Synced — everyone sees changes live");
+    // live updates from others
+    sb.channel("plan-"+ROOM_ID)
+      .on("postgres_changes",{event:"*",schema:"public",table:"plans",filter:"id=eq."+ROOM_ID},
+        payload=>{ if(payload.new&&payload.new.assignments) applyRemote(payload.new.assignments); })
+      .subscribe();
+  }catch(e){
+    online=false;
+    setStatus("err","Couldn't connect — check keys. Working locally for now.");
+    loadLocal();
+  }
+}
+
+function applyRemote(remote){
+  applyingRemote=true;
+  // keep locked people where they belong regardless of remote drift
+  people.forEach(p=>{ if(remote[p.id]!==undefined) assign[p.id]=remote[p.id]; });
+  initLocks(); // re-assert locked beds
+  render();
+  markSaved();
+  applyingRemote=false;
+}
+
+function initLocks(){
+  assign["shawn"]="loft_k1"; assign["lucy"]="loft_k1";
+  assign["braedon"]="camp_q1"; assign["hailey"]="camp_q1";
+  assign["jasmine"]="camp_q2"; assign["aiden"]="camp_q2";
+  assign["kylef"]="kc_bed"; assign["callie"]="kc_bed";
+}
+
+/* local fallback so the tool still works with no backend */
+function loadLocal(){
+  try{
+    const raw=localStorage.getItem("lake_"+ROOM_ID);
+    if(raw){const r=JSON.parse(raw);people.forEach(p=>{if(r[p.id]!==undefined)assign[p.id]=r[p.id];});initLocks();}
+  }catch(e){}
+  render();
+  markSaved();
+}
+
+function markDirty(){
+  dirty=true;
+  const b=document.getElementById("saveBtn");
+  b.disabled=false; b.classList.remove("saved"); b.textContent="Save changes";
+  // auto-save backup after a pause
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>saveNow(true),1500);
+}
+function markSaved(){
+  dirty=false;
+  const b=document.getElementById("saveBtn");
+  b.disabled=true; b.classList.add("saved"); b.textContent="Saved ✓";
+}
+
+async function saveNow(isAuto){
+  if(!dirty && isAuto)return;
+  if(online){
+    try{
+      setStatus("saving","Saving…");
+      const {error}=await sb.from("plans").upsert({id:ROOM_ID,assignments:assign,updated_at:new Date().toISOString()});
+      if(error)throw error;
+      setStatus("ok","Synced — everyone sees changes live");
+      markSaved();
+    }catch(e){
+      setStatus("err","Save failed — retrying on next change");
+    }
+  }else{
+    // local mode
+    try{localStorage.setItem("lake_"+ROOM_ID,JSON.stringify(assign));}catch(e){}
+    markSaved();
+  }
+}
+
+document.getElementById("saveBtn").addEventListener("click",()=>saveNow(false));
+
+/* ---------------- TIMELINE RENDER ---------------- */
+function frac(str){const [md,hm]=str.split(" ");const day=parseInt(md.split("-")[1],10)-2;const [h,mi]=hm.split(":").map(Number);return day+(h*60+mi)/1440;}
+function pct(f){return (f/4)*100}
+function fmtTime(str){let [,hm]=str.split(" ");let [h,mi]=hm.split(":").map(Number);const ap=h>=12?"p":"a";let hh=h%12;if(hh===0)hh=12;return mi?`${hh}:${String(mi).padStart(2,'0')}${ap}`:`${hh}${ap}`;}
+function dayLabel(str){const d=parseInt(str.split("-")[1],10);return {2:"Thu",3:"Fri",4:"Sat",5:"Sun"}[d];}
+const rowsEl=document.getElementById("rows");
+[...people].filter(p=>p.a).sort((a,b)=>frac(a.a)-frac(b.a)).forEach(p=>{
+  const af=frac(p.a),df=frac(p.d),left=pct(af),width=pct(df)-pct(af),cls="n"+p.nights;
+  const row=document.createElement("div");row.className="row";
+  row.innerHTML=`<div class="name"><span class="badge ${cls}">${p.nights}n</span>
+    <span><div class="who">${p.n}</div><div class="meta"><span class="mode">${p.m}</span></div></span></div>
+    <div class="track"><div class="bar ${cls}" style="left:${left}%;width:${width}%">
+      <span class="cap arr"></span><span class="cap dep"></span>
+      <span class="ttime" style="left:0;transform:translate(-2px,-100%)">${dayLabel(p.a)} ${fmtTime(p.a)}</span>
+      <span class="ttime" style="right:0;transform:translate(2px,-100%)">${dayLabel(p.d)} ${fmtTime(p.d)}</span>
+    </div></div>`;
+  rowsEl.appendChild(row);
+});
+// TBD strip
+const tbdPeople=people.filter(p=>!p.a);
+if(tbdPeople.length){
+  const strip=document.createElement("div");
+  strip.style.cssText="margin-top:14px;padding-top:14px;border-top:1px dashed var(--grid);font-size:13px;color:var(--muted)";
+  strip.innerHTML=`<span style="color:var(--gold);letter-spacing:.14em;text-transform:uppercase;font-size:11px;font-weight:700">Not on form yet</span> — ${tbdPeople.map(p=>p.n).join(", ")}. Times will appear here once they submit.`;
+  document.querySelector("#timeline .inner").appendChild(strip);
+}
+
+/* ---------------- BEDS RENDER ---------------- */
+const roomsEl=document.getElementById("rooms");
+const poolSlots=document.getElementById("poolSlots");
+const capbar=document.getElementById("capbar");
+
+function personChip(pid){
+  const p=P[pid];
+  const locked=LOCKED.has(pid);
+  const el=document.createElement("div");
+  el.className="person"+(locked?" locked":"");
+  el.dataset.pid=pid; el.draggable=!locked;
+  const nb=p.nights?`<span class="nn n${p.nights}">${p.nights}n</span>`:`<span class="nn" style="background:#3a4a5c">?</span>`;
+  el.innerHTML=`${nb}${p.n}${locked?' 🔒':''}`;
+  return el;
+}
+
+function render(){
+  roomsEl.innerHTML="";
+  rooms.forEach(r=>{
+    const rc=document.createElement("div");
+    rc.className="room"+(r.tbd?" tbd":"");
+    rc.innerHTML=`<h3>${r.name}</h3><div class="rsub">${r.sub}</div>`;
+    if(r.tbd){
+      const d=document.createElement("div");
+      d.style.cssText="font-size:12px;color:var(--muted);font-style:italic";
+      d.textContent="Add bed counts to assign here.";
+      rc.appendChild(d);
+    }
+    r.beds.forEach(b=>{
+      const occ=people.filter(p=>assign[p.id]===b.id).map(p=>p.id);
+      const full=occ.length>=b.cap;
+      const bed=document.createElement("div");
+      bed.className="bed"; bed.dataset.bed=b.id;
+      bed.innerHTML=`<div class="bedname"><span>${b.label}</span>
+        <span class="cap-label">${occ.length}/${b.cap}${full?"":""}</span></div>
+        <div class="slots" data-bed="${b.id}"></div>`;
+      const slots=bed.querySelector(".slots");
+      occ.forEach(pid=>slots.appendChild(personChip(pid)));
+      rc.appendChild(bed);
+    });
+    roomsEl.appendChild(rc);
+  });
+  // pool
+  poolSlots.innerHTML="";
+  people.filter(p=>assign[p.id]==="__pool").forEach(p=>poolSlots.appendChild(personChip(p.id)));
+  wireDnD();
+  renderCap();
+}
+
+function renderCap(){
+  const knownSpots=Object.values(bedCap).reduce((a,b)=>a+b,0);
+  const assigned=people.filter(p=>assign[p.id]!=="__pool").length;
+  const unassigned=people.length-assigned;
+  capbar.innerHTML=`
+    <div class="chip"><b>${people.length}</b> people</div>
+    <div class="chip"><b>${knownSpots}</b> known spots</div>
+    <div class="chip ${unassigned===0?'ok':'warn'}"><b>${unassigned}</b> unassigned</div>
+    <div class="chip">+ Fish House 1 &amp; 2 TBD</div>`;
+}
+
+/* ---------------- TAP TO ASSIGN ---------------- */
+let selected=null; // pid currently picked
+
+function wireDnD(){
+  document.querySelectorAll(".person").forEach(el=>{
+    const pid=el.dataset.pid;
+    if(LOCKED.has(pid)){el.style.cursor="default";return;}
+    el.addEventListener("click",e=>{e.stopPropagation();selectPerson(pid);});
+  });
+  // tapping a bed's target area assigns the selected person
+  document.querySelectorAll(".bed").forEach(bed=>{
+    bed.addEventListener("click",e=>{
+      e.stopPropagation();
+      if(!selected)return;
+      tryPlace(selected, bed.dataset.bed);
+    });
+  });
+  // tapping the pool unassigns
+  const poolEl=document.getElementById("pool");
+  poolEl.onclick=e=>{
+    e.stopPropagation();
+    if(!selected)return;
+    if(e.target.closest(".person"))return;
+    tryPlace(selected,"__pool");
+  };
+  applySelectionUI();
+}
+
+function selectPerson(pid){
+  selected = (selected===pid) ? null : pid;
+  applySelectionUI();
+}
+
+function applySelectionUI(){
+  // clear
+  document.querySelectorAll(".person").forEach(el=>el.classList.remove("selected"));
+  document.querySelectorAll(".bed").forEach(b=>b.classList.remove("open","blocked","cur"));
+  document.getElementById("pool").classList.remove("open");
+  document.body.classList.toggle("picking", !!selected);
+
+  if(!selected)return;
+  const chip=document.querySelector(`.person[data-pid="${selected}"]`);
+  if(chip)chip.classList.add("selected");
+  const curBed=assign[selected];
+
+  document.querySelectorAll(".bed").forEach(bed=>{
+    const id=bed.dataset.bed;
+    const cap=bedCap[id];
+    const occ=people.filter(p=>assign[p.id]===id && p.id!==selected).length;
+    if(id===curBed){bed.classList.add("cur");}
+    else if(occ<cap){bed.classList.add("open");}
+    else{bed.classList.add("blocked");}
+  });
+  // pool is a valid target (unassign) if person is currently in a bed
+  if(curBed!=="__pool")document.getElementById("pool").classList.add("open");
+}
+
+function tryPlace(pid,bedId){
+  if(!pid||LOCKED.has(pid))return;
+  if(bedId!=="__pool"){
+    const cap=bedCap[bedId];
+    const occ=people.filter(p=>assign[p.id]===bedId&&p.id!==pid).length;
+    if(occ>=cap){flash(bedId);return;}
+  }
+  assign[pid]=bedId;
+  selected=null;
+  if(!applyingRemote) markDirty();
+  render();
+}
+function flash(bedId){
+  const bed=document.querySelector(`.bed[data-bed="${bedId}"]`);
+  if(!bed)return; bed.style.borderColor="var(--red)";
+  setTimeout(()=>bed.style.borderColor="",300);
+}
+// tapping empty space clears selection
+document.addEventListener("click",()=>{ if(selected){selected=null;applySelectionUI();} });
+
+document.getElementById("resetBtn").addEventListener("click",()=>{initAssign();markDirty();render();});
+
+/* ---------------- TABS ---------------- */
+document.querySelectorAll(".tab").forEach(t=>{
+  t.addEventListener("click",()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById(t.dataset.tab).classList.add("active");
+  });
+});
+
+render();
+initSync();
+</script>
+</body>
+</html>
