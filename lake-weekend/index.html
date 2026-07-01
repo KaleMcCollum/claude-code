@@ -203,7 +203,7 @@
     </div>
     <div class="foot">
       <b>Bed logic:</b> the 2-night guests (Lauren, Kellen, Jonah) leave Saturday morning — good candidates for the camper or fish houses so the house/loft beds stay put for the 3-night crew.<br>
-      <b>Still to add:</b> Fish House 1 &amp; 2 bed counts — tell me how many each sleeps and I'll wire them up.
+      <b>Fish House 1 &amp; 2:</b> each sleeps 4.
     </div>
   </section>
 </div>
@@ -258,8 +258,12 @@ const rooms = [
   {name:"Kyle & Callie's Camper", sub:"Their own rig", beds:[
     {id:"kc_bed", label:"Camper Bed", cap:2},
   ]},
-  {name:"Fish House 1", sub:"Beds TBD", tbd:true, beds:[]},
-  {name:"Fish House 2", sub:"Beds TBD", tbd:true, beds:[]},
+  {name:"Fish House 1", sub:"Outside", beds:[
+    {id:"fish1", label:"Sleeps 4", cap:4},
+  ]},
+  {name:"Fish House 2", sub:"Outside", beds:[
+    {id:"fish2", label:"Sleeps 4", cap:4},
+  ]},
 ];
 const bedCap = {}; rooms.forEach(r=>r.beds.forEach(b=>bedCap[b.id]=b.cap));
 
@@ -477,8 +481,7 @@ function renderCap(){
   capbar.innerHTML=`
     <div class="chip"><b>${people.length}</b> people</div>
     <div class="chip"><b>${knownSpots}</b> known spots</div>
-    <div class="chip ${unassigned===0?'ok':'warn'}"><b>${unassigned}</b> unassigned</div>
-    <div class="chip">+ Fish House 1 &amp; 2 TBD</div>`;
+    <div class="chip ${unassigned===0?'ok':'warn'}"><b>${unassigned}</b> unassigned</div>`;
 }
 
 /* ---------------- TAP TO ASSIGN ---------------- */
