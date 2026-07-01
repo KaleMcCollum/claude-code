@@ -233,6 +233,7 @@ const people = [
   {id:"dylan",   n:"Dylan McCollum",   m:"TBD", nights:null, a:null, d:null, tbd:true},
   {id:"lexie",   n:"Lexie Stebleton",  m:"TBD", nights:null, a:null, d:null, tbd:true},
   {id:"kyleo",   n:"Kyle Oberreit",    m:"TBD", nights:null, a:null, d:null, tbd:true},
+  {id:"kale",    n:"Kale McCollum",    m:"TBD", nights:null, a:null, d:null, tbd:true},
 ];
 const P = Object.fromEntries(people.map(p=>[p.id,p]));
 
@@ -270,6 +271,9 @@ function initAssign(){
   assign["braedon"]="camp_q1"; assign["hailey"]="camp_q1";
   assign["jasmine"]="camp_q2"; assign["aiden"]="camp_q2";
   assign["kylef"]="kc_bed"; assign["callie"]="kc_bed";
+  // house placements (movable, not locked)
+  assign["kale"]="house_up";
+  assign["dylan"]="house_down"; assign["lexie"]="house_down";
 }
 const LOCKED = new Set(["shawn","lucy","braedon","hailey","jasmine","aiden","kylef","callie"]);
 initAssign();
