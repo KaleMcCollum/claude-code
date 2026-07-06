@@ -3310,6 +3310,21 @@ const UI = {
       ${personExpand?`${originCard(person)}${speciesSheet(person)}`:""}`;
   },
 
+  /* ---------- REST EVENT (a decision in the night) ---------- */
+  screen_event(){
+    const e=restEvent; if(!e) return this.screen_hub();
+    if(e.outcome){
+      return `${this.statHeader()}
+      <div class="card"><h2>${e.def.title}</h2>
+        <p class="small dim">${e.def.text}</p>
+        <p class="small" style="margin-top:6px">${e.outcome}</p>
+        <button class="full center primary" id="evDone" style="margin-top:10px">Continue</button></div>`;
+    }
+    return `${this.statHeader()}
+    <div class="card"><h2>${e.def.title}</h2>
+      <p class="small dim">${e.def.text}</p>
+      <div class="grid" style="margin-top:10px">${e.def.choices.map((c,i)=>`<button data-evchoice="${i}">${c.label}</button>`).join("")}</div></div>`;
+  },
   /* ---------- CODEX (everything you've discovered) ---------- */
   /* ---------- CODEX (menu of records) ---------- */
   codexBack(){ return `<div class="card"><button class="ghost full center" id="cxBack">&larr; Back to Codex</button></div>`; },
@@ -4272,7 +4287,15 @@ const UI = {
       $("#vRest").onclick=()=>{
         if(advanceTime()) return;                     // resting is one action
         state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
-        Game.logMsg("You make camp and rest. HP and energy restored.","sys"); Game.save(); UI.render("hub"); UI.flashLog(); };
+        Game.logMsg("You make camp and rest. HP and energy restored.","sys");
+        if(chance(0.45) && maybeRestEvent()){ Game.save(); return; }   // an event takes over the screen
+        Game.save(); UI.render("hub"); UI.flashLog(); };
+    }
+    if(screen==="event"){
+      app.querySelectorAll("[data-evchoice]").forEach(b=> b.onclick=()=>{ const i=+b.dataset.evchoice;
+        try{ restEvent.outcome=restEvent.def.choices[i].go()||"…"; }catch(e){ restEvent.outcome="…"; }
+        Game.save(); UI.render("event"); UI.flashLog(); });
+      const ed=$("#evDone"); if(ed) ed.onclick=()=>{ restEvent=null; Game.save(); UI.render("hub"); };
     }
     if(screen==="races"){
       app.querySelectorAll("[data-race]").forEach(b=> b.onclick=()=>runRace(b.dataset.race));
@@ -5524,6 +5547,44 @@ function meetCrowdPerson(locId, cid, back){
   meeting={ draw:{id, race, isNew}, person:p, intro, back:back||"tavern", step:2,
     where:state.world?state.world.name:"deep space", crowd:{locId, cid} };
   personExpand=false; shipDealMsg=null; UI.render("meet");
+}
+/* ===================== REST EVENTS — the night brings decisions =====================
+   When you make camp, something may happen: a thief, a gambler, a lead on work, a beast in the
+   dark. Each is a real choice with consequences — the texture that makes downtime interesting. */
+let restEvent=null;   // transient {def, outcome} while an event screen is up
+const REST_EVENTS=[
+  { id:"robber", title:"&#127769; A thief in the night", text:"You wake to a shadow crouched over your pack, fingers in your credits.", choices:[
+    { label:"Fight them off", go:()=>{ if(chance(0.6)){ const take=rnd(200,900); state.credits+=take; return `You pin the thief and turn out their pockets — <b class="gold">+${commas(take)}c</b>.`; }
+      const dmg=Math.max(1,Math.round(Game.effMaxHp()*0.22)); state.hp=Math.max(1,(state.hp||1)-dmg); return `They slash you and bolt into the dark — <span class="red">-${dmg} HP</span>.`; } },
+    { label:"Let them take a little", go:()=>{ const lose=Math.min(state.credits||0, rnd(100,500)); state.credits-=lose; return `You lie still; they grab <b>${commas(lose)}c</b> and are gone.`; } } ]},
+  { id:"jobtip", title:"&#128293; A traveler at your fire", text:"A road-worn traveler shares your fire and lets slip there's work that needs doing.", choices:[
+    { label:"Hear them out", go:()=>{ const m=genMission(chance(0.3)?"long":"courier"); if(m && (state.missions=state.missions||[]).length<4){ m.status="active"; state.missions.push(m);
+        return `They point you to a job: <b>${m.title}</b> — ${m.blurb} First: ${m.steps[0].desc}.`; } return "You listen a while, but nothing comes of it."; } },
+    { label:"Turn in for the night", go:()=>"You nod along and let sleep take you." } ]},
+  { id:"gambler", title:"&#127922; A game of dice", text:"A gambler by the next fire waves you over, rattling a cup of bone dice.", choices:[
+    { label:"Roll the bones", go:()=>{ const bet=Math.min(state.credits||0, rnd(200,800)); if(bet<50) return "You've nothing worth staking. You watch a round and turn in.";
+      if(chance(0.5)){ state.credits+=bet; return `The dice fall your way — <b class="gold">+${commas(bet)}c</b>.`; } state.credits-=bet; return `The dice betray you — <span class="red">-${commas(bet)}c</span>.`; } },
+    { label:"Walk away", go:()=>"You've seen where that road ends. You bed down instead." } ]},
+  { id:"beast", title:"&#128062; Something in the dark", text:"A heavy tread circles your camp — something big, and hungry.", choices:[
+    { label:"Stand your ground", go:()=>{ if(chance(0.55)){ Game.addItem("pelt",1); const c=rnd(150,600); state.credits+=c; return `You drive it off and take a <b>pelt</b> worth trading — and <b class="gold">+${commas(c)}c</b> of salvage from its den.`; }
+      const dmg=Math.max(1,Math.round(Game.effMaxHp()*0.3)); state.hp=Math.max(1,(state.hp||1)-dmg); return `It mauls you before fleeing — <span class="red">-${dmg} HP</span>.`; } },
+    { label:"Break camp and move", go:()=>{ state.energy=Math.max(0,(state.energy||0)-Math.round(Game.effMaxEnergy()*0.3)); return "You slip away and make cold camp elsewhere — safe, but poorly rested."; } } ]},
+  { id:"caravan", title:"&#128666; A merchant caravan", text:"A trade caravan makes camp beside you, wares laid out in the firelight.", choices:[
+    { label:"Buy a stim (120c)", go:()=>{ if((state.credits||0)<120) return "You come up short of coin, and the trader shrugs."; state.credits-=120; Game.addItem("stim",1); return "You pocket a <b>stim</b> for the road ahead."; } },
+    { label:"Trade gossip", go:()=>{ return "The caravan master leans in: “"+pick(RUMORS)+"”"; } },
+    { label:"Keep to yourself", go:()=>"You keep your coin and your counsel, and sleep." } ]},
+  { id:"find", title:"&#9935; Half-buried", text:"Your boot turns up something metallic, half-sunk in the dirt beside camp.", choices:[
+    { label:"Dig it out", go:()=>{ if(chance(0.45)){ state.gear=state.gear||[]; const g=genGear(weightedKey({common:60,uncommon:30,rare:8})); state.gear.push(g); return `It's a piece of gear — <b style="color:${rarityColor(g.rarity)}">${g.name}</b>!`; }
+      const c=rnd(80,400); state.credits+=c; return `A cache of old coin — <b class="gold">+${commas(c)}c</b>.`; } },
+    { label:"Leave it be", go:()=>"You leave it to the dirt and settle in." } ]},
+  { id:"distress", title:"&#128225; A signal in the waste", text:"A faint distress beacon pulses somewhere out past the firelight.", choices:[
+    { label:"Investigate", go:()=>{ if(chance(0.6)){ const c=rnd(300,1200); state.credits+=c; if(chance(0.4)){ state.gear=state.gear||[]; const g=genGear(weightedKey({common:40,uncommon:40,rare:16,epic:4})); state.gear.push(g); return `A wrecked skiff, its pilot long gone — you salvage <b class="gold">${commas(c)}c</b> and <b style="color:${rarityColor(g.rarity)}">${g.name}</b>.`; } return `A wrecked skiff — you strip it for <b class="gold">${commas(c)}c</b>.`; }
+      const dmg=Math.max(1,Math.round(Game.effMaxHp()*0.25)); state.hp=Math.max(1,(state.hp||1)-dmg); return `It's bait — scavengers jump you. You fight clear, bloodied — <span class="red">-${dmg} HP</span>.`; } },
+    { label:"Stay by the fire", go:()=>"Not your problem tonight. You let the signal fade." } ]},
+];
+function maybeRestEvent(){
+  const ev=pick(REST_EVENTS); if(!ev) return false;
+  restEvent={ def:ev, outcome:null }; UI.render("event"); return true;
 }
 /* ===================== CONTRACTS / MISSIONS — reasons to fly, and to come back =====================
    Posted at taverns: courier runs, surveys, and long multi-stop jobs that pay in credits, gear, and
