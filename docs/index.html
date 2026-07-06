@@ -2416,6 +2416,7 @@ const UI = {
         ${amen.includes("talk")&&!amen.includes("tavern")?`<button id="vStreets">&#128483; Around town</button>`:""}
         ${amen.includes("shipyard")?`<button id="vShipyard">&#128736; Shipyard</button>`:""}
         ${isInhabited(w)?`<button id="vRaces">&#127937; Speeder races</button>`:""}
+        ${worldSpots(w).map(id=>{ const s=spotDef(id); return s?`<button data-spot="${id}">${s.icon} ${s.name}</button>`:""; }).join("")}
         <button id="vWilds" class="primary">${worldCivility(w)>=0.7?"&#127961; ":"&#127807; "}${exploreLabel(w)}</button>
         <button id="vRest">&#9789; Rest</button>
       </div>`; })()}
@@ -2476,6 +2477,63 @@ const UI = {
       <p class="small dim" style="margin-top:7px">The faces change as time passes &mdash; only those you befriend or cross will still be around when you return.</p>
     </div>
     <div class="card"><button id="stBack" class="ghost full center">&larr; Back</button></div>`;
+  },
+  /* ---------- FIGHTING PIT (wager on yourself in the cage) ---------- */
+  screen_pit(){
+    const w=state.world, wm=raceWealthMult(), pw=pitPower();
+    return `${this.statHeader()}
+    <div class="card"><h2>&#129354; ${w.name} Fighting Pit</h2>
+      <p class="small dim">Sawdust and blood and a roaring crowd. Wager on yourself and step into the cage.</p>
+      <div class="chips" style="margin-top:6px"><span class="chip">&#128170; fighting form ${pw}</span><span class="chip g">HP ${state.hp}/${Game.effMaxHp()}</span></div></div>
+    <div class="card sheet"><h3>Tonight's card</h3>
+      ${PIT_BOUTS.map(b=>{ const stake=Math.round(b.stake*wm), purse=Math.round(b.purse*wm), odds=pitOdds(b), can=(state.credits||0)>=stake && state.hp>Game.effMaxHp()*0.2;
+        return `<div class="frow"><div class="finfo"><div class="nm">${b.name}</div><div class="sub">${b.blurb}</div>
+          <div class="chips" style="margin-top:4px"><span class="chip">stake ${commas(stake)}c</span><span class="chip gold">purse ${commas(purse)}c</span><span class="chip ${odds>=0.55?'g':odds>=0.35?'gold':'r'}">${Math.round(odds*100)}%</span></div></div>
+          <button class="small ${can?'primary':''}" data-pit="${b.id}" ${can?'':'disabled'}>Fight</button></div>`; }).join("")}
+      <p class="small dim" style="margin-top:6px">Win and you double your stake (and toughen up); lose and you eat the loss and a beating. Odds rise with Might, Agility, level and gear.</p></div>
+    <div class="card sheet"><h3>By the cages</h3>${crowdRoster("pit")}</div>
+    <div class="card"><button id="pitBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+  /* ---------- CASINO (double-or-nothing) ---------- */
+  screen_casino(){
+    const w=state.world;
+    return `${this.statHeader()}
+    <div class="card"><h2>&#127920; ${w.name} Casino</h2>
+      <p class="small dim">Lights, chance, and a house that's always smiling. Pick your stake and tempt fortune.</p>
+      <div class="chips" style="margin-top:6px"><span class="chip gold">&#128176; ${commas(state.credits)}c</span></div></div>
+    <div class="card sheet"><h3>Double-or-nothing</h3>
+      <p class="small dim">A hair under even money — with a rare jackpot that pays ten to one.</p>
+      <div class="grid">${[100,500,2000,10000].map(s=>`<button data-casino="${s}" ${(state.credits||0)>=s?'':'disabled'}>Stake ${commas(s)}c</button>`).join("")}</div></div>
+    <div class="card sheet"><h3>At the tables</h3>${crowdRoster("casino")}</div>
+    <div class="card"><button id="casBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+  /* ---------- BLACK MARKET (rare gear, no questions asked) ---------- */
+  screen_blackmkt(){
+    const w=state.world; ensureBlackStock(); const stock=state.blackStock.list;
+    return `${this.statHeader()}
+    <div class="card"><h2>&#128374; ${w.name} Black Market</h2>
+      <p class="small dim">Down an unlit stair, where no questions are asked and the wares fell off the back of a freighter.</p>
+      <div class="chips" style="margin-top:6px"><span class="chip gold">&#128176; ${commas(state.credits)}c</span></div></div>
+    <div class="card sheet"><h3>Under the counter</h3>
+      ${stock.length?stock.map((it,i)=>`<div class="frow"><div class="finfo"><div class="nm"><span style="color:${rarityColor(it.gear.rarity)}">${it.gear.name}</span></div>
+        <div class="sub">${it.gear.blurb||it.gear.slot} &middot; <span style="color:${rarityColor(it.gear.rarity)}">${it.gear.rarity}</span></div></div>
+        <button class="small ${(state.credits||0)>=it.price?'primary':''}" data-blackbuy="${i}" ${(state.credits||0)>=it.price?'':'disabled'}>${commas(it.price)}c</button></div>`).join("")
+        :`<p class="small dim">Cleaned out for now — the fence shrugs. Come back later.</p>`}
+      <p class="small dim" style="margin-top:6px">Rare gear at cutthroat prices; the stock turns over as time passes.</p></div>
+    <div class="card sheet"><h3>Shadows in the corner</h3>${crowdRoster("blackmkt")}</div>
+    <div class="card"><button id="bmBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+  /* ---------- ANCIENT RUINS (delve for relics) ---------- */
+  screen_ruins(){
+    const w=state.world, hurt=state.hp<=Game.effMaxHp()*0.2;
+    return `${this.statHeader()}
+    <div class="card"><h2>&#127963; Ancient Ruins</h2>
+      <p class="small dim">Weathered stone and dead machines older than any living memory. Something might still be worth taking — if it doesn't take you first.</p>
+      <div class="chips" style="margin-top:6px"><span class="chip g">HP ${state.hp}/${Game.effMaxHp()}</span></div></div>
+    <div class="card sheet"><h3>Into the deep halls</h3>
+      <p class="small dim">Pick through the ruins for relics and coin. It costs time, and the dark is not always empty.</p>
+      <button class="full primary" id="ruinsDelve" ${hurt?'disabled':''}>${hurt?'Too hurt to press on':'Search the ruins'}</button></div>
+    <div class="card"><button id="ruinsBack" class="ghost full center">&larr; Back outside</button></div>`;
   },
 
   /* ---------- BOUNTY BOARD (a hunter's posted contracts) ---------- */
@@ -3306,8 +3364,23 @@ const UI = {
         ${HIRE_ROLES[person.career]&&!isHostile(person)?`<p class="small dim" style="margin-top:6px">${cap(careerName(person.career))}: ${HIRE_ROLES[person.career].role}.</p>`:""}
         <p class="small dim" style="margin-top:6px">Leaving the conversation records ${(person.name||"this stranger").split(" ")[0]} in your Codex.</p>
       </div>
+      ${!isHostile(person)&&person.hook?this.crowdHookCard(person):""}
       ${!isHostile(person)?this.shipDealCard(person):""}
       ${personExpand?`${originCard(person)}${speciesSheet(person)}`:""}`;
+  },
+  /* a crowd member's angle: a job to offer, a tip to share, or goods to sell */
+  crowdHookCard(person){
+    const h=person.hook; if(!h) return "";
+    const who=(person.name||"They").split(" ")[0];
+    if(h.type==="mission") return `<div class="card sheet"><h3>&#128203; Work on offer</h3>
+      <p class="small dim">${who} sizes you up. "I've a job that needs a capable hand, if you're looking."</p>
+      <button class="full primary" id="meetTakeJob" ${(state.missions||[]).length>=4?'disabled':''}>${(state.missions||[]).length>=4?'Your contract ledger is full':'Take their job'}</button></div>`;
+    if(h.type==="goods") return `<div class="card sheet"><h3>&#128176; They're selling</h3>
+      <p class="small">${who} offers <b style="color:${rarityColor(h.gear.rarity)}">${h.gear.name}</b> <span class="dim small">&middot; ${h.gear.blurb||h.gear.slot}</span></p>
+      <button class="full ${(state.credits||0)>=h.price?'primary':''}" id="meetBuyGear" ${(state.credits||0)>=h.price?'':'disabled'}>Buy &middot; ${commas(h.price)}c</button></div>`;
+    if(h.type==="tip") return `<div class="card sheet"><h3>&#128172; A word</h3>
+      <p class="small blue">"${h.text}"</p></div>`;
+    return "";
   },
 
   /* ---------- REST EVENT (a decision in the night) ---------- */
@@ -4284,6 +4357,7 @@ const UI = {
       const vm=$("#vMarket"); if(vm) vm.onclick=()=>UI.render("market");
       const vst=$("#vStreets"); if(vst) vst.onclick=()=>UI.render("streets");
       const vrc=$("#vRaces"); if(vrc) vrc.onclick=()=>UI.render("races");
+      app.querySelectorAll("[data-spot]").forEach(b=> b.onclick=()=>UI.render(b.dataset.spot));
       $("#vRest").onclick=()=>{
         if(advanceTime()) return;                     // resting is one action
         state.hp=Game.effMaxHp(); state.energy=Game.effMaxEnergy();
@@ -4346,6 +4420,25 @@ const UI = {
     if(screen==="streets"){
       app.querySelectorAll("[data-crowd]").forEach(b=> b.onclick=()=>{ const [loc,cid]=b.dataset.crowd.split(":"); meetCrowdPerson(loc, +cid, "streets"); });
       $("#stBack").onclick=()=>UI.render("hub");
+    }
+    if(screen==="pit"){
+      app.querySelectorAll("[data-pit]").forEach(b=> b.onclick=()=>fightPit(b.dataset.pit));
+      app.querySelectorAll("[data-crowd]").forEach(b=> b.onclick=()=>{ const [loc,cid]=b.dataset.crowd.split(":"); meetCrowdPerson(loc, +cid, "pit"); });
+      const bk=$("#pitBack"); if(bk) bk.onclick=()=>UI.render("hub");
+    }
+    if(screen==="casino"){
+      app.querySelectorAll("[data-casino]").forEach(b=> b.onclick=()=>casinoPlay(b.dataset.casino));
+      app.querySelectorAll("[data-crowd]").forEach(b=> b.onclick=()=>{ const [loc,cid]=b.dataset.crowd.split(":"); meetCrowdPerson(loc, +cid, "casino"); });
+      const bk=$("#casBack"); if(bk) bk.onclick=()=>UI.render("hub");
+    }
+    if(screen==="blackmkt"){
+      app.querySelectorAll("[data-blackbuy]").forEach(b=> b.onclick=()=>buyBlackGear(+b.dataset.blackbuy));
+      app.querySelectorAll("[data-crowd]").forEach(b=> b.onclick=()=>{ const [loc,cid]=b.dataset.crowd.split(":"); meetCrowdPerson(loc, +cid, "blackmkt"); });
+      const bk=$("#bmBack"); if(bk) bk.onclick=()=>UI.render("hub");
+    }
+    if(screen==="ruins"){
+      const d=$("#ruinsDelve"); if(d) d.onclick=()=>delveRuins();
+      const bk=$("#ruinsBack"); if(bk) bk.onclick=()=>UI.render("hub");
     }
     if(screen==="bartender"){
       const bs=$("#bSell"); if(bs) bs.onclick=()=>sellInformation();
@@ -4606,6 +4699,8 @@ const UI = {
     const mj=$("#meetJob"); if(mj) mj.onclick=()=>askForJob(m.person, ()=>UI.render("meet"));
     const mh=$("#meetHire"); if(mh) mh.onclick=()=>{ readRace(); hireFromMeeting(); };
     const mm=$("#meetMore"); if(mm) mm.onclick=()=>{ personExpand=!personExpand; UI.render("meet"); };
+    const mtj=$("#meetTakeJob"); if(mtj) mtj.onclick=()=>takeCrowdMission(m.person);
+    const mbg=$("#meetBuyGear"); if(mbg) mbg.onclick=()=>buyCrowdGear(m.person);
     const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ readRace(); meetAttack(); };
     const me=$("#meetEngage"); if(me) me.onclick=()=>{ readRace(); attackFromContact(); };
     const mf2=$("#meetFinish2"); if(mf2) mf2.onclick=()=>{ readRace(); finishMeeting(); };
@@ -5513,12 +5608,17 @@ function ensureCrowd(locId, size){
     const people = keep.slice(0, size);
     let guard=0;
     while(people.length < size && guard++ < 24){
-      const want = (locId==="speedway"); // a speedway crowd leans toward racers/pilots
       const draw=drawRace(), person=Gen.person(draw.race);
       if(!person.name) person.name=genName("person");
       person.cid = (state._cidSeq=(state._cidSeq||0)+1);
       person.met=false; person.rel="neutral"; person.locHint=(state._cidSeq)%5;
       person._draw={ id:draw.id, race:draw.race, isNew:draw.isNew };
+      // some folk have a reason to talk to you: a job, a tip, or something to sell
+      if(!isHostile(person)){ const hr=Math.random();
+        if(hr<0.24) person.hook={type:"mission"};
+        else if(hr<0.44) person.hook={type:"tip", text:pick(RUMORS)};
+        else if(hr<0.60){ const g=genGear(weightedKey({common:58,uncommon:32,rare:9,epic:1})); person.hook={type:"goods", gear:g, price:Math.max(60,Math.round(g.value*rndF(1.1,1.8)))}; }
+      }
       people.push(person);
     }
     c = wc[locId] = { stamp: state.actions||0, people };
@@ -5526,6 +5626,85 @@ function ensureCrowd(locId, size){
   return c;
 }
 function crowdPerson(locId, cid){ const wc=(state.crowds||{})[crowdKey()], c=wc&&wc[locId]; return c?c.people.find(p=>p.cid===cid):null; }
+/* ---- random special locations that a world may have, rolled once and remembered ---- */
+const WORLD_SPOTS=[
+  { id:"pit",      name:"Fighting Pit",  icon:"&#129354;", when:w=>isInhabited(w)&&w.danger>=4 },
+  { id:"casino",   name:"Casino",        icon:"&#127920;", when:w=>isInhabited(w)&&w.wealth>=6 },
+  { id:"blackmkt", name:"Black Market",  icon:"&#128374;", when:w=>isInhabited(w)&&(w.danger>=5||w.wealth<=3) },
+  { id:"ruins",    name:"Ancient Ruins", icon:"&#127963;", when:w=>!!(w.tier&&RARITY.index(w.tier)>=3) },
+];
+const spotDef=id=>WORLD_SPOTS.find(s=>s.id===id);
+function worldSpots(w){
+  if(!w) return [];
+  if(w.spots) return w.spots;
+  const elig=WORLD_SPOTS.filter(s=>{ try{ return s.when(w); }catch(e){ return false; } });
+  const n=Math.min(elig.length, chance(0.32)?2:chance(0.55)?1:0);
+  const pool=elig.slice(), out=[];
+  for(let i=0;i<n;i++) out.push(pool.splice(rnd(0,pool.length-1),1)[0].id);
+  w.spots=out; return out;
+}
+/* --- Fighting Pit --- */
+const PIT_BOUTS=[
+  { id:"scrap", name:"Scrapper's Bout",  field:14, stake:200,  purse:500,  blurb:"Back-alley toughs and first-timers." },
+  { id:"brawl", name:"Pit Brawl",        field:34, stake:800,  purse:2000, blurb:"Seasoned fighters who've done this before." },
+  { id:"cage",  name:"Champion's Cage",  field:72, stake:2500, purse:7000, blurb:"The pit's killers. Winners walk out rich." },
+];
+function pitPower(){ return Math.round(Game.effStat("might")*1.3 + Game.effStat("agility")*0.6 + (state.level||1)); }
+function pitOdds(b){ const wm=raceWealthMult(); return clamp(pitPower()/(pitPower()+b.field*wm), 0.08, 0.94); }
+function fightPit(id){
+  const b=PIT_BOUTS.find(x=>x.id===id); if(!b) return;
+  const wm=raceWealthMult(), stake=Math.round(b.stake*wm), purse=Math.round(b.purse*wm);
+  if((state.credits||0)<stake){ toast("Can't cover the stake"); return; }
+  if(state.hp<=Game.effMaxHp()*0.2){ toast("You're too hurt to fight"); return; }
+  if(advanceTime()) return;
+  state.credits-=stake;
+  if(chance(pitOdds(b))){
+    state.credits+=purse; let msg=`You take <b>${b.name}</b> — the crowd roars. <b class="gold">+${commas(purse-stake)}c</b> net.`;
+    if(b.id==="cage" && chance(0.4)){ state.gear=state.gear||[]; const g=genGear(weightedKey({uncommon:38,rare:40,epic:19,legendary:3})); state.gear.push(g); msg+=` A backer presses <b style="color:${rarityColor(g.rarity)}">${g.name}</b> into your hand.`; }
+    Game.logMsg(msg,"good");
+  } else { const dmg=Math.max(1,Math.round(Game.effMaxHp()*rndF(0.25,0.5))); state.hp=Math.max(1,state.hp-dmg);
+    Game.logMsg(`You go down hard in <b>${b.name}</b> — <span class="red">-${commas(stake)}c and -${dmg} HP</span>.`,"bad"); }
+  Game.save(); UI.render("pit"); UI.flashLog();
+}
+/* --- Casino --- */
+function casinoPlay(stake){
+  stake=+stake; if((state.credits||0)<stake){ toast("Not enough credits"); return; }
+  state.credits-=stake; const r=Math.random();
+  if(r<0.03){ const jp=stake*10; state.credits+=jp; Game.logMsg(`&#127920; <b>JACKPOT</b> — the table pays out <b class="gold">${commas(jp)}c</b>!`,"good"); }
+  else if(r<0.48){ state.credits+=stake*2; Game.logMsg(`The bones fall your way — <b class="gold">+${commas(stake)}c</b>.`,"good"); }
+  else Game.logMsg(`The house takes it — <span class="red">-${commas(stake)}c</span>.`,"bad");
+  Game.save(); UI.render("casino"); UI.flashLog();
+}
+/* --- Black Market --- */
+function ensureBlackStock(){
+  const wk=crowdKey(); let b=state.blackStock;
+  if(!b || b.wk!==wk || ((state.actions||0)-(b.stamp||0)>=8)){
+    const n=rnd(2,4), list=[];
+    for(let i=0;i<n;i++){ const g=genGear(weightedKey({uncommon:40,rare:38,epic:18,legendary:4})); list.push({gear:g, price:Math.max(120,Math.round(g.value*rndF(0.9,1.4)))}); }
+    b=state.blackStock={ wk, stamp:state.actions||0, list };
+  }
+  return b;
+}
+function buyBlackGear(i){
+  ensureBlackStock(); const it=state.blackStock.list[i]; if(!it) return;
+  if((state.credits||0)<it.price){ toast("Not enough credits"); return; }
+  state.credits-=it.price; state.gear=state.gear||[]; state.gear.push(it.gear);
+  Game.logMsg(`Black market: you slip the fence ${commas(it.price)}c for <b style="color:${rarityColor(it.gear.rarity)}">${it.gear.name}</b>.`,"good");
+  state.blackStock.list.splice(i,1); Game.save(); UI.render("blackmkt"); UI.flashLog();
+}
+/* --- Ancient Ruins --- */
+function delveRuins(){
+  if(state.hp<=Game.effMaxHp()*0.2){ toast("Too hurt to press on"); return; }
+  if(advanceTime()) return;
+  const r=Math.random();
+  if(r<0.5){ const c=rnd(200,1500); state.credits+=c; let msg=`You prise <b class="gold">${commas(c)}c</b> of old relics from the dust.`;
+    if(chance(0.5)){ state.gear=state.gear||[]; const g=genGear(weightedKey({uncommon:44,rare:38,epic:15,legendary:3})); state.gear.push(g); msg+=` And a working artifact — <b style="color:${rarityColor(g.rarity)}">${g.name}</b>!`; }
+    Game.logMsg(msg,"good"); }
+  else if(r<0.78) Game.logMsg("You find only dust and broken stone this time.","sys");
+  else { const dmg=Math.max(1,Math.round(Game.effMaxHp()*rndF(0.2,0.45))); state.hp=Math.max(1,state.hp-dmg);
+    Game.logMsg(`A dormant guardian stirs in the dark — you barely break free. <span class="red">-${dmg} HP</span>.`,"bad"); }
+  Game.save(); UI.render("ruins"); UI.flashLog();
+}
 const CROWD_HINTS=["nursing a drink","watching the door","playing a hand of cards","counting a stack of credits","keeping to the shadows"];
 function crowdHint(p){ return `a ${p.build||"weathered"} figure ${CROWD_HINTS[p.locHint||0]}`; }
 /* one row per person in a place — anonymous until met, tagged once you know them */
@@ -5535,7 +5714,8 @@ function crowdRoster(locId){
   return crowd.map(p=>{ const met=p.met;
     const relTag = p.rel==="enemy"?' <span class="chip r small">rival</span>':p.rel==="friend"?' <span class="chip g small">friend</span>':'';
     const hostileTag = met&&isHostile(p)?' <span class="chip r small">&#9760; wanted</span>':'';
-    return `<div class="frow"><div class="finfo"><div class="nm">${met?`${p.name}${relTag}${hostileTag}`:'<span class="dim">Stranger</span>'}</div>
+    const hookTag = met&&p.hook?({mission:' <span class="chip small">&#128203; hiring</span>',goods:' <span class="chip small">&#128176; selling</span>',tip:' <span class="chip small">&#128172; word</span>'}[p.hook.type]||''):'';
+    return `<div class="frow"><div class="finfo"><div class="nm">${met?`${p.name}${relTag}${hostileTag}${hookTag}`:'<span class="dim">Stranger</span>'}</div>
       <div class="sub">${met?`${cap(careerName(p.career))}${p.raceName?` &middot; ${p.raceName}`:''}`:crowdHint(p)}</div></div>
       <button class="small ${!met?'primary':''}" data-crowd="${locId}:${p.cid}">${met?'Talk':'Approach'}</button></div>`; }).join("");
 }
@@ -5655,6 +5835,25 @@ function acceptMission(i){
 function abandonMission(id){
   state.missions=(state.missions||[]).filter(m=>m.id!==id);
   Game.logMsg("You abandon a contract.","sys"); Game.save(); UI.render(UI.current);
+}
+/* a crowd member hands you a job */
+function takeCrowdMission(person){
+  if(!person||!person.hook||person.hook.type!=="mission") return;
+  state.missions=state.missions||[];
+  if(state.missions.length>=4){ toast("Your contract ledger is full (4)"); return; }
+  const m=genMission(chance(0.25)?"long":"courier");
+  if(!m){ toast("Their lead comes to nothing right now"); person.hook=null; UI.render("meet"); return; }
+  m.status="active"; m.giver=person.name; state.missions.push(m); person.hook=null;
+  Game.logMsg(`&#128203; ${(person.name||"They").split(" ")[0]} sets you on a job: <b>${m.title}</b>. First: ${m.steps[0].desc}.`,"good");
+  Game.save(); UI.render("meet"); UI.flashLog();
+}
+/* buy the gear a crowd member is fencing */
+function buyCrowdGear(person){
+  const h=person&&person.hook; if(!h||h.type!=="goods") return;
+  if((state.credits||0)<h.price){ toast(`That costs ${commas(h.price)}c`); return; }
+  state.credits-=h.price; state.gear=state.gear||[]; state.gear.push(h.gear);
+  Game.logMsg(`You buy <b style="color:${rarityColor(h.gear.rarity)}">${h.gear.name}</b> from ${(person.name||"a trader").split(" ")[0]} for ${commas(h.price)}c.`,"good");
+  person.hook=null; Game.save(); UI.render("meet"); UI.flashLog();
 }
 function atMissionTarget(t){ return t && state.sysId===t.sysId && (t.slot==null || state.atSlot===t.slot); }
 function payoutMission(m){
