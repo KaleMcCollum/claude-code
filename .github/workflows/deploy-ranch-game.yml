@@ -1,9 +1,10 @@
 name: Deploy site to GitHub Pages
 
 # Publishes static sites to GitHub Pages on every push to main:
-#   ranch-game/    -> site root     (https://<user>.github.io/claude-code/)
-#   armoimc/       -> /armoimc/      (https://<user>.github.io/claude-code/armoimc/)
-#   lake-weekend/  -> /lake-weekend/ (https://<user>.github.io/claude-code/lake-weekend/)
+#   ranch-game/         -> site root            (https://<user>.github.io/claude-code/)
+#   armoimc/            -> /armoimc/            (https://<user>.github.io/claude-code/armoimc/)
+#   lake-weekend/       -> /lake-weekend/       (https://<user>.github.io/claude-code/lake-weekend/)
+#   real-estate-funnel/ -> /real-estate-funnel/ (https://<user>.github.io/claude-code/real-estate-funnel/)
 on:
   push:
     branches: ["main"]
@@ -11,6 +12,7 @@ on:
       - "ranch-game/**"
       - "armoimc/**"
       - "lake-weekend/**"
+      - "real-estate-funnel/**"
       - ".github/workflows/deploy-ranch-game.yml"
       - ".nojekyll"
   workflow_dispatch:
@@ -33,12 +35,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Assemble site (ranch-game at root, armoimc + lake-weekend in subfolders)
+      - name: Assemble site (ranch-game at root, others in subfolders)
         run: |
-          mkdir -p _site/armoimc _site/lake-weekend
+          mkdir -p _site/armoimc _site/lake-weekend _site/real-estate-funnel
           cp -r ranch-game/. _site/
           cp -r armoimc/. _site/armoimc/
           cp -r lake-weekend/. _site/lake-weekend/
+          cp -r real-estate-funnel/. _site/real-estate-funnel/
           touch _site/.nojekyll
       - name: Configure Pages
         uses: actions/configure-pages@v5
