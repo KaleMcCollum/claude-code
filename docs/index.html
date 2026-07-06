@@ -3266,17 +3266,22 @@ const UI = {
     const hereG=systemGov(curSys()); if(hereG) knownGovs.add(hereG.id);
     const revealAll = !!(opts.pick && mapShowAll), govKnown = id => revealAll || knownGovs.has(id);
     const focusG = opts.pick ? mapFocusGov : null, gtime=state.actions||0;
-    (state.galaxy.governments||[]).forEach(g=>{ if(!govKnown(g.id)) return;
-      const gx=sx(g.center.x), gy=sy(g.center.y), gr=g.radius/v.span*SIZE;
-      if(!inView(gx,gy,gr)) return;
-      const dim = focusG && focusG!==g.id, foc = focusG===g.id;
-      els+=`<circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="${gr.toFixed(1)}" fill="${g.color}${dim?'08':foc?'2e':'1c'}" stroke="${g.color}${dim?'2a':'aa'}" stroke-width="${foc?2:1.2}" stroke-dasharray="5 4"/>`;
-      if(gr>16 && !dim) els+=`<text x="${gx.toFixed(1)}" y="${gy.toFixed(1)}" fill="${g.color}" font-size="${clamp(gr/6,7,12).toFixed(0)}" text-anchor="middle" opacity="0.8" font-weight="bold">${g.name}</text>`;
-      // roaming patrol blips inside their space — drift with game time so the chart feels alive
-      if(!dim){ const k=clamp(Math.round(g.radius/55),1,3);
-        for(let i=0;i<k;i++){ const ang=(gtime*0.05*(i%2?1:-1))+i*2.3+(g.rank||1)*1.7, rr=g.radius*(0.4+0.2*i);
-          const px=sx(g.center.x+Math.cos(ang)*rr), py=sy(g.center.y+Math.sin(ang)*rr); if(!inView(px,py,5)) continue;
-          els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.7" fill="${g.color}" class="pat"/>`; } }
+    // territory is anchored to the SYSTEMS each power actually holds: a soft halo around every held
+    // world, which merges into a region that hugs real stars — and leaves enemy enclaves punched out
+    // (no more claiming empty space). Only worlds you've seen count, unless you've revealed all powers.
+    const INFLU=15;                                    // ly of sway around each held world
+    const govHeld={};
+    (state.galaxy.systems||[]).forEach(s=>{ if(!s||!s.govId||!govKnown(s.govId)) return;
+      if(!(revealAll||s.seen||s.discovered)) return; (govHeld[s.govId]=govHeld[s.govId]||[]).push(s); });
+    (state.galaxy.governments||[]).forEach(g=>{ if(g.fallen||!govKnown(g.id)) return;
+      const held=govHeld[g.id]; if(!held||!held.length) return;
+      const dim=focusG&&focusG!==g.id, foc=focusG===g.id, rr=INFLU/v.span*SIZE, a=dim?'0a':foc?'26':'16';
+      if(rr>=1.2) held.forEach(s=>{ const px=sx(s.x), py=sy(s.y); if(!inView(px,py,rr)) return;
+        els+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${rr.toFixed(1)}" fill="${g.color}${a}" stroke="none"/>`; });
+      let cx=0,cy=0; held.forEach(s=>{cx+=s.x;cy+=s.y;}); cx/=held.length; cy/=held.length;
+      const lx=sx(cx), tly=sy(cy);
+      if(!dim && (showLabels||mapShowAll) && inView(lx,tly,4))
+        els+=`<text x="${lx.toFixed(1)}" y="${tly.toFixed(1)}" fill="${g.color}" font-size="10" text-anchor="middle" opacity="0.88" font-weight="bold" stroke="#0a0e16" stroke-width="0.6" paint-order="stroke">${g.name}</text>`;
     });
     // active wars between the powers you know — a contested line strung between their seats of power
     ((state.galaxy.wars)||[]).forEach(war=>{ const a=govById(war.a), b=govById(war.b);
@@ -4879,7 +4884,8 @@ function systemGov(sys){ if(!sys) return null;
 /* ===================== LIVING POLITICS — powers war, expand & fall over the years =====================
    Each year the great powers grind through wars, push and lose borders, and occasionally a power is
    conquered outright — its space swallowed, its name passing into the Codex. Drives a living late game. */
-function govPower(g){ return g&&!g.fallen ? Math.round(g.radius*g.strength*4 + g.wealth*30) : 0; }
+function ownedCount(gId){ let n=0; const sys=(state.galaxy&&state.galaxy.systems)||[]; for(let i=0;i<sys.length;i++){ const s=sys[i]; if(s&&s.govId===gId) n++; } return n; }
+function govPower(g){ return g&&!g.fallen ? Math.round(ownedCount(g.id)*10 + g.wealth*8 + g.strength*20) : 0; }
 function activeGovs(){ return ((state.galaxy&&state.galaxy.governments)||[]).filter(g=>!g.fallen); }
 function govWars(gId){ const W=(state.galaxy&&state.galaxy.wars)||[], out=[]; W.forEach(w=>{ if(w.a===gId) out.push(w.b); else if(w.b===gId) out.push(w.a); }); return out; }
 function govsAtWar(a,b){ return ((state.galaxy&&state.galaxy.wars)||[]).some(w=>(w.a===a&&w.b===b)||(w.a===b&&w.b===a)); }
@@ -4892,14 +4898,35 @@ function startWar(a,b){ if(a===b||govsAtWar(a,b)) return; const ga=govById(a), g
 function endWar(a,b,reason){ state.galaxy.wars=(state.galaxy.wars||[]).filter(w=>!((w.a===a&&w.b===b)||(w.a===b&&w.b===a)));
   if(reason==="silent") return; const ga=govById(a), gb=govById(b);
   if(ga&&gb) addNews(`<b style="color:${ga.color}">${ga.name}</b> and <b style="color:${gb.color}">${gb.name}</b> ${reason||"sign a truce"}.`,"good"); }
-/* redraw borders to match current radii — every system but a surviving capital can change hands */
-function reassignTerritory(){ const govs=activeGovs(); (state.galaxy.systems||[]).forEach(s=>{ if(!s||s.capital!=null) return; s.govId=govAt(s.x,s.y,govs); }); }
+/* seize ONE system from `fromId` for `toId`. Usually a border world (nearest to the taker's space),
+   but sometimes a deep strike that leaves an enemy ENCLAVE sitting inside otherwise-friendly territory. */
+function transferSystem(fromId, toId){
+  const sys=(state.galaxy&&state.galaxy.systems)||[];
+  const held=sys.filter(s=>s&&s.govId===fromId && s.capital==null);   // the capital only falls when the power is conquered
+  if(!held.length) return false;
+  let target;
+  if(chance(0.15)) target=pick(held);                                 // a deep strike — may carve out an enclave
+  else{ const takers=sys.filter(s=>s&&s.govId===toId);
+    if(!takers.length) target=pick(held);
+    else{ let best=null, bd=Infinity; held.forEach(h=>{ let dmin=Infinity; takers.forEach(t=>{ const d=Math.hypot(h.x-t.x,h.y-t.y); if(d<dmin)dmin=d; }); if(dmin<bd){ bd=dmin; best=h; } }); target=best; } }
+  if(target){ target.govId=toId; return true; }
+  return false;
+}
+/* a power at peace spreads into the nearest UNCLAIMED system adjacent to its holdings (never overruns a neighbour) */
+function claimAdjacentUnowned(gId){
+  const sys=(state.galaxy&&state.galaxy.systems)||[], own=sys.filter(s=>s&&s.govId===gId);
+  if(!own.length) return false;
+  let best=null, bd=Infinity;
+  sys.forEach(s=>{ if(!s||s.govId||s.capital!=null) return; let dmin=Infinity; own.forEach(o=>{ const d=Math.hypot(s.x-o.x,s.y-o.y); if(d<dmin)dmin=d; }); if(dmin<bd && dmin<=26){ bd=dmin; best=s; } });
+  if(best){ best.govId=gId; return true; }
+  return false;
+}
 function conquerGov(winId, loseId){ const win=govById(winId), lose=govById(loseId); if(!win||!lose) return;
   (state.galaxy.systems||[]).forEach(s=>{ if(s && s.govId===loseId) s.govId=winId; });
   if(lose.capitalSys!=null){ const cap=state.galaxy.systems[lose.capitalSys]; if(cap){ cap.govId=winId; cap.capital=null; } }
-  lose.fallen=true; lose.radius=0;
+  lose.fallen=true;
   state.galaxy.wars=(state.galaxy.wars||[]).filter(w=>w.a!==loseId&&w.b!==loseId);
-  win.radius=clamp(win.radius+15,55,200); win.strength=+(win.strength+0.1).toFixed(2); win.wealth=clamp(win.wealth+1,2,9);
+  win.strength=+(win.strength+0.1).toFixed(2); win.wealth=clamp(win.wealth+1,2,9);
   addNews(`The <b style="color:${lose.color}">${lose.name}</b> has fallen — its worlds swallowed by the <b style="color:${win.color}">${win.name}</b>.`,"bad");
   const al=state.allegiance||{};
   if(al.govId===loseId){ al.govId=null; Game.logMsg(`Your patron, the ${lose.name}, is no more. You are independent once again.`,"bad"); }
@@ -4911,13 +4938,14 @@ function tickPolitics(){
   if(!G._politicsSeeded){ G._politicsSeeded=true;   // open the era with one smouldering conflict
     const a=activeGovs()[0], foe=activeGovs().find(g=>g!==a && (a.rivals.includes(g.id))) || activeGovs().find(g=>g!==a);
     if(foe) startWar(a.id, foe.id); }
-  // 1) grind every ongoing war — the stronger side pushes the border, the weaker may collapse
+  // 1) grind every ongoing war — the stronger side seizes worlds, the weaker may collapse
   (G.wars||[]).slice().forEach(w=>{ const a=govById(w.a), b=govById(w.b);
     if(!a||!b||a.fallen||b.fallen){ endWar(w.a,w.b,"silent"); return; }
     const pa=govPower(a), pb=govPower(b), winA=Math.random()<pa/(pa+pb), win=winA?a:b, lose=winA?b:a;
-    lose.radius=clamp(lose.radius-rnd(3,8),0,200); win.radius=clamp(win.radius+rnd(1,4),55,200);
+    const seize=1+(chance(0.3)?1:0);                          // the front advances a world or two this year
+    for(let k=0;k<seize;k++) transferSystem(lose.id, win.id);
     if(chance(0.25)) lose.wealth=clamp(lose.wealth-1,1,9);
-    if(lose.radius<=28 || govPower(lose)<govPower(win)*0.22){ conquerGov(win.id, lose.id); return; }
+    if(ownedCount(lose.id)<=1 || govPower(lose)<govPower(win)*0.22){ conquerGov(win.id, lose.id); return; }
     const yrs=curYear()-(w.since||0);
     if(chance(0.16) || (yrs>=4 && chance(0.4))) endWar(w.a,w.b,"sign a truce"); });
   // 2) maybe ignite a fresh war (cap concurrent conflicts), favouring ideological rivals then near neighbours
@@ -4927,11 +4955,10 @@ function tickPolitics(){
     const foe=cands.filter(g=>a.rivals.includes(g.id))[0] ||
       cands.slice().sort((x,y)=>Math.hypot(a.center.x-x.center.x,a.center.y-x.center.y)-Math.hypot(a.center.x-y.center.x,a.center.y-y.center.y))[0];
     if(foe) startWar(a.id, foe.id); }
-  // 3) powers at peace slowly recover their reach; 4) restate ranks and redraw the map
-  activeGovs().forEach(g=>{ if(!govWars(g.id).length && g.radius<150 && chance(0.5)) g.radius=clamp(g.radius+rnd(0,3),55,200); });
+  // 3) powers at peace spread into empty space bordering their holdings; 4) restate ranks
+  activeGovs().forEach(g=>{ if(!govWars(g.id).length && chance(0.4)) claimAdjacentUnowned(g.id); });
   activeGovs().forEach(g=>g.power=govPower(g));
   activeGovs().sort((x,y)=>y.power-x.power).forEach((g,i)=>g.rank=i+1);
-  reassignTerritory();
 }
 /* your earned Light<->Dark standing (a -100..100 meter) as a label & a coarse side */
 function alignLabel(v){ v=v||0; return v<=-60?"Dark":v<=-20?"Shadowed":v<20?"Neutral":v<60?"Tempered":"Light"; }
