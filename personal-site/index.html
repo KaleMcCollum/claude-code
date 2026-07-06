@@ -57,10 +57,71 @@
     position: absolute;
     border-radius: 50%;
     pointer-events: none;
-    will-change: transform;
+    will-change: transform, border-radius;
     filter: blur(60px);
     opacity: 0.5;
+    animation: morph 14s ease-in-out infinite alternate;
   }
+
+  @keyframes morph {
+    0%   { border-radius: 60% 40% 55% 45% / 45% 60% 40% 55%; }
+    50%  { border-radius: 40% 60% 45% 55% / 60% 40% 55% 45%; }
+    100% { border-radius: 55% 45% 60% 40% / 40% 55% 45% 60%; }
+  }
+
+  /* ---------- Floating leaves ---------- */
+  .leaf-wrap {
+    position: absolute;
+    pointer-events: none;
+    will-change: transform;
+    z-index: 1;
+  }
+
+  .leaf-wrap svg {
+    display: block;
+    color: var(--sea);
+    opacity: 0.35;
+    animation: leafFloat var(--dur, 9s) ease-in-out infinite alternate;
+    will-change: transform;
+  }
+
+  @keyframes leafFloat {
+    0%   { transform: translateY(0) rotate(var(--r0, -12deg)); }
+    100% { transform: translateY(-26px) rotate(var(--r1, 14deg)); }
+  }
+
+  /* ---------- Marquee bands ---------- */
+  .marquee {
+    overflow: clip;
+    white-space: nowrap;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--paper);
+    padding: 0.9rem 0;
+    position: relative;
+    z-index: 2;
+  }
+
+  .marquee-inner {
+    display: inline-block;
+    will-change: transform;
+    font-family: "Bricolage Grotesque", "Arial Black", sans-serif;
+    font-weight: 800;
+    font-size: clamp(1.4rem, 3.4vw, 2.4rem);
+    letter-spacing: 0.02em;
+    color: var(--deep);
+  }
+
+  .marquee-inner .dot { color: var(--azure); padding: 0 0.8rem; }
+  .marquee-inner .ghost {
+    color: transparent;
+    -webkit-text-stroke: 1.5px rgba(58, 110, 165, 0.55);
+  }
+
+  .marquee.flip { background: var(--deep); border-color: rgba(127, 168, 217, 0.25); }
+  .marquee.flip .marquee-inner { color: var(--ice); }
+  .marquee.flip .marquee-inner .ghost { -webkit-text-stroke-color: rgba(127, 168, 217, 0.6); }
+  .marquee.flip .marquee-inner .dot { color: var(--sky); }
 
   /* ---------- Hero ---------- */
   .hero {
@@ -72,7 +133,7 @@
     text-align: center;
     padding: 2rem 1.5rem 5rem;
     position: relative;
-    overflow: hidden;
+    overflow: clip;
     background:
       radial-gradient(ellipse 80% 60% at 50% 110%, rgba(127, 168, 217, 0.35), transparent 65%),
       var(--ice);
@@ -84,6 +145,7 @@
     flex-direction: column;
     align-items: center;
     will-change: transform, opacity;
+    z-index: 2;
   }
 
   .hero .kicker {
@@ -98,13 +160,22 @@
   .hero h1 {
     font-size: clamp(3rem, 9.5vw, 7rem);
     font-weight: 800;
-    color: var(--deep);
     letter-spacing: -0.03em;
+    background: linear-gradient(100deg, var(--deep) 20%, var(--azure) 40%, var(--sky) 50%, var(--azure) 60%, var(--deep) 80%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 7s linear infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 125% 0; }
+    100% { background-position: -125% 0; }
   }
 
   .hero .tagline {
     margin-top: 1.4rem;
-    font-size: clamp(1.05rem, 2.2vw, 1.35rem);
     max-width: 34ch;
     color: rgba(20, 33, 61, 0.72);
     font-family: "Instrument Serif", Georgia, serif;
@@ -122,8 +193,8 @@
   }
 
   @keyframes sway {
-    0%, 100% { transform: rotate(-6deg); }
-    50% { transform: rotate(6deg); }
+    0%, 100% { transform: rotate(-8deg) translateY(0); }
+    50% { transform: rotate(8deg) translateY(-6px); }
   }
 
   /* Load-in animation for hero content */
@@ -136,6 +207,9 @@
   .hero-inner > *:nth-child(2) { animation-delay: 0.18s; }
   .hero-inner > *:nth-child(3) { animation-delay: 0.32s; }
   .hero-inner > *:nth-child(4) { animation-delay: 0.48s; }
+
+  /* h1 combines rise + shimmer */
+  .hero-inner > h1 { animation: rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.32s forwards, shimmer 7s linear 1.3s infinite; }
 
   @keyframes rise {
     to { opacity: 1; transform: translateY(0); }
@@ -155,6 +229,7 @@
     text-transform: uppercase;
     color: var(--sea);
     text-decoration: none;
+    z-index: 2;
   }
 
   .scroll-cue .stem {
@@ -174,16 +249,15 @@
   .about {
     background: var(--paper);
     padding: clamp(4rem, 10vw, 8rem) 1.5rem;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
     position: relative;
-    overflow: hidden;
+    overflow: clip;
   }
 
   .about-inner {
     max-width: 640px;
     margin: 0 auto;
     position: relative;
+    z-index: 2;
   }
 
   .section-label {
@@ -217,13 +291,27 @@
     margin-bottom: 1.6rem;
   }
 
+  /* Word-by-word reveal (spans injected by JS) */
+  .about h2 .w {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(0.6em) rotate(3deg);
+    transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--wd, 0s);
+  }
+  .in-view.about-inner h2 .w, .about-inner.in-view h2 .w {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+
   .about p {
     font-size: 1.06rem;
     color: rgba(20, 33, 61, 0.8);
     margin-bottom: 1.15rem;
   }
 
-  /* Staggered reveal for about children */
+  /* Staggered reveal */
   .stagger > * {
     opacity: 0;
     transform: translateY(30px);
@@ -231,10 +319,10 @@
                 transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .stagger.in-view > * { opacity: 1; transform: translateY(0); }
-  .stagger.in-view > *:nth-child(2) { transition-delay: 0.1s; }
-  .stagger.in-view > *:nth-child(3) { transition-delay: 0.2s; }
-  .stagger.in-view > *:nth-child(4) { transition-delay: 0.3s; }
-  .stagger.in-view > *:nth-child(5) { transition-delay: 0.4s; }
+  .stagger.in-view > *:nth-child(2) { transition-delay: 0.12s; }
+  .stagger.in-view > *:nth-child(3) { transition-delay: 0.24s; }
+  .stagger.in-view > *:nth-child(4) { transition-delay: 0.36s; }
+  .stagger.in-view > *:nth-child(5) { transition-delay: 0.48s; }
 
   /* ---------- Timeline ---------- */
   .timeline {
@@ -248,6 +336,7 @@
     max-width: 1060px;
     margin: 0 auto clamp(3rem, 7vw, 5.5rem);
     position: relative;
+    z-index: 2;
   }
 
   .timeline-head h2 {
@@ -263,6 +352,7 @@
     gap: clamp(1.5rem, 5vw, 5rem);
     align-items: start;
     position: relative;
+    z-index: 2;
   }
 
   /* Sticky year column */
@@ -275,7 +365,35 @@
     justify-content: center;
   }
 
+  .year-stack { position: relative; }
+
+  .year-ring {
+    position: absolute;
+    top: 50%;
+    left: clamp(90px, 12vw, 150px);
+    width: clamp(190px, 26vw, 320px);
+    height: clamp(190px, 26vw, 320px);
+    margin: calc(clamp(190px, 26vw, 320px) / -2) 0 0 calc(clamp(190px, 26vw, 320px) / -2);
+    border: 1.5px dashed rgba(58, 110, 165, 0.35);
+    border-radius: 50%;
+    will-change: transform;
+    pointer-events: none;
+  }
+
+  .year-ring::after {
+    content: "";
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    width: 9px;
+    height: 9px;
+    margin-left: -4.5px;
+    border-radius: 50%;
+    background: var(--azure);
+  }
+
   .year-display {
+    position: relative;
     font-family: "Bricolage Grotesque", "Arial Black", sans-serif;
     font-size: clamp(4rem, 11vw, 8.5rem);
     font-weight: 800;
@@ -289,15 +407,16 @@
 
   .year-display.fading { opacity: 0; transform: translateY(12px); }
 
-  .year-display.tick { animation: tick 0.3s ease; }
+  .year-display.tick { animation: tick 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
 
   @keyframes tick {
-    0% { transform: scale(1); }
-    40% { transform: scale(1.045); }
-    100% { transform: scale(1); }
+    0% { transform: translateY(0) scale(1); }
+    35% { transform: translateY(-10px) scale(1.07); }
+    100% { transform: translateY(0) scale(1); }
   }
 
   .year-sub {
+    position: relative;
     margin-top: 1rem;
     font-size: 0.95rem;
     letter-spacing: 0.14em;
@@ -311,6 +430,8 @@
   .year-sub.fading { opacity: 0; transform: translateY(8px); }
 
   /* Events column */
+  .events-skew { will-change: transform; }
+
   .events {
     position: relative;
     padding-left: clamp(2rem, 4vw, 3rem);
@@ -335,6 +456,25 @@
     background: linear-gradient(var(--azure), var(--sky));
     transform: scaleY(0);
     transform-origin: top;
+  }
+
+  .events .vine-tip {
+    position: absolute;
+    left: 9px;
+    top: 0;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    border-radius: 50%;
+    background: var(--azure);
+    box-shadow: 0 0 0 5px rgba(46, 119, 201, 0.2), 0 0 18px rgba(46, 119, 201, 0.55);
+    will-change: transform;
+    animation: tipPulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes tipPulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(46, 119, 201, 0.25), 0 0 12px rgba(46, 119, 201, 0.5); }
+    50% { box-shadow: 0 0 0 9px rgba(46, 119, 201, 0.12), 0 0 22px rgba(46, 119, 201, 0.65); }
   }
 
   .event {
@@ -364,13 +504,19 @@
     border-radius: 50%;
     background: var(--ice);
     border: 2px solid var(--sea);
-    transition: background 0.4s ease, box-shadow 0.4s ease, transform 0.4s ease;
+    transition: background 0.4s ease, transform 0.4s ease;
   }
 
   .event.visible::before {
     background: var(--sea);
-    box-shadow: 0 0 0 6px rgba(58, 110, 165, 0.18);
     transform: scale(1.15);
+    animation: dotPulse 2.6s ease-out infinite;
+  }
+
+  @keyframes dotPulse {
+    0% { box-shadow: 0 0 0 0 rgba(58, 110, 165, 0.4); }
+    60% { box-shadow: 0 0 0 12px rgba(58, 110, 165, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(58, 110, 165, 0); }
   }
 
   .event .date {
@@ -415,14 +561,36 @@
     text-align: center;
     padding: clamp(5rem, 12vw, 9rem) 1.5rem;
     position: relative;
-    overflow: hidden;
+    overflow: clip;
   }
 
   .outro::before {
     content: "";
     position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse 70% 55% at 50% -10%, rgba(127, 168, 217, 0.4), transparent 60%);
+    inset: -20%;
+    background: radial-gradient(ellipse 45% 40% at 50% 15%, rgba(127, 168, 217, 0.45), transparent 60%);
+    animation: breathe 7s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.15); opacity: 1; }
+  }
+
+  .outro .spark {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--sky);
+    opacity: 0.55;
+    animation: sparkFloat var(--dur, 11s) ease-in-out infinite alternate;
+    will-change: transform;
+  }
+
+  @keyframes sparkFloat {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(var(--dx, 20px), -46px) scale(1.35); }
   }
 
   .outro-inner {
@@ -448,7 +616,7 @@
     font-size: clamp(2rem, 5.5vw, 3.4rem);
     max-width: 18ch;
     margin: 0 auto 1.3rem;
-    font-weight: 600;
+    font-weight: 700;
   }
 
   .outro p {
@@ -493,11 +661,10 @@
       -webkit-backdrop-filter: blur(8px);
       padding: 0.9rem 0;
       border-bottom: 1px solid var(--line);
-      flex-direction: row;
-      align-items: baseline;
-      gap: 1rem;
     }
 
+    .year-stack { display: flex; align-items: baseline; gap: 1rem; }
+    .year-ring { display: none; }
     .year-display { font-size: 2.6rem; }
     .year-sub { margin-top: 0; font-size: 0.78rem; }
 
@@ -505,18 +672,21 @@
     .event { padding: 2.6rem 0; }
     .event::before { top: calc(2.6rem + 0.5em); }
     .event-card { transform: translateX(34px) rotate(0.8deg); }
+    .leaf-wrap { display: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    .event, .event-card, .stagger > *, .outro-inner, .hero-inner > * {
+    .event, .event-card, .stagger > *, .outro-inner, .hero-inner > *, .about h2 .w {
       transition: none !important;
       animation: none !important;
       opacity: 1 !important;
       transform: none !important;
     }
-    .scroll-cue .stem, .hero .leafmark { animation: none; }
-    .drift { display: none; }
+    .scroll-cue .stem, .hero .leafmark, .drift, .leaf-wrap svg, .outro::before,
+    .outro .spark, .events .vine-tip, .year-ring, .hero h1 { animation: none !important; }
+    .hero h1 { color: var(--deep); background: none; }
+    .drift, .leaf-wrap, .outro .spark { display: none; }
     [data-parallax] { transform: none !important; }
   }
 </style>
@@ -528,8 +698,18 @@
 <!-- ============ HERO ============ -->
 <header class="hero" id="hero">
   <div class="drift" data-parallax="-0.18" style="width: 420px; height: 420px; background: #a8c8ec; top: 8%; left: -140px;"></div>
-  <div class="drift" data-parallax="0.12" style="width: 340px; height: 340px; background: #7fa8d9; bottom: -80px; right: -100px; opacity: 0.4;"></div>
-  <div class="drift" data-parallax="-0.08" style="width: 220px; height: 220px; background: #cfe0f4; top: 18%; right: 12%; opacity: 0.7;"></div>
+  <div class="drift" data-parallax="0.12" style="width: 340px; height: 340px; background: #7fa8d9; bottom: -80px; right: -100px; opacity: 0.4; animation-delay: -5s;"></div>
+  <div class="drift" data-parallax="-0.08" style="width: 220px; height: 220px; background: #cfe0f4; top: 18%; right: 12%; opacity: 0.7; animation-delay: -9s;"></div>
+
+  <div class="leaf-wrap" data-parallax="-0.22" style="top: 22%; left: 12%; --dur: 8s; --r0: -18deg; --r1: 10deg;" aria-hidden="true">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 22V8"/><path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/><path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/></svg>
+  </div>
+  <div class="leaf-wrap" data-parallax="0.16" style="top: 30%; right: 16%; --dur: 11s; --r0: 8deg; --r1: -14deg;" aria-hidden="true">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 22V8"/><path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/><path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/></svg>
+  </div>
+  <div class="leaf-wrap" data-parallax="-0.1" style="bottom: 24%; left: 24%; --dur: 13s; --r0: -6deg; --r1: 20deg;" aria-hidden="true">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 22V8"/><path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/><path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/></svg>
+  </div>
 
   <div class="hero-inner" id="heroInner">
     <svg class="leafmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -547,12 +727,24 @@
   </a>
 </header>
 
+<!-- ============ MARQUEE ============ -->
+<div class="marquee" data-mq-speed="0.45" data-mq-drift="26" aria-hidden="true">
+  <div class="marquee-inner"></div>
+</div>
+
 <!-- ============ ABOUT ============ -->
 <section class="about" id="about">
-  <div class="drift" data-parallax="0.1" style="width: 380px; height: 380px; background: #d7e6f7; top: -120px; right: -120px;"></div>
+  <div class="drift" data-parallax="0.1" style="width: 380px; height: 380px; background: #d7e6f7; top: -120px; right: -120px; animation-delay: -3s;"></div>
+  <div class="leaf-wrap" data-parallax="0.14" style="top: 18%; right: 8%; --dur: 10s; --r0: 12deg; --r1: -10deg;" aria-hidden="true">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 22V8"/><path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/><path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/></svg>
+  </div>
+  <div class="leaf-wrap" data-parallax="-0.12" style="bottom: 14%; left: 6%; --dur: 12s; --r0: -16deg; --r1: 8deg;" aria-hidden="true">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 22V8"/><path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/><path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/></svg>
+  </div>
+
   <div class="about-inner stagger" data-observe>
     <p class="section-label">About Me</p>
-    <h2>I turn a love of plants into places people love.</h2>
+    <h2 data-words>I turn a love of plants into places people love.</h2>
     <p>
       I'm Kale — an entrepreneur from the small town of Ulen, Minnesota, now planted in
       Fargo, North Dakota. I studied business administration at North Dakota State
@@ -575,8 +767,14 @@
 <!-- ============ TIMELINE ============ -->
 <section class="timeline" id="timeline">
   <div class="drift" data-parallax="-0.1" style="width: 460px; height: 460px; background: #c3d9f2; top: 12%; left: -180px; opacity: 0.6;"></div>
-  <div class="drift" data-parallax="0.14" style="width: 380px; height: 380px; background: #a8c8ec; top: 45%; right: -160px; opacity: 0.5;"></div>
-  <div class="drift" data-parallax="-0.06" style="width: 300px; height: 300px; background: #d7e6f7; top: 78%; left: -100px; opacity: 0.7;"></div>
+  <div class="drift" data-parallax="0.14" style="width: 380px; height: 380px; background: #a8c8ec; top: 45%; right: -160px; opacity: 0.5; animation-delay: -7s;"></div>
+  <div class="drift" data-parallax="-0.06" style="width: 300px; height: 300px; background: #d7e6f7; top: 78%; left: -100px; opacity: 0.7; animation-delay: -11s;"></div>
+  <div class="leaf-wrap" data-parallax="-0.18" style="top: 28%; right: 5%; --dur: 9s; --r0: -10deg; --r1: 16deg;" aria-hidden="true">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 22V8"/><path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/><path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/></svg>
+  </div>
+  <div class="leaf-wrap" data-parallax="0.1" style="top: 62%; left: 3%; --dur: 14s; --r0: 14deg; --r1: -8deg;" aria-hidden="true">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 22V8"/><path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/><path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/></svg>
+  </div>
 
   <div class="timeline-head stagger" data-observe>
     <p class="section-label">The Timeline</p>
@@ -585,93 +783,110 @@
 
   <div class="timeline-grid">
     <div class="year-col" aria-hidden="true">
-      <div class="year-display" id="yearDisplay">Roots</div>
-      <div class="year-sub" id="yearSub">Fargo, ND</div>
+      <div class="year-stack">
+        <div class="year-ring" id="yearRing"></div>
+        <div class="year-display" id="yearDisplay">Roots</div>
+        <div class="year-sub" id="yearSub">Fargo, ND</div>
+      </div>
     </div>
 
-    <div class="events" id="events">
-      <div class="vine" id="vine"></div>
+    <div class="events-skew" id="eventsSkew">
+      <div class="events" id="events">
+        <div class="vine" id="vine"></div>
+        <div class="vine-tip" id="vineTip"></div>
 
-      <article class="event" data-label="Roots" data-sub="Fargo, ND">
-        <div class="event-card">
-          <p class="date">The Beginning</p>
-          <h3>Born in Fargo, North Dakota</h3>
-          <p>The story starts on the northern plains — born in Fargo, a city I'd
-             eventually find my way back to.</p>
-          <span class="tag">Fargo, ND</span>
-        </div>
-      </article>
+        <article class="event" data-label="Roots" data-sub="Fargo, ND">
+          <div class="event-card">
+            <p class="date">The Beginning</p>
+            <h3>Born in Fargo, North Dakota</h3>
+            <p>The story starts on the northern plains — born in Fargo, a city I'd
+               eventually find my way back to.</p>
+            <span class="tag">Fargo, ND</span>
+          </div>
+        </article>
 
-      <article class="event" data-label="Ulen" data-sub="Population ~500">
-        <div class="event-card">
-          <p class="date">Growing Up</p>
-          <h3>Raised in Ulen, Minnesota</h3>
-          <p>I grew up in the small town of Ulen, Minnesota — the kind of place where
-             everyone knows your name and hard work isn't optional. Small-town life
-             planted the values that still drive everything I do.</p>
-          <span class="tag">Ulen, MN</span>
-        </div>
-      </article>
+        <article class="event" data-label="Ulen" data-sub="Population ~500">
+          <div class="event-card">
+            <p class="date">Growing Up</p>
+            <h3>Raised in Ulen, Minnesota</h3>
+            <p>I grew up in the small town of Ulen, Minnesota — the kind of place where
+               everyone knows your name and hard work isn't optional. Small-town life
+               planted the values that still drive everything I do.</p>
+            <span class="tag">Ulen, MN</span>
+          </div>
+        </article>
 
-      <article class="event" data-year="2019" data-sub="Back to Fargo">
-        <div class="event-card">
-          <p class="date">2019</p>
-          <h3>Moved to Fargo — enrolled at NDSU</h3>
-          <p>I moved back to Fargo to attend North Dakota State University, studying
-             business administration and laying the groundwork for what came next.</p>
-          <span class="tag">NDSU · Business Administration</span>
-        </div>
-      </article>
+        <article class="event" data-year="2019" data-sub="Back to Fargo">
+          <div class="event-card">
+            <p class="date">2019</p>
+            <h3>Moved to Fargo — enrolled at NDSU</h3>
+            <p>I moved back to Fargo to attend North Dakota State University, studying
+               business administration and laying the groundwork for what came next.</p>
+            <span class="tag">NDSU · Business Administration</span>
+          </div>
+        </article>
 
-      <article class="event" data-year="2022" data-sub="First Venture">
-        <div class="event-card">
-          <p class="date">June 2022</p>
-          <h3>Opened Botanical Brothers</h3>
-          <p>While still in school, I launched Botanical Brothers — a houseplant store in
-             Fargo. What started as a passion for plants became a real business with real
-             customers, and a crash course in entrepreneurship.</p>
-          <span class="tag">Founder · Houseplant Store</span>
-        </div>
-      </article>
+        <article class="event" data-year="2022" data-sub="First Venture">
+          <div class="event-card">
+            <p class="date">June 2022</p>
+            <h3>Opened Botanical Brothers</h3>
+            <p>While still in school, I launched Botanical Brothers — a houseplant store in
+               Fargo. What started as a passion for plants became a real business with real
+               customers, and a crash course in entrepreneurship.</p>
+            <span class="tag">Founder · Houseplant Store</span>
+          </div>
+        </article>
 
-      <article class="event" data-year="2023" data-sub="NDSU Graduate">
-        <div class="event-card">
-          <p class="date">2023</p>
-          <h3>Graduated from NDSU</h3>
-          <p>Earned my degree in business administration — while running the shop at the
-             same time. The classroom and the storefront taught the same lessons from two
-             different directions.</p>
-          <span class="tag">B.S. Business Administration</span>
-        </div>
-      </article>
+        <article class="event" data-year="2023" data-sub="NDSU Graduate">
+          <div class="event-card">
+            <p class="date">2023</p>
+            <h3>Graduated from NDSU</h3>
+            <p>Earned my degree in business administration — while running the shop at the
+               same time. The classroom and the storefront taught the same lessons from two
+               different directions.</p>
+            <span class="tag">B.S. Business Administration</span>
+          </div>
+        </article>
 
-      <article class="event" data-year="2026" data-sub="Turning the Page">
-        <div class="event-card">
-          <p class="date">February 2026</p>
-          <h3>Closed Botanical Brothers — announced what's next</h3>
-          <p>After nearly four great years, I closed the doors on Botanical Brothers — not
-             as an ending, but as a step toward something bigger. That same season, I
-             announced Plant Perfect Fargo, a full-scale garden center.</p>
-          <span class="tag">One Chapter Ends</span>
-        </div>
-      </article>
+        <article class="event" data-year="2026" data-sub="Turning the Page">
+          <div class="event-card">
+            <p class="date">February 2026</p>
+            <h3>Closed Botanical Brothers — announced what's next</h3>
+            <p>After nearly four great years, I closed the doors on Botanical Brothers — not
+               as an ending, but as a step toward something bigger. That same season, I
+               announced Plant Perfect Fargo, a full-scale garden center.</p>
+            <span class="tag">One Chapter Ends</span>
+          </div>
+        </article>
 
-      <article class="event" data-year="2027" data-sub="Coming Soon">
-        <div class="event-card">
-          <p class="date">March 2027 · Expected</p>
-          <h3>Plant Perfect Fargo opens</h3>
-          <p>The next chapter: Plant Perfect Fargo, a garden center bringing plants,
-             supplies, and know-how to the community — expected to open its doors in
-             March 2027.</p>
-          <span class="tag">Garden Center · Fargo, ND</span>
-        </div>
-      </article>
+        <article class="event" data-year="2027" data-sub="Coming Soon">
+          <div class="event-card">
+            <p class="date">March 2027 · Expected</p>
+            <h3>Plant Perfect Fargo opens</h3>
+            <p>The next chapter: Plant Perfect Fargo, a garden center bringing plants,
+               supplies, and know-how to the community — expected to open its doors in
+               March 2027.</p>
+            <span class="tag">Garden Center · Fargo, ND</span>
+          </div>
+        </article>
+      </div>
     </div>
   </div>
 </section>
 
+<!-- ============ MARQUEE (reverse) ============ -->
+<div class="marquee flip" data-mq-speed="-0.4" data-mq-drift="-22" aria-hidden="true">
+  <div class="marquee-inner"></div>
+</div>
+
 <!-- ============ OUTRO ============ -->
 <section class="outro">
+  <span class="spark" style="left: 14%; top: 30%; --dur: 9s; --dx: 26px;"></span>
+  <span class="spark" style="left: 28%; top: 62%; --dur: 12s; --dx: -20px;"></span>
+  <span class="spark" style="left: 52%; top: 22%; --dur: 10s; --dx: 16px; animation-delay: -4s;"></span>
+  <span class="spark" style="left: 71%; top: 55%; --dur: 13s; --dx: -30px; animation-delay: -7s;"></span>
+  <span class="spark" style="left: 86%; top: 34%; --dur: 8s; --dx: 22px; animation-delay: -2s;"></span>
+
   <div class="outro-inner" data-observe>
     <p class="kicker">What's Next</p>
     <h2>Plant Perfect Fargo</h2>
@@ -692,13 +907,48 @@
   var events = Array.prototype.slice.call(document.querySelectorAll(".event"));
   var yearDisplay = document.getElementById("yearDisplay");
   var yearSub = document.getElementById("yearSub");
+  var yearRing = document.getElementById("yearRing");
   var vine = document.getElementById("vine");
+  var vineTip = document.getElementById("vineTip");
   var eventsCol = document.getElementById("events");
+  var eventsSkew = document.getElementById("eventsSkew");
   var progressBar = document.getElementById("progressBar");
   var heroInner = document.getElementById("heroInner");
   var parallaxEls = Array.prototype.slice.call(document.querySelectorAll("[data-parallax]"));
 
-  // Reveal events + generic observed sections as they enter the viewport
+  // Build the marquee bands (content duplicated for a seamless loop)
+  var MQ_TEXT = ['FARGO', 'ULEN', 'NDSU', 'BOTANICAL BROTHERS', 'PLANT PERFECT', 'EST. 2027'];
+  var marquees = Array.prototype.map.call(document.querySelectorAll(".marquee"), function (band) {
+    var inner = band.querySelector(".marquee-inner");
+    var chunk = MQ_TEXT.map(function (w, i) {
+      return '<span class="' + (i % 2 ? 'ghost' : '') + '">' + w + '</span><span class="dot">✳</span>';
+    }).join('');
+    var html = '';
+    for (var k = 0; k < 6; k++) html += chunk;
+    inner.innerHTML = html;
+    return {
+      inner: inner,
+      speed: parseFloat(band.dataset.mqSpeed),
+      drift: parseFloat(band.dataset.mqDrift),
+      width: 0
+    };
+  });
+
+  function measureMarquees() {
+    marquees.forEach(function (m) { m.width = m.inner.scrollWidth / 2; });
+  }
+  measureMarquees();
+
+  // Split the about heading into words for the cascading word reveal
+  var wordsEl = document.querySelector("[data-words]");
+  if (wordsEl && !reducedMotion) {
+    var words = wordsEl.textContent.trim().split(/\s+/);
+    wordsEl.innerHTML = words.map(function (w, i) {
+      return '<span class="w" style="--wd:' + (i * 0.07) + 's">' + w + '</span>';
+    }).join(' ');
+  }
+
+  // Reveal events + observed sections as they enter the viewport
   var revealObserver = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
       if (entry.isIntersecting) {
@@ -743,7 +993,7 @@
     } else {
       yearDisplay.textContent = text;
       yearSub.textContent = sub;
-      // Pulse the counter each time the rolling year ticks over
+      // Bounce the counter each time the rolling year ticks over
       if (yearChanged && !reducedMotion) {
         yearDisplay.classList.remove("tick");
         void yearDisplay.offsetWidth;
@@ -752,76 +1002,106 @@
     }
   }
 
-  function centerOf(el) {
-    var r = el.getBoundingClientRect();
-    return r.top + r.height / 2 + window.scrollY;
+  function centerOfRect(r, scrollY) {
+    return r.top + r.height / 2 + scrollY;
   }
 
-  function onScroll() {
-    var scrollY = window.scrollY;
-    var vh = window.innerHeight;
-    var anchor = scrollY + vh * 0.5;
+  var smooth = window.scrollY;
+  var lastY = window.scrollY;
+  var vel = 0;
 
-    // Page scroll progress bar
+  function frame(now) {
+    var t = now / 1000;
+    var sy = window.scrollY;
+    var vh = window.innerHeight;
+    var anchor = sy + vh * 0.5;
+
+    // Smoothed scroll + velocity for the fluid effects
+    vel += ((sy - lastY) - vel) * 0.12;
+    lastY = sy;
+    smooth += (sy - smooth) * 0.14;
+
+    /* ---- read phase ---- */
     var docHeight = document.documentElement.scrollHeight - vh;
-    progressBar.style.transform = "scaleX(" + (docHeight > 0 ? scrollY / docHeight : 0) + ")";
+    var colRect = eventsCol.getBoundingClientRect();
+    var rects = stops.map(function (s) { return s.el.getBoundingClientRect(); });
+    var parallaxData = reducedMotion ? [] : parallaxEls.map(function (el) {
+      var r = el.parentElement.getBoundingClientRect();
+      return r.top + r.height / 2 - vh / 2;
+    });
+
+    /* ---- write phase ---- */
+    progressBar.style.transform = "scaleX(" + (docHeight > 0 ? sy / docHeight : 0) + ")";
 
     if (!reducedMotion) {
       // Hero recedes and fades as you scroll past it
-      var heroT = Math.min(1, scrollY / (vh * 0.9));
-      heroInner.style.transform = "translateY(" + scrollY * 0.35 + "px) scale(" + (1 - heroT * 0.08) + ")";
+      var heroT = Math.min(1, sy / (vh * 0.9));
+      heroInner.style.transform = "translateY(" + smooth * 0.35 + "px) scale(" + (1 - heroT * 0.08) + ")";
       heroInner.style.opacity = String(1 - heroT * 1.1);
 
-      // Parallax drift shapes — each moves at its own speed relative to viewport center
-      parallaxEls.forEach(function (el) {
+      // Parallax shapes with a gentle time-based wander layered on top
+      parallaxEls.forEach(function (el, idx) {
         var speed = parseFloat(el.dataset.parallax);
-        var rect = el.parentElement.getBoundingClientRect();
-        var offset = rect.top + rect.height / 2 - vh / 2;
-        el.style.transform = "translateY(" + (-offset * speed) + "px)";
+        var wander = Math.sin(t * 0.5 + idx * 1.7) * 12;
+        el.style.transform = "translateY(" + (-parallaxData[idx] * speed + wander) + "px)";
       });
+
+      // Marquees scrub with the scroll and keep drifting on their own
+      marquees.forEach(function (m) {
+        if (!m.width) return;
+        var x = (smooth * m.speed + t * m.drift) % m.width;
+        x = ((x % m.width) + m.width) % m.width;
+        m.inner.style.transform = "translateX(" + -x + "px)";
+      });
+
+      // Events column leans with scroll velocity
+      var skew = Math.max(-2.4, Math.min(2.4, vel * 0.045));
+      eventsSkew.style.transform = "skewY(" + skew + "deg)";
+
+      // Each card floats at its own rate while scrolling
+      events.forEach(function (ev, idx) {
+        var off = (rects[idx].top + rects[idx].height / 2 - vh / 2) * (0.03 + (idx % 3) * 0.025);
+        ev.style.transform = "translateY(" + -off + "px)";
+      });
+
+      // Dashed ring slowly spins, sped up by scrolling
+      yearRing.style.transform = "rotate(" + (t * 12 + smooth * 0.06) + "deg)";
     }
 
-    // Grow the vine with overall progress through the events column
-    var colRect = eventsCol.getBoundingClientRect();
-    var colTop = colRect.top + scrollY;
-    var progress = (anchor - colTop) / colRect.height;
-    vine.style.transform = "scaleY(" + Math.max(0, Math.min(1, progress)) + ")";
+    // Grow the vine + move its glowing tip with progress through the events
+    var colTop = colRect.top + sy;
+    var progress = Math.max(0, Math.min(1, (anchor - colTop) / colRect.height));
+    vine.style.transform = "scaleY(" + progress + ")";
+    vineTip.style.transform = "translateY(" + progress * colRect.height + "px)";
 
     // Find the segment the anchor sits in
     var i = 0;
-    while (i < stops.length - 1 && anchor > centerOf(stops[i + 1].el)) i++;
+    while (i < stops.length - 1 && anchor > centerOfRect(rects[i + 1], sy)) i++;
     var a = stops[i];
-    var next = stops[Math.min(i + 1, stops.length - 1)];
+    var nextIdx = Math.min(i + 1, stops.length - 1);
+    var next = stops[nextIdx];
 
-    var t = 0;
+    var tt = 0;
     if (next !== a) {
-      var ca = centerOf(a.el), cb = centerOf(next.el);
-      t = Math.max(0, Math.min(1, (anchor - ca) / (cb - ca)));
+      var ca = centerOfRect(rects[i], sy), cb = centerOfRect(rects[nextIdx], sy);
+      tt = Math.max(0, Math.min(1, (anchor - ca) / (cb - ca)));
     }
 
     if (a.year !== null && next.year !== null) {
       // Roll through intermediate years as you scroll between events
-      var y = Math.round(a.year + (next.year - a.year) * t);
-      var sub = t < 0.5 ? a.sub : next.sub;
+      var y = Math.round(a.year + (next.year - a.year) * tt);
+      var sub = tt < 0.5 ? a.sub : next.sub;
       setDisplay(String(y), sub, false);
     } else {
-      var active = t < 0.5 ? a : next;
+      var active = tt < 0.5 ? a : next;
       setDisplay(active.year !== null ? String(active.year) : active.label, active.sub, true);
     }
+
+    requestAnimationFrame(frame);
   }
 
-  var ticking = false;
-  window.addEventListener("scroll", function () {
-    if (!ticking) {
-      ticking = true;
-      requestAnimationFrame(function () {
-        onScroll();
-        ticking = false;
-      });
-    }
-  }, { passive: true });
-  window.addEventListener("resize", onScroll);
-  onScroll();
+  window.addEventListener("resize", measureMarquees);
+  requestAnimationFrame(frame);
 })();
 </script>
 </body>
