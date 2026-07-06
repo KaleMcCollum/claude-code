@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What's Your Home Worth? | Free Home Valuation in 24 Hours</title>
+<meta name="description" content="Find out what your home is really worth in today's market. Free, no-obligation home valuation from a top local agent — delivered within 24 hours.">
+<style>
+  /* ============ RESET & TOKENS ============ */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --navy: #0f2540;
+    --navy-2: #1a3a5c;
+    --gold: #c9a227;
+    --gold-bright: #e6b93c;
+    --ink: #1c2733;
+    --muted: #5a6b7d;
+    --line: #e3e9f0;
+    --bg: #f7f9fc;
+    --white: #ffffff;
+    --green: #1e8e5a;
+    --red: #c0392b;
+    --radius: 14px;
+    --shadow: 0 10px 40px rgba(15, 37, 64, .12);
+    --serif: Georgia, 'Times New Roman', serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--sans); color: var(--ink); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  img { max-width: 100%; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+  /* ============ HEADER ============ */
+  header {
+    background: var(--white); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 50;
+  }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; }
+  .logo { font-family: var(--serif); font-size: 1.35rem; font-weight: 700; color: var(--navy); text-decoration: none; letter-spacing: .02em; }
+  .logo span { color: var(--gold); }
+  .header-phone { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--navy); font-weight: 700; }
+  .header-phone small { display: block; font-weight: 400; color: var(--muted); font-size: .72rem; line-height: 1.2; }
+  .phone-icon {
+    width: 38px; height: 38px; border-radius: 50%; background: var(--navy); color: #fff;
+    display: grid; place-items: center; font-size: 1rem; flex-shrink: 0;
+  }
+
+  /* ============ HERO ============ */
+  .hero {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 60%, #24507c 100%);
+    color: #fff; padding: 56px 0 72px; position: relative; overflow: hidden;
+  }
+  .hero::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(600px 300px at 85% 10%, rgba(230,185,60,.14), transparent 70%),
+      radial-gradient(500px 400px at 5% 90%, rgba(255,255,255,.05), transparent 70%);
+  }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 48px; align-items: center; position: relative; z-index: 1; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(230,185,60,.15); border: 1px solid rgba(230,185,60,.45);
+    color: var(--gold-bright); font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    padding: 7px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  .hero h1 { font-family: var(--serif); font-size: clamp(2rem, 4.4vw, 3.15rem); line-height: 1.14; margin-bottom: 18px; }
+  .hero h1 em { font-style: normal; color: var(--gold-bright); }
+  .hero-sub { font-size: 1.13rem; color: #cfdcea; max-width: 46ch; margin-bottom: 26px; }
+  .hero-points { list-style: none; display: grid; gap: 10px; margin-bottom: 30px; }
+  .hero-points li { display: flex; gap: 10px; align-items: flex-start; color: #e8eff6; font-size: .98rem; }
+  .check {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff;
+    display: grid; place-items: center; font-size: .7rem; font-weight: 800; flex-shrink: 0; margin-top: 2px;
+  }
+  .hero-proof { display: flex; align-items: center; gap: 14px; }
+  .avatars { display: flex; }
+  .avatars span {
+    width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--navy);
+    display: grid; place-items: center; font-size: .8rem; font-weight: 700; color: #fff; margin-left: -10px;
+  }
+  .avatars span:first-child { margin-left: 0; }
+  .hero-proof .stars { color: var(--gold-bright); letter-spacing: 2px; font-size: .9rem; }
+  .hero-proof p { font-size: .85rem; color: #b9c9d9; line-height: 1.4; }
+  .hero-proof strong { color: #fff; }
+
+  /* ============ FORM CARD ============ */
+  .form-card {
+    background: var(--white); color: var(--ink); border-radius: var(--radius);
+    box-shadow: 0 24px 70px rgba(0,0,0,.35); padding: 30px 28px 26px; position: relative;
+  }
+  .form-card .ribbon {
+    position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    background: var(--gold); color: var(--navy); font-size: .74rem; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase; padding: 6px 18px; border-radius: 999px; white-space: nowrap;
+  }
+  .form-card h2 { font-family: var(--serif); font-size: 1.45rem; color: var(--navy); text-align: center; margin: 8px 0 4px; }
+  .form-card .form-sub { text-align: center; color: var(--muted); font-size: .9rem; margin-bottom: 18px; }
+  .progress { height: 6px; background: var(--line); border-radius: 999px; margin-bottom: 6px; overflow: hidden; }
+  .progress-bar { height: 100%; width: 33%; background: linear-gradient(90deg, var(--gold), var(--gold-bright)); border-radius: 999px; transition: width .4s ease; }
+  .progress-label { font-size: .74rem; color: var(--muted); text-align: right; margin-bottom: 14px; }
+
+  .step { display: none; animation: fadeUp .35s ease; }
+  .step.active { display: block; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: .82rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%; padding: 13px 14px; font-size: 1rem; border: 2px solid var(--line);
+    border-radius: 10px; outline: none; transition: border-color .2s; background: #fff; color: var(--ink);
+    font-family: var(--sans);
+  }
+  .field input:focus, .field select:focus { border-color: var(--gold); }
+  .field input.invalid { border-color: var(--red); }
+  .field .err { display: none; color: var(--red); font-size: .78rem; margin-top: 4px; }
+  .field.show-err .err { display: block; }
+
+  .pill-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pill {
+    border: 2px solid var(--line); border-radius: 10px; padding: 13px 10px; text-align: center;
+    font-size: .92rem; font-weight: 600; color: var(--ink); cursor: pointer; background: #fff;
+    transition: all .15s; font-family: var(--sans);
+  }
+  .pill:hover { border-color: var(--gold); }
+  .pill.selected { border-color: var(--gold); background: #fdf6e3; color: var(--navy); }
+
+  .btn {
+    display: block; width: 100%; padding: 16px 20px; border: none; border-radius: 10px;
+    background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color: var(--navy);
+    font-size: 1.05rem; font-weight: 800; letter-spacing: .01em; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(201,162,39,.4); transition: transform .12s, box-shadow .12s;
+    font-family: var(--sans);
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(201,162,39,.5); }
+  .btn:active { transform: translateY(0); }
+  .btn-back { background: none; border: none; box-shadow: none; color: var(--muted); font-size: .85rem; font-weight: 600; width: auto; margin: 10px auto 0; display: block; cursor: pointer; padding: 6px 12px; font-family: var(--sans); }
+  .btn-back:hover { color: var(--navy); transform: none; box-shadow: none; }
+  .micro { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: .74rem; color: var(--muted); margin-top: 12px; text-align: center; }
+
+  .success { text-align: center; padding: 18px 4px; display: none; }
+  .success.active { display: block; animation: fadeUp .4s ease; }
+  .success .big-check { width: 64px; height: 64px; border-radius: 50%; background: var(--green); color: #fff; font-size: 1.8rem; display: grid; place-items: center; margin: 0 auto 16px; }
+  .success h3 { font-family: var(--serif); color: var(--navy); font-size: 1.4rem; margin-bottom: 8px; }
+  .success p { color: var(--muted); font-size: .95rem; }
+
+  /* ============ TRUST BAR ============ */
+  .trust { background: var(--white); border-bottom: 1px solid var(--line); padding: 34px 0; }
+  .trust-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; text-align: center; }
+  .trust-grid .num { font-family: var(--serif); font-size: 2rem; font-weight: 700; color: var(--navy); }
+  .trust-grid .num span { color: var(--gold); }
+  .trust-grid .lbl { font-size: .84rem; color: var(--muted); }
+
+  /* ============ SECTIONS ============ */
+  section { padding: 72px 0; }
+  .section-head { text-align: center; max-width: 640px; margin: 0 auto 48px; }
+  .section-head .kicker { color: var(--gold); font-weight: 800; font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 10px; }
+  .section-head h2 { font-family: var(--serif); font-size: clamp(1.6rem, 3vw, 2.3rem); color: var(--navy); line-height: 1.2; margin-bottom: 12px; }
+  .section-head p { color: var(--muted); }
+
+  /* How it works */
+  .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+  .step-card { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 32px 26px; text-align: center; position: relative; }
+  .step-num {
+    width: 52px; height: 52px; border-radius: 50%; background: var(--navy); color: var(--gold-bright);
+    font-family: var(--serif); font-size: 1.4rem; font-weight: 700; display: grid; place-items: center; margin: 0 auto 18px;
+  }
+  .step-card h3 { font-family: var(--serif); color: var(--navy); font-size: 1.2rem; margin-bottom: 10px; }
+  .step-card p { color: var(--muted); font-size: .94rem; }
+
+  /* Benefits */
+  .benefits { background: var(--white); }
+  .benefits-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .benefit { padding: 26px 24px; border-radius: var(--radius); background: var(--bg); border: 1px solid var(--line); }
+  .benefit .b-icon { font-size: 1.6rem; margin-bottom: 12px; }
+  .benefit h3 { color: var(--navy); font-size: 1.05rem; margin-bottom: 8px; }
+  .benefit p { color: var(--muted); font-size: .92rem; }
+
+  /* Testimonials */
+  .testi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .testi { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 24px; display: flex; flex-direction: column; box-shadow: var(--shadow); }
+  .testi .stars { color: var(--gold); letter-spacing: 3px; margin-bottom: 12px; }
+  .testi blockquote { font-size: .97rem; color: var(--ink); flex: 1; margin-bottom: 18px; }
+  .testi .who { display: flex; align-items: center; gap: 12px; }
+  .testi .who span.av { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .9rem; flex-shrink: 0; }
+  .testi .who strong { display: block; color: var(--navy); font-size: .92rem; }
+  .testi .who small { color: var(--green); font-weight: 700; font-size: .78rem; }
+
+  /* Urgency band */
+  .band { background: linear-gradient(135deg, var(--navy), var(--navy-2)); color: #fff; text-align: center; padding: 56px 0; }
+  .band h2 { font-family: var(--serif); font-size: clamp(1.5rem, 3vw, 2.1rem); margin-bottom: 12px; }
+  .band h2 em { font-style: normal; color: var(--gold-bright); }
+  .band p { color: #cfdcea; max-width: 56ch; margin: 0 auto 26px; }
+  .band .btn { max-width: 380px; margin: 0 auto; }
+
+  /* FAQ */
+  .faq-list { max-width: 720px; margin: 0 auto; }
+  .faq-item { background: var(--white); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+  .faq-q {
+    width: 100%; text-align: left; background: none; border: none; padding: 18px 20px;
+    font-size: 1rem; font-weight: 700; color: var(--navy); cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: var(--sans);
+  }
+  .faq-q::after { content: "+"; font-size: 1.4rem; color: var(--gold); font-weight: 400; transition: transform .2s; flex-shrink: 0; }
+  .faq-item.open .faq-q::after { transform: rotate(45deg); }
+  .faq-a { max-height: 0; overflow: hidden; transition: max-height .3s ease; }
+  .faq-a p { padding: 0 20px 18px; color: var(--muted); font-size: .94rem; }
+
+  /* Final CTA */
+  .final { text-align: center; }
+  .final .btn { max-width: 420px; margin: 0 auto; }
+
+  /* Footer */
+  footer { background: var(--navy); color: #8fa3b8; padding: 40px 0 90px; font-size: .8rem; }
+  footer .foot-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+  footer .logo { color: #fff; }
+  footer p { max-width: 72ch; margin-bottom: 10px; }
+  footer .eho { display: flex; align-items: center; gap: 8px; }
+
+  /* Sticky mobile CTA */
+  .sticky-cta {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 60;
+    background: var(--white); border-top: 1px solid var(--line); padding: 10px 16px;
+    box-shadow: 0 -6px 24px rgba(15,37,64,.15); display: none;
+  }
+  .sticky-cta .btn { padding: 13px; font-size: .95rem; }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 36px; }
+    .hero { padding: 40px 0 56px; }
+    .trust-grid { grid-template-columns: repeat(2, 1fr); gap: 24px 12px; }
+    .steps-grid, .benefits-grid, .testi-grid { grid-template-columns: 1fr; }
+    section { padding: 56px 0; }
+    .sticky-cta { display: block; }
+    .header-phone small { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================================================
+  CUSTOMIZE ME: search for "EDIT:" comments to swap in your
+  brand name, phone, market/city, stats, and form endpoint.
+====================================================== -->
+
+<header>
+  <div class="wrap header-inner">
+    <!-- EDIT: your brokerage / team name -->
+    <a class="logo" href="#">Summit<span>Realty</span></a>
+    <!-- EDIT: your phone number (both display + tel: link) -->
+    <a class="header-phone" href="tel:+15555550123">
+      <span class="phone-icon">&#9742;</span>
+      <span><small>Questions? Call us</small>(555) 555-0123</span>
+    </a>
+  </div>
+</header>
+
+<!-- ============ HERO + LEAD FORM ============ -->
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">&#11088; Rated 4.9/5 by 200+ Local Homeowners</div>
+      <h1>Find Out What Your Home Is <em>Really Worth</em> in Today's Market</h1>
+      <p class="hero-sub">Online estimates can be off by tens of thousands of dollars. Get a free, accurate home valuation from a top local expert — delivered to your inbox within 24 hours.</p>
+      <ul class="hero-points">
+        <li><span class="check">&#10003;</span> 100% free &amp; no obligation — sell only if the number makes sense</li>
+        <li><span class="check">&#10003;</span> Based on real neighborhood sales, not an algorithm</li>
+        <li><span class="check">&#10003;</span> Takes 30 seconds — no showings, no pressure, no spam</li>
+      </ul>
+      <div class="hero-proof">
+        <div class="avatars">
+          <span style="background:#7a5cc4">JM</span>
+          <span style="background:#2e8b8b">SK</span>
+          <span style="background:#c46a5c">DR</span>
+          <span style="background:#5c7ac4">+</span>
+        </div>
+        <div>
+          <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+          <p><strong>500+ families</strong> got their home's true value this year</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-step form -->
+    <div class="form-card" id="lead-form-card">
+      <div class="ribbon">Free Home Valuation</div>
+      <h2 id="form-title">What's your home worth?</h2>
+      <p class="form-sub" id="form-sub">Enter your address to get started</p>
+      <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="progress-label" id="progress-label">Step 1 of 3</div>
+
+      <form id="lead-form" novalidate>
+        <!-- STEP 1: lowest-friction ask first -->
+        <div class="step active" data-step="1">
+          <div class="field">
+            <label for="address">Property Address</label>
+            <input type="text" id="address" name="address" placeholder="123 Main St, Your City" autocomplete="street-address">
+            <div class="err">Please enter your property address.</div>
+          </div>
+          <button type="button" class="btn" data-next>Get My Free Valuation &rarr;</button>
+          <div class="micro">&#128274; Your information is secure and never sold.</div>
+        </div>
+
+        <!-- STEP 2: qualify the lead -->
+        <div class="step" data-step="2">
+          <div class="field">
+            <label>When are you thinking of selling?</label>
+            <div class="pill-group" data-pills="timeline">
+              <button type="button" class="pill">ASAP</button>
+              <button type="button" class="pill">1&ndash;3 months</button>
+              <button type="button" class="pill">3&ndash;6 months</button>
+              <button type="button" class="pill">Just curious</button>
+            </div>
+            <input type="hidden" name="timeline" id="timeline">
+            <div class="err">Please pick the option closest to your plans.</div>
+          </div>
+          <div class="field">
+            <label for="condition">How would you describe your home's condition?</label>
+            <select id="condition" name="condition">
+              <option value="">Select one&hellip;</option>
+              <option>Move-in ready / recently updated</option>
+              <option>Good — some minor updates needed</option>
+              <option>Fair — needs some work</option>
+              <option>Fixer-upper</option>
+            </select>
+          </div>
+          <button type="button" class="btn" data-next>Continue &rarr;</button>
+          <button type="button" class="btn-back" data-back>&larr; Back</button>
+        </div>
+
+        <!-- STEP 3: contact info last (commitment already built) -->
+        <div class="step" data-step="3">
+          <div class="field">
+            <label for="name">Full Name</label>
+            <input type="text" id="name" name="name" placeholder="Jane Smith" autocomplete="name">
+            <div class="err">Please enter your name.</div>
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="jane@email.com" autocomplete="email">
+            <div class="err">Please enter a valid email address.</div>
+          </div>
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input type="tel" id="phone" name="phone" placeholder="(555) 555-0123" autocomplete="tel">
+            <div class="err">Please enter a valid phone number.</div>
+          </div>
+          <button type="submit" class="btn" id="submit-btn">Send My Free Valuation &#128232;</button>
+          <button type="button" class="btn-back" data-back>&larr; Back</button>
+          <div class="micro">By submitting, you agree to be contacted about your home valuation. No spam, ever. Unsubscribe anytime.</div>
+        </div>
+      </form>
+
+      <!-- Success state -->
+      <div class="success" id="success">
+        <div class="big-check">&#10003;</div>
+        <h3>You're all set!</h3>
+        <p>Your personalized home valuation is being prepared and will land in your inbox within <strong>24 hours</strong>. Keep an eye out for a call from our team to confirm the details.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TRUST BAR ============ -->
+<div class="trust">
+  <div class="wrap trust-grid">
+    <!-- EDIT: swap in your real numbers -->
+    <div><div class="num">$180<span>M+</span></div><div class="lbl">In Homes Sold</div></div>
+    <div><div class="num">500<span>+</span></div><div class="lbl">Families Served</div></div>
+    <div><div class="num">4.9<span>&#9733;</span></div><div class="lbl">Average Rating (200+ Reviews)</div></div>
+    <div><div class="num">12 <span>Days</span></div><div class="lbl">Average Time to Offer</div></div>
+  </div>
+</div>
+
+<!-- ============ HOW IT WORKS ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Simple &amp; Fast</div>
+      <h2>Your Home's True Value in 3 Easy Steps</h2>
+      <p>No showings. No commitments. Just the accurate number you need to make a smart decision.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <h3>Tell Us About Your Home</h3>
+        <p>Answer three quick questions about your property. It takes about 30 seconds — no account required.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <h3>We Run the Real Numbers</h3>
+        <p>A local expert analyzes recent comparable sales, current buyer demand, and your home's unique features — not just an algorithm.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <h3>Get Your Valuation in 24 Hours</h3>
+        <p>Receive a detailed valuation report and, if you want it, a custom plan to sell for top dollar. Zero obligation either way.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BENEFITS ============ -->
+<section class="benefits">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Why Homeowners Choose Us</div>
+      <h2>Not All Valuations Are Created Equal</h2>
+      <p>Online estimators miss what makes your home valuable. Here's what you get instead.</p>
+    </div>
+    <div class="benefits-grid">
+      <div class="benefit"><div class="b-icon">&#127919;</div><h3>Hyper-Local Accuracy</h3><p>We live and sell in your market every day. Your valuation reflects your street, your schools, and this month's demand.</p></div>
+      <div class="benefit"><div class="b-icon">&#128200;</div><h3>Top-Dollar Pricing Strategy</h3><p>Our listings have sold for an average of 4.2% over asking. The right price on day one creates competition among buyers.</p></div>
+      <div class="benefit"><div class="b-icon">&#9889;</div><h3>Fast, Real Answers</h3><p>Your report arrives within 24 hours — not a vague range, but a defensible number backed by actual comparable sales.</p></div>
+      <div class="benefit"><div class="b-icon">&#129309;</div><h3>Zero Pressure, Ever</h3><p>Most homeowners use the valuation to plan, refinance, or just stay informed. Selling is entirely your call.</p></div>
+      <div class="benefit"><div class="b-icon">&#128172;</div><h3>Straight Talk</h3><p>If now isn't the right time to sell, we'll tell you — and what to do so it becomes the right time.</p></div>
+      <div class="benefit"><div class="b-icon">&#128274;</div><h3>Your Data Stays Private</h3><p>We never sell your information to lead brokers. One team, one point of contact, that's it.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TESTIMONIALS ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Real Results</div>
+      <h2>What Your Neighbors Are Saying</h2>
+    </div>
+    <div class="testi-grid">
+      <!-- EDIT: swap in your real testimonials -->
+      <div class="testi">
+        <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <blockquote>"The online estimate said $410K. Their valuation came in at $455K with the comps to prove it — and that's exactly what we sold for. In nine days."</blockquote>
+        <div class="who">
+          <span class="av" style="background:#7a5cc4">JM</span>
+          <div><strong>Jennifer &amp; Mark T.</strong><small>SOLD &mdash; $45K over the online estimate</small></div>
+        </div>
+      </div>
+      <div class="testi">
+        <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <blockquote>"I wasn't even sure I wanted to sell. They gave me the number, walked me through my options, and never once pushed. When I was ready six months later, there was only one call to make."</blockquote>
+        <div class="who">
+          <span class="av" style="background:#2e8b8b">SK</span>
+          <div><strong>Sandra K.</strong><small>SOLD &mdash; 8 days on market</small></div>
+        </div>
+      </div>
+      <div class="testi">
+        <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <blockquote>"Three offers in the first weekend, $32K over asking. Their pricing strategy is the real deal. I've already sent two coworkers their way."</blockquote>
+        <div class="who">
+          <span class="av" style="background:#c46a5c">DR</span>
+          <div><strong>David R.</strong><small>SOLD &mdash; $32K over asking</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ URGENCY BAND ============ -->
+<div class="band">
+  <div class="wrap">
+    <h2>Home Values in Your Area Have Shifted <em>This Quarter</em></h2>
+    <p>The market is moving. What your home was worth six months ago isn't what it's worth today — and that difference could be tens of thousands of dollars in either direction. Know your number.</p>
+    <button class="btn" onclick="scrollToForm()">Get My Free Valuation Now &rarr;</button>
+  </div>
+</div>
+
+<!-- ============ FAQ ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Questions?</div>
+      <h2>Frequently Asked Questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item">
+        <button class="faq-q">Is this really free? What's the catch?</button>
+        <div class="faq-a"><p>Completely free, no catch. We provide valuations because some homeowners eventually decide to sell, and when they do, we've already earned their trust. Most people who request a valuation aren't ready to sell yet — and that's perfectly fine.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">How is this different from Zillow's Zestimate?</button>
+        <div class="faq-a"><p>Automated estimates use broad public data and can miss by 5&ndash;10% or more — that's $25K&ndash;$50K on a $500K home. A local expert accounts for your home's condition, upgrades, lot, street appeal, and live buyer demand that algorithms simply can't see.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Am I obligated to sell or list with you?</button>
+        <div class="faq-a"><p>Not at all. The valuation is yours to keep with zero strings attached. Use it to plan your next move, negotiate a refinance, update your insurance, or just satisfy your curiosity.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Will I get bombarded with calls and spam?</button>
+        <div class="faq-a"><p>No. You'll hear from one member of our team to confirm your home's details and deliver your report. We never sell your information to third parties, and you can opt out anytime with one reply.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Do you need to come inside my home?</button>
+        <div class="faq-a"><p>Not for the initial valuation. We prepare it from your answers, records, and comparable sales. If you'd like a more precise walkthrough valuation afterward, we're happy to schedule one — again, free.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINAL CTA ============ -->
+<section class="final">
+  <div class="wrap">
+    <div class="section-head" style="margin-bottom:28px">
+      <div class="kicker">Ready When You Are</div>
+      <h2>It Takes 30 Seconds to Know Your Number</h2>
+      <p>Free. Accurate. No obligation. What's your home really worth?</p>
+    </div>
+    <button class="btn" onclick="scrollToForm()">Get My Free Home Valuation &rarr;</button>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="logo" href="#">Summit<span>Realty</span></a>
+        <p style="margin-top:8px">Serving homeowners across the metro area.<br>(555) 555-0123 &bull; hello@summitrealty.example</p>
+      </div>
+      <div class="eho"><span style="font-size:1.6rem">&#8962;</span> Equal Housing Opportunity</div>
+    </div>
+    <!-- EDIT: replace with your brokerage's required disclosures & license numbers -->
+    <p>Summit Realty Group &bull; Licensed Real Estate Brokerage &bull; License #00000000. All information deemed reliable but not guaranteed. Valuations are professional opinions of value, not formal appraisals. This site is not intended to solicit properties currently listed for sale with another brokerage.</p>
+    <p>&copy; <span id="year"></span> Summit Realty Group. All rights reserved. &bull; <a href="#" style="color:#8fa3b8">Privacy Policy</a> &bull; <a href="#" style="color:#8fa3b8">Terms</a></p>
+  </div>
+</footer>
+
+<!-- Sticky mobile CTA -->
+<div class="sticky-cta" id="sticky-cta">
+  <button class="btn" onclick="scrollToForm()">Get My Free Home Valuation &rarr;</button>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — wire up your lead destination + ad pixels here
+   ============================================================ */
+const CONFIG = {
+  // EDIT: paste a Formspree/Zapier/Make webhook or your CRM endpoint.
+  // Leads are POSTed here as JSON. Leave "" to test without a backend.
+  FORM_ENDPOINT: "",
+  // EDIT: set true once you've installed your pixel snippets below.
+  TRACK_CONVERSIONS: false,
+};
+
+/* Fire ad-platform conversion events (called on successful submit).
+   EDIT: install your Meta Pixel / Google tag snippets in <head>,
+   then set TRACK_CONVERSIONS: true above. */
+function trackConversion(lead) {
+  if (!CONFIG.TRACK_CONVERSIONS) return;
+  if (typeof fbq === "function") fbq("track", "Lead", { content_name: "home-valuation" });
+  if (typeof gtag === "function") gtag("event", "generate_lead", { currency: "USD", value: 0 });
+}
+
+/* ============ Multi-step form logic ============ */
+const form = document.getElementById("lead-form");
+const steps = [...form.querySelectorAll(".step")];
+const bar = document.getElementById("progress-bar");
+const label = document.getElementById("progress-label");
+const titles = {
+  1: ["What's your home worth?", "Enter your address to get started"],
+  2: ["Almost there!", "Two quick questions about your home"],
+  3: ["Where should we send it?", "Your valuation will arrive within 24 hours"],
+};
+let current = 1;
+
+function showStep(n) {
+  current = n;
+  steps.forEach(s => s.classList.toggle("active", +s.dataset.step === n));
+  bar.style.width = (n / 3 * 100) + "%";
+  label.textContent = `Step ${n} of 3`;
+  document.getElementById("form-title").textContent = titles[n][0];
+  document.getElementById("form-sub").textContent = titles[n][1];
+}
+
+function setError(field, on) {
+  field.closest(".field").classList.toggle("show-err", on);
+  if (field.tagName === "INPUT") field.classList.toggle("invalid", on);
+}
+
+function validateStep(n) {
+  let ok = true;
+  if (n === 1) {
+    const addr = document.getElementById("address");
+    const bad = addr.value.trim().length < 5;
+    setError(addr, bad); ok = !bad;
+  }
+  if (n === 2) {
+    const tl = document.getElementById("timeline");
+    const bad = !tl.value;
+    tl.closest(".field").classList.toggle("show-err", bad); ok = !bad;
+  }
+  if (n === 3) {
+    const name = document.getElementById("name");
+    const email = document.getElementById("email");
+    const phone = document.getElementById("phone");
+    const badName = name.value.trim().length < 2;
+    const badEmail = !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.value.trim());
+    const badPhone = phone.value.replace(/\D/g, "").length < 10;
+    setError(name, badName); setError(email, badEmail); setError(phone, badPhone);
+    ok = !(badName || badEmail || badPhone);
+  }
+  return ok;
+}
+
+form.addEventListener("click", e => {
+  if (e.target.matches("[data-next]")) {
+    if (validateStep(current)) showStep(current + 1);
+  }
+  if (e.target.matches("[data-back]")) showStep(current - 1);
+});
+
+/* Timeline pill selection */
+document.querySelector("[data-pills=timeline]").addEventListener("click", e => {
+  if (!e.target.classList.contains("pill")) return;
+  e.currentTarget.querySelectorAll(".pill").forEach(p => p.classList.remove("selected"));
+  e.target.classList.add("selected");
+  const tl = document.getElementById("timeline");
+  tl.value = e.target.textContent;
+  tl.closest(".field").classList.remove("show-err");
+});
+
+/* Live phone formatting: (555) 555-0123 */
+document.getElementById("phone").addEventListener("input", e => {
+  const d = e.target.value.replace(/\D/g, "").slice(0, 10);
+  let out = d;
+  if (d.length > 6) out = `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+  else if (d.length > 3) out = `(${d.slice(0,3)}) ${d.slice(3)}`;
+  else if (d.length > 0) out = `(${d}`;
+  e.target.value = out;
+});
+
+/* Clear error styling as the user types */
+form.addEventListener("input", e => {
+  if (e.target.matches("input, select")) setError(e.target, false);
+});
+
+/* Submit */
+form.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!validateStep(3)) return;
+
+  const btn = document.getElementById("submit-btn");
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  const lead = {
+    address: document.getElementById("address").value.trim(),
+    timeline: document.getElementById("timeline").value,
+    condition: document.getElementById("condition").value,
+    name: document.getElementById("name").value.trim(),
+    email: document.getElementById("email").value.trim(),
+    phone: document.getElementById("phone").value.trim(),
+    source: "home-valuation-funnel",
+    page: location.href,
+    submittedAt: new Date().toISOString(),
+  };
+
+  try {
+    if (CONFIG.FORM_ENDPOINT) {
+      await fetch(CONFIG.FORM_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lead),
+      });
+    } else {
+      console.log("Lead captured (no FORM_ENDPOINT configured):", lead);
+    }
+    trackConversion(lead);
+  } catch (err) {
+    console.error("Lead submit failed; lead data:", lead, err);
+    // Still show success — never strand a real lead on a network hiccup.
+  }
+
+  form.style.display = "none";
+  document.querySelector(".progress").style.display = "none";
+  label.style.display = "none";
+  document.getElementById("form-title").textContent = "Request received!";
+  document.getElementById("form-sub").style.display = "none";
+  document.getElementById("success").classList.add("active");
+});
+
+/* ============ Page niceties ============ */
+function scrollToForm() {
+  document.getElementById("lead-form-card").scrollIntoView({ behavior: "smooth", block: "center" });
+  setTimeout(() => document.getElementById("address").focus({ preventScroll: true }), 500);
+}
+
+/* FAQ accordion */
+document.querySelectorAll(".faq-q").forEach(q => {
+  q.addEventListener("click", () => {
+    const item = q.closest(".faq-item");
+    const answer = item.querySelector(".faq-a");
+    const isOpen = item.classList.contains("open");
+    document.querySelectorAll(".faq-item.open").forEach(o => {
+      o.classList.remove("open");
+      o.querySelector(".faq-a").style.maxHeight = null;
+    });
+    if (!isOpen) {
+      item.classList.add("open");
+      answer.style.maxHeight = answer.scrollHeight + "px";
+    }
+  });
+});
+
+/* Hide sticky CTA once the form is on screen */
+const stickyCta = document.getElementById("sticky-cta");
+new IntersectionObserver(entries => {
+  stickyCta.style.display = entries[0].isIntersecting ? "none" : "";
+}, { threshold: 0.2 }).observe(document.getElementById("lead-form-card"));
+
+document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+</body>
+</html>
