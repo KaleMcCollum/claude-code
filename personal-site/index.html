@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kale McCollum — From Ulen to Plant Perfect</title>
+<meta name="description" content="Kale McCollum — plant entrepreneur from Ulen, MN. Founder of Botanical Brothers and Plant Perfect Fargo.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14213d;
+    --deep: #1d3557;
+    --sea: #3a6ea5;
+    --sky: #7fa8d9;
+    --azure: #2e77c9;
+    --ice: #edf3fa;
+    --paper: #f8fbfe;
+    --line: rgba(29, 53, 87, 0.16);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: "Instrument Sans", system-ui, sans-serif;
+    background: var(--ice);
+    color: var(--ink);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .serif {
+    font-family: "Bricolage Grotesque", "Arial Black", sans-serif;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+  }
+
+  /* ---------- Scroll progress bar ---------- */
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, var(--azure), var(--sky));
+    transform-origin: left;
+    transform: scaleX(0);
+    z-index: 100;
+  }
+
+  /* ---------- Floating background shapes ---------- */
+  .drift {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform;
+    filter: blur(60px);
+    opacity: 0.5;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 2rem 1.5rem 5rem;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 110%, rgba(127, 168, 217, 0.35), transparent 65%),
+      var(--ice);
+  }
+
+  .hero-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    will-change: transform, opacity;
+  }
+
+  .hero .kicker {
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--sea);
+    margin-bottom: 1.4rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(3rem, 9.5vw, 7rem);
+    font-weight: 800;
+    color: var(--deep);
+    letter-spacing: -0.03em;
+  }
+
+  .hero .tagline {
+    margin-top: 1.4rem;
+    font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+    max-width: 34ch;
+    color: rgba(20, 33, 61, 0.72);
+    font-family: "Instrument Serif", Georgia, serif;
+    font-style: italic;
+    font-size: clamp(1.2rem, 2.5vw, 1.55rem);
+  }
+
+  .hero .leafmark {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 1.6rem;
+    color: var(--sea);
+    animation: sway 5s ease-in-out infinite;
+    transform-origin: bottom center;
+  }
+
+  @keyframes sway {
+    0%, 100% { transform: rotate(-6deg); }
+    50% { transform: rotate(6deg); }
+  }
+
+  /* Load-in animation for hero content */
+  .hero-inner > * {
+    opacity: 0;
+    transform: translateY(26px);
+    animation: rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .hero-inner > *:nth-child(1) { animation-delay: 0.05s; }
+  .hero-inner > *:nth-child(2) { animation-delay: 0.18s; }
+  .hero-inner > *:nth-child(3) { animation-delay: 0.32s; }
+  .hero-inner > *:nth-child(4) { animation-delay: 0.48s; }
+
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .scroll-cue {
+    position: absolute;
+    bottom: 2.2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--sea);
+    text-decoration: none;
+  }
+
+  .scroll-cue .stem {
+    width: 1px;
+    height: 44px;
+    background: var(--sea);
+    animation: growCue 2.2s ease-in-out infinite;
+    transform-origin: top;
+  }
+
+  @keyframes growCue {
+    0%, 100% { transform: scaleY(0.35); opacity: 0.4; }
+    50% { transform: scaleY(1); opacity: 1; }
+  }
+
+  /* ---------- About ---------- */
+  .about {
+    background: var(--paper);
+    padding: clamp(4rem, 10vw, 8rem) 1.5rem;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .about-inner {
+    max-width: 640px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.26em;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--azure);
+    margin-bottom: 1.6rem;
+  }
+
+  .section-label::after {
+    content: "";
+    flex: 0 0 48px;
+    height: 1px;
+    background: var(--azure);
+    opacity: 0.5;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.3s;
+  }
+
+  .in-view .section-label::after { transform: scaleX(1); }
+
+  .about h2 {
+    font-size: clamp(1.8rem, 4.5vw, 2.7rem);
+    color: var(--deep);
+    margin-bottom: 1.6rem;
+  }
+
+  .about p {
+    font-size: 1.06rem;
+    color: rgba(20, 33, 61, 0.8);
+    margin-bottom: 1.15rem;
+  }
+
+  /* Staggered reveal for about children */
+  .stagger > * {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .stagger.in-view > * { opacity: 1; transform: translateY(0); }
+  .stagger.in-view > *:nth-child(2) { transition-delay: 0.1s; }
+  .stagger.in-view > *:nth-child(3) { transition-delay: 0.2s; }
+  .stagger.in-view > *:nth-child(4) { transition-delay: 0.3s; }
+  .stagger.in-view > *:nth-child(5) { transition-delay: 0.4s; }
+
+  /* ---------- Timeline ---------- */
+  .timeline {
+    position: relative;
+    padding: clamp(4rem, 8vw, 7rem) 1.5rem clamp(5rem, 10vw, 9rem);
+    /* clip (not hidden) keeps position:sticky working for the year column */
+    overflow: clip;
+  }
+
+  .timeline-head {
+    max-width: 1060px;
+    margin: 0 auto clamp(3rem, 7vw, 5.5rem);
+    position: relative;
+  }
+
+  .timeline-head h2 {
+    font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+    color: var(--deep);
+  }
+
+  .timeline-grid {
+    max-width: 1060px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) minmax(0, 1.35fr);
+    gap: clamp(1.5rem, 5vw, 5rem);
+    align-items: start;
+    position: relative;
+  }
+
+  /* Sticky year column */
+  .year-col {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .year-display {
+    font-family: "Bricolage Grotesque", "Arial Black", sans-serif;
+    font-size: clamp(4rem, 11vw, 8.5rem);
+    font-weight: 800;
+    color: var(--deep);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    will-change: transform;
+  }
+
+  .year-display.fading { opacity: 0; transform: translateY(12px); }
+
+  .year-display.tick { animation: tick 0.3s ease; }
+
+  @keyframes tick {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.045); }
+    100% { transform: scale(1); }
+  }
+
+  .year-sub {
+    margin-top: 1rem;
+    font-size: 0.95rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--sea);
+    min-height: 1.5em;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  .year-sub.fading { opacity: 0; transform: translateY(8px); }
+
+  /* Events column */
+  .events {
+    position: relative;
+    padding-left: clamp(2rem, 4vw, 3rem);
+  }
+
+  .events::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--line);
+  }
+
+  .events .vine {
+    position: absolute;
+    left: 8px;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(var(--azure), var(--sky));
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+
+  .event {
+    position: relative;
+    padding: clamp(3.5rem, 9vh, 6.5rem) 0;
+    opacity: 0.2;
+    will-change: transform, opacity;
+    transition: opacity 0.6s ease;
+  }
+
+  .event-card {
+    will-change: transform;
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    transform: translateX(60px) rotate(1.2deg);
+  }
+
+  .event.visible { opacity: 1; }
+  .event.visible .event-card { transform: translateX(0) rotate(0deg); }
+
+  .event::before {
+    content: "";
+    position: absolute;
+    left: calc(-1 * clamp(2rem, 4vw, 3rem) + 2px);
+    top: calc(clamp(3.5rem, 9vh, 6.5rem) + 0.55em);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ice);
+    border: 2px solid var(--sea);
+    transition: background 0.4s ease, box-shadow 0.4s ease, transform 0.4s ease;
+  }
+
+  .event.visible::before {
+    background: var(--sea);
+    box-shadow: 0 0 0 6px rgba(58, 110, 165, 0.18);
+    transform: scale(1.15);
+  }
+
+  .event .date {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--azure);
+    margin-bottom: 0.7rem;
+  }
+
+  .event h3 {
+    font-size: clamp(1.45rem, 3.2vw, 2.05rem);
+    color: var(--deep);
+    margin-bottom: 0.8rem;
+  }
+
+  .event p {
+    font-size: 1.02rem;
+    color: rgba(20, 33, 61, 0.76);
+    max-width: 52ch;
+  }
+
+  .event .tag {
+    display: inline-block;
+    margin-top: 1.1rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--sea);
+    border: 1px solid rgba(58, 110, 165, 0.4);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+    background: rgba(248, 251, 254, 0.6);
+  }
+
+  /* ---------- Outro ---------- */
+  .outro {
+    background: var(--deep);
+    color: var(--ice);
+    text-align: center;
+    padding: clamp(5rem, 12vw, 9rem) 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .outro::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 55% at 50% -10%, rgba(127, 168, 217, 0.4), transparent 60%);
+  }
+
+  .outro-inner {
+    position: relative;
+    opacity: 0;
+    transform: scale(0.92) translateY(30px);
+    transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .outro-inner.in-view { opacity: 1; transform: scale(1) translateY(0); }
+
+  .outro .kicker {
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--sky);
+    margin-bottom: 1.2rem;
+  }
+
+  .outro h2 {
+    font-size: clamp(2rem, 5.5vw, 3.4rem);
+    max-width: 18ch;
+    margin: 0 auto 1.3rem;
+    font-weight: 600;
+  }
+
+  .outro p {
+    max-width: 44ch;
+    margin: 0 auto;
+    color: rgba(237, 243, 250, 0.8);
+    font-size: 1.05rem;
+  }
+
+  .outro .opening {
+    display: inline-block;
+    margin-top: 2.2rem;
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 1.3rem;
+    font-style: italic;
+    color: var(--sky);
+    border-top: 1px solid rgba(127, 168, 217, 0.35);
+    padding-top: 1.4rem;
+  }
+
+  footer {
+    background: var(--deep);
+    color: rgba(237, 243, 250, 0.55);
+    text-align: center;
+    font-size: 0.82rem;
+    padding: 0 1.5rem 2.2rem;
+  }
+
+  /* ---------- Mobile ---------- */
+  @media (max-width: 760px) {
+    .timeline-grid {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+
+    .year-col {
+      height: auto;
+      top: 0;
+      z-index: 5;
+      background: rgba(237, 243, 250, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 0.9rem 0;
+      border-bottom: 1px solid var(--line);
+      flex-direction: row;
+      align-items: baseline;
+      gap: 1rem;
+    }
+
+    .year-display { font-size: 2.6rem; }
+    .year-sub { margin-top: 0; font-size: 0.78rem; }
+
+    .events { margin-top: 1.5rem; }
+    .event { padding: 2.6rem 0; }
+    .event::before { top: calc(2.6rem + 0.5em); }
+    .event-card { transform: translateX(34px) rotate(0.8deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .event, .event-card, .stagger > *, .outro-inner, .hero-inner > * {
+      transition: none !important;
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+    .scroll-cue .stem, .hero .leafmark { animation: none; }
+    .drift { display: none; }
+    [data-parallax] { transform: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="hero">
+  <div class="drift" data-parallax="-0.18" style="width: 420px; height: 420px; background: #a8c8ec; top: 8%; left: -140px;"></div>
+  <div class="drift" data-parallax="0.12" style="width: 340px; height: 340px; background: #7fa8d9; bottom: -80px; right: -100px; opacity: 0.4;"></div>
+  <div class="drift" data-parallax="-0.08" style="width: 220px; height: 220px; background: #cfe0f4; top: 18%; right: 12%; opacity: 0.7;"></div>
+
+  <div class="hero-inner" id="heroInner">
+    <svg class="leafmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 22V8"/>
+      <path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/>
+      <path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/>
+    </svg>
+    <p class="kicker">Fargo, North Dakota</p>
+    <h1>Kale McCollum</h1>
+    <p class="tagline">Small-town roots. Big plans that keep on growing.</p>
+  </div>
+  <a class="scroll-cue" href="#about">
+    <span>Scroll</span>
+    <span class="stem"></span>
+  </a>
+</header>
+
+<!-- ============ ABOUT ============ -->
+<section class="about" id="about">
+  <div class="drift" data-parallax="0.1" style="width: 380px; height: 380px; background: #d7e6f7; top: -120px; right: -120px;"></div>
+  <div class="about-inner stagger" data-observe>
+    <p class="section-label">About Me</p>
+    <h2>I turn a love of plants into places people love.</h2>
+    <p>
+      I'm Kale — an entrepreneur from the small town of Ulen, Minnesota, now planted in
+      Fargo, North Dakota. I studied business administration at North Dakota State
+      University, and before I'd even graduated, I opened my first shop: Botanical
+      Brothers, a houseplant store built on the simple idea that everyone's home deserves
+      a little more green.
+    </p>
+    <p>
+      Four years of running a plant shop taught me what no classroom could — how to build
+      a brand, a community, and a business from the ground up. Now I'm taking everything
+      I've learned and going bigger: Plant Perfect Fargo, a full garden center opening
+      in 2027.
+    </p>
+    <p>
+      Scroll on to walk through the story so far.
+    </p>
+  </div>
+</section>
+
+<!-- ============ TIMELINE ============ -->
+<section class="timeline" id="timeline">
+  <div class="drift" data-parallax="-0.1" style="width: 460px; height: 460px; background: #c3d9f2; top: 12%; left: -180px; opacity: 0.6;"></div>
+  <div class="drift" data-parallax="0.14" style="width: 380px; height: 380px; background: #a8c8ec; top: 45%; right: -160px; opacity: 0.5;"></div>
+  <div class="drift" data-parallax="-0.06" style="width: 300px; height: 300px; background: #d7e6f7; top: 78%; left: -100px; opacity: 0.7;"></div>
+
+  <div class="timeline-head stagger" data-observe>
+    <p class="section-label">The Timeline</p>
+    <h2>How I got here</h2>
+  </div>
+
+  <div class="timeline-grid">
+    <div class="year-col" aria-hidden="true">
+      <div class="year-display" id="yearDisplay">Roots</div>
+      <div class="year-sub" id="yearSub">Fargo, ND</div>
+    </div>
+
+    <div class="events" id="events">
+      <div class="vine" id="vine"></div>
+
+      <article class="event" data-label="Roots" data-sub="Fargo, ND">
+        <div class="event-card">
+          <p class="date">The Beginning</p>
+          <h3>Born in Fargo, North Dakota</h3>
+          <p>The story starts on the northern plains — born in Fargo, a city I'd
+             eventually find my way back to.</p>
+          <span class="tag">Fargo, ND</span>
+        </div>
+      </article>
+
+      <article class="event" data-label="Ulen" data-sub="Population ~500">
+        <div class="event-card">
+          <p class="date">Growing Up</p>
+          <h3>Raised in Ulen, Minnesota</h3>
+          <p>I grew up in the small town of Ulen, Minnesota — the kind of place where
+             everyone knows your name and hard work isn't optional. Small-town life
+             planted the values that still drive everything I do.</p>
+          <span class="tag">Ulen, MN</span>
+        </div>
+      </article>
+
+      <article class="event" data-year="2019" data-sub="Back to Fargo">
+        <div class="event-card">
+          <p class="date">2019</p>
+          <h3>Moved to Fargo — enrolled at NDSU</h3>
+          <p>I moved back to Fargo to attend North Dakota State University, studying
+             business administration and laying the groundwork for what came next.</p>
+          <span class="tag">NDSU · Business Administration</span>
+        </div>
+      </article>
+
+      <article class="event" data-year="2022" data-sub="First Venture">
+        <div class="event-card">
+          <p class="date">June 2022</p>
+          <h3>Opened Botanical Brothers</h3>
+          <p>While still in school, I launched Botanical Brothers — a houseplant store in
+             Fargo. What started as a passion for plants became a real business with real
+             customers, and a crash course in entrepreneurship.</p>
+          <span class="tag">Founder · Houseplant Store</span>
+        </div>
+      </article>
+
+      <article class="event" data-year="2023" data-sub="NDSU Graduate">
+        <div class="event-card">
+          <p class="date">2023</p>
+          <h3>Graduated from NDSU</h3>
+          <p>Earned my degree in business administration — while running the shop at the
+             same time. The classroom and the storefront taught the same lessons from two
+             different directions.</p>
+          <span class="tag">B.S. Business Administration</span>
+        </div>
+      </article>
+
+      <article class="event" data-year="2026" data-sub="Turning the Page">
+        <div class="event-card">
+          <p class="date">February 2026</p>
+          <h3>Closed Botanical Brothers — announced what's next</h3>
+          <p>After nearly four great years, I closed the doors on Botanical Brothers — not
+             as an ending, but as a step toward something bigger. That same season, I
+             announced Plant Perfect Fargo, a full-scale garden center.</p>
+          <span class="tag">One Chapter Ends</span>
+        </div>
+      </article>
+
+      <article class="event" data-year="2027" data-sub="Coming Soon">
+        <div class="event-card">
+          <p class="date">March 2027 · Expected</p>
+          <h3>Plant Perfect Fargo opens</h3>
+          <p>The next chapter: Plant Perfect Fargo, a garden center bringing plants,
+             supplies, and know-how to the community — expected to open its doors in
+             March 2027.</p>
+          <span class="tag">Garden Center · Fargo, ND</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ OUTRO ============ -->
+<section class="outro">
+  <div class="outro-inner" data-observe>
+    <p class="kicker">What's Next</p>
+    <h2>Plant Perfect Fargo</h2>
+    <p>A garden center for the Fargo–Moorhead community — everything you need to grow,
+       from the people who love it most.</p>
+    <span class="opening">Opening March 2027</span>
+  </div>
+</section>
+
+<footer>
+  <p>&copy; 2026 Kale McCollum · Fargo, ND</p>
+</footer>
+
+<script>
+(function () {
+  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var events = Array.prototype.slice.call(document.querySelectorAll(".event"));
+  var yearDisplay = document.getElementById("yearDisplay");
+  var yearSub = document.getElementById("yearSub");
+  var vine = document.getElementById("vine");
+  var eventsCol = document.getElementById("events");
+  var progressBar = document.getElementById("progressBar");
+  var heroInner = document.getElementById("heroInner");
+  var parallaxEls = Array.prototype.slice.call(document.querySelectorAll("[data-parallax]"));
+
+  // Reveal events + generic observed sections as they enter the viewport
+  var revealObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add(entry.target.classList.contains("event") ? "visible" : "in-view");
+      }
+    });
+  }, { threshold: 0.25 });
+  events.forEach(function (ev) { revealObserver.observe(ev); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-observe]"), function (el) {
+    revealObserver.observe(el);
+  });
+
+  // Per-event display info: numeric years interpolate, labels crossfade
+  var stops = events.map(function (ev) {
+    return {
+      el: ev,
+      year: ev.dataset.year ? parseInt(ev.dataset.year, 10) : null,
+      label: ev.dataset.label || ev.dataset.year || "",
+      sub: ev.dataset.sub || ""
+    };
+  });
+
+  var currentText = null;
+  var currentSub = null;
+  var fadeTimer = null;
+
+  function setDisplay(text, sub, animate) {
+    if (text === currentText && sub === currentSub) return;
+    var yearChanged = text !== currentText;
+    currentText = text;
+    currentSub = sub;
+    if (animate && !reducedMotion) {
+      yearDisplay.classList.add("fading");
+      yearSub.classList.add("fading");
+      clearTimeout(fadeTimer);
+      fadeTimer = setTimeout(function () {
+        yearDisplay.textContent = text;
+        yearSub.textContent = sub;
+        yearDisplay.classList.remove("fading");
+        yearSub.classList.remove("fading");
+      }, 250);
+    } else {
+      yearDisplay.textContent = text;
+      yearSub.textContent = sub;
+      // Pulse the counter each time the rolling year ticks over
+      if (yearChanged && !reducedMotion) {
+        yearDisplay.classList.remove("tick");
+        void yearDisplay.offsetWidth;
+        yearDisplay.classList.add("tick");
+      }
+    }
+  }
+
+  function centerOf(el) {
+    var r = el.getBoundingClientRect();
+    return r.top + r.height / 2 + window.scrollY;
+  }
+
+  function onScroll() {
+    var scrollY = window.scrollY;
+    var vh = window.innerHeight;
+    var anchor = scrollY + vh * 0.5;
+
+    // Page scroll progress bar
+    var docHeight = document.documentElement.scrollHeight - vh;
+    progressBar.style.transform = "scaleX(" + (docHeight > 0 ? scrollY / docHeight : 0) + ")";
+
+    if (!reducedMotion) {
+      // Hero recedes and fades as you scroll past it
+      var heroT = Math.min(1, scrollY / (vh * 0.9));
+      heroInner.style.transform = "translateY(" + scrollY * 0.35 + "px) scale(" + (1 - heroT * 0.08) + ")";
+      heroInner.style.opacity = String(1 - heroT * 1.1);
+
+      // Parallax drift shapes — each moves at its own speed relative to viewport center
+      parallaxEls.forEach(function (el) {
+        var speed = parseFloat(el.dataset.parallax);
+        var rect = el.parentElement.getBoundingClientRect();
+        var offset = rect.top + rect.height / 2 - vh / 2;
+        el.style.transform = "translateY(" + (-offset * speed) + "px)";
+      });
+    }
+
+    // Grow the vine with overall progress through the events column
+    var colRect = eventsCol.getBoundingClientRect();
+    var colTop = colRect.top + scrollY;
+    var progress = (anchor - colTop) / colRect.height;
+    vine.style.transform = "scaleY(" + Math.max(0, Math.min(1, progress)) + ")";
+
+    // Find the segment the anchor sits in
+    var i = 0;
+    while (i < stops.length - 1 && anchor > centerOf(stops[i + 1].el)) i++;
+    var a = stops[i];
+    var next = stops[Math.min(i + 1, stops.length - 1)];
+
+    var t = 0;
+    if (next !== a) {
+      var ca = centerOf(a.el), cb = centerOf(next.el);
+      t = Math.max(0, Math.min(1, (anchor - ca) / (cb - ca)));
+    }
+
+    if (a.year !== null && next.year !== null) {
+      // Roll through intermediate years as you scroll between events
+      var y = Math.round(a.year + (next.year - a.year) * t);
+      var sub = t < 0.5 ? a.sub : next.sub;
+      setDisplay(String(y), sub, false);
+    } else {
+      var active = t < 0.5 ? a : next;
+      setDisplay(active.year !== null ? String(active.year) : active.label, active.sub, true);
+    }
+  }
+
+  var ticking = false;
+  window.addEventListener("scroll", function () {
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(function () {
+        onScroll();
+        ticking = false;
+      });
+    }
+  }, { passive: true });
+  window.addEventListener("resize", onScroll);
+  onScroll();
+})();
+</script>
+</body>
+</html>
