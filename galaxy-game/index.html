@@ -1779,7 +1779,7 @@ const Game = {
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
       allegiance:{ govId:null, factionIds:[], align:0 },   // start Independent & Neutral; earn it in play
       activeShip:null, bounties:[], contracts:[], gear:[], crew:[], officers:{}, lastBillYear:0, job:null,
-      stimReady:false, log:[],
+      missions:[], stimReady:false, log:[],
     };
     state.world.occupied=true;   // your homeworld is inhabited (your own kind live here)
     state.world.settle="colony"; // a working spaceport — always has a yard so you can leave
@@ -2379,8 +2379,17 @@ const UI = {
   screen_hub(){
     if(adrift()) return this.screen_void();
     const w=state.world;
+    checkMissions();   // completing a waypoint by moving in-system lands you back here
+    const missions=state.missions||[];
+    const missionCard = missions.length?`<div class="card sheet"><h3>&#128203; Active contracts <span class="dim small">&middot; ${missions.length}</span></h3>
+      ${missions.map(m=>{ const st=m.steps[m.cur], here=atMissionTarget(st.target);
+        return `<div class="frow"><div class="finfo"><div class="nm">${m.title} <span class="dim small">&middot; step ${m.cur+1}/${m.steps.length}</span></div>
+          <div class="sub">${here?'<span class="green">&#9679; you are here — job advancing</span>':'&#10141; '+st.desc}</div></div>
+          <span class="kv gold small">${commas(m.reward.credits)}c${m.reward.gear?" +gear":""}${m.reward.ship?" +ship":""}</span></div>`; }).join("")}
+      <p class="small dim" style="margin-top:5px">Contracts are posted at the tavern. Reach each waypoint, then return to the giver to be paid.</p></div>`:"";
     return `
     ${this.statHeader()}
+    ${missionCard}
     <div class="card">
       <div class="row between"><h2>&#9737; ${w.name}</h2>
         <span class="tag" style="color:${RARITY.byId(w.tier).color}">${RARITY.byId(w.tier).name}</span></div>
@@ -2515,6 +2524,20 @@ const UI = {
             <div class="sub">${p.who} is hiring &middot; <span class="gold">${commas(p.pay)}c/yr</span></div></div>
             <button class="small primary" data-takejob="${i}">Take</button></div>`).join("")
           :`<p class="small dim">Nothing pinned up today — check back another time.</p>`}</div>`; })()}
+    ${(()=>{ ensureMissionBoard(); const b=state.missionBoard, active=state.missions||[];
+      const rewardStr=m=>`<span class="gold">${commas(m.reward.credits)}c${m.reward.gear?" + gear":""}${m.reward.ship?" + a ship":""}</span>`;
+      return `<div class="card sheet"><h3>&#128203; Contracts <span class="dim small">&middot; ${w.name}</span></h3>
+        ${active.length?`<div class="shipcat">Your active jobs</div>${active.map(m=>{ const st=m.steps[m.cur], here=atMissionTarget(st.target);
+          return `<div class="frow"><div class="finfo"><div class="nm">${m.title} <span class="dim small">&middot; step ${m.cur+1}/${m.steps.length}</span></div>
+            <div class="sub">${here?'<span class="green">&#9679; here now</span>':'&#10141; '+st.desc} &middot; ${rewardStr(m)}</div></div>
+            <button class="small ghost" data-abandonmission="${m.id}">Drop</button></div>`; }).join("")}`:""}
+        <div class="shipcat">On offer</div>
+        ${b.list.length?b.list.map((m,i)=>`<div class="frow"><div class="finfo"><div class="nm">${m.title} <span class="dim small">&middot; ${m.giver}</span></div>
+            <div class="sub">${m.blurb} &middot; ${rewardStr(m)}${m.steps.length>2?` <span class="chip small">${m.steps.length-1} legs</span>`:""}</div></div>
+            <button class="small ${active.length>=4?'':'primary'}" data-acceptmission="${i}" ${active.length>=4?'disabled':''}>Accept</button></div>`).join("")
+          :`<p class="small dim">No contracts posted right now — try again after some time passes.</p>`}
+        ${active.length>=4?`<p class="small gold" style="margin-top:5px">Your contract ledger is full (4).</p>`:""}
+        <p class="small dim" style="margin-top:5px">Take a job, reach its waypoints, and return here to be paid in credits, gear, and sometimes a ship.</p></div>`; })()}
     <div class="card"><button id="bRumor" class="full center">&#128172; Ask for a rumor</button></div>
     <div class="card"><button id="bBack" class="ghost full center">&larr; Back to the tavern</button></div>`;
   },
@@ -4304,6 +4327,8 @@ const UI = {
     if(screen==="bartender"){
       const bs=$("#bSell"); if(bs) bs.onclick=()=>sellInformation();
       app.querySelectorAll("[data-takejob]").forEach(b=> b.onclick=()=>takeBoardJob(+b.dataset.takejob));
+      app.querySelectorAll("[data-acceptmission]").forEach(b=> b.onclick=()=>acceptMission(+b.dataset.acceptmission));
+      app.querySelectorAll("[data-abandonmission]").forEach(b=> b.onclick=()=>abandonMission(b.dataset.abandonmission));
       $("#bRumor").onclick=()=>{ Game.logMsg("The bartender leans in — "+pick(RUMORS),"sys"); toast("You hear a rumor"); Game.save(); UI.flashLog(); };
       $("#bBack").onclick=()=>UI.render("tavern");
     }
@@ -4949,6 +4974,7 @@ function relocateGroup(ids, destSys, destSlot){
   if(set.has(state.activeShip)){ state.sysId=destSys; state.atSlot=destSlot; state.system=sys;
     state.world=sys.planets[destSlot].world; state.voidPos=null; }   // arriving at a star ends the drift
   scanSensors();   // log every star now within sensor range as a permanent contact
+  checkMissions(); // reaching a system may complete a contract waypoint
 }
 /* move a group to (destSys,destSlot). Uncharted worlds need you aboard (you do the charting). */
 function moveGroupTo(ids, destSys, destSlot, backTo){
@@ -5498,6 +5524,102 @@ function meetCrowdPerson(locId, cid, back){
   meeting={ draw:{id, race, isNew}, person:p, intro, back:back||"tavern", step:2,
     where:state.world?state.world.name:"deep space", crowd:{locId, cid} };
   personExpand=false; shipDealMsg=null; UI.render("meet");
+}
+/* ===================== CONTRACTS / MISSIONS — reasons to fly, and to come back =====================
+   Posted at taverns: courier runs, surveys, and long multi-stop jobs that pay in credits, gear, and
+   sometimes a ship. Each is a chain of waypoints (and a return to the giver); reaching a waypoint
+   advances the job, finishing it pays out. This is the spine of "what do I do next?". */
+function missionInhabitedTargets(){
+  const out=[], here=state.sysId, hs=state.atSlot;
+  (state.galaxy&&state.galaxy.systems||[]).forEach(s=>{ if(!s.discovered) return;
+    (s.planets||[]).forEach((p,i)=>{ if(p&&p.discovered&&isInhabited(p.world)&&!(s.id===here&&i===hs))
+      out.push({sysId:s.id, slot:i, name:p.world.name, sysName:s.name}); }); });
+  return out;
+}
+function missionScoutTargets(n){
+  const pos=playerXY();
+  return (state.galaxy&&state.galaxy.systems||[]).filter(s=>!s.discovered)
+    .map(s=>({sysId:s.id, slot:null, name:s.name||"uncharted space", sysName:s.name||"an uncharted star", d:Math.hypot(s.x-pos.x,s.y-pos.y)}))
+    .sort((a,b)=>a.d-b.d).slice(0,n);
+}
+function genMission(kind){
+  const gw={sysId:state.sysId, slot:state.atSlot, name:(state.world&&state.world.name)||"here"};
+  const giver=genName("person");
+  const inhab=missionInhabitedTargets(), pick1=arr=>arr&&arr.length?arr[rnd(0,arr.length-1)]:null;
+  let legs=[], title, blurb;
+  if(kind==="scout"){
+    const t=pick1(missionScoutTargets(6))||pick1(inhab); if(!t) return null;
+    legs=[t]; title="Survey Contract"; blurb=`Chart <b>${t.sysName}</b> and log the readings.`;
+  } else if(kind==="long"){
+    const pool=inhab.slice(); if(pool.length<2) return null;
+    const n=Math.min(3, pool.length);
+    for(let i=0;i<n;i++) legs.push(pool.splice(rnd(0,pool.length-1),1)[0]);
+    title=pick(["The Long Haul","A Delicate Job","The Syndicate Run","Deep Errand"]);
+    blurb=`A multi-stop job routing through ${legs.map(l=>`<b>${l.name}</b>`).join(" &rarr; ")}.`;
+  } else {
+    const t=pick1(inhab); if(!t) return null;
+    legs=[t]; title="Courier Run"; blurb=`Carry a sealed package to <b>${t.name}</b> in the ${t.sysName} system.`;
+  }
+  const steps=legs.map(t=>({kind:"goto", target:{sysId:t.sysId, slot:(t.slot==null?null:t.slot), name:t.name, sysName:t.sysName},
+    desc:`Travel to ${t.name}${t.sysName?` (${t.sysName})`:""}`, done:false}));
+  steps.push({kind:"return", target:gw, desc:`Return to ${giver} at ${gw.name}`, done:false});
+  const pos=playerXY();
+  const dist=legs.reduce((s,t)=>{ const sys=state.galaxy.systems[t.sysId]; return s+(sys?Math.hypot(sys.x-pos.x,sys.y-pos.y):20); },0);
+  const base=Math.round((900 + dist*40) * (1+0.55*(steps.length-1)) * rndF(0.85,1.2));
+  const reward={ credits:base };
+  const long=kind==="long";
+  if(long || chance(0.30)) reward.gear = weightedKey(long?{uncommon:50,rare:34,epic:9}:{common:58,uncommon:32,rare:9});
+  if(long && chance(0.28)) reward.ship = pick(["speeder","shuttle","hauler","starfighter"]);
+  return { id:"ms"+(state._msSeq=(state._msSeq||0)+1), title, giver, giverWorld:gw, blurb, kind, steps, cur:0, status:"offered", reward };
+}
+function ensureMissionBoard(){
+  const wk=crowdKey();
+  let b=state.missionBoard;
+  const stale = !b || b.wk!==wk || ((state.actions||0)-(b.stamp||0)>=8);
+  if(stale){
+    const list=[]; const kinds=["courier","scout","long","courier"];
+    for(const k of kinds){ if(list.length>=3) break; const m=genMission(k); if(m) list.push(m); }
+    b=state.missionBoard={ wk, stamp:state.actions||0, list };
+  }
+  return b;
+}
+function acceptMission(i){
+  const b=ensureMissionBoard(), m=b.list[i]; if(!m) return;
+  state.missions=state.missions||[];
+  if(state.missions.length>=4){ toast("Your contract ledger is full (4)"); return; }
+  m.status="active"; state.missions.push(m); b.list.splice(i,1);
+  Game.logMsg(`&#128203; You take the contract: <b>${m.title}</b>. First: ${m.steps[0].desc}.`,"good");
+  Game.save(); UI.render("bartender"); UI.flashLog();
+}
+function abandonMission(id){
+  state.missions=(state.missions||[]).filter(m=>m.id!==id);
+  Game.logMsg("You abandon a contract.","sys"); Game.save(); UI.render(UI.current);
+}
+function atMissionTarget(t){ return t && state.sysId===t.sysId && (t.slot==null || state.atSlot===t.slot); }
+function payoutMission(m){
+  const r=m.reward||{}, bits=[];
+  if(r.credits){ state.credits=(state.credits||0)+r.credits; bits.push(`${commas(r.credits)}c`); }
+  if(r.gear){ state.gear=state.gear||[]; const g=genGear(r.gear); state.gear.push(g); bits.push(`<b style="color:${rarityColor(g.rarity)}">${g.name}</b>`); }
+  if(r.ship){ const cd=shipClass(r.ship); if(cd){ const ship=vehicleFromOffer(shipOfferFrom(cd,"common",1.0)); state.vehicles.push(ship);
+    if(spaceworthy(ship) && !Game.canLeave()) state.activeShip=ship.id; bits.push(`the <b>${ship.name}</b> (a ${cd.name})`); } }
+  Game.logMsg(`&#9733; <b>Contract complete — ${m.title}!</b> Reward: ${bits.join(", ")}.`,"good");
+}
+/* advance any active contracts whose current waypoint you've just reached; pay out finished ones */
+function checkMissions(){
+  if(!state.missions||!state.missions.length) return;
+  const finished=[];
+  state.missions.forEach(m=>{
+    let adv=true;
+    while(adv && m.cur<m.steps.length){
+      const st=m.steps[m.cur]; adv=false;
+      if((st.kind==="goto"||st.kind==="return") && atMissionTarget(st.target)){
+        st.done=true; m.cur++; adv=true;
+        if(m.cur<m.steps.length) Game.logMsg(`&#128205; <b>${m.title}</b>: waypoint reached. Next &mdash; ${m.steps[m.cur].desc}.`,"good");
+      }
+    }
+    if(m.cur>=m.steps.length){ payoutMission(m); finished.push(m.id); }
+  });
+  if(finished.length) state.missions=state.missions.filter(m=>!finished.includes(m.id));
 }
 function startMeeting(intro, back){
   // if you've a bounty on someone holed up on THIS world, asking around may turn them up
