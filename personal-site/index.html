@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kale McCollum — From Ulen to Plant Perfect</title>
+<meta name="description" content="Kale McCollum — plant entrepreneur from Ulen, MN. Founder of Botanical Brothers and Plant Perfect Fargo.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1c2a20;
+    --pine: #234534;
+    --moss: #4a7a5c;
+    --leaf: #7fae8e;
+    --cream: #f6f3ea;
+    --paper: #fdfbf5;
+    --clay: #c96f4a;
+    --line: rgba(35, 69, 52, 0.18);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .serif {
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 500;
+    line-height: 1.15;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 2rem 1.5rem 5rem;
+    position: relative;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 110%, rgba(127, 174, 142, 0.28), transparent 65%),
+      var(--cream);
+  }
+
+  .hero .kicker {
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--moss);
+    margin-bottom: 1.4rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(3rem, 9vw, 6.5rem);
+    font-weight: 600;
+    color: var(--pine);
+    letter-spacing: -0.02em;
+  }
+
+  .hero .tagline {
+    margin-top: 1.4rem;
+    font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+    max-width: 34ch;
+    color: rgba(28, 42, 32, 0.75);
+    font-family: "Fraunces", Georgia, serif;
+    font-style: italic;
+  }
+
+  .hero .leafmark {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 1.6rem;
+    color: var(--moss);
+  }
+
+  .scroll-cue {
+    position: absolute;
+    bottom: 2.2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--moss);
+    text-decoration: none;
+  }
+
+  .scroll-cue .stem {
+    width: 1px;
+    height: 44px;
+    background: var(--moss);
+    animation: grow 2.2s ease-in-out infinite;
+    transform-origin: top;
+  }
+
+  @keyframes grow {
+    0%, 100% { transform: scaleY(0.35); opacity: 0.4; }
+    50% { transform: scaleY(1); opacity: 1; }
+  }
+
+  /* ---------- About ---------- */
+  .about {
+    background: var(--paper);
+    padding: clamp(4rem, 10vw, 8rem) 1.5rem;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .about-inner {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.26em;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--clay);
+    margin-bottom: 1.6rem;
+  }
+
+  .section-label::after {
+    content: "";
+    flex: 0 0 48px;
+    height: 1px;
+    background: var(--clay);
+    opacity: 0.5;
+  }
+
+  .about h2 {
+    font-size: clamp(1.8rem, 4.5vw, 2.7rem);
+    color: var(--pine);
+    margin-bottom: 1.6rem;
+  }
+
+  .about p {
+    font-size: 1.06rem;
+    color: rgba(28, 42, 32, 0.82);
+    margin-bottom: 1.15rem;
+  }
+
+  /* ---------- Timeline ---------- */
+  .timeline {
+    position: relative;
+    padding: clamp(4rem, 8vw, 7rem) 1.5rem clamp(5rem, 10vw, 9rem);
+  }
+
+  .timeline-head {
+    max-width: 1060px;
+    margin: 0 auto clamp(3rem, 7vw, 5.5rem);
+  }
+
+  .timeline-head h2 {
+    font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+    color: var(--pine);
+  }
+
+  .timeline-grid {
+    max-width: 1060px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) minmax(0, 1.35fr);
+    gap: clamp(1.5rem, 5vw, 5rem);
+    align-items: start;
+  }
+
+  /* Sticky year column */
+  .year-col {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .year-display {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: clamp(4rem, 11vw, 8.5rem);
+    font-weight: 600;
+    color: var(--pine);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: opacity 0.25s ease;
+  }
+
+  .year-display.fading { opacity: 0; }
+
+  .year-sub {
+    margin-top: 1rem;
+    font-size: 0.95rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--moss);
+    min-height: 1.5em;
+    transition: opacity 0.25s ease;
+  }
+
+  .year-sub.fading { opacity: 0; }
+
+  /* Events column */
+  .events {
+    position: relative;
+    padding-left: clamp(2rem, 4vw, 3rem);
+  }
+
+  .events::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--line);
+  }
+
+  .events .vine {
+    position: absolute;
+    left: 8px;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(var(--moss), var(--leaf));
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+
+  .event {
+    position: relative;
+    padding: clamp(3.5rem, 9vh, 6.5rem) 0;
+    opacity: 0.25;
+    transform: translateY(24px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  .event.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .event::before {
+    content: "";
+    position: absolute;
+    left: calc(-1 * clamp(2rem, 4vw, 3rem) + 2px);
+    top: calc(clamp(3.5rem, 9vh, 6.5rem) + 0.55em);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--cream);
+    border: 2px solid var(--moss);
+    transition: background 0.4s ease, box-shadow 0.4s ease;
+  }
+
+  .event.visible::before {
+    background: var(--moss);
+    box-shadow: 0 0 0 6px rgba(74, 122, 92, 0.15);
+  }
+
+  .event .date {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--clay);
+    margin-bottom: 0.7rem;
+  }
+
+  .event h3 {
+    font-size: clamp(1.45rem, 3.2vw, 2.05rem);
+    color: var(--pine);
+    margin-bottom: 0.8rem;
+  }
+
+  .event p {
+    font-size: 1.02rem;
+    color: rgba(28, 42, 32, 0.78);
+    max-width: 52ch;
+  }
+
+  .event .tag {
+    display: inline-block;
+    margin-top: 1.1rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--moss);
+    border: 1px solid rgba(74, 122, 92, 0.4);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+  }
+
+  /* ---------- Outro ---------- */
+  .outro {
+    background: var(--pine);
+    color: var(--cream);
+    text-align: center;
+    padding: clamp(5rem, 12vw, 9rem) 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .outro::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 55% at 50% -10%, rgba(127, 174, 142, 0.35), transparent 60%);
+  }
+
+  .outro > * { position: relative; }
+
+  .outro .kicker {
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--leaf);
+    margin-bottom: 1.2rem;
+  }
+
+  .outro h2 {
+    font-size: clamp(2rem, 5.5vw, 3.4rem);
+    max-width: 18ch;
+    margin: 0 auto 1.3rem;
+    font-weight: 600;
+  }
+
+  .outro p {
+    max-width: 44ch;
+    margin: 0 auto;
+    color: rgba(246, 243, 234, 0.8);
+    font-size: 1.05rem;
+  }
+
+  .outro .opening {
+    display: inline-block;
+    margin-top: 2.2rem;
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 1.15rem;
+    font-style: italic;
+    color: var(--leaf);
+    border-top: 1px solid rgba(127, 174, 142, 0.35);
+    padding-top: 1.4rem;
+  }
+
+  footer {
+    background: var(--pine);
+    color: rgba(246, 243, 234, 0.55);
+    text-align: center;
+    font-size: 0.82rem;
+    padding: 0 1.5rem 2.2rem;
+  }
+
+  /* ---------- Mobile ---------- */
+  @media (max-width: 760px) {
+    .timeline-grid {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+
+    .year-col {
+      height: auto;
+      top: 0;
+      z-index: 5;
+      background: rgba(246, 243, 234, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 0.9rem 0;
+      border-bottom: 1px solid var(--line);
+      flex-direction: row;
+      align-items: baseline;
+      gap: 1rem;
+    }
+
+    .year-display { font-size: 2.6rem; }
+    .year-sub { margin-top: 0; font-size: 0.78rem; }
+
+    .events { margin-top: 1.5rem; }
+    .event { padding: 2.6rem 0; }
+    .event::before { top: calc(2.6rem + 0.5em); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .event { transition: none; opacity: 1; transform: none; }
+    .scroll-cue .stem { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <svg class="leafmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 22V8"/>
+    <path d="M12 8C12 4 9 2 4 2c0 5 3 8 8 8"/>
+    <path d="M12 14c0-4 3-6 8-6 0 5-3 8-8 8"/>
+  </svg>
+  <p class="kicker">Fargo, North Dakota</p>
+  <h1>Kale McCollum</h1>
+  <p class="tagline">Small-town roots. Big plans that keep on growing.</p>
+  <a class="scroll-cue" href="#about">
+    <span>Scroll</span>
+    <span class="stem"></span>
+  </a>
+</header>
+
+<!-- ============ ABOUT ============ -->
+<section class="about" id="about">
+  <div class="about-inner">
+    <p class="section-label">About Me</p>
+    <h2>I turn a love of plants into places people love.</h2>
+    <p>
+      I'm Kale — an entrepreneur from the small town of Ulen, Minnesota, now planted in
+      Fargo, North Dakota. I studied business administration at North Dakota State
+      University, and before I'd even graduated, I opened my first shop: Botanical
+      Brothers, a houseplant store built on the simple idea that everyone's home deserves
+      a little more green.
+    </p>
+    <p>
+      Four years of running a plant shop taught me what no classroom could — how to build
+      a brand, a community, and a business from the ground up. Now I'm taking everything
+      I've learned and going bigger: Plant Perfect Fargo, a full garden center opening
+      in 2027.
+    </p>
+    <p>
+      Scroll on to walk through the story so far.
+    </p>
+  </div>
+</section>
+
+<!-- ============ TIMELINE ============ -->
+<section class="timeline" id="timeline">
+  <div class="timeline-head">
+    <p class="section-label">The Timeline</p>
+    <h2>How I got here</h2>
+  </div>
+
+  <div class="timeline-grid">
+    <div class="year-col" aria-hidden="true">
+      <div class="year-display" id="yearDisplay">Roots</div>
+      <div class="year-sub" id="yearSub">Fargo, ND</div>
+    </div>
+
+    <div class="events" id="events">
+      <div class="vine" id="vine"></div>
+
+      <article class="event" data-label="Roots" data-sub="Fargo, ND">
+        <p class="date">The Beginning</p>
+        <h3>Born in Fargo, North Dakota</h3>
+        <p>The story starts on the northern plains — born in Fargo, a city I'd
+           eventually find my way back to.</p>
+        <span class="tag">Fargo, ND</span>
+      </article>
+
+      <article class="event" data-label="Ulen" data-sub="Population ~500">
+        <p class="date">Growing Up</p>
+        <h3>Raised in Ulen, Minnesota</h3>
+        <p>I grew up in the small town of Ulen, Minnesota — the kind of place where
+           everyone knows your name and hard work isn't optional. Small-town life
+           planted the values that still drive everything I do.</p>
+        <span class="tag">Ulen, MN</span>
+      </article>
+
+      <article class="event" data-year="2019" data-sub="Back to Fargo">
+        <p class="date">2019</p>
+        <h3>Moved to Fargo — enrolled at NDSU</h3>
+        <p>I moved back to Fargo to attend North Dakota State University, studying
+           business administration and laying the groundwork for what came next.</p>
+        <span class="tag">NDSU · Business Administration</span>
+      </article>
+
+      <article class="event" data-year="2022" data-sub="First Venture">
+        <p class="date">June 2022</p>
+        <h3>Opened Botanical Brothers</h3>
+        <p>While still in school, I launched Botanical Brothers — a houseplant store in
+           Fargo. What started as a passion for plants became a real business with real
+           customers, and a crash course in entrepreneurship.</p>
+        <span class="tag">Founder · Houseplant Store</span>
+      </article>
+
+      <article class="event" data-year="2023" data-sub="NDSU Graduate">
+        <p class="date">2023</p>
+        <h3>Graduated from NDSU</h3>
+        <p>Earned my degree in business administration — while running the shop at the
+           same time. The classroom and the storefront taught the same lessons from two
+           different directions.</p>
+        <span class="tag">B.S. Business Administration</span>
+      </article>
+
+      <article class="event" data-year="2026" data-sub="Turning the Page">
+        <p class="date">February 2026</p>
+        <h3>Closed Botanical Brothers — announced what's next</h3>
+        <p>After nearly four great years, I closed the doors on Botanical Brothers — not
+           as an ending, but as a step toward something bigger. That same season, I
+           announced Plant Perfect Fargo, a full-scale garden center.</p>
+        <span class="tag">One Chapter Ends</span>
+      </article>
+
+      <article class="event" data-year="2027" data-sub="Coming Soon">
+        <p class="date">March 2027 · Expected</p>
+        <h3>Plant Perfect Fargo opens</h3>
+        <p>The next chapter: Plant Perfect Fargo, a garden center bringing plants,
+           supplies, and know-how to the community — expected to open its doors in
+           March 2027.</p>
+        <span class="tag">Garden Center · Fargo, ND</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ OUTRO ============ -->
+<section class="outro">
+  <p class="kicker">What's Next</p>
+  <h2>Plant Perfect Fargo</h2>
+  <p>A garden center for the Fargo–Moorhead community — everything you need to grow,
+     from the people who love it most.</p>
+  <span class="opening">Opening March 2027</span>
+</section>
+
+<footer>
+  <p>&copy; 2026 Kale McCollum · Fargo, ND</p>
+</footer>
+
+<script>
+(function () {
+  var events = Array.prototype.slice.call(document.querySelectorAll(".event"));
+  var yearDisplay = document.getElementById("yearDisplay");
+  var yearSub = document.getElementById("yearSub");
+  var vine = document.getElementById("vine");
+  var eventsCol = document.getElementById("events");
+
+  // Reveal events as they enter the viewport
+  var revealObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) entry.target.classList.add("visible");
+    });
+  }, { threshold: 0.35 });
+  events.forEach(function (ev) { revealObserver.observe(ev); });
+
+  // Per-event display info: numeric years interpolate, labels crossfade
+  var stops = events.map(function (ev) {
+    return {
+      el: ev,
+      year: ev.dataset.year ? parseInt(ev.dataset.year, 10) : null,
+      label: ev.dataset.label || ev.dataset.year || "",
+      sub: ev.dataset.sub || ""
+    };
+  });
+
+  var currentText = null;
+  var currentSub = null;
+  var fadeTimer = null;
+
+  function setDisplay(text, sub, animate) {
+    if (text === currentText && sub === currentSub) return;
+    currentText = text;
+    currentSub = sub;
+    if (animate) {
+      yearDisplay.classList.add("fading");
+      yearSub.classList.add("fading");
+      clearTimeout(fadeTimer);
+      fadeTimer = setTimeout(function () {
+        yearDisplay.textContent = text;
+        yearSub.textContent = sub;
+        yearDisplay.classList.remove("fading");
+        yearSub.classList.remove("fading");
+      }, 250);
+    } else {
+      yearDisplay.textContent = text;
+      yearSub.textContent = sub;
+    }
+  }
+
+  function centerOf(el) {
+    var r = el.getBoundingClientRect();
+    return r.top + r.height / 2 + window.scrollY;
+  }
+
+  function onScroll() {
+    var anchor = window.scrollY + window.innerHeight * 0.5;
+
+    // Grow the vine with overall progress through the events column
+    var colRect = eventsCol.getBoundingClientRect();
+    var colTop = colRect.top + window.scrollY;
+    var progress = (anchor - colTop) / colRect.height;
+    vine.style.transform = "scaleY(" + Math.max(0, Math.min(1, progress)) + ")";
+
+    // Find the segment the anchor sits in
+    var i = 0;
+    while (i < stops.length - 1 && anchor > centerOf(stops[i + 1].el)) i++;
+    var a = stops[i];
+    var next = stops[Math.min(i + 1, stops.length - 1)];
+
+    var t = 0;
+    if (next !== a) {
+      var ca = centerOf(a.el), cb = centerOf(next.el);
+      t = Math.max(0, Math.min(1, (anchor - ca) / (cb - ca)));
+    }
+
+    if (a.year !== null && next.year !== null) {
+      // Roll through intermediate years as you scroll between events
+      var y = Math.round(a.year + (next.year - a.year) * t);
+      var sub = t < 0.5 ? a.sub : next.sub;
+      setDisplay(String(y), sub, false);
+    } else {
+      var active = t < 0.5 ? a : next;
+      setDisplay(active.year !== null ? String(active.year) : active.label, active.sub, true);
+    }
+  }
+
+  var ticking = false;
+  window.addEventListener("scroll", function () {
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(function () {
+        onScroll();
+        ticking = false;
+      });
+    }
+  }, { passive: true });
+  window.addEventListener("resize", onScroll);
+  onScroll();
+})();
+</script>
+</body>
+</html>
