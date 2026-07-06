@@ -3,236 +3,174 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>What's Your Home Worth? | Free Home Valuation in 24 Hours</title>
-<meta name="description" content="Find out what your home is really worth in today's market. Free, no-obligation home valuation from a top local agent — delivered within 24 hours.">
+<title>Know Your Building's Real Number | Confidential Commercial Valuation</title>
+<meta name="description" content="A confidential broker opinion of value for your commercial property — from principals who close. Free. 48 hours. No obligation.">
 <style>
   /* ============ RESET & TOKENS ============ */
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
-    --navy: #0f2540;
-    --navy-2: #1a3a5c;
-    --gold: #c9a227;
-    --gold-bright: #e6b93c;
-    --ink: #1c2733;
-    --muted: #5a6b7d;
-    --line: #e3e9f0;
-    --bg: #f7f9fc;
-    --white: #ffffff;
-    --green: #1e8e5a;
-    --red: #c0392b;
-    --radius: 14px;
-    --shadow: 0 10px 40px rgba(15, 37, 64, .12);
-    --serif: Georgia, 'Times New Roman', serif;
-    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --black: #0b0b0c;
+    --black-2: #131316;
+    --panel: #1a1a1f;
+    --white: #f5f4f0;
+    --gray: #8b8b93;
+    --line: #2a2a30;
+    --accent: #ffb400;
+    --accent-dim: #cc9000;
+    --green: #2ecc71;
+    --red: #e74c3c;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   }
   html { scroll-behavior: smooth; }
-  body { font-family: var(--sans); color: var(--ink); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
-  img { max-width: 100%; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  body { font-family: var(--sans); background: var(--black); color: var(--white); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+
+  .display {
+    font-weight: 900; text-transform: uppercase; letter-spacing: -.02em; line-height: .95;
+  }
 
   /* ============ HEADER ============ */
-  header {
-    background: var(--white); border-bottom: 1px solid var(--line);
-    position: sticky; top: 0; z-index: 50;
-  }
-  .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; }
-  .logo { font-family: var(--serif); font-size: 1.35rem; font-weight: 700; color: var(--navy); text-decoration: none; letter-spacing: .02em; }
-  .logo span { color: var(--gold); }
-  .header-phone { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--navy); font-weight: 700; }
-  .header-phone small { display: block; font-weight: 400; color: var(--muted); font-size: .72rem; line-height: 1.2; }
-  .phone-icon {
-    width: 38px; height: 38px; border-radius: 50%; background: var(--navy); color: #fff;
-    display: grid; place-items: center; font-size: 1rem; flex-shrink: 0;
-  }
+  header { border-bottom: 1px solid var(--line); position: sticky; top: 0; background: rgba(11,11,12,.92); backdrop-filter: blur(8px); z-index: 50; }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .logo { font-weight: 900; font-size: 1.15rem; letter-spacing: .14em; text-transform: uppercase; color: var(--white); text-decoration: none; }
+  .logo span { color: var(--accent); }
+  .header-phone { color: var(--white); text-decoration: none; font-weight: 800; font-size: .95rem; letter-spacing: .04em; }
+  .header-phone b { color: var(--accent); }
 
   /* ============ HERO ============ */
-  .hero {
-    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 60%, #24507c 100%);
-    color: #fff; padding: 56px 0 72px; position: relative; overflow: hidden;
-  }
-  .hero::after {
+  .hero { padding: 88px 0 96px; position: relative; overflow: hidden; }
+  .hero::before {
     content: ""; position: absolute; inset: 0; pointer-events: none;
-    background:
-      radial-gradient(600px 300px at 85% 10%, rgba(230,185,60,.14), transparent 70%),
-      radial-gradient(500px 400px at 5% 90%, rgba(255,255,255,.05), transparent 70%);
+    background: radial-gradient(900px 480px at 78% 20%, rgba(255,180,0,.07), transparent 65%);
   }
-  .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 48px; align-items: center; position: relative; z-index: 1; }
+  .hero-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 64px; align-items: center; position: relative; }
   .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: rgba(230,185,60,.15); border: 1px solid rgba(230,185,60,.45);
-    color: var(--gold-bright); font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-    padding: 7px 14px; border-radius: 999px; margin-bottom: 20px;
+    display: inline-block; color: var(--accent); font-weight: 800; font-size: .78rem;
+    letter-spacing: .28em; text-transform: uppercase; margin-bottom: 24px;
   }
-  .hero h1 { font-family: var(--serif); font-size: clamp(2rem, 4.4vw, 3.15rem); line-height: 1.14; margin-bottom: 18px; }
-  .hero h1 em { font-style: normal; color: var(--gold-bright); }
-  .hero-sub { font-size: 1.13rem; color: #cfdcea; max-width: 46ch; margin-bottom: 26px; }
-  .hero-points { list-style: none; display: grid; gap: 10px; margin-bottom: 30px; }
-  .hero-points li { display: flex; gap: 10px; align-items: flex-start; color: #e8eff6; font-size: .98rem; }
-  .check {
-    width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff;
-    display: grid; place-items: center; font-size: .7rem; font-weight: 800; flex-shrink: 0; margin-top: 2px;
-  }
-  .hero-proof { display: flex; align-items: center; gap: 14px; }
-  .avatars { display: flex; }
-  .avatars span {
-    width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--navy);
-    display: grid; place-items: center; font-size: .8rem; font-weight: 700; color: #fff; margin-left: -10px;
-  }
-  .avatars span:first-child { margin-left: 0; }
-  .hero-proof .stars { color: var(--gold-bright); letter-spacing: 2px; font-size: .9rem; }
-  .hero-proof p { font-size: .85rem; color: #b9c9d9; line-height: 1.4; }
-  .hero-proof strong { color: #fff; }
+  .hero h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); margin-bottom: 24px; }
+  .hero h1 .hl { color: var(--accent); }
+  .hero-sub { font-size: 1.15rem; color: var(--gray); max-width: 42ch; margin-bottom: 36px; }
+  .hero-sub b { color: var(--white); }
+  .hero-terms { display: flex; gap: 28px; flex-wrap: wrap; }
+  .hero-terms div { font-size: .8rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--white); }
+  .hero-terms div::before { content: "— "; color: var(--accent); }
 
   /* ============ FORM CARD ============ */
   .form-card {
-    background: var(--white); color: var(--ink); border-radius: var(--radius);
-    box-shadow: 0 24px 70px rgba(0,0,0,.35); padding: 30px 28px 26px; position: relative;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 36px 32px 30px; position: relative;
+    box-shadow: 0 30px 80px rgba(0,0,0,.6);
   }
-  .form-card .ribbon {
-    position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
-    background: var(--gold); color: var(--navy); font-size: .74rem; font-weight: 800;
-    letter-spacing: .08em; text-transform: uppercase; padding: 6px 18px; border-radius: 999px; white-space: nowrap;
+  .form-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: var(--accent); border-radius: 6px 6px 0 0;
   }
-  .form-card h2 { font-family: var(--serif); font-size: 1.45rem; color: var(--navy); text-align: center; margin: 8px 0 4px; }
-  .form-card .form-sub { text-align: center; color: var(--muted); font-size: .9rem; margin-bottom: 18px; }
-  .progress { height: 6px; background: var(--line); border-radius: 999px; margin-bottom: 6px; overflow: hidden; }
-  .progress-bar { height: 100%; width: 33%; background: linear-gradient(90deg, var(--gold), var(--gold-bright)); border-radius: 999px; transition: width .4s ease; }
-  .progress-label { font-size: .74rem; color: var(--muted); text-align: right; margin-bottom: 14px; }
+  .form-card h2 { font-size: 1.3rem; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; margin-bottom: 6px; }
+  .form-card .form-sub { color: var(--gray); font-size: .88rem; margin-bottom: 22px; }
+  .step-label { font-size: .72rem; font-weight: 800; letter-spacing: .2em; color: var(--accent); text-transform: uppercase; margin-bottom: 16px; }
 
-  .step { display: none; animation: fadeUp .35s ease; }
+  .step { display: none; animation: fadeUp .3s ease; }
   .step.active { display: block; }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-  .field { margin-bottom: 14px; }
-  .field label { display: block; font-size: .82rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
-  .field input, .field select {
-    width: 100%; padding: 13px 14px; font-size: 1rem; border: 2px solid var(--line);
-    border-radius: 10px; outline: none; transition: border-color .2s; background: #fff; color: var(--ink);
-    font-family: var(--sans);
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: .74rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--gray); margin-bottom: 8px; }
+  .field input {
+    width: 100%; padding: 15px 16px; font-size: 1rem; background: var(--black-2);
+    border: 1px solid var(--line); border-radius: 4px; color: var(--white); outline: none;
+    transition: border-color .15s; font-family: var(--sans);
   }
-  .field input:focus, .field select:focus { border-color: var(--gold); }
+  .field input::placeholder { color: #55555e; }
+  .field input:focus { border-color: var(--accent); }
   .field input.invalid { border-color: var(--red); }
-  .field .err { display: none; color: var(--red); font-size: .78rem; margin-top: 4px; }
+  .field .err { display: none; color: var(--red); font-size: .78rem; margin-top: 5px; }
   .field.show-err .err { display: block; }
 
-  .pill-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pill-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .pill {
-    border: 2px solid var(--line); border-radius: 10px; padding: 13px 10px; text-align: center;
-    font-size: .92rem; font-weight: 600; color: var(--ink); cursor: pointer; background: #fff;
-    transition: all .15s; font-family: var(--sans);
+    border: 1px solid var(--line); background: var(--black-2); color: var(--white);
+    border-radius: 4px; padding: 12px 6px; font-size: .82rem; font-weight: 700;
+    letter-spacing: .04em; cursor: pointer; transition: all .12s; font-family: var(--sans); text-transform: uppercase;
   }
-  .pill:hover { border-color: var(--gold); }
-  .pill.selected { border-color: var(--gold); background: #fdf6e3; color: var(--navy); }
+  .pill:hover { border-color: var(--accent-dim); }
+  .pill.selected { border-color: var(--accent); background: rgba(255,180,0,.12); color: var(--accent); }
 
   .btn {
-    display: block; width: 100%; padding: 16px 20px; border: none; border-radius: 10px;
-    background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color: var(--navy);
-    font-size: 1.05rem; font-weight: 800; letter-spacing: .01em; cursor: pointer;
-    box-shadow: 0 6px 18px rgba(201,162,39,.4); transition: transform .12s, box-shadow .12s;
-    font-family: var(--sans);
+    display: block; width: 100%; padding: 18px 20px; border: none; border-radius: 4px;
+    background: var(--accent); color: var(--black); font-size: 1rem; font-weight: 900;
+    letter-spacing: .08em; text-transform: uppercase; cursor: pointer; font-family: var(--sans);
+    transition: transform .1s, background .15s;
   }
-  .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(201,162,39,.5); }
+  .btn:hover { background: #ffc42e; transform: translateY(-2px); }
   .btn:active { transform: translateY(0); }
-  .btn-back { background: none; border: none; box-shadow: none; color: var(--muted); font-size: .85rem; font-weight: 600; width: auto; margin: 10px auto 0; display: block; cursor: pointer; padding: 6px 12px; font-family: var(--sans); }
-  .btn-back:hover { color: var(--navy); transform: none; box-shadow: none; }
-  .micro { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: .74rem; color: var(--muted); margin-top: 12px; text-align: center; }
+  .btn-back { background: none; border: none; color: var(--gray); font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; width: auto; margin: 12px auto 0; display: block; cursor: pointer; padding: 6px 12px; font-family: var(--sans); }
+  .btn-back:hover { color: var(--white); }
+  .micro { font-size: .74rem; color: var(--gray); margin-top: 14px; text-align: center; }
 
-  .success { text-align: center; padding: 18px 4px; display: none; }
-  .success.active { display: block; animation: fadeUp .4s ease; }
-  .success .big-check { width: 64px; height: 64px; border-radius: 50%; background: var(--green); color: #fff; font-size: 1.8rem; display: grid; place-items: center; margin: 0 auto 16px; }
-  .success h3 { font-family: var(--serif); color: var(--navy); font-size: 1.4rem; margin-bottom: 8px; }
-  .success p { color: var(--muted); font-size: .95rem; }
+  .success { text-align: center; padding: 22px 4px; display: none; }
+  .success.active { display: block; animation: fadeUp .35s ease; }
+  .success .big-check { width: 60px; height: 60px; border-radius: 50%; border: 2px solid var(--accent); color: var(--accent); font-size: 1.7rem; display: grid; place-items: center; margin: 0 auto 18px; }
+  .success h3 { font-weight: 900; text-transform: uppercase; font-size: 1.25rem; margin-bottom: 10px; }
+  .success p { color: var(--gray); font-size: .92rem; }
+  .success p b { color: var(--white); }
 
-  /* ============ TRUST BAR ============ */
-  .trust { background: var(--white); border-bottom: 1px solid var(--line); padding: 34px 0; }
-  .trust-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; text-align: center; }
-  .trust-grid .num { font-family: var(--serif); font-size: 2rem; font-weight: 700; color: var(--navy); }
-  .trust-grid .num span { color: var(--gold); }
-  .trust-grid .lbl { font-size: .84rem; color: var(--muted); }
+  /* ============ STAT STRIP ============ */
+  .stats { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--black-2); }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .stat { padding: 40px 20px; text-align: center; }
+  .stat + .stat { border-left: 1px solid var(--line); }
+  .stat .num { font-size: clamp(2.2rem, 4.5vw, 3.4rem); font-weight: 900; letter-spacing: -.02em; line-height: 1; }
+  .stat .num span { color: var(--accent); }
+  .stat .lbl { font-size: .74rem; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: var(--gray); margin-top: 10px; }
 
-  /* ============ SECTIONS ============ */
-  section { padding: 72px 0; }
-  .section-head { text-align: center; max-width: 640px; margin: 0 auto 48px; }
-  .section-head .kicker { color: var(--gold); font-weight: 800; font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 10px; }
-  .section-head h2 { font-family: var(--serif); font-size: clamp(1.6rem, 3vw, 2.3rem); color: var(--navy); line-height: 1.2; margin-bottom: 12px; }
-  .section-head p { color: var(--muted); }
+  /* ============ STATEMENT ============ */
+  .statement { padding: 110px 0; }
+  .statement h2 { font-size: clamp(2rem, 5vw, 3.6rem); max-width: 20ch; margin-bottom: 64px; }
+  .statement h2 .hl { color: var(--accent); }
+  .punch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+  .punch { border-top: 2px solid var(--accent); padding-top: 20px; }
+  .punch h3 { font-weight: 900; text-transform: uppercase; letter-spacing: .06em; font-size: 1.05rem; margin-bottom: 10px; }
+  .punch p { color: var(--gray); font-size: .95rem; }
 
-  /* How it works */
-  .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
-  .step-card { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 32px 26px; text-align: center; position: relative; }
-  .step-num {
-    width: 52px; height: 52px; border-radius: 50%; background: var(--navy); color: var(--gold-bright);
-    font-family: var(--serif); font-size: 1.4rem; font-weight: 700; display: grid; place-items: center; margin: 0 auto 18px;
-  }
-  .step-card h3 { font-family: var(--serif); color: var(--navy); font-size: 1.2rem; margin-bottom: 10px; }
-  .step-card p { color: var(--muted); font-size: .94rem; }
+  /* ============ QUOTE ============ */
+  .quote { border-top: 1px solid var(--line); padding: 100px 0; background: var(--black-2); }
+  .quote blockquote { font-size: clamp(1.4rem, 3vw, 2.1rem); font-weight: 700; line-height: 1.3; max-width: 26ch; margin: 0 auto 28px; text-align: center; }
+  .quote blockquote .hl { color: var(--accent); }
+  .quote cite { display: block; text-align: center; font-style: normal; color: var(--gray); font-size: .82rem; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
 
-  /* Benefits */
-  .benefits { background: var(--white); }
-  .benefits-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-  .benefit { padding: 26px 24px; border-radius: var(--radius); background: var(--bg); border: 1px solid var(--line); }
-  .benefit .b-icon { font-size: 1.6rem; margin-bottom: 12px; }
-  .benefit h3 { color: var(--navy); font-size: 1.05rem; margin-bottom: 8px; }
-  .benefit p { color: var(--muted); font-size: .92rem; }
-
-  /* Testimonials */
-  .testi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-  .testi { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 24px; display: flex; flex-direction: column; box-shadow: var(--shadow); }
-  .testi .stars { color: var(--gold); letter-spacing: 3px; margin-bottom: 12px; }
-  .testi blockquote { font-size: .97rem; color: var(--ink); flex: 1; margin-bottom: 18px; }
-  .testi .who { display: flex; align-items: center; gap: 12px; }
-  .testi .who span.av { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .9rem; flex-shrink: 0; }
-  .testi .who strong { display: block; color: var(--navy); font-size: .92rem; }
-  .testi .who small { color: var(--green); font-weight: 700; font-size: .78rem; }
-
-  /* Urgency band */
-  .band { background: linear-gradient(135deg, var(--navy), var(--navy-2)); color: #fff; text-align: center; padding: 56px 0; }
-  .band h2 { font-family: var(--serif); font-size: clamp(1.5rem, 3vw, 2.1rem); margin-bottom: 12px; }
-  .band h2 em { font-style: normal; color: var(--gold-bright); }
-  .band p { color: #cfdcea; max-width: 56ch; margin: 0 auto 26px; }
-  .band .btn { max-width: 380px; margin: 0 auto; }
-
-  /* FAQ */
-  .faq-list { max-width: 720px; margin: 0 auto; }
-  .faq-item { background: var(--white); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
-  .faq-q {
-    width: 100%; text-align: left; background: none; border: none; padding: 18px 20px;
-    font-size: 1rem; font-weight: 700; color: var(--navy); cursor: pointer;
-    display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: var(--sans);
-  }
-  .faq-q::after { content: "+"; font-size: 1.4rem; color: var(--gold); font-weight: 400; transition: transform .2s; flex-shrink: 0; }
-  .faq-item.open .faq-q::after { transform: rotate(45deg); }
-  .faq-a { max-height: 0; overflow: hidden; transition: max-height .3s ease; }
-  .faq-a p { padding: 0 20px 18px; color: var(--muted); font-size: .94rem; }
-
-  /* Final CTA */
-  .final { text-align: center; }
+  /* ============ FINAL CTA ============ */
+  .final { padding: 110px 0; text-align: center; border-top: 1px solid var(--line); }
+  .final h2 { font-size: clamp(2.2rem, 5.5vw, 4rem); margin-bottom: 16px; }
+  .final h2 .hl { color: var(--accent); }
+  .final p { color: var(--gray); margin-bottom: 36px; }
   .final .btn { max-width: 420px; margin: 0 auto; }
 
-  /* Footer */
-  footer { background: var(--navy); color: #8fa3b8; padding: 40px 0 90px; font-size: .8rem; }
-  footer .foot-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
-  footer .logo { color: #fff; }
-  footer p { max-width: 72ch; margin-bottom: 10px; }
-  footer .eho { display: flex; align-items: center; gap: 8px; }
+  /* ============ FOOTER ============ */
+  footer { border-top: 1px solid var(--line); padding: 36px 0 100px; color: #55555e; font-size: .76rem; }
+  footer .foot-row { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+  footer .logo { font-size: .95rem; }
+  footer a { color: #55555e; }
 
   /* Sticky mobile CTA */
   .sticky-cta {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 60;
-    background: var(--white); border-top: 1px solid var(--line); padding: 10px 16px;
-    box-shadow: 0 -6px 24px rgba(15,37,64,.15); display: none;
+    background: var(--black-2); border-top: 1px solid var(--line); padding: 10px 16px; display: none;
   }
-  .sticky-cta .btn { padding: 13px; font-size: .95rem; }
+  .sticky-cta .btn { padding: 14px; font-size: .9rem; }
 
   /* ============ RESPONSIVE ============ */
   @media (max-width: 900px) {
-    .hero-grid { grid-template-columns: 1fr; gap: 36px; }
-    .hero { padding: 40px 0 56px; }
-    .trust-grid { grid-template-columns: repeat(2, 1fr); gap: 24px 12px; }
-    .steps-grid, .benefits-grid, .testi-grid { grid-template-columns: 1fr; }
-    section { padding: 56px 0; }
+    .hero { padding: 56px 0 64px; }
+    .hero-grid { grid-template-columns: 1fr; gap: 44px; }
+    .stats-grid { grid-template-columns: 1fr; }
+    .stat + .stat { border-left: none; border-top: 1px solid var(--line); }
+    .stat { padding: 28px 20px; }
+    .punch-grid { grid-template-columns: 1fr; gap: 28px; }
+    .statement, .quote, .final { padding: 72px 0; }
+    .statement h2 { margin-bottom: 40px; }
     .sticky-cta { display: block; }
-    .header-phone small { display: none; }
+    .pill-group { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
 </head>
@@ -240,18 +178,15 @@
 
 <!-- ======================================================
   CUSTOMIZE ME: search for "EDIT:" comments to swap in your
-  brand name, phone, market/city, stats, and form endpoint.
+  firm name, phone, market, stats, and form endpoint.
 ====================================================== -->
 
 <header>
   <div class="wrap header-inner">
-    <!-- EDIT: your brokerage / team name -->
-    <a class="logo" href="#">Summit<span>Realty</span></a>
-    <!-- EDIT: your phone number (both display + tel: link) -->
-    <a class="header-phone" href="tel:+15555550123">
-      <span class="phone-icon">&#9742;</span>
-      <span><small>Questions? Call us</small>(555) 555-0123</span>
-    </a>
+    <!-- EDIT: your firm name -->
+    <a class="logo" href="#">Meridian<span>&nbsp;CRE</span></a>
+    <!-- EDIT: your phone number (display + tel: link) -->
+    <a class="header-phone" href="tel:+15555550123"><b>Direct:</b> (555) 555-0123</a>
   </div>
 </header>
 
@@ -259,274 +194,143 @@
 <div class="hero">
   <div class="wrap hero-grid">
     <div>
-      <div class="eyebrow">&#11088; Rated 4.9/5 by 200+ Local Homeowners</div>
-      <h1>Find Out What Your Home Is <em>Really Worth</em> in Today's Market</h1>
-      <p class="hero-sub">Online estimates can be off by tens of thousands of dollars. Get a free, accurate home valuation from a top local expert — delivered to your inbox within 24 hours.</p>
-      <ul class="hero-points">
-        <li><span class="check">&#10003;</span> 100% free &amp; no obligation — sell only if the number makes sense</li>
-        <li><span class="check">&#10003;</span> Based on real neighborhood sales, not an algorithm</li>
-        <li><span class="check">&#10003;</span> Takes 30 seconds — no showings, no pressure, no spam</li>
-      </ul>
-      <div class="hero-proof">
-        <div class="avatars">
-          <span style="background:#7a5cc4">JM</span>
-          <span style="background:#2e8b8b">SK</span>
-          <span style="background:#c46a5c">DR</span>
-          <span style="background:#5c7ac4">+</span>
-        </div>
-        <div>
-          <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          <p><strong>500+ families</strong> got their home's true value this year</p>
-        </div>
+      <div class="eyebrow">Commercial Property Owners</div>
+      <h1 class="display">Know your building's <span class="hl">real number.</span></h1>
+      <p class="hero-sub">A confidential broker opinion of value from principals who've closed <b>$1.2B in commercial deals</b>. In your inbox within 48 hours.</p>
+      <div class="hero-terms">
+        <div>Confidential</div>
+        <div>No obligation</div>
+        <div>48 hours</div>
       </div>
     </div>
 
-    <!-- Multi-step form -->
+    <!-- Two-step form -->
     <div class="form-card" id="lead-form-card">
-      <div class="ribbon">Free Home Valuation</div>
-      <h2 id="form-title">What's your home worth?</h2>
-      <p class="form-sub" id="form-sub">Enter your address to get started</p>
-      <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
-      <div class="progress-label" id="progress-label">Step 1 of 3</div>
+      <h2 id="form-title">Get the number</h2>
+      <p class="form-sub" id="form-sub">Free broker opinion of value. Two steps, 20 seconds.</p>
+      <div class="step-label" id="step-label">Step 1 / 2 &mdash; The Property</div>
 
       <form id="lead-form" novalidate>
-        <!-- STEP 1: lowest-friction ask first -->
+        <!-- STEP 1: the property -->
         <div class="step active" data-step="1">
           <div class="field">
             <label for="address">Property Address</label>
-            <input type="text" id="address" name="address" placeholder="123 Main St, Your City" autocomplete="street-address">
-            <div class="err">Please enter your property address.</div>
+            <input type="text" id="address" name="address" placeholder="450 Commerce Blvd, Your City" autocomplete="street-address">
+            <div class="err">Enter the property address.</div>
           </div>
-          <button type="button" class="btn" data-next>Get My Free Valuation &rarr;</button>
-          <div class="micro">&#128274; Your information is secure and never sold.</div>
+          <div class="field">
+            <label>Asset Type</label>
+            <div class="pill-group" data-pills="asset">
+              <button type="button" class="pill">Office</button>
+              <button type="button" class="pill">Retail</button>
+              <button type="button" class="pill">Industrial</button>
+              <button type="button" class="pill">Multifamily</button>
+              <button type="button" class="pill">Land</button>
+              <button type="button" class="pill">Other</button>
+            </div>
+            <input type="hidden" name="asset" id="asset">
+            <div class="err">Pick an asset type.</div>
+          </div>
+          <button type="button" class="btn" data-next>Value My Property &rarr;</button>
+          <div class="micro">Strictly confidential. Never shared, never listed without your say-so.</div>
         </div>
 
-        <!-- STEP 2: qualify the lead -->
+        <!-- STEP 2: contact -->
         <div class="step" data-step="2">
           <div class="field">
-            <label>When are you thinking of selling?</label>
-            <div class="pill-group" data-pills="timeline">
-              <button type="button" class="pill">ASAP</button>
-              <button type="button" class="pill">1&ndash;3 months</button>
-              <button type="button" class="pill">3&ndash;6 months</button>
-              <button type="button" class="pill">Just curious</button>
-            </div>
-            <input type="hidden" name="timeline" id="timeline">
-            <div class="err">Please pick the option closest to your plans.</div>
-          </div>
-          <div class="field">
-            <label for="condition">How would you describe your home's condition?</label>
-            <select id="condition" name="condition">
-              <option value="">Select one&hellip;</option>
-              <option>Move-in ready / recently updated</option>
-              <option>Good — some minor updates needed</option>
-              <option>Fair — needs some work</option>
-              <option>Fixer-upper</option>
-            </select>
-          </div>
-          <button type="button" class="btn" data-next>Continue &rarr;</button>
-          <button type="button" class="btn-back" data-back>&larr; Back</button>
-        </div>
-
-        <!-- STEP 3: contact info last (commitment already built) -->
-        <div class="step" data-step="3">
-          <div class="field">
-            <label for="name">Full Name</label>
-            <input type="text" id="name" name="name" placeholder="Jane Smith" autocomplete="name">
-            <div class="err">Please enter your name.</div>
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" placeholder="Jordan Blake" autocomplete="name">
+            <div class="err">Enter your name.</div>
           </div>
           <div class="field">
             <label for="email">Email</label>
-            <input type="email" id="email" name="email" placeholder="jane@email.com" autocomplete="email">
-            <div class="err">Please enter a valid email address.</div>
+            <input type="email" id="email" name="email" placeholder="jordan@company.com" autocomplete="email">
+            <div class="err">Enter a valid email.</div>
           </div>
           <div class="field">
-            <label for="phone">Phone</label>
+            <label for="phone">Direct Line</label>
             <input type="tel" id="phone" name="phone" placeholder="(555) 555-0123" autocomplete="tel">
-            <div class="err">Please enter a valid phone number.</div>
+            <div class="err">Enter a valid phone number.</div>
           </div>
-          <button type="submit" class="btn" id="submit-btn">Send My Free Valuation &#128232;</button>
+          <button type="submit" class="btn" id="submit-btn">Send My Valuation</button>
           <button type="button" class="btn-back" data-back>&larr; Back</button>
-          <div class="micro">By submitting, you agree to be contacted about your home valuation. No spam, ever. Unsubscribe anytime.</div>
+          <div class="micro">One broker will contact you. No lists. No spam. Ever.</div>
         </div>
       </form>
 
       <!-- Success state -->
       <div class="success" id="success">
         <div class="big-check">&#10003;</div>
-        <h3>You're all set!</h3>
-        <p>Your personalized home valuation is being prepared and will land in your inbox within <strong>24 hours</strong>. Keep an eye out for a call from our team to confirm the details.</p>
+        <h3>Locked in.</h3>
+        <p>Your valuation is in the works. Expect it within <b>48 hours</b> — and a call from a principal broker, not an assistant, to confirm the details.</p>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ============ TRUST BAR ============ -->
-<div class="trust">
-  <div class="wrap trust-grid">
-    <!-- EDIT: swap in your real numbers -->
-    <div><div class="num">$180<span>M+</span></div><div class="lbl">In Homes Sold</div></div>
-    <div><div class="num">500<span>+</span></div><div class="lbl">Families Served</div></div>
-    <div><div class="num">4.9<span>&#9733;</span></div><div class="lbl">Average Rating (200+ Reviews)</div></div>
-    <div><div class="num">12 <span>Days</span></div><div class="lbl">Average Time to Offer</div></div>
+<!-- ============ STAT STRIP ============ -->
+<div class="stats">
+  <div class="wrap stats-grid">
+    <!-- EDIT: your real numbers -->
+    <div class="stat"><div class="num">$1.2<span>B+</span></div><div class="lbl">Closed Volume</div></div>
+    <div class="stat"><div class="num">300<span>+</span></div><div class="lbl">Transactions</div></div>
+    <div class="stat"><div class="num">48<span>hr</span></div><div class="lbl">Valuation Turnaround</div></div>
   </div>
 </div>
 
-<!-- ============ HOW IT WORKS ============ -->
-<section>
+<!-- ============ STATEMENT ============ -->
+<section class="statement">
   <div class="wrap">
-    <div class="section-head">
-      <div class="kicker">Simple &amp; Fast</div>
-      <h2>Your Home's True Value in 3 Easy Steps</h2>
-      <p>No showings. No commitments. Just the accurate number you need to make a smart decision.</p>
-    </div>
-    <div class="steps-grid">
-      <div class="step-card">
-        <div class="step-num">1</div>
-        <h3>Tell Us About Your Home</h3>
-        <p>Answer three quick questions about your property. It takes about 30 seconds — no account required.</p>
+    <h2 class="display">Most owners leave money on the table. <span class="hl">We don't let that happen.</span></h2>
+    <div class="punch-grid">
+      <div class="punch">
+        <h3>Off-Market Buyers on File</h3>
+        <p>Funds, exchange buyers, and operators actively hunting in your asset class — before your property ever hits a listing site.</p>
       </div>
-      <div class="step-card">
-        <div class="step-num">2</div>
-        <h3>We Run the Real Numbers</h3>
-        <p>A local expert analyzes recent comparable sales, current buyer demand, and your home's unique features — not just an algorithm.</p>
+      <div class="punch">
+        <h3>Real Numbers, Not Flattery</h3>
+        <p>Cap rates, debt markets, and comp reality — a defensible number you can act on, not a fantasy figure to win your listing.</p>
       </div>
-      <div class="step-card">
-        <div class="step-num">3</div>
-        <h3>Get Your Valuation in 24 Hours</h3>
-        <p>Receive a detailed valuation report and, if you want it, a custom plan to sell for top dollar. Zero obligation either way.</p>
+      <div class="punch">
+        <h3>Principals Only</h3>
+        <p>The broker who values your property is the broker who sells it. No junior handoffs, no call centers.</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ============ BENEFITS ============ -->
-<section class="benefits">
+<!-- ============ QUOTE ============ -->
+<section class="quote">
   <div class="wrap">
-    <div class="section-head">
-      <div class="kicker">Why Homeowners Choose Us</div>
-      <h2>Not All Valuations Are Created Equal</h2>
-      <p>Online estimators miss what makes your home valuable. Here's what you get instead.</p>
-    </div>
-    <div class="benefits-grid">
-      <div class="benefit"><div class="b-icon">&#127919;</div><h3>Hyper-Local Accuracy</h3><p>We live and sell in your market every day. Your valuation reflects your street, your schools, and this month's demand.</p></div>
-      <div class="benefit"><div class="b-icon">&#128200;</div><h3>Top-Dollar Pricing Strategy</h3><p>Our listings have sold for an average of 4.2% over asking. The right price on day one creates competition among buyers.</p></div>
-      <div class="benefit"><div class="b-icon">&#9889;</div><h3>Fast, Real Answers</h3><p>Your report arrives within 24 hours — not a vague range, but a defensible number backed by actual comparable sales.</p></div>
-      <div class="benefit"><div class="b-icon">&#129309;</div><h3>Zero Pressure, Ever</h3><p>Most homeowners use the valuation to plan, refinance, or just stay informed. Selling is entirely your call.</p></div>
-      <div class="benefit"><div class="b-icon">&#128172;</div><h3>Straight Talk</h3><p>If now isn't the right time to sell, we'll tell you — and what to do so it becomes the right time.</p></div>
-      <div class="benefit"><div class="b-icon">&#128274;</div><h3>Your Data Stays Private</h3><p>We never sell your information to lead brokers. One team, one point of contact, that's it.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ TESTIMONIALS ============ -->
-<section>
-  <div class="wrap">
-    <div class="section-head">
-      <div class="kicker">Real Results</div>
-      <h2>What Your Neighbors Are Saying</h2>
-    </div>
-    <div class="testi-grid">
-      <!-- EDIT: swap in your real testimonials -->
-      <div class="testi">
-        <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote>"The online estimate said $410K. Their valuation came in at $455K with the comps to prove it — and that's exactly what we sold for. In nine days."</blockquote>
-        <div class="who">
-          <span class="av" style="background:#7a5cc4">JM</span>
-          <div><strong>Jennifer &amp; Mark T.</strong><small>SOLD &mdash; $45K over the online estimate</small></div>
-        </div>
-      </div>
-      <div class="testi">
-        <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote>"I wasn't even sure I wanted to sell. They gave me the number, walked me through my options, and never once pushed. When I was ready six months later, there was only one call to make."</blockquote>
-        <div class="who">
-          <span class="av" style="background:#2e8b8b">SK</span>
-          <div><strong>Sandra K.</strong><small>SOLD &mdash; 8 days on market</small></div>
-        </div>
-      </div>
-      <div class="testi">
-        <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote>"Three offers in the first weekend, $32K over asking. Their pricing strategy is the real deal. I've already sent two coworkers their way."</blockquote>
-        <div class="who">
-          <span class="av" style="background:#c46a5c">DR</span>
-          <div><strong>David R.</strong><small>SOLD &mdash; $32K over asking</small></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ URGENCY BAND ============ -->
-<div class="band">
-  <div class="wrap">
-    <h2>Home Values in Your Area Have Shifted <em>This Quarter</em></h2>
-    <p>The market is moving. What your home was worth six months ago isn't what it's worth today — and that difference could be tens of thousands of dollars in either direction. Know your number.</p>
-    <button class="btn" onclick="scrollToForm()">Get My Free Valuation Now &rarr;</button>
-  </div>
-</div>
-
-<!-- ============ FAQ ============ -->
-<section>
-  <div class="wrap">
-    <div class="section-head">
-      <div class="kicker">Questions?</div>
-      <h2>Frequently Asked Questions</h2>
-    </div>
-    <div class="faq-list">
-      <div class="faq-item">
-        <button class="faq-q">Is this really free? What's the catch?</button>
-        <div class="faq-a"><p>Completely free, no catch. We provide valuations because some homeowners eventually decide to sell, and when they do, we've already earned their trust. Most people who request a valuation aren't ready to sell yet — and that's perfectly fine.</p></div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q">How is this different from Zillow's Zestimate?</button>
-        <div class="faq-a"><p>Automated estimates use broad public data and can miss by 5&ndash;10% or more — that's $25K&ndash;$50K on a $500K home. A local expert accounts for your home's condition, upgrades, lot, street appeal, and live buyer demand that algorithms simply can't see.</p></div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q">Am I obligated to sell or list with you?</button>
-        <div class="faq-a"><p>Not at all. The valuation is yours to keep with zero strings attached. Use it to plan your next move, negotiate a refinance, update your insurance, or just satisfy your curiosity.</p></div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q">Will I get bombarded with calls and spam?</button>
-        <div class="faq-a"><p>No. You'll hear from one member of our team to confirm your home's details and deliver your report. We never sell your information to third parties, and you can opt out anytime with one reply.</p></div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q">Do you need to come inside my home?</button>
-        <div class="faq-a"><p>Not for the initial valuation. We prepare it from your answers, records, and comparable sales. If you'd like a more precise walkthrough valuation afterward, we're happy to schedule one — again, free.</p></div>
-      </div>
-    </div>
+    <!-- EDIT: your strongest client result -->
+    <blockquote>&ldquo;$18.4M industrial exit &mdash; <span class="hl">11% over</span> our best in-house estimate. These people move.&rdquo;</blockquote>
+    <cite>Owner &mdash; 240,000 SF Industrial Portfolio</cite>
   </div>
 </section>
 
 <!-- ============ FINAL CTA ============ -->
 <section class="final">
   <div class="wrap">
-    <div class="section-head" style="margin-bottom:28px">
-      <div class="kicker">Ready When You Are</div>
-      <h2>It Takes 30 Seconds to Know Your Number</h2>
-      <p>Free. Accurate. No obligation. What's your home really worth?</p>
-    </div>
-    <button class="btn" onclick="scrollToForm()">Get My Free Home Valuation &rarr;</button>
+    <h2 class="display">Your property.<br><span class="hl">Its real number.</span></h2>
+    <p>Free. Confidential. 48 hours. Zero obligation.</p>
+    <button class="btn" onclick="scrollToForm()">Get the Number &rarr;</button>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    <div class="foot-grid">
-      <div>
-        <a class="logo" href="#">Summit<span>Realty</span></a>
-        <p style="margin-top:8px">Serving homeowners across the metro area.<br>(555) 555-0123 &bull; hello@summitrealty.example</p>
-      </div>
-      <div class="eho"><span style="font-size:1.6rem">&#8962;</span> Equal Housing Opportunity</div>
+    <div class="foot-row">
+      <a class="logo" href="#">Meridian<span>&nbsp;CRE</span></a>
+      <div>(555) 555-0123 &bull; deals@meridiancre.example</div>
     </div>
-    <!-- EDIT: replace with your brokerage's required disclosures & license numbers -->
-    <p>Summit Realty Group &bull; Licensed Real Estate Brokerage &bull; License #00000000. All information deemed reliable but not guaranteed. Valuations are professional opinions of value, not formal appraisals. This site is not intended to solicit properties currently listed for sale with another brokerage.</p>
-    <p>&copy; <span id="year"></span> Summit Realty Group. All rights reserved. &bull; <a href="#" style="color:#8fa3b8">Privacy Policy</a> &bull; <a href="#" style="color:#8fa3b8">Terms</a></p>
+    <!-- EDIT: your required disclosures & license numbers -->
+    <p>Meridian CRE &bull; Licensed Commercial Real Estate Brokerage &bull; License #00000000. Broker opinions of value are professional opinions, not formal appraisals. Not intended to solicit properties under exclusive agreement with another brokerage. &copy; <span id="year"></span> Meridian CRE &bull; <a href="#">Privacy</a></p>
   </div>
 </footer>
 
 <!-- Sticky mobile CTA -->
 <div class="sticky-cta" id="sticky-cta">
-  <button class="btn" onclick="scrollToForm()">Get My Free Home Valuation &rarr;</button>
+  <button class="btn" onclick="scrollToForm()">Get the Number &rarr;</button>
 </div>
 
 <script>
@@ -537,38 +341,31 @@ const CONFIG = {
   // EDIT: paste a Formspree/Zapier/Make webhook or your CRM endpoint.
   // Leads are POSTed here as JSON. Leave "" to test without a backend.
   FORM_ENDPOINT: "",
-  // EDIT: set true once you've installed your pixel snippets below.
+  // EDIT: set true once you've installed your pixel snippets in <head>.
   TRACK_CONVERSIONS: false,
 };
 
-/* Fire ad-platform conversion events (called on successful submit).
-   EDIT: install your Meta Pixel / Google tag snippets in <head>,
-   then set TRACK_CONVERSIONS: true above. */
+/* Fire ad-platform conversion events (called on successful submit). */
 function trackConversion(lead) {
   if (!CONFIG.TRACK_CONVERSIONS) return;
-  if (typeof fbq === "function") fbq("track", "Lead", { content_name: "home-valuation" });
+  if (typeof fbq === "function") fbq("track", "Lead", { content_name: "cre-valuation" });
   if (typeof gtag === "function") gtag("event", "generate_lead", { currency: "USD", value: 0 });
 }
 
-/* ============ Multi-step form logic ============ */
+/* ============ Two-step form logic ============ */
 const form = document.getElementById("lead-form");
 const steps = [...form.querySelectorAll(".step")];
-const bar = document.getElementById("progress-bar");
-const label = document.getElementById("progress-label");
-const titles = {
-  1: ["What's your home worth?", "Enter your address to get started"],
-  2: ["Almost there!", "Two quick questions about your home"],
-  3: ["Where should we send it?", "Your valuation will arrive within 24 hours"],
+const stepLabel = document.getElementById("step-label");
+const labels = {
+  1: "Step 1 / 2 — The Property",
+  2: "Step 2 / 2 — Where to Send It",
 };
 let current = 1;
 
 function showStep(n) {
   current = n;
   steps.forEach(s => s.classList.toggle("active", +s.dataset.step === n));
-  bar.style.width = (n / 3 * 100) + "%";
-  label.textContent = `Step ${n} of 3`;
-  document.getElementById("form-title").textContent = titles[n][0];
-  document.getElementById("form-sub").textContent = titles[n][1];
+  stepLabel.textContent = labels[n];
 }
 
 function setError(field, on) {
@@ -580,15 +377,14 @@ function validateStep(n) {
   let ok = true;
   if (n === 1) {
     const addr = document.getElementById("address");
-    const bad = addr.value.trim().length < 5;
-    setError(addr, bad); ok = !bad;
+    const badAddr = addr.value.trim().length < 5;
+    setError(addr, badAddr);
+    const asset = document.getElementById("asset");
+    const badAsset = !asset.value;
+    asset.closest(".field").classList.toggle("show-err", badAsset);
+    ok = !(badAddr || badAsset);
   }
   if (n === 2) {
-    const tl = document.getElementById("timeline");
-    const bad = !tl.value;
-    tl.closest(".field").classList.toggle("show-err", bad); ok = !bad;
-  }
-  if (n === 3) {
     const name = document.getElementById("name");
     const email = document.getElementById("email");
     const phone = document.getElementById("phone");
@@ -608,14 +404,14 @@ form.addEventListener("click", e => {
   if (e.target.matches("[data-back]")) showStep(current - 1);
 });
 
-/* Timeline pill selection */
-document.querySelector("[data-pills=timeline]").addEventListener("click", e => {
+/* Asset type pill selection */
+document.querySelector("[data-pills=asset]").addEventListener("click", e => {
   if (!e.target.classList.contains("pill")) return;
   e.currentTarget.querySelectorAll(".pill").forEach(p => p.classList.remove("selected"));
   e.target.classList.add("selected");
-  const tl = document.getElementById("timeline");
-  tl.value = e.target.textContent;
-  tl.closest(".field").classList.remove("show-err");
+  const asset = document.getElementById("asset");
+  asset.value = e.target.textContent;
+  asset.closest(".field").classList.remove("show-err");
 });
 
 /* Live phone formatting: (555) 555-0123 */
@@ -630,13 +426,13 @@ document.getElementById("phone").addEventListener("input", e => {
 
 /* Clear error styling as the user types */
 form.addEventListener("input", e => {
-  if (e.target.matches("input, select")) setError(e.target, false);
+  if (e.target.matches("input")) setError(e.target, false);
 });
 
 /* Submit */
 form.addEventListener("submit", async e => {
   e.preventDefault();
-  if (!validateStep(3)) return;
+  if (!validateStep(2)) return;
 
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
@@ -644,12 +440,11 @@ form.addEventListener("submit", async e => {
 
   const lead = {
     address: document.getElementById("address").value.trim(),
-    timeline: document.getElementById("timeline").value,
-    condition: document.getElementById("condition").value,
+    assetType: document.getElementById("asset").value,
     name: document.getElementById("name").value.trim(),
     email: document.getElementById("email").value.trim(),
     phone: document.getElementById("phone").value.trim(),
-    source: "home-valuation-funnel",
+    source: "cre-valuation-funnel",
     page: location.href,
     submittedAt: new Date().toISOString(),
   };
@@ -671,9 +466,8 @@ form.addEventListener("submit", async e => {
   }
 
   form.style.display = "none";
-  document.querySelector(".progress").style.display = "none";
-  label.style.display = "none";
-  document.getElementById("form-title").textContent = "Request received!";
+  stepLabel.style.display = "none";
+  document.getElementById("form-title").textContent = "Request received";
   document.getElementById("form-sub").style.display = "none";
   document.getElementById("success").classList.add("active");
 });
@@ -684,24 +478,7 @@ function scrollToForm() {
   setTimeout(() => document.getElementById("address").focus({ preventScroll: true }), 500);
 }
 
-/* FAQ accordion */
-document.querySelectorAll(".faq-q").forEach(q => {
-  q.addEventListener("click", () => {
-    const item = q.closest(".faq-item");
-    const answer = item.querySelector(".faq-a");
-    const isOpen = item.classList.contains("open");
-    document.querySelectorAll(".faq-item.open").forEach(o => {
-      o.classList.remove("open");
-      o.querySelector(".faq-a").style.maxHeight = null;
-    });
-    if (!isOpen) {
-      item.classList.add("open");
-      answer.style.maxHeight = answer.scrollHeight + "px";
-    }
-  });
-});
-
-/* Hide sticky CTA once the form is on screen */
+/* Hide sticky CTA while the form is on screen */
 const stickyCta = document.getElementById("sticky-cta");
 new IntersectionObserver(entries => {
   stickyCta.style.display = entries[0].isIntersecting ? "none" : "";
