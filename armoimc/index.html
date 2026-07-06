@@ -75,6 +75,34 @@
   .hint{color:var(--muted2);font-size:.8rem;margin:0}
 
   /* landing / home */
+  /* ---- Champions reveal ---- */
+  .champ-hero{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% -10%,#12704a,transparent),linear-gradient(165deg,var(--green-deep),#0b4a30 55%,#062a1c);border:2px solid var(--gold);border-radius:16px;padding:38px 20px 30px;text-align:center;color:#fff;margin-bottom:28px;box-shadow:0 20px 55px rgba(0,0,0,.30)}
+  .champ-kicker{position:relative;font-family:var(--label);font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);font-weight:800;opacity:0}
+  .champ-pre{position:relative;font-family:var(--serif,var(--display));font-weight:500;font-size:clamp(1.2rem,5vw,2rem);margin:12px 0 4px;opacity:0}
+  .champ-trophy{position:relative;font-size:clamp(2.6rem,11vw,4rem);display:inline-block;opacity:0;filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
+  .champ-name{position:relative;font-family:var(--serif,var(--display));font-weight:800;font-size:clamp(2.1rem,12vw,4.6rem);line-height:1.02;margin:2px 0 6px;background:linear-gradient(100deg,#f7e08a,#f5a623,#fff6d0,#C8A24B,#f5a623);background-size:220% auto;-webkit-background-clip:text;background-clip:text;color:transparent;opacity:0}
+  .champ-sub{position:relative;font-size:.82rem;color:rgba(255,255,255,.75);letter-spacing:.03em;opacity:0}
+  .champ-roster{position:relative;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:18px;opacity:0}
+  .champ-roster .rc{background:rgba(255,255,255,.10);border:1px solid rgba(200,162,75,.5);border-radius:999px;padding:6px 13px;font-weight:600;font-size:.85rem;color:#fff}
+  .champ-roster .rc .cap{color:var(--gold);font-weight:800}
+  .champ-replay{position:relative;margin-top:20px;color:rgba(255,255,255,.85);border-color:rgba(255,255,255,.3)}
+  .champ-replay:hover{color:#fff;background:rgba(255,255,255,.08)}
+  .confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+  .confetti i{position:absolute;top:-16px;width:8px;height:14px;border-radius:1px;opacity:0}
+  .champ-hero.play .champ-kicker{animation:chUp .6s .1s ease both}
+  .champ-hero.play .champ-pre{animation:chUp .7s .5s ease both}
+  .champ-hero.play .champ-trophy{animation:chTrophy .8s 1.5s cubic-bezier(.2,1.4,.4,1) both}
+  .champ-hero.play .champ-name{animation:chPop .9s 1.9s cubic-bezier(.18,1.5,.35,1) both, chShine 3.2s 2.9s linear infinite, chGlow 2.6s 2.9s ease-in-out infinite}
+  .champ-hero.play .champ-sub{animation:chUp .7s 2.7s ease both}
+  .champ-hero.play .champ-roster{animation:chUp .7s 3.1s ease both}
+  .champ-hero.play .confetti i{animation:chConfetti linear forwards}
+  @keyframes chUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes chPop{0%{opacity:0;transform:scale(.3)}60%{opacity:1;transform:scale(1.12)}100%{opacity:1;transform:scale(1)}}
+  @keyframes chTrophy{0%{opacity:0;transform:translateY(-32px) scale(.4) rotate(-22deg)}60%{opacity:1;transform:translateY(0) scale(1.2) rotate(9deg)}100%{opacity:1;transform:none}}
+  @keyframes chShine{to{background-position:220% center}}
+  @keyframes chGlow{0%,100%{filter:drop-shadow(0 2px 18px rgba(200,162,75,.25))}50%{filter:drop-shadow(0 2px 34px rgba(245,166,35,.8))}}
+  @keyframes chConfetti{0%{opacity:0;transform:translateY(-16px) rotate(0)}8%{opacity:1}100%{opacity:.85;transform:translateY(520px) rotate(560deg)}}
+  @media(prefers-reduced-motion:reduce){.champ-hero *{animation:none!important;opacity:1!important}}
   .landing{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   @media(max-width:780px){.landing{grid-template-columns:1fr}}
   .land-card{position:relative;min-height:360px;border-radius:10px;overflow:hidden;cursor:pointer;border:1px solid var(--line2);display:flex;align-items:flex-end;box-shadow:var(--shadow);transition:transform .25s,border-color .25s;isolation:isolate}
@@ -379,6 +407,18 @@
 
   <!-- HOME -->
   <section class="panel active" id="panel-home">
+    <div class="champ-hero" id="champHero">
+      <div class="confetti" id="confetti"></div>
+      <div class="champ-kicker">🏆 ARMOIMC III · Maple Hills · July 3, 2026 · FINAL</div>
+      <div class="champ-pre">Your 2026 Champions are…</div>
+      <div class="champ-reveal">
+        <div class="champ-trophy">🏆</div>
+        <div class="champ-name" id="champName">Sports Bar Simps</div>
+        <div class="champ-sub">Rard Man Open Invitational Master Classic — 2026 Champions</div>
+        <div class="champ-roster" id="champRoster"></div>
+      </div>
+      <button class="btn ghost champ-replay" id="champReplay">↺ Replay</button>
+    </div>
     <div class="landing">
       <div class="land-card players" data-go="players">
         <div class="bg"></div><div class="ic">🏌️</div><div class="ov"></div>
@@ -1486,6 +1526,23 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.morewrap')) closeM
 document.querySelectorAll('.land-card').forEach(c=>c.addEventListener('click',()=>goTab(c.dataset.go)));
 document.getElementById('homeVoteBtn').addEventListener('click',()=>goTab('vote'));
 document.getElementById('homeClaimBtn').addEventListener('click',openClaim);
+/* ---- Champions reveal ---- */
+const CHAMP_TEAM_ID=5;
+function champConfetti(){ const c=document.getElementById('confetti'); if(!c) return; c.innerHTML='';
+  const cols=['#C8A24B','#f5a623','#0E5A3A','#9E2B25','#ffffff','#f7e08a'];
+  for(let i=0;i<44;i++){ const s=document.createElement('i');
+    s.style.left=(Math.random()*100)+'%'; s.style.background=cols[Math.floor(Math.random()*cols.length)];
+    s.style.width=(6+Math.random()*6)+'px'; s.style.height=(10+Math.random()*9)+'px';
+    s.style.animationDuration=(2.6+Math.random()*2.6)+'s'; s.style.animationDelay=(1.8+Math.random()*2)+'s';
+    c.appendChild(s); } }
+function initChampHero(){ const hero=document.getElementById('champHero'); if(!hero) return;
+  const champ=teams.find(t=>t.id===CHAMP_TEAM_ID)||{name:'Sports Bar Simps',captain:'Kale M'};
+  const nm=document.getElementById('champName'); if(nm) nm.textContent=champ.name;
+  const roster=SEED.players.filter(p=>p.team===CHAMP_TEAM_ID);
+  const rEl=document.getElementById('champRoster'); if(rEl) rEl.innerHTML=roster.map(p=>`<span class="rc">${p.name===champ.captain?'<span class="cap">★</span> ':''}${esc(p.name)}</span>`).join('');
+  champConfetti(); requestAnimationFrame(()=>hero.classList.add('play')); }
+function champReplay(){ const hero=document.getElementById('champHero'); if(!hero) return; hero.classList.remove('play'); champConfetti(); void hero.offsetWidth; hero.classList.add('play'); }
+document.getElementById('champReplay').addEventListener('click',champReplay);
 // prediction calculator wiring
 document.getElementById('predTeam').addEventListener('change',e=>{ predTeamId=+e.target.value; renderPredictDrinks(); });
 document.getElementById('predScore').addEventListener('input',updatePredResult);
@@ -1754,7 +1811,7 @@ async function boot(){
   source = aiExists() ? 'ai' : (committeeExists() ? 'committee' : (peopleExists()?'people':'committee'));
   teamSource = teamAiExists() ? 'ai' : (teamVotes.some(v=>!v.committee)?'people':(teamVotes.some(v=>v.committee)?'committee':'ai'));
   initBallotFromVotes(); initTeamBallot();
-  updateCStat(); renderAll();
+  updateCStat(); renderAll(); initChampHero();
 }
 
 /* live-ish refresh: pull latest votes when the tab regains focus and every 30s,
