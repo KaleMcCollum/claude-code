@@ -1779,7 +1779,7 @@ const Game = {
       grounded:true, galaxy:null, system:null, sysId:0, atSlot:0, spawn, fleets:[],
       allegiance:{ govId:null, factionIds:[], align:0 },   // start Independent & Neutral; earn it in play
       activeShip:null, bounties:[], contracts:[], gear:[], crew:[], officers:{}, lastBillYear:0, job:null,
-      missions:[], stimReady:false, log:[],
+      missions:[], figures:[], stimReady:false, log:[],
     };
     state.world.occupied=true;   // your homeworld is inhabited (your own kind live here)
     state.world.settle="colony"; // a working spaceport — always has a yard so you can leave
@@ -1918,7 +1918,7 @@ function advanceTime(n){
   const yrs=Math.floor(state.actions/ACTIONS_PER_YEAR);
   if(state.lastBillYear==null) state.lastBillYear=yrs;
   const prevYr=state.lastBillYear;
-  while(state.lastBillYear<yrs){ chargeUpkeep(); empireYear(); tickPolitics(); state.lastBillYear++; }
+  while(state.lastBillYear<yrs){ chargeUpkeep(); empireYear(); tickPolitics(); tickFigures(); state.lastBillYear++; }
   if(yrs>prevYr){                       // a year turned over: markets refresh stock
     state.marketStock={};
     Game.logMsg(`A year turns over — markets across the galaxy refresh their stock.`,"sys");
@@ -3165,6 +3165,7 @@ const UI = {
           return `<div class="krow"><span class="lbl">${own?`<span style="color:${empireColor()}">&#9873;</span> `:hold?'<span class="gold">&#9874;</span> ':''}${p.fav?'<span class="gold">&#9733;</span> ':''}${w.name} <span class="dim small">&middot; ${inhab?settleDef(w.settle).name:cap(w.biomeName)}</span></span>
             <span class="kv"><span class="chip ${w.danger>=7?'r':w.danger>=4?'gold':'g'}" title="danger">&#9760;${w.danger}</span>${reach&&aboard?`<button class="small" data-mapgo="${sel.id}:${i}">${isHere?'&#9992;':'&#9650;'}</button>`:''} <button class="small ghost" data-fav="${sel.id}:${i}">${p.fav?'&#9733;':'&#9734;'}</button></span></div>`; }).join("")}</div>`
           :ch?`<p class="small dim" style="margin-top:6px">No worlds charted here yet — jump in to explore them.</p>`:`<p class="small dim" style="margin-top:6px">A star on your sensors, not yet charted. Jump in to reveal it.</p>`}
+        ${(()=>{ const fh=figuresAt(sel.id); return fh.length?`<div style="margin-top:8px"><div class="small dim" style="margin-bottom:2px">Known figures here</div>${fh.map(f=>`<div class="krow"><span class="lbl"><span style="color:${STANDING_COL[f.standing]}">&#9670;</span> ${f.name} <span class="dim small">&middot; ${cap(careerName(f.career))}${f.fleet?` &middot; ${f.fleet.ships} ${f.fleet.shipName}${f.fleet.ships!==1?"s":""}`:""}</span></span><span class="kv small" style="color:${STANDING_COL[f.standing]}">${f.standing}</span></div>`).join("")}</div>`:""; })()}
         <div class="row" style="margin-top:9px;gap:6px;flex-wrap:wrap">
           ${isHere?'<span class="small green">&#9679; your group is here</span>'
             :reach&&aboard?`<button class="small primary" data-mapjump="${sel.id}">&#9650; Set course here</button>`
@@ -3328,6 +3329,12 @@ const UI = {
     (state.empire&&state.empire.threats||[]).forEach(t=>{ const ts=state.galaxy.systems[t.sysId]; if(!ts) return;
       const tx=sx(ts.x), ty=sy(ts.y); if(!inView(tx,ty,12)) return;
       els+=`<text x="${(tx+5).toFixed(1)}" y="${(ty+6).toFixed(1)}" fill="#e74c3c" font-size="9" text-anchor="middle">&#9888;</text>`; });
+    // notable figures you know — a diamond in their standing's colour where they were last known to be.
+    // friends/allies/rivals are always locatable; ones you merely know of show only where you can see.
+    (state.figures||[]).forEach(f=>{ const fs=state.galaxy.systems[f.sysId]; if(!fs) return;
+      if(f.standing==="known" && !(revealAll||fs.seen||fs.discovered)) return;
+      const fx=sx(fs.x), fy=sy(fs.y); if(!inView(fx,fy,8)) return;
+      els+=`<text x="${(fx-5).toFixed(1)}" y="${(fy-4).toFixed(1)}" fill="${STANDING_COL[f.standing]||'#9fb0cc'}" font-size="8" text-anchor="middle" stroke="#0a0e16" stroke-width="0.5" paint-order="stroke">&#9670;</text>`; });
     return `<svg viewBox="0 0 ${SIZE} ${SIZE}" class="gmap" preserveAspectRatio="xMidYMid meet">${els}</svg>
       <p class="small dim center" style="margin-top:4px">&#9678; ${originId===state.sysId?"you":"fleet"} &middot; &#9737; core &middot; &#9733; capital &middot; &#9679; charted (tinted by ruling power) &middot; &#8728; contact${reach>0?' &middot; ring = jump range':''}</p>`;
   },
@@ -3362,6 +3369,7 @@ const UI = {
           ${jobOf(person.career)&&!person.askedJob&&!isHostile(person)?`<button id="meetJob" class="primary">&#128188; Ask for work <span class="small dim">(${Math.round(jobOf(person.career).chance*100)}% &middot; ${commas(jobPayHere(person.career))}c/yr)</span></button>`:""}
           ${HIRE_ROLES[person.career]&&!isHostile(person)?`<button id="meetHire" class="primary">Offer a job &middot; ${careerName(person.career)} &middot; ${commas(HIRE_ROLES[person.career].fee)}c</button>`:""}
           ${isHostile(person)?`<button id="meetAttack" class="primary">&#9876; Attack &amp; claim the bounty</button>`:""}
+          ${!isHostile(person)?(person._befriended?`<span class="chip g" style="align-self:center">&#129309; a friend</span>`:`<button id="meetBefriend">&#129309; Befriend</button>`):""}
           <button id="meetMore" class="ghost">${personExpand?"Show less":"Learn more"}</button>
           <button id="meetFinish" class="ghost">Leave conversation</button>
         </div>
@@ -3420,6 +3428,7 @@ const UI = {
       <button class="full" data-goto="char">&#9670; Self <span class="dim">&middot; ${state.name}</span></button>
       <button class="full" data-cx="crew">&#128101; Crew <span class="dim">&middot; ${crew.length}</span></button>
       <button class="full" data-cx="people">&#128483; Strangers <span class="dim">&middot; ${strangers.length}</span></button>
+      <button class="full" data-cx="figures">&#9670; Notable figures <span class="dim">&middot; ${(state.figures||[]).length}</span></button>
       <button class="full" data-cx="races">&#9670; Races <span class="dim">&middot; ${races.length}</span></button>
       <button class="full" data-cx="wildlife">&#128062; Wildlife species <span class="dim">&middot; ${wild.length}</span></button>
       <button class="full" data-cx="worlds">&#9737; Planets &amp; systems <span class="dim">&middot; ${worlds.length}</span></button>
@@ -3501,6 +3510,23 @@ const UI = {
       ${originCard(p)}
       ${speciesSheet(p)}`:""}
     ${talkable?"":`<div class="card"><button class="ghost full center" id="backPeople" data-back="${backTo}">&larr; Back to ${p.hired?'crew':'strangers'}</button></div>`}`;
+  },
+  /* people worth knowing — fleet captains, brokers, crime lords, and the friends you've made */
+  screen_cx_figures(){
+    const figs=(state.figures||[]).slice().sort((a,b)=>(STANDING_RANK[b.standing]||0)-(STANDING_RANK[a.standing]||0));
+    return `${this.statHeader()}
+    <div class="card sheet"><h2>&#9670; Notable figures <span class="dim small">&middot; ${figs.length}</span></h2>
+      <p class="small dim">People worth knowing — captains with fleets, wealthy brokers, crime lords, and the friends you make. They roam the galaxy and get up to things; friends and allies send word of their doings.</p></div>
+    ${figs.length?figs.map(f=>{ const sys=state.galaxy&&state.galaxy.systems[f.sysId], col=STANDING_COL[f.standing]||"#9fb0cc";
+      return `<div class="card sheet" style="border-color:${col}44">
+        <div class="row between"><span><span style="color:${col}">&#9670;</span> <b>${f.name}</b> <span class="dim small">&middot; ${cap(careerName(f.career))}${f.raceName?` &middot; ${f.raceName}`:""}</span></span>
+          <span class="tag" style="color:${col}">${f.standing}</span></div>
+        <p class="small" style="margin:4px 0">${f.status?cap(f.status):"Making their way"}.</p>
+        <div class="chips">${f.fleet?`<span class="chip">&#9876; ${f.fleet.ships} ${f.fleet.shipName}${f.fleet.ships!==1?"s":""}</span>`:""}${(f.wealth||0)>=10000?`<span class="chip gold">&#128176; ${commas(f.wealth)}c</span>`:""}<span class="chip">&#128205; ${sys?sys.name:"parts unknown"}</span></div>
+        ${sys?`<button class="small ghost" data-figloc="${f.sysId}" style="margin-top:6px">Find on map</button>`:""}
+      </div>`; }).join("")
+      :`<div class="card"><p class="small dim">No notable figures yet. Meet a fleet captain or a wealthy broker out in the galaxy — or befriend someone — and they'll be remembered here.</p></div>`}
+    ${this.codexBack()}`;
   },
   screen_cx_races(){
     const races=Object.values(state.codex.races||{}).sort((a,b)=>RARITY.index(a.tier)-RARITY.index(b.tier));
@@ -4527,6 +4553,7 @@ const UI = {
     }
     if(screen.indexOf("cx_")===0){
       const bk=$("#cxBack"); if(bk) bk.onclick=()=>UI.render("codex");
+      app.querySelectorAll("[data-figloc]").forEach(b=> b.onclick=()=>{ const sid=+b.dataset.figloc, s=state.galaxy&&state.galaxy.systems[sid]; if(s){ mapSel=sid; mapView={cx:s.x,cy:s.y,span:36}; UI.render("map"); } });
       const bp=$("#backPeople"); if(bp) bp.onclick=()=>{ convo=null; personExpand=false; UI.render(bp.dataset.back||"cx_people"); };
       const lc=$("#leaveConvo"); if(lc) lc.onclick=()=>{ const p=(state.codex.people||[])[viewingPerson]; convo=null; personExpand=false; UI.render(p&&p.hired?"cx_crew":"cx_people"); };
       const lm=$("#learnMore"); if(lm) lm.onclick=()=>{ personExpand=!personExpand; UI.render("cx_person"); };
@@ -4704,6 +4731,7 @@ const UI = {
     const mj=$("#meetJob"); if(mj) mj.onclick=()=>askForJob(m.person, ()=>UI.render("meet"));
     const mh=$("#meetHire"); if(mh) mh.onclick=()=>{ readRace(); hireFromMeeting(); };
     const mm=$("#meetMore"); if(mm) mm.onclick=()=>{ personExpand=!personExpand; UI.render("meet"); };
+    const mbf=$("#meetBefriend"); if(mbf) mbf.onclick=()=>befriendPerson();
     const mtj=$("#meetTakeJob"); if(mtj) mtj.onclick=()=>takeCrowdMission(m.person);
     const mbg=$("#meetBuyGear"); if(mbg) mbg.onclick=()=>buyCrowdGear(m.person);
     const ma=$("#meetAttack"); if(ma) ma.onclick=()=>{ readRace(); meetAttack(); };
@@ -5874,6 +5902,14 @@ function takeCrowdMission(person){
   Game.logMsg(`&#128203; ${(person.name||"They").split(" ")[0]} sets you on a job: <b>${m.title}</b>. First: ${m.steps[0].desc}.`,"good");
   Game.save(); UI.render("meet"); UI.flashLog();
 }
+/* extend a hand — mark this person a friend; they become a figure you follow (recorded when you leave) */
+function befriendPerson(){
+  const m=meeting; if(!m||!m.person||isHostile(m.person)) return;
+  m.person._befriended=true;
+  if(m.crowd){ const cp=crowdPerson(m.crowd.locId, m.crowd.cid); if(cp){ cp._befriended=true; cp.rel="friend"; } }
+  Game.logMsg(`You and <b>${m.person.name.split(" ")[0]}</b> part as friends.`,"good"); toast("A friend made");
+  Game.save(); UI.render("meet");
+}
 /* buy the gear a crowd member is fencing */
 function buyCrowdGear(person){
   const h=person&&person.hook; if(!h||h.type!=="goods") return;
@@ -5882,6 +5918,71 @@ function buyCrowdGear(person){
   Game.logMsg(`You buy <b style="color:${rarityColor(h.gear.rarity)}">${h.gear.name}</b> from ${(person.name||"a trader").split(" ")[0]} for ${commas(h.price)}c.`,"good");
   person.hook=null; Game.save(); UI.render("meet"); UI.flashLog();
 }
+/* ===================== NOTABLE FIGURES — people worth knowing =====================
+   Most folk you meet are passing strangers. But some stand out — a captain with a fleet, a wealthy
+   broker, a crime lord — and anyone you befriend. Those become tracked figures: they have a place in
+   the galaxy, they get up to things over the years, and you can find them on the map and follow their
+   fortunes. Friends and allies send word of what they're up to. */
+function personNotable(p){
+  if(!p) return false;
+  if(p.force && p.force.ships>=2) return true;                          // commands a fleet
+  if(["crimeBoss","rebelCmd","warlord"].includes(p.career)) return true; // a power in their own right
+  if(p.ship) return true;                                               // a ship captain
+  if((p.credits||0)>=20000) return true;                               // wealthy enough to matter
+  return false;
+}
+function figureStandingFor(p){
+  if(isHostile(p)) return personNotable(p) ? "rival" : null;
+  if(p._befriended) return "friend";
+  if(personNotable(p)) return "known";
+  return null;
+}
+const STANDING_RANK={known:1, rival:1, friend:2, ally:3};
+function rollFigureStatus(f){
+  const ships=f.fleet?f.fleet.ships:0;
+  if(ships>=2) return pick(["marshalling their fleet","raiding the shipping lanes","pressing a claim on a rival's worlds","recruiting more guns","regrouping after a hard fight"]);
+  if(ships>=1) return pick(["running guns between the stars","hunting a score worth the risk","holed up and laying low"]);
+  if((f.wealth||0)>=50000) return pick(["expanding their trade empire","brokering a fat deal","buying up hulls and holdings","courting the wealthy and dangerous"]);
+  return pick(["running cargo the long way round","chasing their next big score","drinking away a bad run","making a quiet living"]);
+}
+function nearestSystemsTo(sysId, n){
+  const sys=(state.galaxy&&state.galaxy.systems)||[], s0=sys[sysId]; if(!s0) return [];
+  return sys.filter(s=>s&&s.id!==sysId).map(s=>({s,d:Math.hypot(s.x-s0.x,s.y-s0.y)})).sort((a,b)=>a.d-b.d).slice(0,n).map(x=>x.s);
+}
+function recordFigure(person, codexIdx, standing){
+  if(!standing) return null;
+  state.figures=state.figures||[];
+  let f=state.figures.find(x=>(codexIdx!=null&&x.codexIdx===codexIdx) || (x.name===person.name && x.career===person.career));
+  const fleet = (person.force&&person.force.ships>0) ? {ships:person.force.ships, shipName:person.force.shipName||"ship"}
+    : (person.ship ? {ships:1, shipName:(person.ship.name||"ship")} : null);
+  if(!f){ f={ id:"fig"+(state._figSeq=(state._figSeq||0)+1), name:person.name, career:person.career,
+      raceName:person.raceName||(person._draw&&person._draw.race&&person._draw.race.name)||"",
+      codexIdx:(codexIdx==null?null:codexIdx), sysId:state.sysId, slot:state.atSlot, standing, fleet,
+      wealth:person.credits||0, status:rollFigureStatus({fleet, wealth:person.credits||0}), lastYear:curYear() };
+    state.figures.push(f);
+    if(standing==="friend") Game.logMsg(`&#129309; You count <b>${f.name}</b> a friend now — you'll hear how they fare.`,"good");
+  } else {
+    if((STANDING_RANK[standing]||1) > (STANDING_RANK[f.standing]||1)) f.standing=standing;
+    if(fleet) f.fleet=fleet; if(person.credits!=null) f.wealth=person.credits; if(codexIdx!=null) f.codexIdx=codexIdx;
+    f.sysId=state.sysId; f.slot=state.atSlot;
+  }
+  return f;
+}
+/* each year, the figures you know roam the stars and get up to things; friends & allies send word */
+function tickFigures(){
+  const figs=state.figures||[]; if(!figs.length) return; const yr=curYear();
+  figs.slice().forEach(f=>{ if(f.lastYear===yr) return;
+    if(chance(f.standing==="rival"?0.05:0.03)){                         // some meet their end
+      if(f.standing==="friend"||f.standing==="ally") addNews(`Word reaches you: your ${f.standing} <b>${f.name}</b> has met their end.`,"bad");
+      state.figures=state.figures.filter(x=>x!==f); return; }
+    if(chance(0.5) && state.galaxy){ const near=nearestSystemsTo(f.sysId, 6); if(near.length){ const t=pick(near); f.sysId=t.id; f.slot=0; } }
+    if(f.fleet && chance(0.4)){ f.fleet.ships=clamp(f.fleet.ships + (chance(0.55)?1:-1), 0, 20); if(f.fleet.ships<=0) f.fleet=null; }
+    f.status=rollFigureStatus(f); f.lastYear=yr;
+    if((f.standing==="friend"||f.standing==="ally") && chance(0.5)) addNews(`Your ${f.standing} <b>${f.name}</b> is ${f.status}.`,"sys");
+  });
+}
+const STANDING_COL={friend:"#39c07a", ally:"#caa84a", rival:"#e74c3c", known:"#9fb0cc"};
+function figuresAt(sysId){ return (state.figures||[]).filter(f=>f.sysId===sysId); }
 function atMissionTarget(t){ return t && state.sysId===t.sysId && (t.slot==null || state.atSlot===t.slot); }
 function payoutMission(m){
   const r=m.reward||{}, bits=[];
@@ -5950,6 +6051,8 @@ function finishMeeting(){
     Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
     checkObjectives();
   } else if(cp){ cp.met=true; }
+  const st=figureStandingFor(m.person);   // someone worth remembering? track them as a figure
+  if(st) recordFigure(m.person, cp?cp.codexIdx:(state.codex.people.length-1), st);
   const back=m.back; meeting=null; Game.save(); UI.render(back); UI.flashLog();
 }
 /* The shipyard buys used hulls at a fair fraction of their worth — enough that a ship snapped up
