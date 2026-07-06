@@ -2404,7 +2404,7 @@ const UI = {
         ${amen.includes("depot")?`<button id="vDepot">&#128230; Depot</button>`:""}
         ${amen.includes("market")?`<button id="vMarket">&#9879; Market</button>`:""}
         ${amen.includes("broker")?`<button id="vBroker">&#128225; Info Broker</button>`:""}
-        ${amen.includes("talk")?`<button id="vTalk">&#128483; Talk to a stranger</button>`:""}
+        ${amen.includes("talk")&&!amen.includes("tavern")?`<button id="vStreets">&#128483; Around town</button>`:""}
         ${amen.includes("shipyard")?`<button id="vShipyard">&#128736; Shipyard</button>`:""}
         ${isInhabited(w)?`<button id="vRaces">&#127937; Speeder races</button>`:""}
         <button id="vWilds" class="primary">${worldCivility(w)>=0.7?"&#127961; ":"&#127807; "}${exploreLabel(w)}</button>
@@ -2443,15 +2443,30 @@ const UI = {
     return `
     ${this.statHeader()}
     <div class="card"><h2>&#127866; ${w.name} Tavern</h2>
-      <p class="small dim">Smoke, music, and a hundred stories you haven't heard.</p></div>
+      <p class="small dim">Smoke, music, and a hundred stories you haven't heard. A few faces you know; the rest are strangers &mdash; until you make it your business to change that.</p></div>
     <div class="card"><h3>Who's here</h3>
-      <button class="full" id="tPatron">&#128483; Talk to a patron</button>
-      <button class="full" id="tBartender">&#127867; Talk to the bartender</button>
-      <button class="full" id="tBounty">&#127919; Talk to a bounty hunter</button>
-      ${(state.bounties||[]).length?`<button class="full primary" id="tRedeem">&#9878; Redeem bounties (${state.bounties.length}) &middot; +${commas(state.bounties.reduce((s,b)=>s+b.value,0))}c</button>`:""}
-      <button class="full ghost" id="tDrink">Buy a round &middot; 10c (rest your bones)</button>
+      <div class="frow"><div class="finfo"><div class="nm">&#127867; The Bartender <span class="chip g small">known</span></div><div class="sub">Rumors, the job board, and buys your charts</div></div><button class="small" id="tBartender">Talk</button></div>
+      <div class="frow"><div class="finfo"><div class="nm">&#127919; Bounty Hunter <span class="chip g small">known</span></div><div class="sub">Posts contracts on wanted marks</div></div><button class="small" id="tBounty">Talk</button></div>
+      <div style="height:6px"></div>
+      ${crowdRoster("tavern")}
+      ${(state.bounties||[]).length?`<button class="full primary" id="tRedeem" style="margin-top:8px">&#9878; Redeem bounties (${state.bounties.length}) &middot; +${commas(state.bounties.reduce((s,b)=>s+b.value,0))}c</button>`:""}
+      <button class="full ghost" id="tDrink" style="margin-top:6px">Buy a round &middot; 10c (rest your bones)</button>
+      <p class="small dim" style="margin-top:7px">The crowd turns over as time passes &mdash; only those you befriend or cross will still be here when you return.</p>
     </div>
     <div class="card"><button id="tBack" class="ghost full center">&larr; Back outside</button></div>`;
+  },
+  /* a generic public place (used for worlds with no tavern): the street crowd */
+  screen_streets(){
+    const w=state.world;
+    return `
+    ${this.statHeader()}
+    <div class="card"><h2>&#127961; Around ${w.name}</h2>
+      <p class="small dim">You walk the settlement's ways, sizing up the folk going about their day.</p></div>
+    <div class="card"><h3>Who's about</h3>
+      ${crowdRoster("streets")}
+      <p class="small dim" style="margin-top:7px">The faces change as time passes &mdash; only those you befriend or cross will still be around when you return.</p>
+    </div>
+    <div class="card"><button id="stBack" class="ghost full center">&larr; Back</button></div>`;
   },
 
   /* ---------- BOUNTY BOARD (a hunter's posted contracts) ---------- */
@@ -4229,7 +4244,7 @@ const UI = {
       const vd=$("#vDepot"); if(vd) vd.onclick=()=>UI.render("depot");
       const vb=$("#vBroker"); if(vb) vb.onclick=()=>UI.render("broker");
       const vm=$("#vMarket"); if(vm) vm.onclick=()=>UI.render("market");
-      const vk=$("#vTalk"); if(vk) vk.onclick=()=>startMeeting("Out among the crowds you fall into talk with a passing stranger.","hub");
+      const vst=$("#vStreets"); if(vst) vst.onclick=()=>UI.render("streets");
       const vrc=$("#vRaces"); if(vrc) vrc.onclick=()=>UI.render("races");
       $("#vRest").onclick=()=>{
         if(advanceTime()) return;                     // resting is one action
@@ -4273,7 +4288,7 @@ const UI = {
       $("#ofBack").onclick=()=>{ mountPick=null; UI.render("shipyard"); };
     }
     if(screen==="tavern"){
-      $("#tPatron").onclick=()=>startMeeting("A patron at a corner table waves you over.","tavern");
+      app.querySelectorAll("[data-crowd]").forEach(b=> b.onclick=()=>{ const [loc,cid]=b.dataset.crowd.split(":"); meetCrowdPerson(loc, +cid, "tavern"); });
       $("#tBartender").onclick=()=>UI.render("bartender");
       $("#tBounty").onclick=()=>openBountyBoard();
       const rd=$("#tRedeem"); if(rd) rd.onclick=()=>redeemBounties();
@@ -4281,6 +4296,10 @@ const UI = {
         state.credits-=10; state.hp=Math.min(Game.effMaxHp(),state.hp+Math.round(Game.effMaxHp()*0.25));
         state.energy=Game.effMaxEnergy(); Game.logMsg("You buy a round and rest a while. Energy restored, wounds eased.","good"); Game.save(); UI.render("tavern"); UI.flashLog(); };
       $("#tBack").onclick=()=>UI.render("hub");
+    }
+    if(screen==="streets"){
+      app.querySelectorAll("[data-crowd]").forEach(b=> b.onclick=()=>{ const [loc,cid]=b.dataset.crowd.split(":"); meetCrowdPerson(loc, +cid, "streets"); });
+      $("#stBack").onclick=()=>UI.render("hub");
     }
     if(screen==="bartender"){
       const bs=$("#bSell"); if(bs) bs.onclick=()=>sellInformation();
@@ -5427,6 +5446,59 @@ const RUMORS=[
   "the dockmaster's looking for hands to haul cargo off-world, if you've a ship.",
   "they whisper of a desolate world where no one lives at all.",
 ];
+/* ===================== LOCATION CROWDS — a finite, living cast at each place =====================
+   A place (tavern, streets, speedway...) holds a small fixed crowd of people. Strangers stay
+   anonymous until you approach them; the crowd turns over as time passes, but anyone you've
+   befriended or crossed lingers. No more talking to an infinite parade of nobodies. */
+const CROWD_TTL=4;                                   // actions before a place's crowd turns over
+const CROWD_SIZE={ tavern:5, streets:4, speedway:4, market:3 };
+function crowdKey(){ return (state.sysId??0)+":"+(state.atSlot??0); }
+function ensureCrowd(locId, size){
+  size = size || CROWD_SIZE[locId] || 4;
+  state.crowds = state.crowds || {};
+  const wk = crowdKey(), wc = state.crowds[wk] = state.crowds[wk] || {};
+  let c = wc[locId];
+  const stale = !c || ((state.actions||0) - (c.stamp||0) >= CROWD_TTL);
+  if(stale){
+    const keep = c ? c.people.filter(p=>p.rel && p.rel!=="neutral" && !p.hired && !p.gone) : [];   // friends & rivals linger
+    const people = keep.slice(0, size);
+    let guard=0;
+    while(people.length < size && guard++ < 24){
+      const want = (locId==="speedway"); // a speedway crowd leans toward racers/pilots
+      const draw=drawRace(), person=Gen.person(draw.race);
+      if(!person.name) person.name=genName("person");
+      person.cid = (state._cidSeq=(state._cidSeq||0)+1);
+      person.met=false; person.rel="neutral"; person.locHint=(state._cidSeq)%5;
+      person._draw={ id:draw.id, race:draw.race, isNew:draw.isNew };
+      people.push(person);
+    }
+    c = wc[locId] = { stamp: state.actions||0, people };
+  }
+  return c;
+}
+function crowdPerson(locId, cid){ const wc=(state.crowds||{})[crowdKey()], c=wc&&wc[locId]; return c?c.people.find(p=>p.cid===cid):null; }
+const CROWD_HINTS=["nursing a drink","watching the door","playing a hand of cards","counting a stack of credits","keeping to the shadows"];
+function crowdHint(p){ return `a ${p.build||"weathered"} figure ${CROWD_HINTS[p.locHint||0]}`; }
+/* one row per person in a place — anonymous until met, tagged once you know them */
+function crowdRoster(locId){
+  const crowd=ensureCrowd(locId).people.filter(p=>!p.gone && !p.hired);
+  if(!crowd.length) return `<p class="small dim">Quiet right now — nobody worth approaching. Come back after some time passes.</p>`;
+  return crowd.map(p=>{ const met=p.met;
+    const relTag = p.rel==="enemy"?' <span class="chip r small">rival</span>':p.rel==="friend"?' <span class="chip g small">friend</span>':'';
+    const hostileTag = met&&isHostile(p)?' <span class="chip r small">&#9760; wanted</span>':'';
+    return `<div class="frow"><div class="finfo"><div class="nm">${met?`${p.name}${relTag}${hostileTag}`:'<span class="dim">Stranger</span>'}</div>
+      <div class="sub">${met?`${cap(careerName(p.career))}${p.raceName?` &middot; ${p.raceName}`:''}`:crowdHint(p)}</div></div>
+      <button class="small ${!met?'primary':''}" data-crowd="${locId}:${p.cid}">${met?'Talk':'Approach'}</button></div>`; }).join("");
+}
+/* open a conversation with a specific member of a place's crowd (persistent identity) */
+function meetCrowdPerson(locId, cid, back){
+  const p=crowdPerson(locId, cid); if(!p){ toast("They've moved on"); return; }
+  const id=p._draw.id, isNew=!state.codex.races[id], race=state.codex.races[id]||p._draw.race;
+  const intro = p.met ? `You settle in across from ${p.name.split(" ")[0]} again.` : `You cross the room and introduce yourself to the stranger.`;
+  meeting={ draw:{id, race, isNew}, person:p, intro, back:back||"tavern", step:2,
+    where:state.world?state.world.name:"deep space", crowd:{locId, cid} };
+  personExpand=false; shipDealMsg=null; UI.render("meet");
+}
 function startMeeting(intro, back){
   // if you've a bounty on someone holed up on THIS world, asking around may turn them up
   const hit=activeContractHere();
@@ -5453,16 +5525,22 @@ function hireFromMeeting(){
   Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
   checkObjectives();
   const idx=state.codex.people.length-1;
+  if(m.crowd){ const cp=crowdPerson(m.crowd.locId, m.crowd.cid); if(cp){ cp.hired=true; cp.gone=true; } }   // they leave the crowd to join you
   viewingPerson=idx; personExpand=false; meeting=null;
   hireCrew(idx);   // deducts the fee, brings them aboard, and shows their crew page
 }
 function finishMeeting(){
   const m=meeting;
-  if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
-  m.person.raceName=m.draw.race.name;
-  recordMeeting(m.person, m.draw.race, m.where || (state.world?state.world.name:"deep space"));
-  Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
-  checkObjectives();
+  const cp = m.crowd ? crowdPerson(m.crowd.locId, m.crowd.cid) : null;
+  const already = cp && cp.met;              // a crowd member you've already recorded on a prior chat
+  if(!already){
+    if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
+    m.person.raceName=m.draw.race.name;
+    recordMeeting(m.person, m.draw.race, m.where || (state.world?state.world.name:"deep space"));
+    if(cp){ cp.met=true; cp.codexIdx=state.codex.people.length-1; if(isHostile(cp)) cp.rel="enemy"; }  // mark BEFORE side-effects so a crowd member is never double-recorded
+    Game.logMsg(`You meet ${m.person.name}, ${article(m.draw.race.name)} ${m.draw.race.name}${m.draw.isNew?" — new to your Codex":""}.`,"good");
+    checkObjectives();
+  } else if(cp){ cp.met=true; }
   const back=m.back; meeting=null; Game.save(); UI.render(back); UI.flashLog();
 }
 /* The shipyard buys used hulls at a fair fraction of their worth — enough that a ship snapped up
@@ -6637,11 +6715,18 @@ function buyYarderShip(){
 }
 function meetAttack(){
   const m=meeting;
-  if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
-  m.person.raceName=m.draw.race.name;
-  recordMeeting(m.person, m.draw.race, m.where || (state.world?state.world.name:"deep space"));
-  checkObjectives();
-  const idx=state.codex.people.length-1; meeting=null;
+  const cp = m.crowd ? crowdPerson(m.crowd.locId, m.crowd.cid) : null;
+  let idx;
+  if(cp && cp.met && cp.codexIdx!=null){ idx=cp.codexIdx; }   // already on record from an earlier chat
+  else{
+    if(m.draw.isNew) state.codex.races[m.draw.id]=m.draw.race;
+    m.person.raceName=m.draw.race.name;
+    recordMeeting(m.person, m.draw.race, m.where || (state.world?state.world.name:"deep space"));
+    checkObjectives();
+    idx=state.codex.people.length-1;
+  }
+  if(cp){ cp.gone=true; }                    // drawn steel — they're no longer a quiet patron
+  meeting=null;
   startDuel(idx);
 }
 /* charged once per year of play: crew wages + ship maintenance */
