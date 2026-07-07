@@ -347,7 +347,6 @@
     <div id="forge">
       <div class="frow">
         <div class="fcol"><label for="f-house">House name</label><input type="text" id="f-house" maxlength="18" placeholder="e.g. Ashgrove"></div>
-        <div class="fcol"><label for="f-words">House words</label><input type="text" id="f-words" maxlength="34" placeholder="e.g. Rooted in Stone"></div>
       </div>
       <div class="frow">
         <div class="fcol"><label>Sigil</label><div class="sigils" id="f-sigils"></div></div>
@@ -1987,7 +1986,7 @@ function beginGame(){
  const nm=$('#begin-name').value.trim();
  const hn=$('#f-house').value.trim()||'Ashgrove';
  if(($('#f-realm')&&$('#f-realm').value)==='random')generateWorld();
- enterRealm({name:nm,house:'House '+hn,words:$('#f-words').value.trim()||'Ours Yet to Write',
+ enterRealm({name:nm,house:'House '+hn,words:'Ours Yet to Write',
    sigil:forge.sigil,color:forge.color,perk:null});
 }
 function enterGame(){
@@ -2132,7 +2131,7 @@ const DRAGONS={
 const DHATCH=[['hatchling',45],['drake',30],['wyvern',18],['wyrm',7]];
 const KEEP_NAMES2=['None','Palisade','Wooden Holdfast','Stone Keep','Great Castle'];
 const BUILDINGS={
- fields: {name:'Fields',       wood:15,stone:5, gold:10, max:3, desc:'+3 food a turn. Rich river- and coast-side soil doubles it.'},
+ fields: {name:'Fields',       wood:15,stone:5, gold:10, max:50, desc:'+100 food a turn — each soul eats 1. Rich river- and coast-side soil yields more.'},
  sawmill:{name:'Sawmill',      wood:20,stone:5, gold:15, max:3, req:'forest', desc:'+3 wood a turn. Needs woodland nearby.'},
  quarry: {name:'Quarry',       wood:10,stone:20,gold:20, max:3, req:'stone',  desc:'+3 stone a turn. Needs high country nearby.'},
  homes:  {name:'Lowborn Homes',wood:20,stone:5, gold:15, max:5000, desc:'Houses 10 smallfolk each — your population cap and levy pool. Pays no rent.'},
@@ -2145,19 +2144,20 @@ const BUILDINGS={
 const SPEED=30, ROADMULT=1.6;
 const TIER_CAP={capital:1,city:10,town:30};          // the realm only supports so much
 const BUILD_CAPS={                                   // villages farm; capitals house
- village:{fields:6, sawmill:2,quarry:2,homes:50,  manor:1, smith:1,walls:1,granary:2},
- town:   {fields:10,sawmill:3,quarry:3,homes:250, manor:5, smith:1,walls:1,granary:4},
- city:   {fields:14,sawmill:4,quarry:4,homes:1000,manor:25,smith:1,walls:1,granary:8},
- capital:{fields:16,sawmill:5,quarry:5,homes:5000,manor:50,smith:1,walls:1,granary:12},
+ village:{fields:50,sawmill:2,quarry:2,homes:50,  manor:1, smith:1,walls:1,granary:2},
+ town:   {fields:25,sawmill:3,quarry:3,homes:250, manor:5, smith:1,walls:1,granary:4},
+ city:   {fields:25,sawmill:4,quarry:4,homes:1000,manor:25,smith:1,walls:1,granary:8},
+ capital:{fields:25,sawmill:5,quarry:5,homes:5000,manor:50,smith:1,walls:1,granary:12},
 };
 function tierCounts(){const c={capital:0,city:0,town:0};for(const t of world.towns)if(c[t.type]!=null)c[t.type]++;return c;}
 function slotFree(next){return tierCounts()[next]<TIER_CAP[next];}
-function charterCosts(type){return type==='village'?{next:'town',pop:800,gold:150,wood:100,stone:60}
- :type==='town'?{next:'city',pop:4000,gold:500,wood:250,stone:300}
- :type==='city'?{next:'capital',pop:12000,gold:1500,wood:600,stone:900}:null;}
-function townEats(t){return Math.ceil((t.population||0)/150);}
+// thresholds sit below each tier's housing cap (village 502, town 2510, city 10050) and its gold vault
+function charterCosts(type){return type==='village'?{next:'town',pop:450,gold:45,wood:100,stone:60}
+ :type==='town'?{next:'city',pop:2200,gold:200,wood:250,stone:300}
+ :type==='city'?{next:'capital',pop:9000,gold:800,wood:600,stone:900}:null;}
+function townEats(t){return t.population||0;}   // every soul eats one food a turn
 function homeCap(t){const b=t.b||{};return ((b.homes||0)*10)+((b.manor||0)*2);}
-function foodCapTotal(){let c=0;for(const t of myTowns())c+=200+((t.b&&t.b.granary)||0)*250;return c;}
+function foodCapTotal(){let c=0;for(const t of myTowns())c+=1000+(t.population||0)+((t.b&&t.b.fields)||0)*100+((t.b&&t.b.granary)||0)*500;return c;}
 function initDem(t){const p=t.population||200;
  t.dem={children:Math.round(p*0.25),men:Math.round(p*0.30),women:Math.round(p*0.30),elders:Math.round(p*0.15)};}
 function demTick(t){
@@ -2213,6 +2213,9 @@ function bannerColor(id){if(id==='player')return R?R.meColor:'#8a2f2b';return (F
 function bannerName(id){if(id==='player')return R?R.meName:'your house';return (F[id]&&F[id].name)||'the free folk';}
 const POP_CAP={village:2500,town:12000,city:45000,capital:130000,hill:400,keep:600};
 const GARR_CAP={village:400,town:1800,city:6000,capital:12000,hill:200,keep:1500};
+const GOLD_CAP={village:50,town:250,city:1000,capital:5000,hill:50,keep:250};
+// your treasury holds only so much — each highborn manor adds 10 to the vault
+function goldCapTotal(){let c=0;for(const t of myTowns())c+=(GOLD_CAP[t.type]||50)+10*((t.b&&t.b.manor)||0);return c;}
 function garrisonCap(t){return Math.min(GARR_CAP[t.type]||400, Math.round((t.population||0)*0.10)+40);}
 function clampTroops(tr,cap){const tot=troopsTotal(tr);if(tot<=cap||tot<=0)return tr;const f=cap/tot;for(const u in tr)tr[u]=Math.floor(tr[u]*f);return tr;}
 // defenders in a holdfast fight far above their number: tier, then keep, then walls
@@ -2250,7 +2253,7 @@ function terrainText(t){const T=t.terrain||{};const p=[];
  return p.length?p.join(' · '):'poor open ground';}
 function production(t){
  const T=t.terrain||{water:0,forest:0,stone:0},b=t.b||{};
- const food=(2+T.water*3+(b.fields||0)*(T.water?4:3))*(t.ownerPerk==='farmer'?1.25:1);
+ const food=(2+T.water*3+(b.fields||0)*100*(T.water?1.2:1))*(t.ownerPerk==='farmer'?1.25:1);
  const wood=(T.forest*2+(b.sawmill||0)*3+(T.forest?1:0));
  const stone=(T.stone*2+(b.quarry||0)*3);
  const gold=(b.manor||0);   // only highborn manors pay rent — 1 gold each; lowborn pay none
@@ -2271,7 +2274,9 @@ function enterRealm(o){
   t.population=120+Math.round(Math.random()*120)+q*40;
   // the standing village already has homes for its smallfolk (cap = homes*10 + manor*2)
   const hmz=Math.min(50,Math.max(12,Math.ceil(t.population/10)));
-  t.b={homes:hmz,manor:1}; t.population=Math.min(t.population,hmz*10+2);   // a village cannot hold more than its homes
+  t.population=Math.min(t.population,hmz*10+2);   // a village cannot hold more than its homes
+  const flz=Math.min(50,Math.ceil(t.population/100)+2);   // fields enough to feed the standing folk, with a little surplus
+  t.b={homes:hmz,manor:1,fields:flz};
   t.owner=t.id; t.allies=[]; autoName(t);
   t.garrison=splitTroops(20+Math.round(Math.random()*20)+q*6,mulberry32(hashStr(t.id)));
   let hn;do{hn='House '+pick(HOUSE_A)+pick(HOUSE_B);}while(used.has(hn));used.add(hn);
@@ -2303,7 +2308,7 @@ function showTownFor(id){selTown=id;selArmy=null;showTownPanel();}
 
 /* ---- HUD / economy ---- */
 function realmHUD(){
- setChip('c-gold',R.gold);setChip('c-food',R.food);setChip('c-wood',R.wood);setChip('c-stone',R.stone);
+ const gc=goldCapTotal();$('#c-gold').textContent=Math.min(R.gold,gc)+'/'+gc;setChip('c-food',R.food);setChip('c-wood',R.wood);setChip('c-stone',R.stone);
  $('#c-day').textContent='Turn '+R.turn+' · '+R.meName;
 }
 function setChip(id,val){const b=$('#'+id);if(b)b.textContent=Math.floor(val);}
@@ -2336,6 +2341,7 @@ function endTurn(){
   if(c.town>=Math.floor(TIER_CAP.town*0.9)&&c.city>=Math.floor(TIER_CAP.city*0.9)){
    R.mapBuilt=true;log2('The realm has taken its shape — the age of building gives way to the age of swords.','bad');}}
  if(R.gold<0)R.gold=0;
+ const gcap=goldCapTotal();if(R.gold>gcap)R.gold=gcap;   // coin overflows a full vault — build manors to hold more
  for(const e of R.eggs)e.t--;const hatched=R.eggs.filter(e=>e.t<=0);R.eggs=R.eggs.filter(e=>e.t>0);
  for(const e of hatched){const sz=weightedPick(DHATCH);if(R.host)R.host.dragons.push({size:sz});
   log2('An egg cracks open — a '+DRAGONS[sz].name+' joins your host!','gold');}
@@ -2803,24 +2809,25 @@ function showTownPanel(){
      '<button class="act" id="charter"'+(ok?'':' disabled')+'>Charter</button></div></div>');
     s0.querySelector('#charter').onclick=()=>charterUp(t.id);
    }
-   // housing gets its own section — you raise homes by the dozen, not one at a time
-   const hs=addSec(b,'Housing · caps your population');
-   [['homes',[1,10,50]],['manor',[1,5]]].forEach(([k,steps])=>{
+   // housing & fields get their own section — you raise these by the dozen, not one at a time
+   const hs=addSec(b,'Homes & Fields · population and food');
+   [['homes',[1,10,50]],['manor',[1,5]],['fields',[1,10,25]]].forEach(([k,steps])=>{
     const bd=BUILDINGS[k],have=(t.b&&t.b[k])||0,cap=buildCap(t,k);
     const row=document.createElement('div');row.className='shoprow';
     let btns='';for(const q of steps){const use=Math.min(q,cap-have);
      const afford=R.gold>=bd.gold*use&&R.wood>=bd.wood*use&&R.stone>=bd.stone*use;
      const off=have>=cap||!afford;
      btns+='<button class="act gd" data-bk="'+k+'" data-bq="'+q+'"'+(off?' disabled':'')+'>+'+q+'</button>';}
+    const note=k==='homes'?'+10 smallfolk room, no rent':k==='manor'?'+2 highborn room, +1 gold/turn':'+100 food/turn';
     row.innerHTML='<div><div class="sn">'+bd.name+' <span style="color:var(--ink3)">'+have+'/'+cap+'</span></div>'+
-     '<div class="sd">'+bd.wood+'\u{1FAB5} '+bd.stone+'⛰ '+bd.gold+'g each · '+(k==='homes'?'+10 smallfolk room, no rent':'+2 highborn room, +1 gold/turn')+'</div></div>'+
+     '<div class="sd">'+bd.wood+'\u{1FAB5} '+bd.stone+'⛰ '+bd.gold+'g each · '+note+'</div></div>'+
      '<div style="display:flex;align-items:center;gap:4px">'+btns+'</div>';
     hs.appendChild(row);
    });
    hs.querySelectorAll('[data-bk]').forEach(btn=>btn.onclick=()=>build(btn.dataset.bk,t.id,+btn.dataset.bq));
    const s=addSec(b,'Build');
    const grid=document.createElement('div');grid.className='bgrid';
-   for(const k in BUILDINGS){if(k==='homes'||k==='manor')continue;const bd=BUILDINGS[k];
+   for(const k in BUILDINGS){if(k==='homes'||k==='manor'||k==='fields')continue;const bd=BUILDINGS[k];
     const have=k==='keep'?(t.keep||0):((t.b&&t.b[k])||0);
     const cap=buildCap(t,k),capped=have>=cap;
     const blocked=bd.req&&!(t.terrain&&t.terrain[bd.req]);
