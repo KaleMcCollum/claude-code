@@ -2157,13 +2157,8 @@ function charterCosts(type){return type==='village'?{next:'town',pop:450,gold:45
  :type==='city'?{next:'capital',pop:9000,gold:800,wood:600,stone:900}:null;}
 function townEats(t){return t.population||0;}   // every soul eats one food a turn
 function homeCap(t){const b=t.b||{};return ((b.homes||0)*10)+((b.manor||0)*2);}
-// ---- logistics: each holdfast keeps its own grain; Traders carry it between them ----
+// ---- logistics: each holdfast keeps its own grain; supply lines carry it between them ----
 const TIER_ORDER={capital:5,city:4,town:3,keep:2,hill:2,village:1};
-const CARRY=100;              // one Trader carries 100 goods a turn
-const TRADER_COST=25;         // and costs coin to train
-function traderCap(){return (R&&R.traders?R.traders:0)*CARRY;}
-function traderLoad(){let n=0;if(R){for(const d of (R.trades||[]))n+=d.amt||0;for(const s of (R.supply||[]))n+=s.amt||0;}return n;}
-function routeFlow(){const l=traderLoad();const c=traderCap();return l>0?Math.min(1,c/l):1;}   // routes scale down if traders are too few
 function townFoodCap(t){const b=t.b||{};return 500+((b.fields||0)*100)+((b.granary||0)*500);}
 function foodStoreTotal(){let c=0;for(const t of myTowns())c+=Math.max(0,t.foodStore||0);return c;}
 function foodCapTotal(){let c=0;for(const t of myTowns())c+=townFoodCap(t);return c;}
@@ -2298,7 +2293,7 @@ function enterRealm(o){
  start.owner='player'; start.ownerPerk=o.perk||null; initDem(start);
  start.foodStore=townEats(start)*3;   // a little grain in the granary to begin
  R={me:'player',meColor:o.color||'#8a2f2b',meName:o.house||'House Ashgrove',name:o.name||'Wren',perk:o.perk||null,
-    seat:start.id,turn:1,gold:60,food:30,wood:25,stone:15,eggs:[],trades:[],supply:[],traders:1};
+    seat:start.id,turn:1,gold:60,food:30,wood:25,stone:15,eggs:[],trades:[],supply:[]};
  if(o.perk==='rich'){R.gold+=60;}
  R.gold+=0;
  armies=[];armySeq=1;
@@ -2329,31 +2324,29 @@ function playerIncome(){
 }
 function upkeep(){let u=0;for(const a of armies)if(a.owner==='player')u+=troopsTotal(a.troops);return {gold:Math.round(u*0.03),food:Math.round(u*0.05)};}
 function tickTrades(){
- const f=routeFlow();
  for(const d of R.trades){
   const home=LOC[d.from||R.seat];
-  const amt=Math.round((d.amt||0)*f);   // too few Traders and less crosses the road
+  const amt=d.amt||0;
   const store=res=>res==='food'?Math.max(0,Math.floor(home&&home.foodStore||0)):R[res];
   const hasSurplus=home?townSurplus(home,d.give,d)>=0:true;
   if(amt>0&&hasSurplus&&store(d.give)>=amt){
    if(d.give==='food'){home.foodStore=(home.foodStore||0)-amt;}else R[d.give]-=amt;
    if(d.get==='food'){home.foodStore=(home.foodStore||0)+amt;}else R[d.get]+=amt;
-   R.gold+=Math.round((d.gold||3)*f);d.ok=true;
+   R.gold+=(d.gold||3);d.ok=true;
   } else d.ok=false;
  }
 }
-// each holdfast grows and eats its own grain; Traders then carry surplus where it is needed
+// each holdfast grows and eats its own grain; supply lines then carry surplus where it is needed
 function foodTick(){
  for(const t of myTowns()){
   if(t.foodStore==null)t.foodStore=townEats(t)*2;
   t.foodStore+=production(t).food-townEats(t);
  }
- // supply lines and food trades move grain between granaries, limited by your Traders
- const f=routeFlow();
+ // supply lines move grain from one of your granaries to another
  for(const s of (R.supply||[])){
   const from=LOC[s.from],to=LOC[s.to];
   if(!from||!to||from.owner!=='player'||to.owner!=='player')continue;
-  const move=Math.min(Math.round((s.amt||0)*f),Math.max(0,Math.floor(from.foodStore||0)));
+  const move=Math.min(s.amt||0,Math.max(0,Math.floor(from.foodStore||0)));
   if(move<=0){s.ok=false;continue;}
   from.foodStore-=move;to.foodStore+=move;s.ok=true;
  }
@@ -2701,12 +2694,7 @@ function addTrade(withId,give,get,fromId,amt){
 }
 function cancelTrade(i){const d=R.trades[i];if(!d)return;R.trades.splice(i,1);
  log2('The deal with '+ (LOC[d.with]?LOC[d.with].name:'?') +' is ended.');realmHUD();refreshRealmView();}
-function trainTrader(n){n=Math.max(1,n||1);let got=0;
- while(got<n&&R.gold>=TRADER_COST){R.gold-=TRADER_COST;R.traders=(R.traders||0)+1;got++;}
- if(got)log2(got+' Trader'+(got>1?'s take':' takes')+' the road — your caravans carry '+(got*CARRY)+' more goods each turn.','gold');
- else log2('Not enough coin to train a Trader ('+TRADER_COST+'g).','bad');
- realmHUD();refreshRealmView();}
-// a one-way supply line: grain (or timber/stone) carried to another of your holdfasts, nothing in return
+// a one-way supply line: grain carried to another of your holdfasts, nothing in return
 function addSupply(fromId,toId,amt){
  const from=LOC[fromId],to=LOC[toId];
  if(!from||!to||from.owner!=='player'||to.owner!=='player'||fromId===toId)return false;
@@ -2810,7 +2798,7 @@ function showRealmPanel(){
   '<div class="kv"><span>Wood</span><b>'+Math.floor(R.wood)+' (+'+inc.wood+')</b></div>'+
   '<div class="kv"><span>Stone</span><b>'+Math.floor(R.stone)+' (+'+inc.stone+')</b></div>'+
   '<div class="kv"><span>Trade deals</span><b>'+R.trades.length+'</b></div>'+
-  '<div class="kv"><span>Traders</span><b>'+(R.traders||0)+' · '+traderLoad()+'/'+traderCap()+' goods/turn</b></div>');
+  '<div class="kv"><span>Supply lines</span><b>'+((R.supply&&R.supply.length)||0)+'</b></div>');
  // every holdfast you hold, at a glance — click to manage, build, trade or send
  const tw=myTowns().slice().sort((a,c)=>TIER_ORDER[c.type]-TIER_ORDER[a.type]||(c.population||0)-(a.population||0));
  const ts=addSec(b,'Your Holdfasts · '+tw.length);
@@ -2921,13 +2909,6 @@ function showTownPanel(){
    }
    s.appendChild(grid);
   }else if(townTab==='trade'){
-   // Traders — the caravans that carry your goods
-   const tr=addSec(b,'Traders · carrying '+traderLoad()+'/'+traderCap()+' goods a turn');
-   let tbtn='';for(const q of [1,5,10]){tbtn+='<button class="act gd" data-tt="'+q+'"'+(R.gold<TRADER_COST*q?' disabled':'')+'>+'+q+'</button>';}
-   tr.insertAdjacentHTML('beforeend','<div class="shoprow"><div><div class="sn">'+(R.traders||0)+' Traders'+(routeFlow()<1?' — <span style="color:var(--wax)">too few! caravans run at '+Math.round(routeFlow()*100)+'%</span>':'')+'</div>'+
-    '<div class="sd">each carries '+CARRY+' goods/turn ('+TRADER_COST+'g each) across your trade deals and supply lines</div></div>'+
-    '<div style="display:flex;align-items:center;gap:4px">'+tbtn+'</div></div>');
-   tr.querySelectorAll('[data-tt]').forEach(x=>x.onclick=()=>trainTrader(+x.dataset.tt));
    // Supply lines — send grain to your own holdfasts, nothing in return
    const mySup=(R.supply||[]).map((s,i)=>({s,i})).filter(x=>x.s.from===t.id);
    const others=myTowns().filter(x=>x.id!==t.id);
