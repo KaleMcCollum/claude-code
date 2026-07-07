@@ -951,7 +951,7 @@ const DEFAULT_SHOPS={capital:['market','smith','stables','inn','pack'],city:['ma
  hill:['inn'],town:['market','inn'],village:['market'],keep:['inn']};
 function addTown(x,y,tier){
  const id=nextTownId();
- const t={id,name:(tier.charAt(0).toUpperCase()+tier.slice(1))+' '+(LOCS.length+1),type:tier,
+ const t={id,name:genName((()=>{const s=new Set();for(const x of world.towns)if(x.name)s.add(x.name);return s;})()),type:tier,
    x:Math.round(x),y:Math.round(y),region:regionNear(x,y),shops:(DEFAULT_SHOPS[tier]||['market']).slice(),
    population:(DEFAULT_POP&&DEFAULT_POP[tier])||500,keep:(DEFAULT_KEEP&&DEFAULT_KEEP[tier])||0,families:[],desc:''};
  world.towns.push(t);saveWorld();rebuildWorld();devSel=id;updateDevUI();return t;
@@ -2212,7 +2212,22 @@ function armyPower(tr,drs,enemyTr){
 }
 function bannerColor(id){if(id==='player')return R?R.meColor:'#8a2f2b';return (F[id]&&F[id].color)||'#8a7a58';}
 function bannerName(id){if(id==='player')return R?R.meName:'your house';return (F[id]&&F[id].name)||'the free folk';}
-function keepBonus(t){return 1+0.14*(t.keep||0)+((t.b&&t.b.walls)?0.25:0);}
+const POP_CAP={village:2500,town:12000,city:45000,capital:130000,hill:400,keep:600};
+const GARR_CAP={village:400,town:1800,city:6000,capital:12000,hill:200,keep:1500};
+function garrisonCap(t){return Math.min(GARR_CAP[t.type]||400, Math.round((t.population||0)*0.10)+40);}
+function clampTroops(tr,cap){const tot=troopsTotal(tr);if(tot<=cap||tot<=0)return tr;const f=cap/tot;for(const u in tr)tr[u]=Math.floor(tr[u]*f);return tr;}
+// defenders in a holdfast fight far above their number: tier, then keep, then walls
+function defenseMult(t){
+ const tier={village:1,town:1.4,city:2.0,capital:2.8,hill:1.3,keep:2.2}[t.type]||1;
+ return tier + 0.4*(t.keep||0) + ((t.b&&t.b.walls)?0.5:0);
+}
+const USED_NAMES=new Set();
+function autoName(t){
+ if(t&&/^(village|town|city|capital|keep|hill|holdfast)\s*\d*$/i.test((t.name||'').trim())||!t.name){
+  if(!USED_NAMES.size)for(const x of world.towns)if(x.name)USED_NAMES.add(x.name);
+  t.name=genName(USED_NAMES);
+ } else if(t&&t.name)USED_NAMES.add(t.name);
+}
 function weightedPick(list){let tot=0;for(const[,w]of list)tot+=w;let r=Math.random()*tot;for(const[v,w]of list){r-=w;if(r<=0)return v;}return list[0][0];}
 
 /* ---- terrain: read the painted map around each town ---- */
@@ -2254,7 +2269,7 @@ function enterRealm(o){
   t.terrain=terrainAt(t.x,t.y);
   const q=t.terrain.water*3+t.terrain.forest*2+t.terrain.stone;   // land quality
   t.population=120+Math.round(Math.random()*120)+q*40;
-  t.b={}; t.owner=t.id; t.allies=[];
+  t.b={}; t.owner=t.id; t.allies=[]; autoName(t);
   t.garrison=splitTroops(20+Math.round(Math.random()*20)+q*6,mulberry32(hashStr(t.id)));
   let hn;do{hn='House '+pick(HOUSE_A)+pick(HOUSE_B);}while(used.has(hn));used.add(hn);
   t.ownerPerk=null;
@@ -2338,8 +2353,9 @@ function growTowns(){
   const T=t.terrain||{};
   let amb=(F[t.owner]?F[t.owner].ambition:0.3);
   if(t.owner!=='player'&&F[t.owner])amb=Math.min(1,amb+0.05*(factionTowns(t.owner).length-1));
-  const rate=0.006+0.008*amb+0.004*T.water+((t.b&&t.b.homes)||0)*0.003;
-  t.population=Math.round((t.population||150)*(1+rate));
+  const cap=POP_CAP[t.type]||2500;
+  const rate=(0.010+0.012*amb+0.006*T.water+((t.b&&t.b.homes)||0)*0.004)*(1-(t.population||150)/cap);
+  t.population=Math.min(cap,Math.round((t.population||150)*(1+Math.max(0,rate))));
  }
 }
 
@@ -2354,7 +2370,9 @@ function npcTurn(){
    const opts=['fields'].concat(t.terrain.forest?['sawmill']:[],t.terrain.stone?['quarry']:[],['homes']);
    const k=pick(opts);t.b[k]=Math.min((t.b[k]||0)+1,buildCap(t,k));}
   // grow garrison a little
-  for(const t of towns){const g=troopsTotal(t.garrison||{});if(g<80+((t.population||0)/40))t.garrison=splitTroops(g+2,null);}
+  for(const t of towns){const gc=garrisonCap(t),g=troopsTotal(t.garrison||{});
+   if(g<gc)t.garrison=clampTroops(splitTroops(Math.min(gc,g+Math.max(2,Math.round(gc*0.05))),null),gc);
+   else if(g>gc)t.garrison=clampTroops(t.garrison,gc);}
   // content little lords pledge to a bigger neighbour
   if(towns.length===1&&fac.ambition<0.4&&Math.random()<0.05){
    const nb=nearTowns(cap,110).filter(n=>n.owner!==fid&&n.owner!=='player');
@@ -2391,7 +2409,7 @@ function npcTurn(){
     if(nt.owner==='player'&&(R.turn<25||myTowns().length<2))continue;
     if(troopsTotal(nt.garrison||{})<(cap.population||500)/8)targets.push(nt);}
    if(targets.length){
-    const tgt=pick(targets), n=Math.round(35+(cap.population||500)/10);
+    const tgt=pick(targets), n=clamp(Math.round(40+(cap.population||500)*0.04),40,60000);
     const a=mkArmy(fid,cap.x,cap.y,splitTroops(n,null));armies.push(a);
     orderMove(a,{x:tgt.x,y:tgt.y,townId:tgt.id});
     if(dist2(tgt,LOC[R.seat])<250*250)log2(bannerName(fid)+' marches on '+tgt.name+'!','bad');
@@ -2490,6 +2508,7 @@ function moveArmies(){
 function mergeIntoGarrison(a,t){
  if(a.player){a.dest=null;return;}  // player host stays a host
  t.garrison=t.garrison||{};for(const u in a.troops)t.garrison[u]=(t.garrison[u]||0)+a.troops[u];
+ clampTroops(t.garrison,garrisonCap(t));
  a.merged=true;
 }
 
@@ -2511,16 +2530,23 @@ function resolveField(a,b){
  if(a.player||b.player)showBattleReport(rep,a,{name:bannerName(b.owner)+'’s host',owner:b.owner,player:b.player},null);
 }
 function resolveSiege(att,town){
- let defTr=Object.assign({},town.garrison||{});
+ let defTr=Object.assign({},town.garrison||{}),defDr=[];
+ // any friendly hosts standing in the town join the walls
+ const stationed=armies.filter(x=>x!==att&&x.owner===town.owner&&Math.hypot(x.x-town.x,x.y-town.y)<7);
+ for(const s of stationed){for(const u in s.troops)defTr[u]=(defTr[u]||0)+s.troops[u];defDr=defDr.concat(s.dragons);}
  for(const aid of (town.allies||[])){const at=LOC[aid];if(at&&at.owner!==att.owner){
   const lev=splitTroops(Math.round(troopsTotal(at.garrison||{})*0.4),null);
   for(const u in lev)defTr[u]=(defTr[u]||0)+lev[u];}}
- const rep=battleMath(att.troops,att.dragons,defTr,[],keepBonus(town));
+ const rep=battleMath(att.troops,att.dragons,defTr,defDr,defenseMult(town));
  applyLoss(att.troops,rep.attLoss,att.player?R.perk:null);
- town.garrison=splitTroops(Math.max(0,Math.round(troopsTotal(defTr)*(1-rep.defLoss))),null);
+ // spread the defenders' losses across garrison and stationed hosts
+ for(const s of stationed){applyLoss(s.troops,rep.defLoss,s.player?R.perk:null);}
+ const garTot=Math.max(0,Math.round(troopsTotal(town.garrison||{})*(1-rep.defLoss)));
+ town.garrison=clampTroops(splitTroops(garTot,null),garrisonCap(town));
  att.dest=null;
  if(rep.attackerWins){
   const old=town.owner;town.owner=att.owner;
+  for(const s of stationed)s.merged=true;         // routed
   if(att.player)log2('You have taken '+town.name+' from '+bannerName(old)+'!','gold');
   else if(old==='player')log2(bannerName(att.owner)+' has taken '+town.name+' from you!','bad');
   rebuildStatic();
