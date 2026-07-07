@@ -194,6 +194,25 @@
   .rtab{flex:1;background:rgba(255,248,225,.4);border:1px solid rgba(120,95,50,.4);color:var(--ink-soft);
     font-family:var(--display);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:6px 4px;border-radius:2px;cursor:pointer}
   .rtab.sel{background:var(--wax);border-color:var(--wax-deep);color:#f2e2c0}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 4px}
+  .chip2{font-size:11px;padding:2.5px 8px;border:1px solid rgba(120,95,50,.45);border-radius:10px;background:rgba(255,248,225,.55);color:#4a3a22;font-variant-numeric:tabular-nums}
+  .chip2.neg{color:var(--wax);border-color:rgba(138,47,43,.5)}
+  .chip2.pos{color:#4a6122}
+  .tierbadge{display:inline-block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;padding:2px 7px;border-radius:2px;background:var(--wax);color:#f2e2c0;margin-left:7px;vertical-align:2px}
+  .bgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .bcard{border:1px solid rgba(120,95,50,.45);border-radius:3px;padding:7px 8px;background:rgba(255,248,225,.4);cursor:pointer;text-align:left;font-family:var(--body)}
+  .bcard:hover{border-color:var(--wax)}
+  .bcard.off{opacity:.55;cursor:default}
+  .bcard .bn{font-family:var(--display);font-size:12px;color:#2d2010;display:flex;justify-content:space-between;gap:4px}
+  .bcard .bn span{opacity:.6;font-size:10.5px}
+  .bcard .bd{font-size:10.5px;color:#5b4a30;font-style:italic;margin:3px 0 5px;line-height:1.35;min-height:26px}
+  .bcard .bc{font-size:11px;color:#7a5f1e;font-variant-numeric:tabular-nums}
+  .bcard .bc.no{color:var(--wax)}
+  .deal{border:1px solid rgba(120,95,50,.45);border-radius:3px;padding:7px 9px;background:rgba(255,248,225,.4);margin-bottom:7px}
+  .deal .dl{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#2d2010;gap:6px}
+  .deal .dl b{font-weight:normal}
+  .deal .dr{font-size:11px;color:#5b4a30;margin-top:2px;font-style:italic}
+  .deal .dx{background:none;border:none;color:var(--wax);font-size:13px;cursor:pointer;padding:0 2px}
   #locpanel .kv{color:#5b4a30}#locpanel .kv b{color:#2d2010}
   #locpanel .kv .none{color:#8a7350}
   #errbanner{position:fixed;left:0;right:0;bottom:0;background:#7e1d1d;color:#fff;font:12px monospace;
@@ -2278,7 +2297,10 @@ function playerIncome(){
 function upkeep(){let u=0;for(const a of armies)if(a.owner==='player')u+=troopsTotal(a.troops);return {gold:Math.round(u*0.03),food:Math.round(u*0.05)};}
 function tickTrades(){
  for(const d of R.trades){
-  if(R[d.give]>=d.amt){R[d.give]-=d.amt;R[d.get]+=d.amt;R.gold+=3+(R.perk==='rich'?1:0);d.ok=true;}else d.ok=false;
+  const home=LOC[d.from||R.seat];
+  const hasSurplus=home?townSurplus(home,d.give,d)>=0:true;
+  if(hasSurplus&&R[d.give]>=d.amt){R[d.give]-=d.amt;R[d.get]+=d.amt;R.gold+=(d.gold||3)+(R.perk==='rich'?1:0);d.ok=true;}
+  else d.ok=false;
  }
 }
 function endTurn(){
@@ -2550,21 +2572,32 @@ function tradeOffer(t){ // what a town exports, by its land
  if(T.water)out.push('food');if(T.forest)out.push('wood');if(T.stone)out.push('stone');
  return out.length?out:['food'];
 }
-function addTrade(withId,give,get,fromId){
+function townSurplus(t,res,exceptDeal){
+ const p=production(t);
+ let s=res==='food'?p.food-townEats(t):(p[res]||0);
+ for(const d of R.trades)if(d!==exceptDeal&&d.from===t.id&&d.give===res)s-=d.amt;
+ return s;
+}
+function dealGold(amt){return Math.max(1,Math.ceil(amt*0.75));}
+function addTrade(withId,give,get,fromId,amt){
+ amt=clamp(amt||4,1,12);
+ const home=LOC[fromId||R.seat];
+ if(!home||townSurplus(home,give)<amt)return false;   // only surplus above the burn rate may leave
  const C={gold:20,wood:15,stone:10,food:10};
  if(R.gold<C.gold||R.wood<C.wood||R.stone<C.stone||R.food<C.food)return false;
  R.gold-=C.gold;R.wood-=C.wood;R.stone-=C.stone;R.food-=C.food;
- const home=LOC[fromId||R.seat];
  const toll=8+ri(0,8);                        // the road is paid for in lowborn lives
- if(home)home.population=Math.max(50,(home.population||200)-toll);
- R.trades.push({with:withId,give,get,amt:4});
- if(home&&!roadBetween(home.id,withId)){
+ home.population=Math.max(50,(home.population||200)-toll);
+ R.trades.push({from:home.id,with:withId,give,get,amt,gold:dealGold(amt)});
+ if(!roadBetween(home.id,withId)){
   world.routes.push({type:'trade',a:home.id,b:withId,pts:[bendPt(home,LOC[withId])]});
   buildRoads();rebuildStatic();
  }
- log2('A trade road to '+LOC[withId].name+' is cut through the wild — '+toll+' smallfolk never came home. Your '+give+' for their '+get+'.','gold');
+ log2('A trade road to '+LOC[withId].name+' is cut through the wild — '+toll+' smallfolk never came home. '+amt+' '+give+' for '+amt+' '+get+'.','gold');
  realmHUD();refreshRealmView();return true;
 }
+function cancelTrade(i){const d=R.trades[i];if(!d)return;R.trades.splice(i,1);
+ log2('The deal with '+ (LOC[d.with]?LOC[d.with].name:'?') +' is ended.');realmHUD();refreshRealmView();}
 
 /* ---- tokens ---- */
 function drawDragonToken(ctx,x,y,size){
@@ -2677,67 +2710,107 @@ function showTownPanel(){
  const t=LOC[selTown];if(!t){showRealmPanel();return;}
  selArmy=null;
  const mine=t.owner==='player';
- const b=panelShell(mine?R.meName+' · yours':bannerName(t.owner),t.name,terrainText(t));
+ const RES_ICON={food:'\u{1F35E}',wood:'\u{1FAB5}',stone:'\u26F0',gold:'\u{1FA99}'};
+ const b=panelShell(mine?R.meName+' \u00b7 yours':bannerName(t.owner),t.name,'');
+ $('#p-name').insertAdjacentHTML('beforeend','<span class="tierbadge">'+t.type+'</span>');
+ // terrain + status chips
+ const T=t.terrain||{};
+ const chips=[];
+ if(T.water)chips.push('\u{1F4A7} '+(T.water>1?'rich waters':'water'));
+ if(T.forest)chips.push('\u{1F332} '+(T.forest>1?'deep woods':'woodland'));
+ if(T.stone)chips.push('\u26F0 '+(T.stone>1?'high crags':'stony hills'));
+ if(!chips.length)chips.push('poor open ground');
+ const chiprow=document.createElement('div');chiprow.className='chips';
+ chiprow.innerHTML=chips.map(c=>'<span class="chip2">'+c+'</span>').join('');
+ b.appendChild(chiprow);
  if(mine){
+  if(!t.dem)initDem(t);
+  const p=production(t),eats=townEats(t),net=p.food-eats;
+  const st=document.createElement('div');st.className='chips';
+  st.innerHTML=
+   '<span class="chip2">\u{1F465} '+(t.population||0)+' / '+Math.round(homeCap(t))+'</span>'+
+   '<span class="chip2 '+(net<0?'neg':'pos')+'">'+RES_ICON.food+' '+(net>=0?'+':'')+net+'/t</span>'+
+   '<span class="chip2 pos">'+RES_ICON.wood+' +'+p.wood+'/t</span>'+
+   '<span class="chip2 pos">'+RES_ICON.stone+' +'+p.stone+'/t</span>'+
+   '<span class="chip2 pos">'+RES_ICON.gold+' +'+p.gold+'/t</span>'+
+   '<span class="chip2">\u2694 '+troopsTotal(t.garrison||{})+' garrison</span>';
+  b.appendChild(st);
   const tabs=document.createElement('div');tabs.className='rtabs';
   [['manage','Build'],['trade','Trade'],['muster','Muster'],['dragons','Dragons']].forEach(([k,lbl])=>{
    const x=document.createElement('button');x.className='rtab'+(townTab===k?' sel':'');x.textContent=lbl;x.onclick=()=>{townTab=k;showTownPanel();};tabs.appendChild(x);});
   b.appendChild(tabs);
-  const p=production(t);
-  if(!t.dem)initDem(t);
-  const info=addSec(b,'Holdfast');
-  info.insertAdjacentHTML('beforeend','<div class="kv"><span>Smallfolk</span><b>'+(t.population||0)+' / '+Math.round(homeCap(t))+' housed</b></div>'+
-   '<div class="kv"><span>· children</span><b>'+t.dem.children+'</b></div>'+
-   '<div class="kv"><span>· men / women</span><b>'+t.dem.men+' / '+t.dem.women+'</b></div>'+
-   '<div class="kv"><span>· elders</span><b>'+t.dem.elders+'</b></div>'+
-   '<div class="kv"><span>Keep</span><b>'+KEEP_NAMES2[t.keep||0]+'</b></div>'+
-   '<div class="kv"><span>Garrison</span><b>'+troopsTotal(t.garrison||{})+'</b></div>'+
-   '<div class="kv"><span>Yield / turn</span><b>+'+p.food+'f (eats '+townEats(t)+'f) +'+p.wood+'w +'+p.stone+'s +'+p.gold+'g</b></div>');
   if(townTab==='manage'){
    const cc=charterCosts(t.type),counts=tierCounts();
    if(cc){
     const s0=addSec(b,'Charter');
     const free=slotFree(cc.next),ok=t.population>=cc.pop&&free&&R.gold>=cc.gold&&R.wood>=cc.wood&&R.stone>=cc.stone;
     s0.insertAdjacentHTML('beforeend','<div class="shoprow"><div><div class="sn">Raise to '+cc.next+'</div><div class="sd">'+
-     (free?('needs '+cc.pop+' smallfolk · realm has '+(TIER_CAP[cc.next]-counts[cc.next])+' '+cc.next+' slot'+(TIER_CAP[cc.next]-counts[cc.next]===1?'':'s')+' left'):('no '+cc.next+' slots remain in the realm'))+
-     '</div></div><div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span class="pr">'+cc.wood+'🪵'+cc.stone+'⛰'+cc.gold+'g</span>'+
+     (free?('needs '+cc.pop+' smallfolk \u00b7 '+(TIER_CAP[cc.next]-counts[cc.next])+' slot'+(TIER_CAP[cc.next]-counts[cc.next]===1?'':'s')+' left in the realm'):('no '+cc.next+' slots remain in the realm'))+
+     '</div></div><div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span class="pr">'+cc.wood+'\u{1FAB5}'+cc.stone+'\u26F0'+cc.gold+'g</span>'+
      '<button class="act" id="charter"'+(ok?'':' disabled')+'>Charter</button></div></div>');
     s0.querySelector('#charter').onclick=()=>charterUp(t.id);
    }
    const s=addSec(b,'Build');
-   let rows='';for(const k in BUILDINGS){if(k==='keep'){var bd=BUILDINGS[k];}const bd2=BUILDINGS[k];
+   const grid=document.createElement('div');grid.className='bgrid';
+   for(const k in BUILDINGS){const bd=BUILDINGS[k];
     const have=k==='keep'?(t.keep||0):((t.b&&t.b[k])||0);
-    const cap=buildCap(t,k);
-    const capped=have>=cap;
-    const blocked=bd2.req&&!(t.terrain&&t.terrain[bd2.req]);
-    rows+='<div class="shoprow"><div><div class="sn">'+bd2.name+' <span style="opacity:.6">'+have+'/'+cap+'</span></div><div class="sd">'+(blocked?'needs '+(bd2.req==='forest'?'woodland':'high country')+' nearby':bd2.desc)+'</div></div>'+
-     '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span class="pr">'+bd2.wood+'🪵'+bd2.stone+'⛰'+bd2.gold+'g</span>'+
-     '<button class="act gd" data-b="'+k+'"'+((capped||blocked||!canBuild(t,k))?' disabled':'')+'>'+(capped?'max':'Build')+'</button></div></div>';}
-   s.insertAdjacentHTML('beforeend',rows);
-   s.querySelectorAll('[data-b]').forEach(btn=>btn.onclick=()=>build(btn.dataset.b,t.id));
+    const cap=buildCap(t,k),capped=have>=cap;
+    const blocked=bd.req&&!(t.terrain&&t.terrain[bd.req]);
+    const afford=R.gold>=bd.gold&&R.wood>=bd.wood&&R.stone>=bd.stone;
+    const off=capped||blocked||!afford;
+    const card=document.createElement('button');card.type='button';
+    card.className='bcard'+(off?' off':'');
+    card.innerHTML='<div class="bn">'+bd.name+'<span>'+have+'/'+cap+'</span></div>'+
+     '<div class="bd">'+(blocked?'needs '+(bd.req==='forest'?'woodland':'high country')+' nearby':bd.desc)+'</div>'+
+     '<div class="bc'+(afford?'':' no')+'">'+(capped?'at its limit':bd.wood+'\u{1FAB5} '+bd.stone+'\u26F0 '+bd.gold+'g')+'</div>';
+    if(!off)card.onclick=()=>build(k,t.id);
+    grid.appendChild(card);
+   }
+   s.appendChild(grid);
   }else if(townTab==='trade'){
-   const s=addSec(b,'Trade Deals');
-   let rows='';
-   R.trades.forEach((d,i)=>{rows+='<div class="kv"><span>'+LOC[d.with].name+': give '+d.amt+' '+d.give+'</span><b>get '+d.amt+' '+d.get+' +2g '+(d.ok===false?'<span style="color:var(--wax)">(short!)</span>':'')+'</b></div>';});
-   s.insertAdjacentHTML('beforeend',rows||'<p class="hint">No deals yet. Your first is free.</p>');
+   const myDeals=R.trades.map((d,i)=>({d,i})).filter(x=>x.d.from===t.id);
+   const s=addSec(b,t.name+' trades with');
+   if(myDeals.length){
+    for(const {d,i} of myDeals){
+     const el=document.createElement('div');el.className='deal';
+     el.innerHTML='<div class="dl"><b>'+ (LOC[d.with]?LOC[d.with].name:'?') +'</b>'+
+      '<span>'+d.amt+' '+RES_ICON[d.give]+' \u2192 '+d.amt+' '+RES_ICON[d.get]+' \u00b7 +'+(d.gold||3)+'g</span>'+
+      '<button class="dx" title="end this deal" data-i="'+i+'">\u2715</button></div>'+
+      '<div class="dr">'+(d.ok===false?'<span style="color:var(--wax)">short this turn \u2014 no surplus '+d.give+'</span>':'paying steadily')+'</div>';
+     el.querySelector('.dx').onclick=()=>cancelTrade(i);
+     s.appendChild(el);
+    }
+   } else s.insertAdjacentHTML('beforeend','<p class="hint">No deals from this holdfast yet.</p>');
+   // surplus readout
+   const sur={food:townSurplus(t,'food'),wood:townSurplus(t,'wood'),stone:townSurplus(t,'stone')};
+   const surRow=document.createElement('div');surRow.className='chips';
+   surRow.innerHTML='<span class="chip2">tradable surplus:</span>'+['food','wood','stone'].map(r=>'<span class="chip2 '+(sur[r]>0?'pos':'neg')+'">'+RES_ICON[r]+' '+sur[r]+'</span>').join('');
+   b.appendChild(surRow);
    const partners=nearTowns(t,140).filter(x=>x.owner!=='player').slice(0,12);
-   if(partners.length){
-    const f=addSec(b,'Build a Trade Route (20g 15🪵 10⛰ 10🍞 + workers)');
+   const giveable=['food','wood','stone'].filter(r=>sur[r]>0);
+   if(partners.length&&giveable.length){
+    const f=addSec(b,'Strike a new deal (20g 15\u{1FAB5} 10\u26F0 10\u{1F35E} + workers)');
     f.insertAdjacentHTML('beforeend','<div class="teform">'+
-     '<label>Partner<select id="tr-with">'+partners.map(x=>'<option value="'+x.id+'">'+x.name+' — offers '+tradeOffer(x).join('/')+'</option>').join('')+'</select></label>'+
-     '<div class="te2"><label>You give<select id="tr-give"><option>food</option><option>wood</option><option>stone</option></select></label>'+
-     '<label>You get<select id="tr-get"></select></label></div></div>');
-    const upd=()=>{const px=LOC[$('#tr-with').value];$('#tr-get').innerHTML=tradeOffer(px).map(x=>'<option>'+x+'</option>').join('');};
-    $('#tr-with').onchange=upd;upd();
+     '<label>Partner<select id="tr-with">'+partners.map(x=>'<option value="'+x.id+'">'+x.name+' \u2014 offers '+tradeOffer(x).join('/')+'</option>').join('')+'</select></label>'+
+     '<div class="te2"><label>You give<select id="tr-give">'+giveable.map(r=>'<option>'+r+'</option>').join('')+'</select></label>'+
+     '<label>Amount<select id="tr-amt"></select></label></div>'+
+     '<label>You get<select id="tr-get"></select></label></div>');
+    const updAmt=()=>{const g=$('#tr-give').value,mx=Math.min(10,sur[g]);
+     $('#tr-amt').innerHTML=Array.from({length:Math.max(1,mx)},(_,k)=>k+1).filter(v=>v<=mx).map(v=>'<option'+(v===Math.min(4,mx)?' selected':'')+'>'+v+'</option>').join('');};
+    const updGet=()=>{const px=LOC[$('#tr-with').value];$('#tr-get').innerHTML=tradeOffer(px).map(x=>'<option>'+x+'</option>').join('');};
+    $('#tr-give').onchange=updAmt;$('#tr-with').onchange=updGet;updAmt();updGet();
     const bt=document.createElement('button');bt.className='act';bt.style.marginTop='8px';bt.textContent='Strike the deal';
-    bt.onclick=()=>{const g=$('#tr-give').value,r=$('#tr-get').value;if(g!==r)addTrade($('#tr-with').value,g,r,t.id);};
+    bt.onclick=()=>{const g=$('#tr-give').value,r=$('#tr-get').value,amt=parseInt($('#tr-amt').value)||4;
+     if(g!==r)addTrade($('#tr-with').value,g,r,t.id,amt);};
     f.appendChild(bt);
-   } else addSec(b,'New Deal').insertAdjacentHTML('beforeend','<p class="hint">No neighbouring holdfasts on your roads to trade with.</p>');
+    f.insertAdjacentHTML('beforeend','<p class="hint" style="margin-top:6px">The more goods a deal carries, the more gold it earns. Only surplus above this holdfast\u2019s burn may be traded away.</p>');
+   } else if(!giveable.length) addSec(b,'Strike a new deal').insertAdjacentHTML('beforeend','<p class="hint">No surplus to trade \u2014 build fields, mills or quarries first.</p>');
+   else addSec(b,'Strike a new deal').insertAdjacentHTML('beforeend','<p class="hint">No holdfasts near enough to trade with.</p>');
   }else if(townTab==='muster'){
-   const s=addSec(b,'Muster into your host');
+   const s=addSec(b,'Muster into your host \u00b7 '+t.dem.men+' men of age');
    const disc=(t.b&&t.b.smith)?0.85:1;
    let rows='';for(const u of UORDER){const c=UNITS[u];
-    rows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">atk '+c.atk+' def '+c.def+' · beats '+c.strong.map(x=>UNITS[x].name.split(/[ -]/)[0]).join(', ')+'</div></div>'+
+    rows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">atk '+c.atk+' def '+c.def+' \u00b7 beats '+c.strong.map(x=>UNITS[x].name.split(/[ -]/)[0]).join(', ')+'</div></div>'+
      '<div style="display:flex;align-items:center;gap:6px"><span class="pr">'+Math.round(c.gold*10*disc)+'g</span><button class="act gd" data-rec="'+u+'">+10</button></div></div>';}
    s.insertAdjacentHTML('beforeend',rows);
    s.querySelectorAll('[data-rec]').forEach(btn=>btn.onclick=()=>recruit(btn.dataset.rec,10));
@@ -2745,18 +2818,21 @@ function showTownPanel(){
    const s=addSec(b,'Dragons');
    const dr=R.host?R.host.dragons.map(d=>'<div class="kv"><span>'+DRAGONS[d.size].name+'</span><b>pow '+DRAGONS[d.size].power+'</b></div>').join(''):'';
    s.insertAdjacentHTML('beforeend',(dr||'<p class="hint">No dragons yet.</p>')+(R.eggs.length?'<p class="hint">'+R.eggs.length+' egg(s) warming.</p>':'')+
-    '<div class="shoprow"><div><div class="sn">Dragon egg</div><div class="sd">hatches to a random size in a few turns</div></div><div style="display:flex;align-items:center;gap:6px"><span class="pr">150g·40f</span><button class="act gd" id="buyegg">Acquire</button></div></div>');
+    '<div class="shoprow"><div><div class="sn">Dragon egg</div><div class="sd">hatches to a random size in a few turns</div></div><div style="display:flex;align-items:center;gap:6px"><span class="pr">150g\u00b740f</span><button class="act gd" id="buyegg">Acquire</button></div></div>');
    s.querySelector('#buyegg').onclick=buyEgg;
   }
-  const e=addSec(b,'');const eb=document.createElement('button');eb.className='act';eb.textContent='End Turn ▸';eb.onclick=endTurn;e.appendChild(eb);
+  const e=addSec(b,'');const eb=document.createElement('button');eb.className='act';eb.textContent='End Turn \u25b8';eb.onclick=endTurn;e.appendChild(eb);
  }else{
   const s=addSec(b,'Holdfast');
   s.insertAdjacentHTML('beforeend','<div class="kv"><span>Allegiance</span><b>'+bannerName(t.owner)+'</b></div>'+
-   '<div class="kv"><span>Smallfolk</span><b>'+(t.population||'—')+'</b></div>'+
+   '<div class="kv"><span>Smallfolk</span><b>'+(t.population||'\u2014')+'</b></div>'+
    '<div class="kv"><span>Keep</span><b>'+KEEP_NAMES2[t.keep||0]+'</b></div>'+
    '<div class="kv"><span>Garrison</span><b>'+troopsTotal(t.garrison||{})+' troops</b></div>'+
-   '<div class="kv"><span>Land</span><b>'+terrainText(t)+'</b></div>'+
    (t.families&&t.families.length?'<div class="kv"><span>Houses</span><b>'+t.families.map(f=>f.name).join(', ')+'</b></div>':''));
+  // its trade roads
+  const links=world.routes.filter(r=>r.a===t.id||r.b===t.id).map(r=>LOC[r.a===t.id?r.b:r.a]).filter(Boolean);
+  if(links.length){const tr=addSec(b,'Trade roads');
+   tr.insertAdjacentHTML('beforeend','<p class="hint">'+links.map(x=>x.name).join(' \u00b7 ')+'</p>');}
   const w=addSec(b,'War');
   if(R.host){const btn=document.createElement('button');btn.className='act';
    btn.textContent='March your host here';
@@ -2764,7 +2840,7 @@ function showTownPanel(){
    w.appendChild(btn);
   } else w.insertAdjacentHTML('beforeend','<p class="hint">You have no host in the field.</p>');
  }
- const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selTown=null;showRealmPanel();};back.appendChild(bb);
+ const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='\u25c2 Realm';bb.onclick=()=>{selTown=null;showRealmPanel();};back.appendChild(bb);
 }
 
 /* ================= boot ================= */
