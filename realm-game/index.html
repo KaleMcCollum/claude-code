@@ -322,25 +322,24 @@
 <div id="create">
   <div class="inner">
     <div class="kicker">Vaelmore · The Riven Realm</div>
-    <h1>The Sundered Crown</h1>
-    <p class="sub">The old king is dead and his crown lies broken. You come of noble blood, but the wars took everything else — you begin with a few coins, an empty belly, and a name. Ride the five marches, take what work you find, and earn your way to a crown of your own.</p>
-    <div class="housegrid" id="housegrid"></div>
+    <h1>Found Your House</h1>
+    <p class="sub">The old king is dead and his crown lies broken. You are a minor lord of no account — a single village, a few coins, and a name you mean to make great. Forge your house, then rise by trade, treaty, and conquest until the realm is yours.</p>
+    <div class="housegrid" id="housegrid" style="display:none"></div>
     <div id="forge">
-      <h3>— or forge your own house —</h3>
       <div class="frow">
         <div class="fcol"><label for="f-house">House name</label><input type="text" id="f-house" maxlength="18" placeholder="e.g. Ashgrove"></div>
         <div class="fcol"><label for="f-words">House words</label><input type="text" id="f-words" maxlength="34" placeholder="e.g. Rooted in Stone"></div>
-        <div class="fcol"><label for="f-seat">Home seat</label><select id="f-seat"></select></div>
       </div>
       <div class="frow">
         <div class="fcol"><label>Sigil</label><div class="sigils" id="f-sigils"></div></div>
         <div class="fcol"><label>Banner color</label><div class="swatches" id="f-colors"></div></div>
         <div class="fcol"><label for="f-perk">House gift</label><select id="f-perk"></select></div>
       </div>
+      <select id="f-seat" style="display:none"></select>
     </div>
     <div id="beginrow">
       <div class="fcol"><label for="begin-name">Your given name</label><input type="text" id="begin-name" maxlength="16" placeholder="e.g. Alys, Roderic, Wren…"></div>
-      <button id="begin" disabled>Begin with Nothing</button>
+      <button id="begin" disabled>Take Up Your Banner</button>
     </div>
   </div>
 </div>
@@ -628,11 +627,7 @@ function generateWorld(){
  seats.forEach((s,i)=>{labels.push({text:('THE '+pick(RADJ)+pick(RNOUN)).toUpperCase(),x:s.x,y:s.y+70,size:14,kind:'land',rot:0});});
  // assign each town's region to nearest label text
  for(const t of towns){let bd=1e18,rt='';for(const L of labels){const d=(L.x-t.x)**2+(L.y-t.y)**2;if(d<bd){bd=d;rt=L.text.replace(/^THE /,'The ').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());}}t.region=rt;}
- // mountains: a few ranges inland
- const mountains=[];let mc=0;
- while(mc<5){const cx=80+Math.random()*(W-160),cy=250+Math.random()*(H-320);if(!isLandFirm(cx,cy)||nearWater(cx,cy))continue;mc++;
-  const n=5+Math.floor(Math.random()*6);for(let i=0;i<n;i++){const x=cx+(Math.random()-0.5)*80,y=cy+(Math.random()-0.5)*60;if(isLand(x,y))mountains.push({x:Math.round(x),y:Math.round(y),s:Math.round(7+Math.random()*5)});}}
- world={towns,routes,mountains,labels};
+ world={towns,routes,mountains:[],labels};   // mountains added by hand via the editor
  saveWorld();rebuildWorld();
 }
 function loadSampleWorld(){
@@ -640,9 +635,7 @@ function loadSampleWorld(){
   const byId={};for(const t of world.towns)byId[t.id]=t;
   for(const [a,b,king] of SAMPLE_ROADS){const A=byId[a],B=byId[b];if(!A||!B)continue;
     world.routes.push({type:king?'trade':'road',a,b,pts:[bendPt(A,B)]});}
-  const ms=mulberry32(99);
-  for(const M of SAMPLE_MOUNTAINS)for(let i=0;i<M.n;i++)
-    world.mountains.push({x:Math.round(M.x+ms()*M.w),y:Math.round(M.y+ms()*M.h),s:Math.round(7+ms()*5)});
+  world.mountains=[];   // mountains added by hand via the editor
   world.labels=[];
   for(const[text,x,y,size]of SAMPLE_REGION_LABELS)world.labels.push({text,x,y,size,kind:'land',rot:0});
   for(const[text,x,y,size,rot]of SAMPLE_SEA_LABELS)world.labels.push({text,x,y,size,kind:'sea',rot});
@@ -1195,12 +1188,12 @@ function pathThrough(c,pts){
 }
 function strokeRoad(c,r){
  c.setLineDash([]);
- if(r.type==='road'){          // main trade route — slightly thicker & darker solid
-  c.strokeStyle='rgba(74,52,28,.82)';c.lineWidth=1.7;pathThrough(c,r.pts);c.stroke();
+ if(r.type==='road'){          // main trade route — slightly thicker & darker hairline
+  c.strokeStyle='rgba(74,52,28,.8)';c.lineWidth=0.9;pathThrough(c,r.pts);c.stroke();
  }else if(r.type==='trail'){   // trail — faint dotted
-  c.setLineDash([2,4]);c.strokeStyle='rgba(90,70,45,.6)';c.lineWidth=1;pathThrough(c,r.pts);c.stroke();c.setLineDash([]);
- }else{                        // trade route — thin solid
-  c.strokeStyle='rgba(105,78,45,.72)';c.lineWidth=1.1;pathThrough(c,r.pts);c.stroke();
+  c.setLineDash([2,5]);c.strokeStyle='rgba(90,70,45,.55)';c.lineWidth=0.7;pathThrough(c,r.pts);c.stroke();c.setLineDash([]);
+ }else{                        // trade route — thin hairline
+  c.strokeStyle='rgba(105,78,45,.62)';c.lineWidth=0.6;pathThrough(c,r.pts);c.stroke();
  }
 }
 function drawStatic(){
@@ -1924,24 +1917,7 @@ function bindShopRows(sec){
 /* ================= character creation ================= */
 let selHouse=null,forge={sigil:SIGIL_SET[5],color:COLOR_SET[5]};
 function buildCreate(){
- const grid=$('#housegrid');
- HOUSES.forEach(h=>{
-  const card=document.createElement('button');card.className='hcard';card.type='button';
-  card.innerHTML='<div class="top"><div class="seal" style="background:'+h.color+'">'+h.sigil+'</div>'+
-   '<div><h3>'+h.name+'</h3><div class="wd">'+h.words+'</div></div></div>'+
-   '<div class="ds">'+h.desc+'</div>'+
-   '<div class="pk"><b>'+PERKS[h.perk].name+':</b> '+PERKS[h.perk].blurb+'</div>'+
-   '<div class="st">Seat: '+(LOC[h.seat]?LOC[h.seat].name+' · '+LOC[h.seat].region:'—')+'</div>';
-  card.onclick=()=>{selHouse=h.id;
-   document.querySelectorAll('.hcard').forEach(c=>c.classList.remove('sel'));
-   card.classList.add('sel');updateBegin();};
-  grid.appendChild(card);
- });
- // forge controls
- const seatSel=$('#f-seat');
- for(const l of LOCS.filter(l=>l.type==='city'||l.type==='capital')){
-  const o=document.createElement('option');o.value=l.id;o.textContent=l.name+' — '+l.region;seatSel.appendChild(o);
- }
+ selHouse='FORGE';           // you always found your own house
  const perkSel=$('#f-perk');
  for(const k in PERKS){const o=document.createElement('option');o.value=k;o.textContent=PERKS[k].name+' — '+PERKS[k].blurb;perkSel.appendChild(o);}
  const sg=$('#f-sigils');
@@ -1950,16 +1926,12 @@ function buildCreate(){
  const sw=$('#f-colors');
  COLOR_SET.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='sw'+(c===forge.color?' sel':'');b.style.background=c;b.setAttribute('aria-label','banner color '+c);
   b.onclick=()=>{forge.color=c;sw.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');pickForge();};sw.appendChild(b);});
- $('#f-house').addEventListener('input',pickForge);
+ $('#f-house').addEventListener('input',updateBegin);
  $('#begin-name').addEventListener('input',updateBegin);
  $('#begin').onclick=beginGame;
- function pickForge(){
-  if($('#f-house').value.trim()){selHouse='FORGE';document.querySelectorAll('.hcard').forEach(c=>c.classList.remove('sel'));}
-  updateBegin();
- }
 }
 function updateBegin(){
- $('#begin').disabled=!(selHouse&&$('#begin-name').value.trim().length>=2);
+ $('#begin').disabled=!($('#begin-name').value.trim().length>=2&&$('#f-house').value.trim().length>=1);
 }
 function beginGame(){
  const nm=$('#begin-name').value.trim();
@@ -2114,6 +2086,13 @@ const DRAGONS={
  wyrm:     {name:'Great Wyrm',power:1200,size:4, ride:true},
 };
 const DHATCH=[['hatchling',45],['drake',30],['wyvern',18],['wyrm',7]];
+const BUILDINGS={
+ homes:{name:'Lowborn Homes', wood:30,stone:10,gold:20, repeat:true, desc:'The smallfolk multiply — faster population and tax growth.'},
+ manor:{name:'Highborn Manor', wood:20,stone:40,gold:60, repeat:true, desc:'+8 gold each turn from noble rents.'},
+ smith:{name:'Blacksmith',     wood:20,stone:25,gold:40, desc:'Arms your levies — recruiting costs 15% less.'},
+ walls:{name:'City Walls',     wood:10,stone:60,gold:50, desc:'Stone walls — far stronger defence when your seat is besieged.'},
+ keep: {name:'Raise the Keep',  wood:20,stone:70,gold:80, desc:'Upgrade your keep one level — stronger defence, taller castle on the map.'},
+};
 const FREE_COLORS=['#6b4d7a','#2f5d4e','#7a4a2a','#8a6d2f','#40525e','#7a3b3b','#4a6741','#5d7387'];
 
 let R=null;                 // realm state (non-null => realm mode)
@@ -2128,9 +2107,11 @@ function armyPower(tr,drs,enemyTr){
  for(const d of (drs||[]))p+=(DRAGONS[d.size]||DRAGONS.hatchling).power;
  return p;
 }
-function bannerColor(id){ if(!id)return '#8a7a58'; const h=HOUSES.find(x=>x.id===id); if(h)return h.color;
+function bannerColor(id){ if(id==='player')return (R&&R.meColor)||'#8a2f2b'; if(!id)return '#8a7a58';
+ const h=HOUSES.find(x=>x.id===id); if(h)return h.color;
  return FREE_COLORS[Math.abs(hashStr(id))%FREE_COLORS.length]; }
-function bannerName(id){ if(!id)return 'the free folk'; const h=HOUSES.find(x=>x.id===id); return h?h.name:id; }
+function bannerName(id){ if(id==='player')return (R&&R.meName)||'your house'; if(!id)return 'the free folk';
+ const h=HOUSES.find(x=>x.id===id); return h?h.name:id; }
 
 function seatHouseOf(townId){ // which house seat is this town's nearest — defines its realm
  const t=LOC[townId];let best=null,bd=1e18;
@@ -2153,23 +2134,27 @@ function keepBonus(t){return 1+0.14*(t.keep||0);}
 function enterRealm(o){
  if(!world.towns.length||!HOUSES.every(h=>LOC[h.seat])){ if(!world.towns.length)loadSampleWorld(); }
  const myHouse=HOUSES.find(h=>h.name===o.house)||HOUSES.find(h=>h.seat===o.seat)||HOUSES[0];
- // assign every town to the realm of its nearest house-seat
+ // the great houses hold their clusters; you begin as a minor lord of one village
  for(const t of world.towns){const h=seatHouseOf(t.id);t.owner=h?h.id:null;t.color=bannerColor(t.owner);
    t.allies=t.allies||[]; if(t.garrison==null)t.garrison=garrisonFor(t);}
- R={me:myHouse.id, name:o.name, seat:o.seat||myHouse.seat, turn:1, gold:400, food:120, wood:80, stone:60, atWar:{}, eggs:[]};
+ const villages=world.towns.filter(t=>t.type==='village');
+ const start=villages.length?pick(villages):pick(world.towns.filter(t=>t.type!=='capital'))||world.towns[0];
+ R={me:'player', meColor:o.color||myHouse.color, meName:o.house||myHouse.name, house:myHouse.id,
+    name:o.name, seat:start.id, turn:1, gold:120, food:60, wood:40, stone:30, atWar:{}, eggs:[], built:{}};
+ start.owner='player';start.color=bannerColor('player');start.garrison=splitTroops(40,mulberry32(hashStr(start.id)));
  armies=[]; armySeq=1;
- // one field army per house at its seat; player's is controllable
- for(const h of HOUSES){ if(!LOC[h.seat])continue;
-   const s=LOC[h.seat]; const isMe=h.id===myHouse.id;
-   armies.push({id:'a'+(armySeq++),owner:h.id,at:h.seat,x:s.x,y:s.y,troops:splitTroops(isMe?300:ri(400,900),null),
-     dragons:isMe?[{size:'drake'}]:(h.id===HOUSES[2].id?[{size:'wyvern'}]:[]),path:null,player:isMe});
+ const s=LOC[start.id];
+ armies.push({id:'a'+(armySeq++),owner:'player',at:start.id,x:s.x,y:s.y,troops:splitTroops(60,null),dragons:[],path:null,player:true});
+ for(const h of HOUSES){ if(!LOC[h.seat])continue; const hs=LOC[h.seat];
+   armies.push({id:'a'+(armySeq++),owner:h.id,at:h.seat,x:hs.x,y:hs.y,troops:splitTroops(ri(400,900),null),
+     dragons:(h.id===HOUSES[2].id?[{size:'wyvern'}]:[]),path:null});
  }
  R.host=armies.find(a=>a.player);
  $('#create').classList.add('hidden');$('#topbar').style.display='flex';$('#ledger').style.display='none';
- selArmy=null;selTown=null; cam.s=Math.max(fitScale,0.9); centerOn(LOC[R.seat].x,LOC[R.seat].y);
+ selArmy=null;selTown=null; cam.s=Math.max(fitScale,2.0); centerOn(s.x,s.y);
  realmHUD();showRealmPanel();needsDraw=true;
 }
-function myTowns(){return world.towns.filter(t=>t.owner===R.me);}
+function myTowns(){return world.towns.filter(t=>t.owner==='player');}
 function realmHUD(){
  setChip('c-gold','🪙',R.gold);setChip('c-food','🍞',R.food);
  setChip('c-wood','🪵',R.wood!=null?R.wood:0);setChip('c-stone','⛰',R.stone!=null?R.stone:0);
@@ -2280,102 +2265,80 @@ function aiTurn(){
 
 /* ---- dragons / recruiting ---- */
 function buyEgg(){ if(R.gold<150||R.food<40){return;} R.gold-=150;R.food-=40;R.eggs.push({t:ri(2,4)});log2('You set a dragon egg to warm by the fire.','');realmHUD();showRealmPanel(); }
-function recruit(u,n){ const c=UNITS[u]; const cost=c.gold*n, fcost=c.food*n;
- if(R.gold<cost||R.food<fcost)return; R.gold-=cost;R.food-=fcost;
+function recruit(u,n){ const c=UNITS[u]; const disc=R.built.smith?0.85:1;
+ const cost=Math.round(c.gold*n*disc), fcost=c.food*n;
+ if(R.gold<cost||R.food<fcost||!R.host)return; R.gold-=cost;R.food-=fcost;
  R.host.troops[u]=(R.host.troops[u]||0)+n; realmHUD();showRealmPanel(); }
+function canBuild(bd){return R.gold>=bd.gold&&(R.wood||0)>=bd.wood&&(R.stone||0)>=bd.stone;}
+function build(key,townId){ const bd=BUILDINGS[key]; if(!canBuild(bd))return;
+ const t=LOC[townId||R.seat];
+ if(key==='keep'&&(t.keep||0)>=4)return;
+ R.gold-=bd.gold;R.wood-=bd.wood;R.stone-=bd.stone;R.built[key]=(R.built[key]||0)+1;
+ if(key==='keep'){t.keep=Math.min(4,(t.keep||0)+1);rebuildStatic();}
+ log2('Built '+bd.name+' at '+t.name+'.','gold'); realmHUD(); refreshRealmView(); }
 
 /* ---- rendering: army & dragon tokens ---- */
-function drawDragonToken(ctx,x,y,size,color){
- const s={hatchling:2.6,drake:3.6,wyvern:5,wyrm:6.8}[size]||3;
- ctx.save();ctx.translate(x,y);
- ctx.fillStyle='#2a1a12';ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=0.5;
- // wings
+function drawDragonToken(ctx,x,y,size){ // small realistic top-down silhouette
+ const s={hatchling:0.45,drake:0.7,wyvern:1.0,wyrm:1.4}[size]||0.6;
+ ctx.save();ctx.translate(x,y);ctx.fillStyle='#22140e';
  ctx.beginPath();
- ctx.moveTo(0,-s*0.2);
- ctx.quadraticCurveTo(-s*1.6,-s*1.1,-s*2.1,-s*0.1);
- ctx.quadraticCurveTo(-s*1.3,-s*0.2,0,s*0.3);
- ctx.quadraticCurveTo(s*1.3,-s*0.2,s*2.1,-s*0.1);
- ctx.quadraticCurveTo(s*1.6,-s*1.1,0,-s*0.2);
+ ctx.moveTo(0,-3*s);                              // head
+ ctx.lineTo(0.7*s,-1.3*s);
+ ctx.quadraticCurveTo(3.4*s,-2.3*s,4*s,-0.5*s);   // right wing
+ ctx.quadraticCurveTo(2*s,-0.8*s,1*s,0.3*s);
+ ctx.lineTo(0.5*s,2.6*s);ctx.lineTo(0,3.4*s);ctx.lineTo(-0.5*s,2.6*s);  // tail
+ ctx.lineTo(-1*s,0.3*s);
+ ctx.quadraticCurveTo(-2*s,-0.8*s,-4*s,-0.5*s);   // left wing
+ ctx.quadraticCurveTo(-3.4*s,-2.3*s,-0.7*s,-1.3*s);
  ctx.closePath();ctx.fill();
- // body
- ctx.fillStyle=color;ctx.beginPath();ctx.ellipse(0,0,s*0.5,s*1.1,0,0,7);ctx.fill();
- // head/neck for bigger ones
- if(size!=='hatchling'){ctx.beginPath();ctx.moveTo(0,-s*0.9);ctx.lineTo(s*0.5,-s*1.7);ctx.lineTo(-s*0.2,-s*1.2);ctx.closePath();ctx.fill();}
- // tail
- ctx.strokeStyle=color;ctx.lineWidth=s*0.28;ctx.beginPath();ctx.moveTo(0,s*0.9);ctx.lineTo(0,s*1.9);ctx.stroke();
  ctx.restore();
 }
 function drawArmyToken(ctx,a){
- const col=bannerColor(a.owner),tot=troopsTotal(a.troops);
- const r=3.4+Math.min(4,Math.log10(Math.max(10,tot)));
- // banner pole + flag
- ctx.save();ctx.translate(a.x,a.y);
- ctx.strokeStyle='#2a1c10';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,2);ctx.lineTo(0,-r*2.2);ctx.stroke();
- ctx.fillStyle=col;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=0.6;
- ctx.beginPath();ctx.moveTo(0,-r*2.2);ctx.lineTo(r*2.4,-r*1.8);ctx.lineTo(0,-r*1.35);ctx.closePath();ctx.fill();ctx.stroke();
- // troop base
+ const col=bannerColor(a.owner),tot=troopsTotal(a.troops),p=armyDrawPos(a);
+ const r=2.8+Math.min(3.2,Math.log10(Math.max(10,tot)));
+ ctx.save();ctx.translate(p.x,p.y);
+ ctx.strokeStyle='#2a1c10';ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(0,1.5);ctx.lineTo(0,-r*2);ctx.stroke();
+ ctx.fillStyle=col;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=0.5;
+ ctx.beginPath();ctx.moveTo(0,-r*2);ctx.lineTo(r*2,-r*1.65);ctx.lineTo(0,-r*1.25);ctx.closePath();ctx.fill();ctx.stroke();
  ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fillStyle=col;ctx.fill();
- ctx.lineWidth=a.player?1.4:0.8;ctx.strokeStyle=a.player?'#f2e4c2':'rgba(0,0,0,.5)';ctx.stroke();
+ ctx.lineWidth=a.player?1.2:0.7;ctx.strokeStyle=a.player?'#f2e4c2':'rgba(0,0,0,.5)';ctx.stroke();
  ctx.restore();
- // count label
- ctx.font='700 6px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
- ctx.lineWidth=2.2;ctx.strokeStyle='rgba(238,228,196,.9)';ctx.strokeText(fmt(tot),a.x,a.y+r+4);
- ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),a.x,a.y+r+4);
- // dragons flying beside the host
- a.dragons.forEach((d,i)=>{const ang=-0.6-i*0.5;drawDragonToken(ctx,a.x+Math.cos(ang)*(r+7),a.y+Math.sin(ang)*(r+7)-4,d.size,col);});
+ ctx.font='700 5.5px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
+ ctx.lineWidth=2;ctx.strokeStyle='rgba(238,228,196,.9)';ctx.strokeText(fmt(tot),p.x,p.y+r+3.5);
+ ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),p.x,p.y+r+3.5);
+ a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,p.x+Math.cos(ang)*(r+5),p.y+Math.sin(ang)*(r+5)-3,d.size);});
 }
 function fmt(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':''+n;}
-function drawRealmLayer(){
- // tint owned-town rings by banner
- for(const t of world.towns){ if(!t.owner)continue;
-   ctx.beginPath();ctx.arc(t.x,t.y,7,0,7);ctx.strokeStyle=t.color+'aa';ctx.lineWidth=1.1/Math.sqrt(cam.s);ctx.stroke(); }
- for(const a of armies)drawArmyToken(ctx,a);
- if(selArmy){const a=armies.find(x=>x.id===selArmy);if(a){ctx.beginPath();ctx.arc(a.x,a.y,10,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1.4/Math.sqrt(cam.s);ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);}}
+function armyDrawPos(a){ // sit beside a town, not on top of it, spread deterministically
+ const ang=(hashStr(a.id)%360)*Math.PI/180, off=13;
+ return {x:a.x+Math.cos(ang)*off, y:a.y+Math.sin(ang)*off-4};
 }
-function armyAt(w){let best=null,bd=9*9;for(const a of armies){const d=(a.x-w.x)**2+(a.y-w.y)**2;if(d<bd){bd=d;best=a;}}return best;}
+function drawRealmLayer(){
+ for(const a of armies)drawArmyToken(ctx,a);
+ if(selArmy){const a=armies.find(x=>x.id===selArmy);if(a){const p=armyDrawPos(a);ctx.beginPath();ctx.arc(p.x,p.y,8,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1.4/Math.sqrt(cam.s);ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);}}
+}
+function armyAt(w){let best=null,bd=8*8;for(const a of armies){const p=armyDrawPos(a);const d=(p.x-w.x)**2+(p.y-w.y)**2;if(d<bd){bd=d;best=a;}}return best;}
 
 /* ---- realm panels ---- */
-let realmTab='court';
+let townTab='manage';
 function refreshRealmView(){ if(selArmy)showArmyPanel(); else if(selTown)showTownPanel(); else showRealmPanel(); }
 function showRealmPanel(){
  selArmy=null;selTown=null;
- const b=panelShell(bannerName(R.me),R.name+' of '+bannerName(R.me),'You hold '+myTowns().length+' towns. Raise levies, hatch dragons, and march to take the realm.');
- const tabs=document.createElement('div');tabs.className='rtabs';
- [['court','Court'],['army','Muster'],['dragons','Dragons']].forEach(([k,lbl])=>{
-  const t=document.createElement('button');t.className='rtab'+(realmTab===k?' sel':'');t.textContent=lbl;t.onclick=()=>{realmTab=k;showRealmPanel();};tabs.appendChild(t);});
- b.appendChild(tabs);
- if(realmTab==='court'){
-  const s=addSec(b,'Treasury');
-  s.insertAdjacentHTML('beforeend','<div class="kv"><span>Gold</span><b>'+R.gold+'</b></div><div class="kv"><span>Food</span><b>'+R.food+'</b></div>'+
-   '<div class="kv"><span>Income / turn</span><b>+'+realmIncome().g+'g · +'+realmIncome().f+'f</b></div>'+
-   '<div class="kv"><span>Army upkeep</span><b>−'+upkeep()+'g</b></div>');
-  const h=addSec(b,'Your Host');
-  h.insertAdjacentHTML('beforeend','<p class="hint">'+(R.host?troopsTotal(R.host.troops)+' troops, '+R.host.dragons.length+' dragons at '+LOC[R.host.at].name:'Your host has been destroyed.')+'</p>');
-  const e=addSec(b,'The Realm');
-  e.insertAdjacentHTML('beforeend','<p class="hint">Click any army token on the map to inspect it, or a town to see who holds it and march on it.</p>');
-  const btn=document.createElement('button');btn.className='act';btn.style.marginTop='4px';btn.textContent='End Turn ▸';btn.onclick=endTurn;e.appendChild(btn);
- }else if(realmTab==='army'){
-  const s=addSec(b,'Muster Troops');
-  let rows='';for(const u of UORDER){const c=UNITS[u];
-   rows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">atk '+c.atk+' · def '+c.def+' · beats '+c.strong.map(x=>UNITS[x].name.split(/[ -]/)[0]).join(', ')+'</div></div>'+
-    '<div style="display:flex;align-items:center;gap:6px"><span class="pr">'+c.gold+'g</span><button class="act gd" data-rec="'+u+'">+10</button></div></div>';}
-  s.insertAdjacentHTML('beforeend',rows);
-  s.querySelectorAll('[data-rec]').forEach(btn=>btn.onclick=()=>recruit(btn.dataset.rec,10));
-  const cc=addSec(b,'Counters');cc.insertAdjacentHTML('beforeend','<p class="hint">Spears beat horse & knights · Horse beats bows · Bows beat spears & men-at-arms · Knights & men-at-arms are the heavy line. Bring the right mix.</p>');
- }else{
-  const s=addSec(b,'Dragons');
-  let dr=R.host?R.host.dragons.map(d=>'<div class="kv"><span>'+DRAGONS[d.size].name+'</span><b>'+(DRAGONS[d.size].ride?'rideable':'—')+' · pow '+DRAGONS[d.size].power+'</b></div>').join(''):'';
-  s.insertAdjacentHTML('beforeend',(dr||'<p class="hint">No dragons yet.</p>')+
-   (R.eggs.length?'<p class="hint">'+R.eggs.length+' egg(s) warming — hatch in '+Math.min(...R.eggs.map(e=>e.t))+'–'+Math.max(...R.eggs.map(e=>e.t))+' turns.</p>':''));
-  s.insertAdjacentHTML('beforeend','<div class="shoprow"><div><div class="sn">Dragon egg</div><div class="sd">hatches to a random size in a few turns</div></div><div style="display:flex;align-items:center;gap:6px"><span class="pr">150g·40f</span><button class="act gd" id="buyegg">Acquire</button></div></div>');
-  s.querySelector('#buyegg').onclick=buyEgg;
- }
- const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.map(e=>'<p class="'+e.cls+'" style="font-size:11.5px;margin:2px 0">'+e.t+'</p>').join(''):'<p class="hint">The realm is quiet… for now.</p>');
+ const b=panelShell(R.meName,R.name+' of '+R.meName,'You hold '+myTowns().length+' holdfast'+(myTowns().length===1?'':'s')+'. Click your own town to manage it; click any army or town on the map to inspect it, then march.');
+ const s=addSec(b,'Treasury');
+ s.insertAdjacentHTML('beforeend','<div class="kv"><span>Gold</span><b>'+R.gold+'</b></div><div class="kv"><span>Food</span><b>'+R.food+'</b></div>'+
+  '<div class="kv"><span>Wood · Stone</span><b>'+R.wood+' · '+R.stone+'</b></div>'+
+  '<div class="kv"><span>Income / turn</span><b>+'+realmIncome().g+'g · +'+realmIncome().f+'f</b></div>');
+ const h=addSec(b,'Your Host');
+ h.insertAdjacentHTML('beforeend','<p class="hint">'+(R.host?troopsTotal(R.host.troops)+' troops, '+R.host.dragons.length+' dragons at '+LOC[R.host.at].name+(R.host.path&&R.host.path.length?' (marching)':''):'Your host has been destroyed.')+'</p>');
+ const e=addSec(b,'');
+ const btn=document.createElement('button');btn.className='act';btn.textContent='End Turn ▸';btn.onclick=endTurn;e.appendChild(btn);
+ const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,12).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm is quiet… for now.</p>');
 }
 function showArmyPanel(){
  const a=armies.find(x=>x.id===selArmy); if(!a){showRealmPanel();return;}
  selTown=null;
- const b=panelShell(bannerName(a.owner),(a.player?'Your Host':bannerName(a.owner)+'’s host'),troopsTotal(a.troops)+' troops · '+a.dragons.length+' dragons · at '+LOC[a.at].name+(a.path&&a.path.length?' (marching)':''));
+ const b=panelShell(a.player?R.meName:bannerName(a.owner),(a.player?'Your Host':bannerName(a.owner)+'’s host'),troopsTotal(a.troops)+' troops · '+a.dragons.length+' dragons · at '+LOC[a.at].name+(a.path&&a.path.length?' (marching)':''));
  const s=addSec(b,'Composition');
  let rows='';for(const u of UORDER)if(a.troops[u])rows+='<div class="kv"><span>'+UNITS[u].name+'</span><b>'+a.troops[u]+'</b></div>';
  s.insertAdjacentHTML('beforeend',rows||'<p class="hint">Broken and scattered.</p>');
@@ -2385,24 +2348,56 @@ function showArmyPanel(){
 function showTownPanel(){
  const t=world.towns.find(x=>x.id===selTown); if(!t){showRealmPanel();return;}
  selArmy=null;
- const mine=t.owner===R.me;
- const b=panelShell(bannerName(t.owner)+(mine?' · yours':''),t.name,t.desc||'');
- const s=addSec(b,'Holdfast');
- s.insertAdjacentHTML('beforeend','<div class="kv"><span>Allegiance</span><b>'+bannerName(t.owner)+'</b></div>'+
-  '<div class="kv"><span>Smallfolk</span><b>'+(t.population||'—')+'</b></div>'+
-  '<div class="kv"><span>Keep</span><b>'+['none','palisade','holdfast','keep','great castle'][t.keep||0]+'</b></div>'+
-  '<div class="kv"><span>Garrison</span><b>'+troopsTotal(t.garrison||{})+' troops</b></div>'+
-  (t.families&&t.families.length?'<div class="kv"><span>Houses</span><b>'+t.families.map(f=>f.name).join(', ')+'</b></div>':''));
- if(!mine){
+ const mine=t.owner==='player';
+ const b=panelShell((mine?R.meName+' · yours':bannerName(t.owner)),t.name,t.desc||'');
+ if(mine){
+  const tabs=document.createElement('div');tabs.className='rtabs';
+  [['manage','Build'],['muster','Muster'],['dragons','Dragons']].forEach(([k,lbl])=>{
+   const x=document.createElement('button');x.className='rtab'+(townTab===k?' sel':'');x.textContent=lbl;x.onclick=()=>{townTab=k;showTownPanel();};tabs.appendChild(x);});
+  b.appendChild(tabs);
+  const info=addSec(b,'Holdfast');
+  info.insertAdjacentHTML('beforeend','<div class="kv"><span>Smallfolk</span><b>'+(t.population||0)+'</b></div>'+
+   '<div class="kv"><span>Keep</span><b>'+KEEP_NAMES[t.keep||0]+'</b></div><div class="kv"><span>Garrison</span><b>'+troopsTotal(t.garrison||{})+'</b></div>');
+  if(townTab==='manage'){
+   const s=addSec(b,'Build');
+   let rows='';for(const k in BUILDINGS){const bd=BUILDINGS[k];const cap=(k==='keep'&&(t.keep||0)>=4);
+    rows+='<div class="shoprow"><div><div class="sn">'+bd.name+(k!=='keep'&&R.built[k]?' ×'+R.built[k]:'')+'</div><div class="sd">'+bd.desc+'</div></div>'+
+     '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span class="pr">'+bd.wood+'🪵 '+bd.stone+'⛰ '+bd.gold+'g</span>'+
+     '<button class="act gd" data-b="'+k+'"'+((cap||!canBuild(bd))?' disabled':'')+'>'+(cap?'max':'Build')+'</button></div></div>';}
+   s.insertAdjacentHTML('beforeend',rows);
+   s.querySelectorAll('[data-b]').forEach(btn=>btn.onclick=()=>build(btn.dataset.b,t.id));
+  }else if(townTab==='muster'){
+   const s=addSec(b,'Muster into your host'+(R.host?' ('+LOC[R.host.at].name+')':''));
+   const disc=R.built.smith?0.85:1;
+   let rows='';for(const u of UORDER){const c=UNITS[u];
+    rows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">atk '+c.atk+' def '+c.def+' · beats '+c.strong.map(x=>UNITS[x].name.split(/[ -]/)[0]).join(', ')+'</div></div>'+
+     '<div style="display:flex;align-items:center;gap:6px"><span class="pr">'+Math.round(c.gold*10*disc)+'g</span><button class="act gd" data-rec="'+u+'">+10</button></div></div>';}
+   s.insertAdjacentHTML('beforeend',rows);
+   s.querySelectorAll('[data-rec]').forEach(btn=>btn.onclick=()=>{recruit(btn.dataset.rec,10);});
+  }else{
+   const s=addSec(b,'Dragons');
+   const dr=R.host?R.host.dragons.map(d=>'<div class="kv"><span>'+DRAGONS[d.size].name+'</span><b>pow '+DRAGONS[d.size].power+'</b></div>').join(''):'';
+   s.insertAdjacentHTML('beforeend',(dr||'<p class="hint">No dragons yet.</p>')+(R.eggs.length?'<p class="hint">'+R.eggs.length+' egg(s) warming.</p>':'')+
+    '<div class="shoprow"><div><div class="sn">Dragon egg</div><div class="sd">hatches to a random size in a few turns</div></div><div style="display:flex;align-items:center;gap:6px"><span class="pr">150g·40f</span><button class="act gd" id="buyegg">Acquire</button></div></div>');
+   s.querySelector('#buyegg').onclick=buyEgg;
+  }
+  const e=addSec(b,'');const eb=document.createElement('button');eb.className='act';eb.textContent='End Turn ▸';eb.onclick=endTurn;e.appendChild(eb);
+ }else{
+  const s=addSec(b,'Holdfast');
+  s.insertAdjacentHTML('beforeend','<div class="kv"><span>Allegiance</span><b>'+bannerName(t.owner)+'</b></div>'+
+   '<div class="kv"><span>Smallfolk</span><b>'+(t.population||'—')+'</b></div>'+
+   '<div class="kv"><span>Keep</span><b>'+KEEP_NAMES[t.keep||0]+'</b></div>'+
+   '<div class="kv"><span>Garrison</span><b>'+troopsTotal(t.garrison||{})+' troops</b></div>'+
+   (t.families&&t.families.length?'<div class="kv"><span>Houses</span><b>'+t.families.map(f=>f.name).join(', ')+'</b></div>':''));
   const w=addSec(b,'War');
   const reach=R.host&&bfsPath(R.host.at,t.id);
   if(R.host&&reach){const btn=document.createElement('button');btn.className='act';
-   btn.textContent='March host here ('+(reach.length-1)+' turns)';
+   btn.textContent='March host here ('+(reach.length-1)+' turn'+(reach.length-1===1?'':'s')+')';
    btn.onclick=()=>{ if(orderMarch(R.host,t.id)){log2('Your host marches on '+t.name+'.','');selTown=null;showRealmPanel();needsDraw=true;} };
    w.appendChild(btn);
   } else w.insertAdjacentHTML('beforeend','<p class="hint">No road connects your host to this holdfast.</p>');
  }
- const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Back';bb.onclick=()=>{selTown=null;showRealmPanel();};back.appendChild(bb);
+ const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selTown=null;showRealmPanel();};back.appendChild(bb);
 }
 function showBattleReport(rep,att,def,town){
  const win=att.player? rep.attackerWins : !rep.attackerWins;
