@@ -317,54 +317,118 @@ const SEA_LABELS=[
 ];
 
 const LOCS=[
- {id:'frosthollow',name:'Frosthollow', type:'town',   x:415,y:885, region:'The Frostreach', shops:['market','inn'],
-  desc:'A timber town among the northern pines, its oak groves older than its walls.'},
- {id:'blacktide', name:'Blacktide',    type:'town',   x:565,y:1005,region:'The Frostreach', shops:['market','stables','inn'],
-  desc:'A ford-town where the northern roads run down to a cold grey sea.'},
- {id:'coldmere',  name:'Coldmere Keep',type:'castle', x:490,y:1010,region:'The Frostreach', shops:['market','smith','stables','inn'],
-  desc:'Seat of House Vharen. Black towers over a frozen lake, its halls warmed by great hearths.'},
- {id:'hollowpine',name:'Hollowpine',   type:'village',x:305,y:950, region:'The Frostreach', shops:['market','inn'],
-  desc:'A grey holdfast above the bay, where the war-galleys once wintered.'},
- {id:'greyford',  name:'Greyford',     type:'town',   x:255,y:1020,region:'The Westermark', shops:['market','inn'],
-  desc:'A trading town beneath a flat-topped mountain, rich in salmon and silence.'},
- {id:'wyndmere',  name:'Wyndmere Keep',type:'castle', x:200,y:1125,region:'The Westermark', shops:['market','smith','stables','inn','pack'],
-  desc:'Seat of House Wyndael — the windswept hall of the horse-lords, gazing west into the endless sea.'},
- {id:'rushford',  name:'Rushford Gate',type:'fort',   x:330,y:1130,region:'The Rivenlands', shops:['market','stables','inn'],
-  desc:'The great bridge-fort on the river. Whoever holds Rushford holds the middle of the realm.'},
- {id:'kingsmound',name:'Kingsmound',   type:'hill',   x:470,y:1085,region:'The Rivenlands', shops:['inn'],
-  desc:'The mound of the old kings. Grass, stone, wind — and the fate of the whole realm.'},
- {id:'aldcrown',  name:'Aldcrown',     type:'capital',x:525,y:1140,region:'The Crownmarch', shops:['market','smith','stables','inn','pack'],
-  desc:'The capital. A broken crown still tops the Great Sept, and every ship in the world calls at its quays.'},
- {id:'appleford', name:'Appleford Hall',type:'castle',x:430,y:1255,region:'The Crownmarch', shops:['market','smith','stables','inn'],
-  desc:'Seat of House Reyfield, ringed by orchards and barley that feed half the realm.'},
- {id:'gullhaven', name:'Gullhaven',    type:'port',   x:515,y:1295,region:'The Crownmarch', shops:['market','inn'],
-  desc:'A rough harbor of herring boats, mudflats, and quick knives.'},
- {id:'stormcove', name:'Stormcove',    type:'port',   x:450,y:1330,region:'The Summerlands', shops:['market','smith','inn'],
-  desc:'The oldest city in the realm, and it lets no one forget it. Storm bells hang in every tower.'},
- {id:'mirehaven', name:'Mirehaven',    type:'port',   x:300,y:1400,region:'The Summerlands', shops:['market','stables','inn'],
-  desc:'A marsh-city of merchants built where the river meets the tide.'},
- {id:'tidereach', name:'Tidereach Keep',type:'castle',x:230,y:1250,region:'The Summerlands', shops:['market','smith','stables','inn'],
-  desc:'Seat of House Merryn — a walled stronghold at the head of the tide.'},
- {id:'deerhollow',name:'Deerhollow',   type:'village',x:165,y:1390,region:'The Summerlands', shops:['market','inn'],
-  desc:'A lake-village under the tallest mountains in the realm. The red deer outnumber the folk.'}
+ {id:'aldcrown',name:'Aldcrown',type:'capital',x:495,y:1162,region:'The Crownmarch',shops:['market','smith','stables','inn','pack'],desc:'The capital. A broken crown still tops the Great Sept, and every ship in the world calls at its quays.'},
+ {id:'coldmere',name:'Coldmere Keep',type:'city',x:490,y:1014,region:'The Frostreach',shops:['market','smith','stables','inn'],desc:'Seat of House Vharen. Black towers over a frozen lake, its halls warmed by great hearths.'},
+ {id:'wyndmere',name:'Wyndmere Keep',type:'city',x:210,y:1125,region:'The Westermark',shops:['market','smith','stables','inn','pack'],desc:'Seat of House Wyndael — the windswept hall of the horse-lords, gazing west into the endless sea.'},
+ {id:'tidereach',name:'Tidereach Keep',type:'city',x:232,y:1243,region:'The Summerlands',shops:['market','smith','stables','inn'],desc:'Seat of House Merryn — a walled stronghold at the head of the tide.'},
+ {id:'appleford',name:'Appleford Hall',type:'city',x:430,y:1255,region:'The Crownmarch',shops:['market','smith','stables','inn'],desc:'Seat of House Reyfield, ringed by orchards and barley that feed half the realm.'},
+ {id:'kingsmound',name:'Kingsmound',type:'hill',x:470,y:1085,region:'The Rivenlands',shops:['inn'],desc:'The mound of the old kings. Grass, stone, wind — and the fate of the whole realm.'},
+ {id:'rushford',name:'Rushford Gate',type:'town',x:334,y:1130,region:'The Rivenlands',shops:['market','stables','inn'],desc:'The great bridge-fort on the river. Whoever holds Rushford holds the middle of the realm.'},
+ {id:'frosthollow',name:'Frosthollow',type:'town',x:415,y:885,region:'The Frostreach',shops:['market','inn'],desc:'A timber town among the northern pines, its oak groves older than its walls.'},
+ {id:'blacktide',name:'Blacktide',type:'town',x:542,y:989,region:'The Frostreach',shops:['market','stables','inn'],desc:'A ford-town where the northern roads run down to a cold grey sea.'},
+ {id:'hollowpine',name:'Hollowpine',type:'village',x:309,y:951,region:'The Frostreach',shops:['market','inn'],desc:'A grey holdfast above the bay, where the war-galleys once wintered.'},
+ {id:'greyford',name:'Greyford',type:'town',x:255,y:1020,region:'The Westermark',shops:['market','inn'],desc:'A trading town beneath a flat-topped mountain, rich in salmon and silence.'},
+ {id:'gullhaven',name:'Gullhaven',type:'town',x:480,y:1284,region:'The Crownmarch',shops:['market','inn'],desc:'A rough harbor of herring boats, mudflats, and quick knives.'},
+ {id:'stormcove',name:'Stormcove',type:'town',x:448,y:1323,region:'The Summerlands',shops:['market','smith','inn'],desc:'The oldest city in the realm, and it lets no one forget it. Storm bells hang in every tower.'},
+ {id:'mirehaven',name:'Mirehaven',type:'town',x:303,y:1390,region:'The Summerlands',shops:['market','stables','inn'],desc:'A marsh-city of merchants built where the river meets the tide.'},
+ {id:'deerhollow',name:'Deerhollow',type:'village',x:165,y:1390,region:'The Summerlands',shops:['market','inn'],desc:'A lake-village under the tallest mountains in the realm. The red deer outnumber the folk.'},
+ {id:'loc0',name:'Longmire',type:'village',x:471,y:861,region:'The Frostreach',shops:['inn'],desc:'A poor village of herders and bog-cutters.'},
+ {id:'loc1',name:'Oakenshaw',type:'village',x:276,y:1193,region:'The Summerlands',shops:['market'],desc:'A riverside hamlet with an old mill.'},
+ {id:'loc2',name:'Dunmarch',type:'town',x:321,y:1272,region:'The Summerlands',shops:['market','inn','stables'],desc:'A prosperous town of weavers and wool.'},
+ {id:'loc3',name:'Foxhollow',type:'village',x:367,y:1255,region:'The Crownmarch',shops:['inn'],desc:'A hamlet of a dozen roofs and one ale-house.'},
+ {id:'loc4',name:'Ryecross',type:'village',x:415,y:929,region:'The Frostreach',shops:['inn'],desc:'A riverside hamlet with an old mill.'},
+ {id:'loc5',name:'Marlpit',type:'village',x:158,y:1319,region:'The Summerlands',shops:['market'],desc:'A riverside hamlet with an old mill.'},
+ {id:'loc6',name:'Wrenfield',type:'town',x:278,y:1074,region:'The Westermark',shops:['market','inn','stables'],desc:'A walled town of traders and tithe-barns.'},
+ {id:'loc7',name:'Oxmarch',type:'town',x:269,y:1135,region:'The Westermark',shops:['market','inn','stables'],desc:'A prosperous town of weavers and wool.'},
+ {id:'loc8',name:'Coldbrook',type:'village',x:388,y:1060,region:'The Rivenlands',shops:['inn'],desc:'A poor village of herders and bog-cutters.'},
+ {id:'loc9',name:'Muddy Ford',type:'village',x:186,y:1232,region:'The Summerlands',shops:['market'],desc:'A cluster of thatched crofts and a single well.'},
+ {id:'loc10',name:'Stonebeck',type:'town',x:342,y:1057,region:'The Rivenlands',shops:['market','inn','smith'],desc:'A walled town of traders and tithe-barns.'},
+ {id:'loc11',name:'Marsh End',type:'village',x:418,y:1134,region:'The Rivenlands',shops:['market'],desc:'A hamlet of a dozen roofs and one ale-house.'},
+ {id:'loc12',name:'Windmere',type:'town',x:355,y:929,region:'The Frostreach',shops:['market','inn','stables','smith'],desc:'A stout town where several roads meet.'},
+ {id:'loc13',name:'Beggar’s Bush',type:'village',x:234,y:1333,region:'The Summerlands',shops:['market'],desc:'A fishing hamlet of nets and salt.'},
+ {id:'loc14',name:'Gorse Hill',type:'village',x:217,y:1408,region:'The Summerlands',shops:['market'],desc:'A cluster of thatched crofts and a single well.'},
+ {id:'loc15',name:'Widow’s Ferry',type:'village',x:344,y:1177,region:'The Rivenlands',shops:['inn'],desc:'A poor village of herders and bog-cutters.'},
+ {id:'loc16',name:'Kestrel Cross',type:'town',x:452,y:1181,region:'The Crownmarch',shops:['market','inn','stables','smith'],desc:'A prosperous town of weavers and wool.'},
+ {id:'loc17',name:'Barrowfield',type:'village',x:219,y:1285,region:'The Summerlands',shops:['inn'],desc:'A hamlet of a dozen roofs and one ale-house.'},
+ {id:'loc18',name:'Bramblewick',type:'town',x:332,y:1226,region:'The Rivenlands',shops:['market','inn','stables'],desc:'A walled town of traders and tithe-barns.'},
+ {id:'loc19',name:'Little Ashby',type:'village',x:293,y:904,region:'The Frostreach',shops:['inn'],desc:'A fishing hamlet of nets and salt.'},
+ {id:'loc20',name:'Hartcliff',type:'town',x:315,y:1314,region:'The Summerlands',shops:['market','inn'],desc:'A walled town of traders and tithe-barns.'},
+ {id:'loc21',name:'Nettleham',type:'village',x:339,y:1361,region:'The Summerlands',shops:['inn','market'],desc:'A fishing hamlet of nets and salt.'},
+ {id:'loc22',name:'Ferny Hollow',type:'village',x:405,y:991,region:'The Frostreach',shops:['inn'],desc:'A riverside hamlet with an old mill.'},
+ {id:'loc23',name:'Thistledown',type:'village',x:177,y:1080,region:'The Westermark',shops:['market'],desc:'A fishing hamlet of nets and salt.'},
+ {id:'loc24',name:'Pike’s Rest',type:'village',x:492,y:912,region:'The Frostreach',shops:['market'],desc:'A fishing hamlet of nets and salt.'},
+ {id:'loc25',name:'Elmswood',type:'town',x:339,y:879,region:'The Frostreach',shops:['market','inn','stables','smith'],desc:'A prosperous town of weavers and wool.'},
+ {id:'loc26',name:'Hensworth',type:'village',x:472,y:1235,region:'The Crownmarch',shops:['market'],desc:'A poor village of herders and bog-cutters.'},
+ {id:'loc27',name:'Standing Stones',type:'village',x:389,y:1199,region:'The Crownmarch',shops:['inn'],desc:'A riverside hamlet with an old mill.'},
+ {id:'loc28',name:'Cobb’s Landing',type:'village',x:282,y:1236,region:'The Summerlands',shops:['inn'],desc:'A poor village of herders and bog-cutters.'},
+ {id:'loc29',name:'Marbrook',type:'town',x:124,y:1369,region:'The Summerlands',shops:['market','inn','stables'],desc:'A busy market town on the road.'},
+ {id:'loc30',name:'Dovecote',type:'village',x:399,y:1332,region:'The Summerlands',shops:['inn'],desc:'A fishing hamlet of nets and salt.'},
+ {id:'loc31',name:'Rushmere',type:'village',x:369,y:842,region:'The Frostreach',shops:['market'],desc:'A cluster of thatched crofts and a single well.'}
 ];
 const LOC=Object.fromEntries(LOCS.map(l=>[l.id,l]));
 
 const ROADS=[
- ['frosthollow','hollowpine',0],['frosthollow','blacktide',0],['frosthollow','coldmere',0],
- ['blacktide','coldmere',0],['blacktide','aldcrown',0],
- ['coldmere','kingsmound',1],
- ['hollowpine','greyford',0],
- ['greyford','rushford',0],['greyford','wyndmere',0],
- ['wyndmere','rushford',1],['wyndmere','tidereach',0],
- ['rushford','kingsmound',1],['rushford','tidereach',0],
- ['kingsmound','aldcrown',1],['kingsmound','appleford',1],
- ['aldcrown','gullhaven',0],
- ['appleford','stormcove',0],['appleford','tidereach',0],
+ ['aldcrown','kingsmound',1],
+ ['aldcrown','loc26',1],
+ ['coldmere','loc22',0],
+ ['wyndmere','loc6',0],
+ ['wyndmere','loc7',0],
+ ['tidereach','loc1',0],
+ ['tidereach','loc9',0],
+ ['tidereach','loc17',0],
+ ['tidereach','loc28',0],
+ ['appleford','gullhaven',0],
+ ['appleford','stormcove',0],
+ ['appleford','loc26',0],
+ ['kingsmound','loc11',0],
+ ['rushford','loc10',0],
+ ['rushford','loc15',0],
+ ['frosthollow','loc4',0],
+ ['frosthollow','loc12',0],
+ ['frosthollow','loc24',0],
+ ['blacktide','loc24',0],
+ ['hollowpine','loc19',0],
+ ['hollowpine','loc25',0],
+ ['greyford','loc6',0],
+ ['greyford','loc23',0],
  ['gullhaven','stormcove',0],
- ['stormcove','mirehaven',0],
- ['mirehaven','deerhollow',0],
- ['deerhollow','tidereach',0]
+ ['gullhaven','loc26',0],
+ ['mirehaven','loc20',0],
+ ['mirehaven','loc21',0],
+ ['deerhollow','loc14',0],
+ ['deerhollow','loc29',0],
+ ['loc0','loc4',0],
+ ['loc0','loc24',0],
+ ['loc1','loc7',0],
+ ['loc1','loc18',0],
+ ['loc2','loc3',0],
+ ['loc2','loc18',0],
+ ['loc2','loc20',0],
+ ['loc3','loc18',0],
+ ['loc3','loc27',0],
+ ['loc3','loc30',0],
+ ['loc4','loc12',0],
+ ['loc4','loc22',0],
+ ['loc5','loc13',0],
+ ['loc5','loc17',0],
+ ['loc6','loc7',0],
+ ['loc6','loc10',0],
+ ['loc6','loc23',0],
+ ['loc8','loc10',0],
+ ['loc8','loc22',0],
+ ['loc11','loc16',0],
+ ['loc11','loc27',0],
+ ['loc12','loc25',0],
+ ['loc13','loc14',0],
+ ['loc13','loc17',0],
+ ['loc14','loc29',0],
+ ['loc15','loc18',0],
+ ['loc16','loc26',0],
+ ['loc18','loc27',0],
+ ['loc18','loc28',0],
+ ['loc19','loc25',0],
+ ['loc20','loc21',0],
+ ['loc25','loc31',0]
 ];
 // precomputed road paths with a hand-drawn bend
 const ROADPATHS=ROADS.map(([a,b,king])=>{
@@ -691,46 +755,40 @@ function drawStatic(){
 }
 
 
-const GLYPH_K=0.52; // settlements are small marks on a large realm
+// simple cartographic marks, tiered by settlement size (keeps a dense map legible)
 function drawLocGlyph(g,l){
- g.save();g.translate(l.x,l.y);g.scale(GLYPH_K,GLYPH_K);
- const x=0,y=0;
- g.strokeStyle='#3a2c1a';g.fillStyle='#efe2ba';g.lineWidth=1.9;g.lineJoin='miter';
- if(l.type==='castle'||l.type==='fort'){
-  g.fillRect(x-7,y-9,14,11);g.strokeRect(x-7,y-9,14,11);
-  g.fillRect(x-9,y-14,4,6);g.strokeRect(x-9,y-14,4,6);
-  g.fillRect(x+5,y-14,4,6);g.strokeRect(x+5,y-14,4,6);
-  g.beginPath();g.moveTo(x-4,y-9);g.lineTo(x-4,y-12);g.moveTo(x,y-9);g.lineTo(x,y-12);g.moveTo(x+4,y-9);g.lineTo(x+4,y-12);g.stroke();
-  g.fillStyle='#3a2c1a';g.fillRect(x-1.5,y-4,3,6);
- }else if(l.type==='capital'){
-  g.fillRect(x-11,y-10,22,12);g.strokeRect(x-11,y-10,22,12);
-  g.fillRect(x-14,y-17,6,8);g.strokeRect(x-14,y-17,6,8);
-  g.fillRect(x+8,y-17,6,8);g.strokeRect(x+8,y-17,6,8);
-  g.fillRect(x-3,y-21,6,12);g.strokeRect(x-3,y-21,6,12);
-  g.beginPath();g.moveTo(x-3,y-21);g.lineTo(x-1.5,y-25);g.lineTo(x,y-21.5);g.lineTo(x+1.5,y-25);g.lineTo(x+3,y-21);g.strokeStyle='#7a5f1e';g.stroke();
-  g.strokeStyle='#3a2c1a';g.fillStyle='#3a2c1a';g.fillRect(x-2,y-4,4,6);
- }else if(l.type==='town'||l.type==='port'){
-  g.beginPath();g.moveTo(x-9,y+2);g.lineTo(x-9,y-5);g.lineTo(x-4.5,y-10);g.lineTo(x,y-5);g.lineTo(x,y+2);g.closePath();g.fill();g.stroke();
-  g.beginPath();g.moveTo(x+1,y+2);g.lineTo(x+1,y-4);g.lineTo(x+5,y-8);g.lineTo(x+9,y-4);g.lineTo(x+9,y+2);g.closePath();g.fill();g.stroke();
-  if(l.type==='port'){g.beginPath();g.arc(x+13,y-2,4,Math.PI*0.15,Math.PI*0.85);g.stroke();g.beginPath();g.moveTo(x+13,y-7);g.lineTo(x+13,y-1);g.stroke();}
- }else if(l.type==='village'){
-  g.beginPath();g.moveTo(x-5,y+2);g.lineTo(x-5,y-4);g.lineTo(x,y-9);g.lineTo(x+5,y-4);g.lineTo(x+5,y+2);g.closePath();g.fill();g.stroke();
- }else if(l.type==='hill'){
-  g.beginPath();g.arc(x,y+1,10,Math.PI,0);g.fill();g.stroke();
-  g.beginPath();g.arc(x,y+1,5.5,Math.PI,0);g.stroke();
-  g.fillStyle='#3a2c1a';
-  g.fillRect(x-1.5,y-14,3,8);
-  g.fillRect(x-7,y-10,2,5);g.fillRect(x+5,y-10,2,5);
+ const x=l.x,y=l.y,ty=l.type,WAX='#8a2f2b',INK='#3a2c1a',GOLD='#a9853b',HALO='rgba(238,228,196,.92)';
+ g.lineJoin='round';
+ if(ty==='capital'){
+  g.beginPath();g.arc(x,y,9,0,7);g.fillStyle=HALO;g.fill();
+  g.fillStyle=WAX;g.strokeStyle=INK;g.lineWidth=0.8;
+  star(g,x,y,8,7.5,3);g.fill();g.stroke();
+  g.beginPath();g.arc(x,y,1.8,0,7);g.fillStyle='#f2e4c2';g.fill();
+ }else if(ty==='city'){
+  g.beginPath();g.arc(x,y,6.4,0,7);g.fillStyle=HALO;g.fill();
+  g.beginPath();g.arc(x,y,5,0,7);g.strokeStyle=INK;g.lineWidth=1.3;g.stroke();
+  g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle=WAX;g.fill();g.lineWidth=0.7;g.stroke();
+ }else if(ty==='hill'){ // coronation seat — gold ringed mark
+  g.beginPath();g.arc(x,y,6.4,0,7);g.fillStyle=HALO;g.fill();
+  g.beginPath();g.arc(x,y,5,0,7);g.strokeStyle='#6e5417';g.lineWidth=1.3;g.stroke();
+  g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle=GOLD;g.fill();g.strokeStyle='#5b4318';g.lineWidth=0.7;g.stroke();
+ }else if(ty==='town'){
+  g.beginPath();g.arc(x,y,4.4,0,7);g.fillStyle=HALO;g.fill();
+  g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle='#9c4331';g.strokeStyle=INK;g.lineWidth=0.8;g.fill();g.stroke();
+ }else{ // village
+  g.beginPath();g.arc(x,y,3,0,7);g.fillStyle='rgba(238,228,196,.8)';g.fill();
+  g.beginPath();g.arc(x,y,1.9,0,7);g.strokeStyle='#5b4530';g.lineWidth=1;g.stroke();
+  g.beginPath();g.arc(x,y,0.7,0,7);g.fillStyle='#5b4530';g.fill();
  }
- g.restore();
  // label
- const big=l.type==='capital';
- const ly=l.y+ (l.type==='hill'?7:9);
- g.font=(big?'700 8px ':'600 7px ')+'Georgia';
- g.textAlign='center';g.textBaseline='top';g.letterSpacing='0.4px';
- g.strokeStyle='rgba(238,224,182,.85)';g.lineWidth=2.4;g.lineJoin='round';
- g.strokeText(l.name,l.x,ly);
- g.fillStyle=big?'#2d2010':'#4a3a22';g.fillText(l.name,l.x,ly);
+ const fs=ty==='capital'?9:(ty==='city'||ty==='hill')?8:ty==='town'?7:6;
+ const gap=ty==='capital'?11:(ty==='city'||ty==='hill')?9:ty==='town'?7:5;
+ g.font=(ty==='capital'?'700 ':'600 ')+fs+'px Georgia';
+ g.textAlign='center';g.textBaseline='top';g.letterSpacing='0.3px';
+ g.strokeStyle='rgba(238,228,196,.9)';g.lineWidth=2.4;g.lineJoin='round';
+ g.strokeText(l.name,x,y+gap);
+ g.fillStyle=ty==='capital'?'#2d2010':ty==='village'?'#6b5540':'#4a3a22';
+ g.fillText(l.name,x,y+gap);
  g.letterSpacing='0px';g.textBaseline='middle';
 }
 
@@ -1219,7 +1277,7 @@ function buildCreate(){
  });
  // forge controls
  const seatSel=$('#f-seat');
- for(const l of LOCS.filter(l=>l.type==='castle')){
+ for(const l of LOCS.filter(l=>l.type==='city'||l.type==='capital')){
   const o=document.createElement('option');o.value=l.id;o.textContent=l.name+' — '+l.region;seatSel.appendChild(o);
  }
  const perkSel=$('#f-perk');
