@@ -238,6 +238,7 @@
     <button class="dbtn" id="dt-town">+ Town</button>
     <button class="dbtn sel" id="dt-move">Move / Edit</button>
     <button class="dbtn" id="dt-mtn">+ Mountain</button>
+    <button class="dbtn" id="dt-label">+ Label</button>
     <button class="dbtn" id="dt-erase">Erase</button>
   </div>
   <div class="drow" id="dev-tierrow" style="display:none">
@@ -260,6 +261,7 @@
     <button class="dbtn" id="dt-import">Import</button>
   </div>
   <div class="drow">
+    <button class="dbtn" id="dt-generate">Generate</button>
     <button class="dbtn" id="dt-sample">Load sample</button>
     <button class="dbtn danger" id="dt-clear">Clear map</button>
   </div>
@@ -372,12 +374,12 @@ const SAMPLE_MOUNTAINS=[
   {x:462,y:330,w:80,h:48,n:5,t:'peak'}     // the isles
 ];
 
-const REGION_LABELS=[
+const SAMPLE_REGION_LABELS=[
   ['THE FROSTREACH',420,935,18],['THE WESTERMARK',205,1062,13],['THE RIVENLANDS',372,1152,12],
   ['THE CROWNMARCH',488,1222,13],['THE SUMMERLANDS',282,1332,16],
   ['THE THREE SISTERS',492,458,12],['THE FROSTISLES',895,168,10]
 ];
-const SEA_LABELS=[
+const SAMPLE_SEA_LABELS=[
   ['THE  SUNSET  SEA',75,1120,14,-Math.PI/2],['THE  NARROW  WATER',660,1180,13,Math.PI/2],
   ['THE  SHIVERING  STRAIT',668,928,11,Math.PI/2]
 ];
@@ -537,14 +539,102 @@ const SAMPLE_LOCS=[
 let LOCS=[], LOC={};
 /* ---- editable world (towns + routes), persisted; empty by default ---- */
 const WORLD_KEY='scWorld1';
-let world={towns:[],routes:[],mountains:[]};
-function loadWorld(){try{const j=JSON.parse(localStorage.getItem(WORLD_KEY));if(j&&Array.isArray(j.towns)&&Array.isArray(j.routes)){world=j;if(!Array.isArray(world.mountains))world.mountains=[];}}catch(e){}}
+let world={towns:[],routes:[],mountains:[],labels:[]};
+function loadWorld(){try{const j=JSON.parse(localStorage.getItem(WORLD_KEY));if(j&&Array.isArray(j.towns)&&Array.isArray(j.routes)){world=j;if(!Array.isArray(world.mountains))world.mountains=[];if(!Array.isArray(world.labels))world.labels=[];}}catch(e){}}
 function saveWorld(){try{localStorage.setItem(WORLD_KEY,JSON.stringify(world));}catch(e){}}
 function indexLocs(){LOC={};for(const l of LOCS)LOC[l.id]=l;}
 function rebuildWorld(){LOCS=world.towns;indexLocs();buildRoads();if(mapImg&&mapImg.complete)drawStatic();needsDraw=true;}
 function bendPt(A,B){const mx=(A.x+B.x)/2,my=(A.y+B.y)/2,dx=B.x-A.x,dy=B.y-A.y,len=Math.hypot(dx,dy)||1;
   const seed=mulberry32(Math.round(A.x*7+B.y*13+len));const off=(seed()-0.5)*Math.min(34,len*0.22);
   return {x:Math.round(mx-dy/len*off),y:Math.round(my+dx/len*off)};}
+/* ---- procedural map generation from the base-image land mask ---- */
+let LANDMASK=null;
+function buildLandMask(){
+ const gw=280,gh=Math.round(gw*H/W);
+ const c=document.createElement('canvas');c.width=gw;c.height=gh;
+ const g=c.getContext('2d');g.drawImage(mapImg,0,0,gw,gh);
+ const d=g.getImageData(0,0,gw,gh).data,mask=new Uint8Array(gw*gh);
+ const PAL=[[183,194,166,0],[150,172,178,0],[233,217,172,1],[178,191,146,1]]; // sea,lake,land,green
+ for(let i=0;i<gw*gh;i++){const r=d[i*4],gg=d[i*4+1],bb=d[i*4+2];let bd=1e9,v=1;
+  for(const[cr,cg,cb,k]of PAL){const dd=(r-cr)**2+(gg-cg)**2+(bb-cb)**2;if(dd<bd){bd=dd;v=k;}}mask[i]=v;}
+ // keep only the largest land component (main island) so nothing lands on far isles
+ const comp=new Int32Array(gw*gh);let best=0,bestsz=0,cid=0;
+ for(let s=0;s<gw*gh;s++){if(mask[s]===1&&comp[s]===0){cid++;let sz=0;const st=[s];comp[s]=cid;
+   while(st.length){const c=st.pop();sz++;const cx=c%gw,cy=(c/gw)|0;
+    for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=gw||ny>=gh)continue;const ni=ny*gw+nx;if(mask[ni]===1&&comp[ni]===0){comp[ni]=cid;st.push(ni);}}}
+   if(sz>bestsz){bestsz=sz;best=cid;}}}
+ for(let i=0;i<gw*gh;i++)if(mask[i]===1&&comp[i]!==best)mask[i]=0;
+ LANDMASK={gw,gh,mask};
+}
+function isLand(x,y){if(!LANDMASK)return false;const gx=Math.floor(x/W*LANDMASK.gw),gy=Math.floor(y/H*LANDMASK.gh);
+ return gx>=0&&gy>=0&&gx<LANDMASK.gw&&gy<LANDMASK.gh&&LANDMASK.mask[gy*LANDMASK.gw+gx]===1;}
+function isLandFirm(x,y){return isLand(x,y)&&isLand(x-6,y)&&isLand(x+6,y)&&isLand(x,y-6)&&isLand(x,y+6);}
+function nearWater(x,y){for(const[dx,dy]of[[16,0],[-16,0],[0,16],[0,-16],[12,12],[-12,-12]])if(!isLand(x+dx,y+dy))return true;return false;}
+const GPRE=['Ash','Black','Cold','Grey','Green','Red','Stone','Thorn','Oak','Elm','Fen','Mill','Wren','Dun','Har','Wester','Salt','Wind','Crow','Fox','Hart','Rye','Barrow','Withy','Nor','Deep','High','Bram','Moss','Reed','Hazel','Raven','Sparrow','Weir','Fell','Peat','Sled','Tarn','Birch','Alder'];
+const GSUF=['brook','bury','ford','ton','ham','wick','hollow','mere','moor','gate','beck','dale','cross','marsh','field','stead','worth','by','den','mill','bridge','hill','combe','stone','fen','vale','burn','ridge','row','hurst','well'];
+const RADJ=['Frost','Sunset','Storm','Amber','Green','Iron','Shadow','Golden','Wolf','Bramble','Misty','Broken','Silver','Weeping','Thunder'];
+const RNOUN=['reach','march','vale','wold','fen','moor','hold','wilds','downs','coast','marches','expanse'];
+function genName(used){for(let i=0;i<500;i++){const n=pick(GPRE)+pick(GSUF);if(!used.has(n)){used.add(n);return n;}}return 'Holdfast '+used.size;}
+function generateWorld(){
+ buildLandMask();
+ const used=new Set(),pts=[],MIND=32;let tries=0;
+ while(pts.length<95&&tries<60000){tries++;
+  const x=60+Math.random()*(W-120),y=200+Math.random()*(H-240);
+  if(!isLandFirm(x,y))continue;
+  if(pts.some(p=>(p.x-x)**2+(p.y-y)**2<MIND*MIND))continue;
+  if(!nearWater(x,y)&&Math.random()<0.55)continue; // bias toward coasts/rivers
+  pts.push({x:Math.round(x),y:Math.round(y)});
+ }
+ // tiers: spread 5 seats, some cities, towns, rest villages
+ pts.sort((a,b)=>a.x-b.x); // deterministic-ish spread handling
+ const N=pts.length, seats=[];
+ // choose 5 well-separated seats
+ const shuffled=pts.slice();for(let i=shuffled.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];}
+ for(const p of shuffled){if(seats.length>=5)break;if(seats.every(s=>(s.x-p.x)**2+(s.y-p.y)**2>180*180))seats.push(p);}
+ while(seats.length<5&&shuffled.length)seats.push(shuffled[seats.length]);
+ const SEAT_IDS=['aldcrown','coldmere','wyndmere','appleford','tidereach'];
+ const SEAT_NAMES=['Aldcrown','Coldmere Keep','Wyndmere Keep','Appleford Hall','Tidereach Keep'];
+ const towns=[];
+ pts.forEach((p,i)=>{
+  const si=seats.indexOf(p);
+  let type,name,id;
+  if(si>=0){type=si===0?'capital':'city';id=SEAT_IDS[si];name=SEAT_NAMES[si];}
+  else{const r=Math.random();type=r<0.18?'town':'village';id='g'+i;name=genName(used);}
+  const keep=DEFAULT_KEEP[type]||0;
+  towns.push({id,name,type,x:p.x,y:p.y,region:'',shops:(DEFAULT_SHOPS[type]||['market']).slice(),
+    population:DEFAULT_POP[type]||300,keep,families:[],desc:''});
+ });
+ // roads: 2 nearest neighbours + connect components
+ const idx=towns.map((t,i)=>i);
+ const D=(a,b)=>(towns[a].x-towns[b].x)**2+(towns[a].y-towns[b].y)**2;
+ const eset=new Set(),par=idx.slice();
+ const find=x=>{while(par[x]!==x){par[x]=par[par[x]];x=par[x];}return x;};
+ for(let i=0;i<towns.length;i++){
+  const near=idx.filter(j=>j!==i).sort((a,b)=>D(i,a)-D(i,b)).slice(0,3);
+  let c=0;for(const j of near){if(c>=2)break;const k=Math.min(i,j)+'-'+Math.max(i,j);if(!eset.has(k)){eset.add(k);par[find(i)]=find(j);c++;}}
+ }
+ // connect remaining components
+ let guard=0;
+ while(guard++<200){const roots={};idx.forEach(i=>{(roots[find(i)]=roots[find(i)]||[]).push(i);});
+  const groups=Object.values(roots);if(groups.length<=1)break;
+  let bi=-1,bj=-1,bd=1e18;for(const a of groups[0])for(let g=1;g<groups.length;g++)for(const b of groups[g]){const d=D(a,b);if(d<bd){bd=d;bi=a;bj=b;}}
+  eset.add(Math.min(bi,bj)+'-'+Math.max(bi,bj));par[find(bi)]=find(bj);
+ }
+ const routes=[];for(const k of eset){const[a,b]=k.split('-').map(Number);
+  const A=towns[a],B=towns[b];const major=(A.type!=='village'&&B.type!=='village');
+  routes.push({type:major&&Math.random()<0.5?'road':'trade',a:towns[a].id,b:towns[b].id,pts:[bendPt(A,B)]});}
+ // region labels near clusters (5 seats)
+ const labels=[];
+ seats.forEach((s,i)=>{labels.push({text:('THE '+pick(RADJ)+pick(RNOUN)).toUpperCase(),x:s.x,y:s.y+70,size:14,kind:'land',rot:0});});
+ // assign each town's region to nearest label text
+ for(const t of towns){let bd=1e18,rt='';for(const L of labels){const d=(L.x-t.x)**2+(L.y-t.y)**2;if(d<bd){bd=d;rt=L.text.replace(/^THE /,'The ').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());}}t.region=rt;}
+ // mountains: a few ranges inland
+ const mountains=[];let mc=0;
+ while(mc<5){const cx=80+Math.random()*(W-160),cy=250+Math.random()*(H-320);if(!isLandFirm(cx,cy)||nearWater(cx,cy))continue;mc++;
+  const n=5+Math.floor(Math.random()*6);for(let i=0;i<n;i++){const x=cx+(Math.random()-0.5)*80,y=cy+(Math.random()-0.5)*60;if(isLand(x,y))mountains.push({x:Math.round(x),y:Math.round(y),s:Math.round(7+Math.random()*5)});}}
+ world={towns,routes,mountains,labels};
+ saveWorld();rebuildWorld();
+}
 function loadSampleWorld(){
   world={towns:SAMPLE_LOCS.map(l=>({...l,shops:l.shops.slice()})),routes:[],mountains:[]};
   const byId={};for(const t of world.towns)byId[t.id]=t;
@@ -553,6 +643,9 @@ function loadSampleWorld(){
   const ms=mulberry32(99);
   for(const M of SAMPLE_MOUNTAINS)for(let i=0;i<M.n;i++)
     world.mountains.push({x:Math.round(M.x+ms()*M.w),y:Math.round(M.y+ms()*M.h),s:Math.round(7+ms()*5)});
+  world.labels=[];
+  for(const[text,x,y,size]of SAMPLE_REGION_LABELS)world.labels.push({text,x,y,size,kind:'land',rot:0});
+  for(const[text,x,y,size,rot]of SAMPLE_SEA_LABELS)world.labels.push({text,x,y,size,kind:'sea',rot});
   saveWorld();rebuildWorld();
 }
 
@@ -857,6 +950,26 @@ function deleteTown(id){
  saveWorld();rebuildWorld();updateDevUI();
 }
 function addMountain(x,y){world.mountains=world.mountains||[];world.mountains.push({x:Math.round(x),y:Math.round(y),s:Math.round(7+Math.random()*4)});saveWorld();rebuildStatic();}
+let devLabelSel=null;
+function labelAt(w){
+ for(let i=(world.labels||[]).length-1;i>=0;i--){const L=world.labels[i];const sz=L.size||14;
+  let dx=w.x-L.x,dy=w.y-L.y; if(L.rot){const c=Math.cos(-L.rot),s=Math.sin(-L.rot);const rx=dx*c-dy*s,ry=dx*s+dy*c;dx=rx;dy=ry;}
+  const ww=(L.text.length*sz*0.62)/2+6, hh=sz*0.75+4; if(Math.abs(dx)<ww&&Math.abs(dy)<hh)return i;}
+ return -1;
+}
+function addLabel(x,y){world.labels=world.labels||[];world.labels.push({text:'New Region',x:Math.round(x),y:Math.round(y),size:16,kind:'land',rot:0});saveWorld();rebuildStatic();devLabelSel=world.labels.length-1;openLabelEditor();}
+function openLabelEditor(){
+ const i=devLabelSel; if(i==null||!world.labels[i])return; const L=world.labels[i];
+ modal('Map label','<div class="teform">'+
+  '<label>Text<input id="lb-text" value="'+esc(L.text)+'"></label>'+
+  '<div class="te2"><label>Size<input id="lb-size" type="number" min="6" max="40" value="'+(L.size||14)+'"></label>'+
+  '<label>Style<select id="lb-kind"><option value="land"'+(L.kind!=='sea'?' selected':'')+'>land / region</option><option value="sea"'+(L.kind==='sea'?' selected':'')+'>water</option></select></label></div>'+
+  '<label>Orientation<select id="lb-rot"><option value="0"'+(!L.rot?' selected':'')+'>horizontal</option><option value="'+(-Math.PI/2)+'"'+(L.rot<0?' selected':'')+'>vertical (read up)</option><option value="'+(Math.PI/2)+'"'+(L.rot>0?' selected':'')+'>vertical (read down)</option></select></label>'+
+  '</div>',
+  [['Save',()=>{L.text=$('#lb-text').value.trim()||L.text;L.size=clamp(parseInt($('#lb-size').value)||14,6,40);L.kind=$('#lb-kind').value;L.rot=parseFloat($('#lb-rot').value)||0;saveWorld();rebuildStatic();closeModal();}],
+   ['Delete',()=>{world.labels.splice(i,1);devLabelSel=null;saveWorld();rebuildStatic();closeModal();}],
+   ['Cancel',closeModal]]);
+}
 function deleteMountainNear(w){world.mountains=world.mountains||[];let bi=-1,bd=14*14;world.mountains.forEach((m,i)=>{const d=(m.x-w.x)**2+(m.y-w.y)**2;if(d<bd){bd=d;bi=i;}});if(bi>=0){world.mountains.splice(bi,1);saveWorld();rebuildStatic();return true;}return false;}
 function deleteRouteNear(w){
  let best=-1,bd=7*7;
@@ -1114,17 +1227,20 @@ function drawStatic(){
  for(const r of ROADPATHS)strokeRoad(g,r);
  g.setLineDash([]);
 
- // region labels
+ // geography labels (editable — world.labels)
  g.textAlign='center';g.textBaseline='middle';
- for(const[t,x,y,sz]of REGION_LABELS){
-  g.font='600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.55)+'px';
-  g.strokeStyle='rgba(238,224,182,.75)';g.lineWidth=4;g.strokeText(t,x,y);
-  g.fillStyle='rgba(90,70,40,.62)';g.fillText(t,x,y);
- }
- for(const[t,x,y,sz,rot]of SEA_LABELS){
-  g.save();g.translate(x,y);g.rotate(rot);
-  g.font='italic 600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.5)+'px';
-  g.fillStyle='rgba(85,100,80,.75)';g.fillText(t,0,0);g.restore();
+ for(const L of (world.labels||[])){
+  const sz=L.size||14,rot=L.rot||0;
+  g.save();g.translate(L.x,L.y);if(rot)g.rotate(rot);
+  if(L.kind==='sea'){
+   g.font='italic 600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.5)+'px';
+   g.fillStyle='rgba(85,100,80,.75)';g.fillText(L.text,0,0);
+  }else{
+   g.font='600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.55)+'px';
+   g.strokeStyle='rgba(238,224,182,.75)';g.lineWidth=4;g.strokeText(L.text,0,0);
+   g.fillStyle='rgba(90,70,40,.62)';g.fillText(L.text,0,0);
+  }
+  g.restore();
  }
  g.letterSpacing='0px';
 
@@ -1389,7 +1505,7 @@ cv.addEventListener('pointerdown',e=>{
  drag={id:e.pointerId,x:e.clientX,y:e.clientY,x0:e.clientX,y0:e.clientY,moved:false};
  if(devMode&&devTool==='move'&&!modalOpen()){
   const w=s2w(e.clientX,e.clientY),hit=locAt(w,9+5/cam.s);
-  if(hit)drag.devTown=hit.id;
+  if(hit)drag.devTown=hit.id; else {const li=labelAt(w);if(li>=0)drag.devLabel=li;}
  }
 });
 cv.addEventListener('pointermove',e=>{
@@ -1414,6 +1530,12 @@ cv.addEventListener('pointermove',e=>{
    const now=performance.now();if(now-lastStaticT>60){if(mapImg.complete)drawStatic();lastStaticT=now;}
    needsDraw=true;drag.x=e.clientX;drag.y=e.clientY;return;
   }
+  if(drag.devLabel!=null&&world.labels[drag.devLabel]){  // drag a map label
+   const w=s2w(e.clientX,e.clientY),L=world.labels[drag.devLabel];
+   L.x=Math.round(w.x);L.y=Math.round(w.y);
+   const now=performance.now();if(now-lastStaticT>60){if(mapImg.complete)drawStatic();lastStaticT=now;}
+   needsDraw=true;drag.x=e.clientX;drag.y=e.clientY;return;
+  }
   const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
   if(drag.moved){cam.x-=dx/cam.s;cam.y-=dy/cam.s;clampCam();cv.classList.add('dragging');needsDraw=true;}
   drag.x=e.clientX;drag.y=e.clientY;
@@ -1435,6 +1557,9 @@ function endPointer(e){
    if(drag.moved){saveWorld();rebuildStatic();}
    else{devSel=drag.devTown;openTownEditor();}
    updateDevUI();
+  }else if(drag.devLabel!=null){             // committed a label move (or click to edit)
+   if(drag.moved){saveWorld();rebuildStatic();}
+   else{devLabelSel=drag.devLabel;openLabelEditor();}
   }else if(devMode&&!drag.moved&&!modalOpen()){
    const w=s2w(e.clientX,e.clientY),hit=locAt(w,9+5/cam.s);
    if(devTool==='town'){
@@ -1442,8 +1567,12 @@ function endPointer(e){
     else addTown(w.x,w.y,devNewTier);
    }else if(devTool==='mtn'){
     if(!hit)addMountain(w.x,w.y);
+   }else if(devTool==='label'){
+    const li=labelAt(w); if(li>=0){devLabelSel=li;openLabelEditor();} else addLabel(w.x,w.y);
    }else if(devTool==='erase'){
-    if(hit)deleteTown(hit.id); else if(!deleteRouteNear(w))deleteMountainNear(w);
+    const li=labelAt(w);
+    if(hit)deleteTown(hit.id); else if(li>=0){world.labels.splice(li,1);saveWorld();rebuildStatic();}
+    else if(!deleteRouteNear(w))deleteMountainNear(w);
    }else if(devTool==='trade'||devTool==='trail'){
     if(!devDraft){ if(hit)devDraft={type:devTool,aId:hit.id,pts:[]}; }
     else if(hit&&hit.id!==devDraft.aId){ devFinishRoute(hit.id); }
@@ -1879,7 +2008,7 @@ function toggleDev(on){
  if(!devMode){devDraft=null;devSel=null;}
  setDevTool(devMode?devTool:'move');updateDevUI();needsDraw=true;
 }
-const TOOLS=[['dt-town','town'],['dt-move','move'],['dt-mtn','mtn'],['dt-trade','trade'],['dt-trail','trail'],['dt-erase','erase']];
+const TOOLS=[['dt-town','town'],['dt-move','move'],['dt-mtn','mtn'],['dt-label','label'],['dt-trade','trade'],['dt-trail','trail'],['dt-erase','erase']];
 function setDevTool(t){
  devTool=t;devDraft=null;
  TOOLS.forEach(([id,v])=>$('#'+id).classList.toggle('sel',t===v));
@@ -1888,6 +2017,7 @@ function setDevTool(t){
  if(t!=='town'&&t!=='move')devSel=null;
  const hints={town:'Pick a size, then click empty ground to place a town. Click an existing town to edit it.',
   mtn:'Click to drop a mountain peak. Click several to build a range. Use Erase to remove them.',
+  label:'Click empty ground to place a region or water name. Click a label to edit it; drag with Move/Edit.',
   move:'Drag a town to move it. Click a town to edit its name, size, region and shops.',
   trade:'Click a town to <b>start</b> the trade route, click along the way to drop points, then click another town to <b>finish</b>.',
   trail:'Click a town to <b>start</b> the trail, click along the way to drop points, then click another town to <b>finish</b>.',
@@ -1956,10 +2086,12 @@ $('#dt-undo').onclick=()=>{if(devDraft&&devDraft.pts.length){devDraft.pts.pop();
 $('#dt-cancel').onclick=()=>{devDraft=null;needsDraw=true;};
 $('#dt-export').onclick=devExport;
 $('#dt-import').onclick=devImport;
+$('#dt-generate').onclick=()=>modal('Generate a random realm?','This replaces your current map with a freshly generated one — new coastlined towns, roads, regions and mountains, with five house seats placed for you.',
+  [['Generate',()=>{generateWorld();updateDevUI();closeModal();}],['Cancel',closeModal]]);
 $('#dt-sample').onclick=()=>modal('Load the sample realm?','This replaces your current map with the 150-settlement sample so you can see the format or edit it.',
   [['Load sample',()=>{loadSampleWorld();updateDevUI();closeModal();}],['Cancel',closeModal]]);
 $('#dt-clear').onclick=()=>modal('Clear the whole map?','This deletes every town and route. You will have a blank map to build on.',
-  [['Clear it',()=>{world={towns:[],routes:[],mountains:[]};saveWorld();rebuildWorld();devSel=null;updateDevUI();closeModal();}],['Keep',closeModal]]);
+  [['Clear it',()=>{world={towns:[],routes:[],mountains:[],labels:[]};saveWorld();rebuildWorld();devSel=null;updateDevUI();closeModal();}],['Keep',closeModal]]);
 addEventListener('keydown',e=>{
  if(e.key==='Escape'&&devDraft){devDraft=null;needsDraw=true;}
  if(e.key==='d'&&(e.ctrlKey||e.metaKey)){e.preventDefault();toggleDev();}
