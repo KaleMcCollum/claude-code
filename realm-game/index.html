@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The High King’s Road</title>
+<title>The Sundered Crown</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%238a2f2b'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='%23ead9ac'%3E♛%3C/text%3E%3C/svg%3E">
 <style>
   :root{
@@ -185,17 +185,16 @@
 </style>
 </head>
 <body>
-<canvas id="map" aria-label="Map of Éire, the five provinces of Ireland"></canvas>
+<canvas id="map" aria-label="Map of Vaelmore, the riven realm"></canvas>
 
 <div id="topbar" style="display:none">
-  <span class="title">The High King’s Road</span>
+  <span class="title">The Sundered Crown</span>
   <span class="chip">🪙 <b id="c-gold">0</b></span>
   <span class="chip">🍞 <b id="c-food">0</b></span>
   <span class="chip">💧 <b id="c-water">0</b></span>
   <span class="chip">❤ <b id="c-hp">0</b></span>
   <span class="spacer"></span>
   <span class="chip" id="c-day" style="color:#a4936f"></span>
-  <button class="tbtn" id="btn-view" style="display:none"></button>
   <button class="tbtn" id="btn-fit" title="Center the map">Center</button>
   <button class="tbtn" id="btn-help">Help</button>
   <button class="tbtn" id="btn-new">New Game</button>
@@ -255,15 +254,15 @@
 
 <div id="create">
   <div class="inner">
-    <div class="kicker">Éire · The Five Provinces</div>
-    <h1>The High King’s Road</h1>
-    <p class="sub">The High King is dead, and on the Hill of Tara the Stone of Destiny has gone silent. You come of royal blood, but the wars took everything else — you begin with a few coins, an empty belly, and a name. Ride the five provinces, take what work you find, and earn your way to the crown of Ireland.</p>
+    <div class="kicker">Vaelmore · The Riven Realm</div>
+    <h1>The Sundered Crown</h1>
+    <p class="sub">The old king is dead and his crown lies broken. You come of noble blood, but the wars took everything else — you begin with a few coins, an empty belly, and a name. Ride the five marches, take what work you find, and earn your way to a crown of your own.</p>
     <div class="housegrid" id="housegrid"></div>
     <div id="forge">
       <h3>— or forge your own house —</h3>
       <div class="frow">
-        <div class="fcol"><label for="f-house">Clan name</label><input type="text" id="f-house" maxlength="18" placeholder="e.g. Ó Duibhne"></div>
-        <div class="fcol"><label for="f-words">War cry</label><input type="text" id="f-words" maxlength="34" placeholder="e.g. Rooted in Stone"></div>
+        <div class="fcol"><label for="f-house">House name</label><input type="text" id="f-house" maxlength="18" placeholder="e.g. Ashgrove"></div>
+        <div class="fcol"><label for="f-words">House words</label><input type="text" id="f-words" maxlength="34" placeholder="e.g. Rooted in Stone"></div>
         <div class="fcol"><label for="f-seat">Home seat</label><select id="f-seat"></select></div>
       </div>
       <div class="frow">
@@ -308,64 +307,64 @@ const MOUNTAINS=[
 ];
 
 const REGION_LABELS=[
-  ['ULSTER',420,935,20],['CONNACHT',210,1062,15],['MIDE',372,1152,12],
-  ['LEINSTER',482,1222,15],['MUNSTER',282,1332,19],
-  ['INNSE GALL',492,458,13],['INSI ORC',895,168,11]
+  ['THE FROSTREACH',420,935,18],['THE WESTERMARK',205,1062,13],['THE RIVENLANDS',372,1152,12],
+  ['THE CROWNMARCH',488,1222,13],['THE SUMMERLANDS',282,1332,16],
+  ['THE THREE SISTERS',492,458,12],['THE FROSTISLES',895,168,10]
 ];
 const SEA_LABELS=[
-  ['THE  WESTERN  OCEAN',75,1120,14,-Math.PI/2],['THE  IRISH  SEA',660,1180,13,Math.PI/2],
-  ['THE  SEA  OF  MOYLE',668,928,11,Math.PI/2]
+  ['THE  SUNSET  SEA',75,1120,14,-Math.PI/2],['THE  NARROW  WATER',660,1180,13,Math.PI/2],
+  ['THE  SHIVERING  STRAIT',668,928,11,Math.PI/2]
 ];
 
 const LOCS=[
- {id:'derry',    name:'Derry',      type:'town',   x:415,y:885, region:'Ulster', shops:['market','inn'],
-  desc:'A monastic city on the Foyle, its oak groves older than its walls.'},
- {id:'belfast',  name:'Belfast',    type:'town',   x:565,y:1005,region:'Ulster', shops:['market','stables','inn'],
-  desc:'A ford-town on the Lagan where the Ulster roads run down to the sea.'},
- {id:'armagh',   name:'Armagh',     type:'castle', x:490,y:1010,region:'Ulster', shops:['market','smith','stables','inn'],
-  desc:'Seat of the O’Neill and the church both — Patrick’s own hill, twice holy and twice proud.'},
- {id:'donegal',  name:'Donegal',    type:'village',x:305,y:950, region:'Ulster', shops:['market','inn'],
-  desc:'A grey keep above the bay, where the war-galleys once wintered.'},
- {id:'sligo',    name:'Sligo',      type:'town',   x:255,y:1020,region:'Connacht', shops:['market','inn'],
-  desc:'A trading town beneath the flat-topped mountain, rich in salmon and saints.'},
- {id:'galway',   name:'Galway',     type:'castle', x:200,y:1125,region:'Connacht', shops:['market','smith','stables','inn','pack'],
-  desc:'Seat of the O’Conor kings — the city of the tribes, gazing west into the endless ocean.'},
- {id:'athlone',  name:'Athlone',    type:'fort',   x:330,y:1130,region:'Mide', shops:['market','stables','inn'],
-  desc:'The great bridge-fort on the Shannon. Whoever holds Athlone holds the middle of Ireland.'},
- {id:'tara',     name:'Hill of Tara',type:'hill',  x:470,y:1085,region:'Mide', shops:['inn'],
-  desc:'The Hill of Kings. Grass, stone, wind — and the destiny of the whole island.'},
- {id:'dublin',   name:'Dublin',     type:'capital',x:525,y:1140,region:'Leinster', shops:['market','smith','stables','inn','pack'],
-  desc:'The Ostmen’s walled city at the black pool — the richest port in Ireland.'},
- {id:'kilkenny', name:'Kilkenny',   type:'castle', x:430,y:1255,region:'Leinster', shops:['market','smith','stables','inn'],
-  desc:'Seat of the MacMurrough — a fair stone town on the Nore, its abbeys fat and its lords proud.'},
- {id:'wexford',  name:'Wexford',    type:'port',   x:515,y:1295,region:'Leinster', shops:['market','inn'],
-  desc:'A Norse harbor of herring boats, mudflats, and quick knives.'},
- {id:'waterford',name:'Waterford',  type:'port',   x:450,y:1330,region:'Munster', shops:['market','smith','inn'],
-  desc:'Vadrarfjord of the Ostmen — the oldest city in Ireland, and it lets no one forget it.'},
- {id:'cork',     name:'Cork',       type:'port',   x:300,y:1400,region:'Munster', shops:['market','stables','inn'],
-  desc:'A marsh-city of merchants built where the Lee meets the tide.'},
- {id:'limerick', name:'Limerick',   type:'castle', x:230,y:1250,region:'Munster', shops:['market','smith','stables','inn'],
-  desc:'Seat of the O’Brien — a walled stronghold at the head of the Shannon tide.'},
- {id:'killarney',name:'Killarney',  type:'village',x:165,y:1390,region:'Munster', shops:['market','inn'],
-  desc:'A lake-village under the highest mountains in Ireland. The red deer outnumber the people.'}
+ {id:'frosthollow',name:'Frosthollow', type:'town',   x:415,y:885, region:'The Frostreach', shops:['market','inn'],
+  desc:'A timber town among the northern pines, its oak groves older than its walls.'},
+ {id:'blacktide', name:'Blacktide',    type:'town',   x:565,y:1005,region:'The Frostreach', shops:['market','stables','inn'],
+  desc:'A ford-town where the northern roads run down to a cold grey sea.'},
+ {id:'coldmere',  name:'Coldmere Keep',type:'castle', x:490,y:1010,region:'The Frostreach', shops:['market','smith','stables','inn'],
+  desc:'Seat of House Vharen. Black towers over a frozen lake, its halls warmed by great hearths.'},
+ {id:'hollowpine',name:'Hollowpine',   type:'village',x:305,y:950, region:'The Frostreach', shops:['market','inn'],
+  desc:'A grey holdfast above the bay, where the war-galleys once wintered.'},
+ {id:'greyford',  name:'Greyford',     type:'town',   x:255,y:1020,region:'The Westermark', shops:['market','inn'],
+  desc:'A trading town beneath a flat-topped mountain, rich in salmon and silence.'},
+ {id:'wyndmere',  name:'Wyndmere Keep',type:'castle', x:200,y:1125,region:'The Westermark', shops:['market','smith','stables','inn','pack'],
+  desc:'Seat of House Wyndael — the windswept hall of the horse-lords, gazing west into the endless sea.'},
+ {id:'rushford',  name:'Rushford Gate',type:'fort',   x:330,y:1130,region:'The Rivenlands', shops:['market','stables','inn'],
+  desc:'The great bridge-fort on the river. Whoever holds Rushford holds the middle of the realm.'},
+ {id:'kingsmound',name:'Kingsmound',   type:'hill',   x:470,y:1085,region:'The Rivenlands', shops:['inn'],
+  desc:'The mound of the old kings. Grass, stone, wind — and the fate of the whole realm.'},
+ {id:'aldcrown',  name:'Aldcrown',     type:'capital',x:525,y:1140,region:'The Crownmarch', shops:['market','smith','stables','inn','pack'],
+  desc:'The capital. A broken crown still tops the Great Sept, and every ship in the world calls at its quays.'},
+ {id:'appleford', name:'Appleford Hall',type:'castle',x:430,y:1255,region:'The Crownmarch', shops:['market','smith','stables','inn'],
+  desc:'Seat of House Reyfield, ringed by orchards and barley that feed half the realm.'},
+ {id:'gullhaven', name:'Gullhaven',    type:'port',   x:515,y:1295,region:'The Crownmarch', shops:['market','inn'],
+  desc:'A rough harbor of herring boats, mudflats, and quick knives.'},
+ {id:'stormcove', name:'Stormcove',    type:'port',   x:450,y:1330,region:'The Summerlands', shops:['market','smith','inn'],
+  desc:'The oldest city in the realm, and it lets no one forget it. Storm bells hang in every tower.'},
+ {id:'mirehaven', name:'Mirehaven',    type:'port',   x:300,y:1400,region:'The Summerlands', shops:['market','stables','inn'],
+  desc:'A marsh-city of merchants built where the river meets the tide.'},
+ {id:'tidereach', name:'Tidereach Keep',type:'castle',x:230,y:1250,region:'The Summerlands', shops:['market','smith','stables','inn'],
+  desc:'Seat of House Merryn — a walled stronghold at the head of the tide.'},
+ {id:'deerhollow',name:'Deerhollow',   type:'village',x:165,y:1390,region:'The Summerlands', shops:['market','inn'],
+  desc:'A lake-village under the tallest mountains in the realm. The red deer outnumber the folk.'}
 ];
 const LOC=Object.fromEntries(LOCS.map(l=>[l.id,l]));
 
 const ROADS=[
- ['derry','donegal',0],['derry','belfast',0],['derry','armagh',0],
- ['belfast','armagh',0],['belfast','dublin',0],
- ['armagh','tara',1],
- ['donegal','sligo',0],
- ['sligo','athlone',0],['sligo','galway',0],
- ['galway','athlone',1],['galway','limerick',0],
- ['athlone','tara',1],['athlone','limerick',0],
- ['tara','dublin',1],['tara','kilkenny',1],
- ['dublin','wexford',0],
- ['kilkenny','waterford',0],['kilkenny','limerick',0],
- ['wexford','waterford',0],
- ['waterford','cork',0],
- ['cork','killarney',0],
- ['killarney','limerick',0]
+ ['frosthollow','hollowpine',0],['frosthollow','blacktide',0],['frosthollow','coldmere',0],
+ ['blacktide','coldmere',0],['blacktide','aldcrown',0],
+ ['coldmere','kingsmound',1],
+ ['hollowpine','greyford',0],
+ ['greyford','rushford',0],['greyford','wyndmere',0],
+ ['wyndmere','rushford',1],['wyndmere','tidereach',0],
+ ['rushford','kingsmound',1],['rushford','tidereach',0],
+ ['kingsmound','aldcrown',1],['kingsmound','appleford',1],
+ ['aldcrown','gullhaven',0],
+ ['appleford','stormcove',0],['appleford','tidereach',0],
+ ['gullhaven','stormcove',0],
+ ['stormcove','mirehaven',0],
+ ['mirehaven','deerhollow',0],
+ ['deerhollow','tidereach',0]
 ];
 // precomputed road paths with a hand-drawn bend
 const ROADPATHS=ROADS.map(([a,b,king])=>{
@@ -381,28 +380,28 @@ function roadBetween(a,b){return ROADPATHS.find(r=>(r.a===a&&r.b===b)||(r.a===b&
 function neighborsOf(id){const out=[];for(const r of ROADPATHS){if(r.a===id)out.push(r.b);if(r.b===id)out.push(r.a);}return out;}
 
 const PERKS={
- hardy:  {name:'Wolfhound-Hearted', blurb:'Storms and wild beasts do you half harm; +20 health.'},
- rich:   {name:'Norman Silver', blurb:'Begin with 30 extra gold; merchants charge you a tenth less.'},
- farmer: {name:'Of the Good Soil', blurb:'You make food stretch — rations last twice as long.'},
- rider:  {name:'Horse-Lords', blurb:'You travel 15% faster, mounted or afoot.'},
- riverborn:{name:'Shannon-Blooded', blurb:'You need only half the water on any road.'}
+ hardy:  {name:'Winterborn', blurb:'Cold, storms and wild beasts do you half harm; +20 health.'},
+ rich:   {name:'Deep Coffers', blurb:'Begin with 30 extra gold; merchants charge you a tenth less.'},
+ farmer: {name:'Well Provisioned', blurb:'You make food stretch — rations last twice as long.'},
+ rider:  {name:'Horse-Lord', blurb:'You travel 15% faster, mounted or afoot.'},
+ riverborn:{name:'Waterwise', blurb:'You need only half the water on any road.'}
 };
 const HOUSES=[
- {id:'oneill', name:'The O’Neill', seat:'armagh', sigil:'🐺', color:'#8a2f2b',
-  words:'Lámh Dhearg Abú', perk:'hardy',
-  desc:'Kings of Ulster since before the ink of history dried. Grim, patient, and impossible to starve out.'},
- {id:'oconor', name:'The O’Conor', seat:'galway', sigil:'🐎', color:'#4a6741',
-  words:'From Cruachan’s Plain', perk:'rider',
-  desc:'Kings of Connacht, whose horse-herds darken the western plains. Last to kneel, first to ride.'},
- {id:'obrien', name:'The O’Brien', seat:'limerick', sigil:'🦁', color:'#3f5a63',
-  words:'The Strong Hand Uppermost', perk:'riverborn',
-  desc:'Kings of Munster and blood of Brian Boru, who broke the Norse. The Shannon runs in their veins.'},
- {id:'macmurrough', name:'MacMurrough', seat:'kilkenny', sigil:'🌾', color:'#7a6428',
-  words:'Peace and Plenty', perk:'farmer',
-  desc:'Kings of Leinster, rich in barley, cattle, and grudges. Their granaries decide who eats.'},
- {id:'fitzgerald', name:'FitzGerald', seat:'dublin', sigil:'⚔️', color:'#444a52',
-  words:'Crom Abú', perk:'rich',
-  desc:'Norman lords of the Pale — newcomers by Irish reckoning, with silver enough to make it not matter.'}
+ {id:'vharen', name:'House Vharen', seat:'coldmere', sigil:'🐺', color:'#5d7387',
+  words:'Winter Endures', perk:'hardy',
+  desc:'Wardens of the Frostreach and its frozen shore. Grim, patient, and impossible to starve out.'},
+ {id:'wyndael', name:'House Wyndael', seat:'wyndmere', sigil:'🐎', color:'#4a6741',
+  words:'Swift as the Storm', perk:'rider',
+  desc:'Horse-lords of the Westermark, whose herds darken the western plains. Last to kneel, first to ride.'},
+ {id:'merryn', name:'House Merryn', seat:'tidereach', sigil:'🌊', color:'#3f5a63',
+  words:'The Tide Keeps Score', perk:'riverborn',
+  desc:'Storm-lords of the southern coast, with salt in their blood and long memories.'},
+ {id:'reyfield', name:'House Reyfield', seat:'appleford', sigil:'🌾', color:'#7a6428',
+  words:'From Good Soil', perk:'farmer',
+  desc:'Masters of the Crownmarch fields. Their orchards feed the realm — and their granaries decide who eats.'},
+ {id:'valmont', name:'House Valmont', seat:'aldcrown', sigil:'⚔️', color:'#444a52',
+  words:'Silver and Steel', perk:'rich',
+  desc:'Lords of Aldcrown itself — newcomers by old reckoning, with coin enough to make it not matter.'}
 ];
 const SIGIL_SET=['🐺','🐎','🦁','🌾','⚔️','☘️','🦌','🐗','🦅','🌊','🔥','🏹','🐍','🐻','🌳','👑'];
 const COLOR_SET=['#5d7387','#b08d3e','#5f7a3f','#3f5a63','#a3542e','#8a2f2b','#6b4d7a','#2f5d4e','#7a4a2a','#444a52'];
@@ -422,8 +421,8 @@ const MOUNTS=[
 const armorOf=s=>ARMORS.find(a=>a.id===s.armor);
 const mountOf=s=>MOUNTS.find(m=>m.id===s.mount);
 
-const TITLES=[[0,'Wanderer'],[10,'Kern'],[25,'Gallowglass'],[50,'Champion'],[100,'High King']];
-const SEASONS=['Imbolc','Bealtaine','Lughnasa','Samhain'];
+const TITLES=[[0,'Wanderer'],[10,'Sellsword'],[25,'Freerider'],[50,'Knight'],[100,'Crowned King']];
+const SEASONS=['Thaw','Greentide','Harvest','Frostfall'];
 
 const MISSION_POOL={
  1:[['Rats in the granary','The steward pays by the tail. Filthy work, honest coin.'],
@@ -436,21 +435,21 @@ const MISSION_POOL={
     ['Track the poacher','He knows the woods. You’ll need to know them better.'],
     ['Break up the tavern war','Two crews, one tavern, many broken teeth.'],
     ['Hunt the grey boar','It gored two farmhands. The third is offering gold.']],
- 3:[['Break the wood-kern camp','A dozen outlaws with a taste for merchant blood.'],
-    ['Slay the bog-beast','Something old is taking livestock. And shepherds.'],
-    ['Recover the stolen reliquary','Thieves fled with the abbey’s silver. Bring it back — quietly.'],
-    ['Duel the gallowglass captain','He’s insulted your employer. Formally.'],
-    ['Escort the lady’s ransom','A chest of gold through the worst road in Ireland.']]
+ 3:[['Break the bandit camp','A dozen outlaws with a taste for merchant blood.'],
+    ['Slay the fen-beast','Something old is taking livestock. And shepherds.'],
+    ['Recover the stolen reliquary','Thieves fled with the sept’s silver. Bring it back — quietly.'],
+    ['Duel the sellsword captain','He’s insulted your employer. Formally.'],
+    ['Escort the lady’s ransom','A chest of gold through the worst road in the realm.']]
 };
 const MISSION_STATS={1:{lo:10,hi:22,ok:0.85,ren:1,hurt:[8,16]},2:{lo:32,hi:60,ok:0.65,ren:3,hurt:[14,26]},3:{lo:70,hi:120,ok:0.5,ren:6,hurt:[22,40]}};
-const CARGO_GOODS=['sealed letters','a cask of mead','a brehon’s law-scrolls','bolts of dyed wool','a crate of beeswax candles','salted salmon','a physician’s satchel','a reliquary of some small saint','a harp bound in silver','a chest of church plate'];
+const CARGO_GOODS=['sealed letters','a cask of hill-wine','a bundle of sealed writs','bolts of dyed wool','a crate of beeswax candles','salted fish','a maester’s satchel','a reliquary of some minor saint','a harp bound in silver','a chest of sept-silver'];
 
 /* ================= events ================= */
 function makeEvents(S,region){
  const a=armorOf(S),m=mountOf(S);
  const fightChance=0.5+a.hit*2+(m.id!=='none'?0.12:0);
  const list=[
-  {w:3,t:'Wood-kerns on the road',x:'Three lean men step from the hazel scrub with drawn skenes. "The purse, friend. Or the blood."',
+  {w:3,t:'Bandits on the road',x:'Three lean men step from the treeline with drawn steel. "The purse, friend. Or the blood."',
    opts:[
     {l:'Fight',f:()=>{if(Math.random()<fightChance){const g=ri(8,24);S.gold+=g;return['You leave them groaning in the ditch and '+g+' gold richer.','good'];}
       const d=Math.max(4,ri(16,28)-a.red);S.health-=d;return['They beat you bloody and take nothing but pride. −'+d+' health.','bad'];}},
@@ -461,37 +460,37 @@ function makeEvents(S,region){
     {l:'Buy (6 gold)',f:()=>{if(S.gold<6)return['You turn out an empty purse. He tuts and trundles on.','bad'];
       S.gold-=6;S.food=Math.min(S.foodCap,S.food+3);S.water=Math.min(S.waterCap,S.water+2);return['+3 food, +2 water. He even threw in a heel of cheese.','good'];}},
     {l:'Ride on',f:()=>['You nod politely and keep moving.','']}]},
-  {w:2,t:'A lone fairy thorn',x:'A hawthorn stands alone in the field, hung with ribbons and old coins. It is watching you. Probably.',
-   opts:[{l:'Rest beneath it',f:()=>{S.health=Math.min(S.maxHealth,S.health+10);return['You wake strangely rested. Best not to ask. +10 health.','good'];}},
-         {l:'Leave a coin',f:()=>{if(S.gold>0){S.gold--;S.renown+=1;return['The Good Neighbors remember courtesy. So do the neighbors who saw you. +1 renown.','gold'];}return['You have nothing to leave but a bow of the head.','']}}]},
+  {w:2,t:'A crossroads shrine',x:'A mossy old shrine at the crossroads, hung with ribbons and coins left by travelers before you.',
+   opts:[{l:'Rest & pray',f:()=>{S.health=Math.min(S.maxHealth,S.health+10);return['A strange calm settles over you. +10 health.','good'];}},
+         {l:'Leave a coin',f:()=>{if(S.gold>0){S.gold--;S.renown+=1;return['Someone will speak well of you for this. +1 renown.','gold'];}return['You have nothing to leave but a bow of the head.','']}}]},
   {w:2,t:'Lost on the byways',x:'The track forks where no fork should be. By the time you find true north, the day is spent.',
    opts:[{l:'Curse and continue',f:()=>{consumeDay(S,region);return['A wasted day of walking in circles.','bad'];}}]},
   {w:2,t:'Rain without end',x:'Soft weather, the locals call it. The road is a river and your cloak weighs as much as you do.',
    opts:[{l:'Push through',f:()=>{let d=S.perk==='hardy'?3:6;S.health-=d;return['Soaked to the marrow, but alive. −'+d+' health.','bad'];}},
-         {l:'Shelter (lose a day)',f:()=>{consumeDay(S,region);return['You wait it out under a dolmen with three sheep and a philosophical shepherd.','']}}]}
+         {l:'Shelter (lose a day)',f:()=>{consumeDay(S,region);return['You wait it out in a ruined watchtower with three sheep and a philosophical shepherd.','']}}]}
  ];
- if(region==='Ulster'){
-  list.push({w:3,t:'Wolves in the glen',x:'Yellow eyes ring your fire. The pack is thin-ribbed and bold.',
+ if(region==='The Frostreach'){
+  list.push({w:3,t:'Wolves in the wood',x:'Yellow eyes ring your fire. The pack is thin-ribbed and bold.',
    opts:[{l:'Stand your ground',f:()=>{let d=Math.max(3,ri(10,22)-a.red);if(S.perk==='hardy')d=Math.ceil(d/2);S.health-=d;return['You drive them off with brand and blade. −'+d+' health.','bad'];}},
          {l:'Throw them food',f:()=>{if(S.food>=1){S.food-=1;return['They take the offering and melt into the dark. −1 food.','']}let d=S.perk==='hardy'?6:12;S.health-=d;return['Nothing to throw. The fight is short and ugly. −'+d+' health.','bad'];}}]});
  }
- if(region==='Connacht'){
-  list.push({w:3,t:'An Atlantic gale',x:'The west wind comes off the ocean with nothing to slow it since the edge of the world.',
+ if(region==='The Westermark'){
+  list.push({w:3,t:'A gale off the sea',x:'The west wind comes off the ocean with nothing to slow it since the edge of the world.',
    opts:[{l:'Lean into it',f:()=>{let d=S.perk==='hardy'?4:8;S.health-=d;return['You arrive bent like a thorn tree, but you arrive. −'+d+' health.','bad'];}},
          {l:'Shelter (lose a day)',f:()=>{consumeDay(S,region);return['You wait out the gale in a shepherd’s bothy.','']}}]});
  }
- if(region==='Mide'){
-  list.push({w:3,t:'The bog takes the road',x:'Black water where the causeway should be. You wade, and the bog drinks your boots.',
+ if(region==='The Rivenlands'){
+  list.push({w:3,t:'The fen takes the road',x:'Black water where the causeway should be. You wade, and the fen drinks your boots.',
    opts:[{l:'Slog through',f:()=>{S.health-=6;return['Leeches. Why is it always leeches. −6 health.','bad'];}},
-         {l:'Go the long way (lose a day)',f:()=>{consumeDay(S,region);return['You keep your boots and lose your day. A fair Irish bargain.','']}}]});
+         {l:'Go the long way (lose a day)',f:()=>{consumeDay(S,region);return['You keep your boots and lose your day. A fair bargain.','']}}]});
  }
- if(region==='Leinster'||region==='Munster'){
-  list.push({w:2,t:'Ostmen raiders',x:'Shield-men off a longship, moving inland fast with torches. They have not seen you. Yet.',
+ if(region==='The Crownmarch'||region==='The Summerlands'){
+  list.push({w:2,t:'Reavers from the sea',x:'Shield-men off a longship, moving inland fast with torches. They have not seen you. Yet.',
    opts:[{l:'Ambush them',f:()=>{if(Math.random()<fightChance){const g=ri(15,35);S.gold+=g;S.renown+=1;return['You fall on them from the hedge and drive them back to their ship. +'+g+' gold, +1 renown.','good'];}
       const d=Math.max(6,ri(18,32)-a.red);S.health-=d;return['Shield-work beats hedge-work. You crawl away. −'+d+' health.','bad'];}},
      {l:'Stay hidden',f:()=>['You let them pass. The smoke behind you is somebody else’s sorrow.','']}]});
   list.push({w:2,t:'Harvest kindness',x:'A dairy-wife waves you over and loads your arms with butter, bread, and windfall apples.',
-   opts:[{l:'Thank her kindly',f:()=>{S.food=Math.min(S.foodCap,S.food+2);return['+2 food. Ireland is not all wolves and rain.','good'];}}]});
+   opts:[{l:'Thank her kindly',f:()=>{S.food=Math.min(S.foodCap,S.food+2);return['+2 food. The realm is not all wolves and rain.','good'];}}]});
  }
  const total=list.reduce((s,e)=>s+e.w,0);let r=Math.random()*total;
  for(const e of list){r-=e.w;if(r<=0)return e;}
@@ -500,7 +499,7 @@ function makeEvents(S,region){
 
 /* ================= state ================= */
 let S=null;
-const SAVE_KEY='highKingsRoadSave1';
+const SAVE_KEY='sunderedCrownSave2';
 function newState(o){
  const seatLoc=o.seat;
  S={
@@ -567,11 +566,6 @@ let cam={s:1,x:0,y:0},fitScale=1;
 let hoverLoc=null,anim=null; // anim = travel animation state
 let staticMap=null;
 const SS=2; // static supersample
-/* local (village) view state */
-const LW=1000,LH=680;
-let view='realm',camSaved=null,curPOI=null,hoverPOI=null;
-let localPos={x:500,y:430},walkAnim=null;
-const curW=()=>view==='local'?LW:W, curH=()=>view==='local'?LH:H;
 
 function smoothPath(c,pts,close){
  c.beginPath();
@@ -596,7 +590,7 @@ function drawStatic(){
  const g=c.getContext('2d');g.scale(SS,SS);
  const rng=mulberry32(41);
 
- // the charted realm (Kale's map of Éire, given the parchment treatment)
+ // the charted realm of Vaelmore, given the parchment treatment
  g.drawImage(mapImg,0,0,W,H);
  // parchment grain
  for(let i=0;i<620;i++){const x=rng()*W,y=rng()*H;
@@ -674,9 +668,9 @@ function drawStatic(){
   g.strokeStyle='rgba(74,58,34,.5)';g.strokeRect(x+4,y+4,w-8,h-8);
   g.fillStyle='#4a3a22';g.textAlign='center';
   g.font='700 15px Georgia';g.letterSpacing='4px';
-  g.fillText('ÉIRE',x+w/2,y+22);
+  g.fillText('VAELMORE',x+w/2,y+22);
   g.font='italic 10.5px Georgia';g.letterSpacing='1px';
-  g.fillText('being a true chart of the five provinces',x+w/2,y+39);
+  g.fillText('being a true chart of the riven realm',x+w/2,y+39);
   g.letterSpacing='0px';
   // scale bar
   const bx=x+22,by=y+56,bw=w-44;
@@ -743,459 +737,24 @@ function s2w(x,y){return{x:x/cam.s+cam.x,y:y/cam.s+cam.y};}
 function resize(){
  cv.width=innerWidth*devicePixelRatio;cv.height=innerHeight*devicePixelRatio;
  cv.style.width=innerWidth+'px';cv.style.height=innerHeight+'px';
- fitScale=Math.min(innerWidth/curW(),innerHeight/curH());
+ fitScale=Math.min(innerWidth/W,innerHeight/H);
  needsDraw=true;
 }
 function fitView(){
- if(view==='local'){
-  cam.s=clamp(Math.min(innerWidth/LW,innerHeight/LH)*1.06,0.2,4.5);
-  cam.x=(LW-innerWidth/cam.s)/2;cam.y=(LH-innerHeight/cam.s)/2;
- }else{
-  cam.s=Math.max(fitScale,Math.min(innerWidth/(W*0.82),1.05));
-  if(S){centerOn(LOC[S.loc].x,LOC[S.loc].y);}
-  else{cam.x=(W-innerWidth/cam.s)/2;cam.y=(H-innerHeight/cam.s)/2;}
- }
+ cam.s=Math.max(fitScale,Math.min(innerWidth/(W*0.82),1.05));
+ if(S){centerOn(LOC[S.loc].x,LOC[S.loc].y);}
+ else{cam.x=(W-innerWidth/cam.s)/2;cam.y=(H-innerHeight/cam.s)/2;}
  clampCam();needsDraw=true;
 }
 function centerOn(x,y){cam.x=x-innerWidth/cam.s/2;cam.y=y-innerHeight/cam.s/2;clampCam();}
 function clampCam(){
- const CW=curW(),CH=curH();
  const vw=innerWidth/cam.s,vh=innerHeight/cam.s,pad=90;
- cam.x=clamp(cam.x,-pad,CW+pad-vw);
- cam.y=clamp(cam.y,-pad,CH+pad-vh);
- if(vw>CW+pad*2)cam.x=(CW-vw)/2;
- if(vh>CH+pad*2)cam.y=(CH-vh)/2;
-}
-function updateViewBtn(){
- const b=$('#btn-view');
- if(!S||anim){b.style.display='none';return;}
- b.style.display='';
- b.textContent=view==='local'?'Realm Map':'Enter Town';
-}
-function enterLocal(){
- if(view==='local'||!S||anim)return;
- camSaved={s:cam.s,x:cam.x,y:cam.y};
- view='local';resize();
- const lm=getLocal(S.loc);
- localPos={x:lm.spawn.x,y:lm.spawn.y};
- curPOI=null;walkAnim=null;hoverPOI=null;hoverLoc=null;
- fitView();showLocalPanel();updateViewBtn();
-}
-function exitLocal(){
- if(view!=='local')return;
- view='realm';resize();
- if(camSaved){cam.s=camSaved.s;cam.x=camSaved.x;cam.y=camSaved.y;}
- clampCam();hoverPOI=null;walkAnim=null;
- showLocPanel();updateViewBtn();needsDraw=true;
-}
-function walkTo(x,y,then){
- const d=Math.hypot(x-localPos.x,y-localPos.y);
- if(d<6){then&&then();return;}
- walkAnim={fx:localPos.x,fy:localPos.y,tx:x,ty:y,start:performance.now(),dur:clamp(d*3.2,220,1500),then};
- needsDraw=true;
-}
-function gotoPOI(id){
- const lm=getLocal(S.loc);
- const p=lm.pois.find(q=>q.id===id);
- if(!p)return;
- walkTo(p.x,p.y+16,()=>{curPOI=id;showLocalPanel();});
-}
-function localItems(){
- const lm=getLocal(S.loc);
- return lm.pois.concat(lm.gates.map(gt=>({id:'gate:'+gt.to,kind:'gate',x:gt.x,y:gt.y,name:gt.name})));
+ cam.x=clamp(cam.x,-pad,W+pad-vw);
+ cam.y=clamp(cam.y,-pad,H+pad-vh);
+ if(vw>W+pad*2)cam.x=(W-vw)/2;
+ if(vh>H+pad*2)cam.y=(H-vh)/2;
 }
 
-/* ================= village maps ================= */
-function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
-const localCache={};
-function getLocal(id){
- if(!localCache[id]){
-  const keys=Object.keys(localCache);
-  if(keys.length>6)delete localCache[keys[0]];
-  localCache[id]=buildLocalMap(LOC[id]);
- }
- return localCache[id];
-}
-const INN_NAMES=['The Bent Coin','The Salmon Leap','The Drowned Eel','The Broken Crown','The Wolfhound','The Gilded Harp','The Last Candle','The Red Branch','The Three Ravens'];
-
-function drawHouse(g,x,y,w,d,ang,rA,rB){
- g.save();g.translate(x,y);g.rotate(ang);
- g.fillStyle=rA;g.strokeStyle='#3a2c1a';g.lineWidth=1.2;
- g.fillRect(-w/2,-d/2,w,d);
- g.fillStyle=rB;g.fillRect(-w/2,0,w,d/2);
- g.strokeRect(-w/2,-d/2,w,d);
- g.beginPath();g.moveTo(-w/2,0);g.lineTo(w/2,0);g.stroke();
- g.restore();
-}
-function drawPineL(g,x,y,s){
- g.strokeStyle='#48583a';g.fillStyle='rgba(122,140,94,.6)';g.lineWidth=1.2;
- g.beginPath();g.moveTo(x,y-s);g.lineTo(x-s*0.6,y+s*0.3);g.lineTo(x+s*0.6,y+s*0.3);g.closePath();g.fill();g.stroke();
- g.beginPath();g.moveTo(x,y+s*0.3);g.lineTo(x,y+s*0.65);g.stroke();
-}
-function drawOakL(g,x,y,s){
- g.strokeStyle='#48583a';g.fillStyle='rgba(122,140,94,.55)';g.lineWidth=1.2;
- g.beginPath();g.arc(x,y-s*0.5,s*0.62,0,7);g.fill();g.stroke();
- g.beginPath();g.arc(x-s*0.42,y-s*0.12,s*0.45,0,7);g.fill();g.stroke();
- g.beginPath();g.arc(x+s*0.42,y-s*0.12,s*0.45,0,7);g.fill();g.stroke();
- g.beginPath();g.moveTo(x,y+s*0.12);g.lineTo(x,y+s*0.55);g.stroke();
-}
-function drawPalm(g,x,y){
- g.strokeStyle='#48583a';g.lineWidth=1.3;
- g.beginPath();g.moveTo(x,y+7);g.quadraticCurveTo(x+3,y-3,x+1,y-9);g.stroke();
- for(const a of[-2.6,-1.9,-1.1,-0.4,0.3]){g.beginPath();g.moveTo(x+1,y-9);
-  g.quadraticCurveTo(x+1+Math.cos(a)*8,y-9+Math.sin(a)*6,x+1+Math.cos(a)*12,y-7+Math.sin(a)*9);g.stroke();}
-}
-function qpoint(a,b,c,t){const u=1-t;return{x:u*u*a.x+2*u*t*b.x+t*t*c.x,y:u*u*a.y+2*u*t*b.y+t*t*c.y};}
-
-function buildLocalMap(l){
- const c=document.createElement('canvas');c.width=LW*SS;c.height=LH*SS;
- const g=c.getContext('2d');g.scale(SS,SS);
- const rng=mulberry32(hashStr(l.id));
- const reg=l.region,typ=l.type;
- const bog=reg==='Mide',lush=(reg==='Munster'||reg==='Leinster');
- const hasKeep=(typ==='castle'||typ==='capital'||typ==='fort');
- const SQ={x:500,y:386};
- const thatchA='#cfa961',thatchB='#b9924e';
- const slateA='#9aa3ad',slateB='#848d99';
-
- // ground
- const base=bog?'#ddd6a4':'#e6d5a5';
- g.fillStyle=base;g.fillRect(0,0,LW,LH);
- for(let i=0;i<(lush?230:170);i++){
-  const x=rng()*LW,y=rng()*LH,r=8+rng()*30;
-  g.fillStyle=bog?'rgba(120,140,90,'+(0.06+rng()*0.09)+')':
-   'rgba(150,160,100,'+(0.04+rng()*(lush?0.09:0.07))+')';
-  g.beginPath();g.arc(x,y,r,0,7);g.fill();
- }
- for(let i=0;i<300;i++){const x=rng()*LW,y=rng()*LH;
-  g.fillStyle='rgba(120,100,60,'+(0.02+rng()*0.03)+')';g.fillRect(x,y,1.5,1.2);}
-
- // harbor water
- let waterY=null;
- if(typ==='port'){
-  waterY=548;
-  g.fillStyle='#b7c2a6';g.fillRect(0,waterY,LW,LH-waterY);
-  g.strokeStyle='rgba(90,105,85,.6)';g.lineWidth=1.6;
-  g.beginPath();g.moveTo(0,waterY);
-  for(let x=0;x<=LW;x+=44)g.quadraticCurveTo(x+12,waterY+(rng()*8-4),x+44,waterY);
-  g.stroke();
-  for(let i=0;i<26;i++){const x=rng()*LW,y=waterY+16+rng()*(LH-waterY-30);
-   g.strokeStyle='rgba(90,105,85,.35)';g.lineWidth=1;
-   g.beginPath();g.moveTo(x-9,y);g.quadraticCurveTo(x,y-3,x+9,y);g.stroke();}
- }
-
- // gates & lanes
- const gates=[];
- for(const nb of neighborsOf(l.id)){
-  const N=LOC[nb];let a=Math.atan2(N.y-l.y,N.x-l.x);
-  if(waterY&&Math.sin(a)>0.25)a=Math.cos(a)>=0?0.15:Math.PI-0.15;
-  const gx=clamp(SQ.x+Math.cos(a)*430,70,LW-70),
-        gy=clamp(SQ.y+Math.sin(a)*286,86,(waterY?waterY-48:LH-64));
-  gates.push({x:gx,y:gy,to:nb,name:N.name,ang:a});
- }
- g.lineCap='round';
- const lanes=[];
- for(const gt of gates){
-  const mx=(SQ.x+gt.x)/2,my=(SQ.y+gt.y)/2;
-  const dx=gt.x-SQ.x,dy=gt.y-SQ.y,len=Math.hypot(dx,dy)||1;
-  const off=(rng()-0.5)*len*0.22;
-  const bend={x:mx-dy/len*off,y:my+dx/len*off};
-  lanes.push({a:SQ,b:bend,c:gt});
-  g.strokeStyle='#cdb47e';g.lineWidth=14;
-  g.beginPath();g.moveTo(SQ.x,SQ.y);g.quadraticCurveTo(bend.x,bend.y,gt.x,gt.y);g.stroke();
-  g.strokeStyle='rgba(90,70,40,.30)';g.lineWidth=1;g.setLineDash([3,4]);
-  for(const s of[-8,8]){
-   g.beginPath();g.moveTo(SQ.x,SQ.y+s);g.quadraticCurveTo(bend.x,bend.y+s,gt.x,gt.y+s);g.stroke();
-  }
-  g.setLineDash([]);
- }
- // plaza
- g.fillStyle='#cdb47e';
- g.beginPath();g.ellipse(SQ.x,SQ.y,96,64,0,0,7);g.fill();
- g.strokeStyle='rgba(90,70,40,.3)';g.lineWidth=1;g.setLineDash([3,4]);g.stroke();g.setLineDash([]);
- for(let i=0;i<70;i++){const a2=rng()*7,r2=Math.sqrt(rng());
-  g.fillStyle='rgba(110,90,55,'+(0.08+rng()*0.10)+')';
-  g.fillRect(SQ.x+Math.cos(a2)*90*r2-1.5,SQ.y+Math.sin(a2)*58*r2-1,3,2);}
-
- // fields & orchards on the outskirts
- if(typ!=='hill'){
-  const nF=lush?4:2+Math.floor(rng()*2);
-  let placed=0,tries=0;
-  while(placed<nF&&tries<40){
-   tries++;
-   const a4=rng()*7;
-   const fx2=SQ.x+Math.cos(a4)*(300+rng()*80),fy2=SQ.y+Math.sin(a4)*(210+rng()*50);
-   if(fx2<95||fx2>LW-95||fy2<115||fy2>(waterY?waterY-64:LH-84))continue;
-   let ok=true;
-   for(const gt of gates)if(Math.hypot(gt.x-fx2,gt.y-fy2)<115)ok=false;
-   if(hasKeep&&fy2<265&&Math.abs(fx2-SQ.x)<210)ok=false;
-   if(!ok)continue;
-   placed++;
-   g.save();g.translate(fx2,fy2);g.rotate((rng()-0.5)*0.8);
-   g.fillStyle='rgba(168,180,110,.4)';
-   g.strokeStyle='rgba(90,70,40,.45)';g.lineWidth=1;
-   g.fillRect(-52,-32,104,64);g.strokeRect(-52,-32,104,64);
-   if(lush&&rng()<0.5){
-    g.fillStyle='rgba(95,122,63,.8)';
-    for(let yy=-22;yy<=22;yy+=14)for(let xx=-42;xx<=42;xx+=14){g.beginPath();g.arc(xx,yy,3.4,0,7);g.fill();}
-   }else{
-    g.strokeStyle='rgba(120,130,70,.55)';
-    for(let xx=-46;xx<=46;xx+=7){g.beginPath();g.moveTo(xx,-28);g.lineTo(xx,28);g.stroke();}
-   }
-   g.restore();
-  }
- }
-
- const pois=[];
- const jit=()=> (rng()-0.5)*20;
- function label(t,x,y,big){
-  g.font=(big?'700 12px ':'600 10.5px ')+'Georgia';g.textAlign='center';g.textBaseline='top';g.letterSpacing='1px';
-  g.strokeStyle='rgba(238,228,190,.9)';g.lineWidth=3;g.lineJoin='round';
-  g.strokeText(t,x,y);g.fillStyle='#4a3a22';g.fillText(t,x,y);g.letterSpacing='0px';
- }
- const innName=INN_NAMES[Math.floor(rng()*INN_NAMES.length)];
-
- // keep / garrison
- if(hasKeep){
-  const kx=SQ.x,ky=152;
-  const col=(HOUSES.find(h=>h.seat===l.id)||{}).color||'#6b6f76';
-  g.strokeStyle='#cdb47e';g.lineWidth=10;
-  g.beginPath();g.moveTo(SQ.x,SQ.y-40);g.lineTo(kx,ky+70);g.stroke();
-  g.fillStyle='rgba(214,200,156,.8)';g.strokeStyle='#3a2c1a';g.lineWidth=2;
-  g.fillRect(kx-110,ky-62,220,126);g.strokeRect(kx-110,ky-62,220,126);
-  g.strokeStyle='rgba(58,44,26,.5)';g.lineWidth=1;g.strokeRect(kx-103,ky-55,206,112);
-  for(const[tx,ty]of[[-110,-62],[110,-62],[-110,64],[110,64]]){
-   g.fillStyle='#b6a37a';g.strokeStyle='#3a2c1a';g.lineWidth=1.6;
-   g.beginPath();g.arc(kx+tx,ky+ty,13,0,7);g.fill();g.stroke();
-   g.beginPath();g.arc(kx+tx,ky+ty,7,0,7);g.stroke();
-  }
-  drawHouse(g,kx,ky-4,86,50,0,slateA,slateB);
-  drawHouse(g,kx-56,ky+24,38,24,0.35,thatchA,thatchB);
-  g.strokeStyle='#3a2c1a';g.lineWidth=1.5;
-  g.beginPath();g.moveTo(kx,ky-29);g.lineTo(kx,ky-54);g.stroke();
-  g.fillStyle=col;g.beginPath();g.moveTo(kx,ky-54);g.lineTo(kx+20,ky-48);g.lineTo(kx,ky-42);g.closePath();g.fill();
-  g.strokeStyle=base;g.lineWidth=5;
-  g.beginPath();g.moveTo(kx-11,ky+64);g.lineTo(kx+11,ky+64);g.stroke();
-  const kname=typ==='fort'?'The Garrison':typ==='capital'?'Dublin Castle':'The Keep';
-  pois.push({id:'keep',kind:'keep',x:kx,y:ky+78,name:kname});
-  label(kname,kx,ky+90);
- }
-
- // the mound & standing stones (Hill of Tara)
- if(typ==='hill'){
-  const kx=SQ.x,ky=210;
-  g.strokeStyle='#cdb47e';g.lineWidth=10;
-  g.beginPath();g.moveTo(SQ.x,SQ.y-40);g.lineTo(kx,ky+66);g.stroke();
-  g.strokeStyle='rgba(90,70,40,.55)';g.lineWidth=1.6;
-  for(const rr of[[118,64],[88,48],[56,30]]){
-   g.beginPath();g.ellipse(kx,ky,rr[0],rr[1],0,0,7);g.stroke();
-  }
-  for(let i=0;i<9;i++){
-   const a3=i/9*Math.PI*2+0.3;
-   const sx3=kx+Math.cos(a3)*118,sy3=ky+Math.sin(a3)*64;
-   g.save();g.translate(sx3,sy3);g.rotate((rng()-0.5)*0.4);
-   g.fillStyle='#8f8878';g.strokeStyle='#3a2c1a';g.lineWidth=1.2;
-   g.fillRect(-3,-8,6,14);g.strokeRect(-3,-8,6,14);g.restore();
-  }
-  g.fillStyle='#7d7566';g.strokeStyle='#3a2c1a';g.lineWidth=1.4;
-  g.fillRect(kx-4,ky-15,8,22);g.strokeRect(kx-4,ky-15,8,22);
-  pois.push({id:'stones',kind:'stones',x:kx,y:ky+24,name:'The Lia Fáil'});
-  label('The Lia Fáil',kx,ky+80);
- }
- // the well
- {
-  const wellName=typ==='hill'?'The Holy Well':'The Well';
-  g.fillStyle='#a99c86';g.strokeStyle='#3a2c1a';g.lineWidth=1.6;
-  g.beginPath();g.arc(SQ.x,SQ.y,9,0,7);g.fill();g.stroke();
-  g.fillStyle='#4c4238';g.beginPath();g.arc(SQ.x,SQ.y,4.5,0,7);g.fill();
-  g.strokeStyle='#3a2c1a';g.lineWidth=1.2;
-  g.beginPath();g.moveTo(SQ.x-11,SQ.y);g.lineTo(SQ.x-11,SQ.y-13);
-  g.moveTo(SQ.x+11,SQ.y);g.lineTo(SQ.x+11,SQ.y-13);
-  g.moveTo(SQ.x-14,SQ.y-13);g.lineTo(SQ.x+14,SQ.y-13);g.stroke();
-  pois.push({id:'well',kind:'well',x:SQ.x,y:SQ.y,name:wellName});
-  label(wellName,SQ.x,SQ.y+16);
- }
- // notice board
- {
-  const bx=SQ.x+58+jit()*0.4,by=SQ.y-36+jit()*0.4;
-  g.fillStyle='#efe2ba';g.strokeStyle='#3a2c1a';g.lineWidth=1.4;
-  g.fillRect(bx-9,by-8,18,12);g.strokeRect(bx-9,by-8,18,12);
-  g.beginPath();g.moveTo(bx-6,by+4);g.lineTo(bx-6,by+9);g.moveTo(bx+6,by+4);g.lineTo(bx+6,by+9);g.stroke();
-  g.fillStyle='rgba(138,47,43,.8)';g.fillRect(bx-6,by-6,5,4);
-  g.fillStyle='rgba(90,70,40,.7)';g.fillRect(bx+1,by-5,4,6);
-  pois.push({id:'board',kind:'board',x:bx,y:by,name:'Notice Board'});
-  label('Notice Board',bx,by+12);
- }
- // inn
- if(l.shops.includes('inn')){
-  const ix=SQ.x+134+jit(),iy=SQ.y-74+jit();
-  drawHouse(g,ix,iy,54,34,(rng()-0.5)*0.3,thatchA,thatchB);
-  g.strokeStyle='#3a2c1a';g.lineWidth=1.3;
-  g.beginPath();g.moveTo(ix-31,iy+8);g.lineTo(ix-31,iy-7);g.stroke();
-  g.fillStyle='#8a2f2b';g.fillRect(ix-36,iy-7,9,6);
-  pois.push({id:'inn',kind:'inn',x:ix,y:iy,name:innName});
-  label(innName,ix,iy+22);
- }
- // smith
- if(l.shops.includes('smith')){
-  const sx=SQ.x-146+jit(),sy=SQ.y-62+jit();
-  drawHouse(g,sx,sy,46,30,(rng()-0.5)*0.3,slateA,slateB);
-  g.strokeStyle='rgba(80,80,80,.6)';g.lineWidth=2;
-  g.beginPath();g.moveTo(sx+10,sy-17);g.quadraticCurveTo(sx+16,sy-26,sx+12,sy-34);g.stroke();
-  g.strokeStyle='#3a2c1a';g.lineWidth=1.2;g.strokeRect(sx+25,sy-6,16,14);
-  pois.push({id:'smith',kind:'smith',x:sx,y:sy,name:'The Forge'});
-  label('The Forge',sx,sy+20);
- }
- // stables
- if(l.shops.includes('stables')){
-  const tx=SQ.x+148+jit(),ty=SQ.y+70+jit();
-  drawHouse(g,tx,ty,88,22,(rng()-0.5)*0.2,thatchA,thatchB);
-  g.strokeStyle='#3a2c1a';g.lineWidth=1;
-  for(let i=0;i<6;i++){g.beginPath();g.moveTo(tx-40+i*16,ty+16);g.lineTo(tx-40+i*16,ty+22);g.stroke();}
-  g.beginPath();g.moveTo(tx-40,ty+19);g.lineTo(tx+40,ty+19);g.stroke();
-  pois.push({id:'stables',kind:'stables',x:tx,y:ty,name:'Stables'});
-  label('Stables',tx,ty+26);
- }
- // market row
- if(l.shops.includes('market')){
-  const mx=SQ.x-6+jit()*0.5,my=SQ.y+104+jit()*0.5;
-  for(let i=0;i<3;i++){
-   const x2=mx-34+i*34,y2=my+(rng()-0.5)*8;
-   g.fillStyle=i%2?'#efe2ba':'#c98f83';g.strokeStyle='#3a2c1a';g.lineWidth=1.2;
-   g.fillRect(x2-11,y2-8,22,16);g.strokeRect(x2-11,y2-8,22,16);
-   g.strokeStyle='rgba(58,44,26,.55)';
-   for(let s2=-11;s2<11;s2+=5){g.beginPath();g.moveTo(x2+s2,y2-8);g.lineTo(x2+s2,y2+8);g.stroke();}
-  }
-  pois.push({id:'market',kind:'market',x:mx,y:my,name:'Market Row'});
-  label('Market Row',mx,my+16);
- }
- // sept
- if(['castle','town','capital','port'].includes(typ)){
-  const px=SQ.x-152+jit(),py=SQ.y+76+jit();
-  drawHouse(g,px,py,38,26,(rng()-0.5)*0.3,'#d8cba2','#c4b78e');
-  g.strokeStyle='#3a2c1a';g.lineWidth=1.3;
-  g.beginPath();g.arc(px,py-20,5,0,7);g.stroke();
-  g.beginPath();g.moveTo(px,py-25);g.lineTo(px,py-31);g.stroke();
-  const sname=typ==='capital'?'Christ Church':'The Abbey';
-  pois.push({id:'sept',kind:'sept',x:px,y:py,name:sname});
-  label(sname,px,py+18);
- }
- // harbor piers & boats
- if(typ==='port'){
-  for(const px2 of[SQ.x-150,SQ.x+150]){
-   g.fillStyle='#b6a37a';g.strokeStyle='#3a2c1a';g.lineWidth=1.3;
-   g.fillRect(px2-7,waterY-8,14,52);g.strokeRect(px2-7,waterY-8,14,52);
-   g.fillStyle='#efe2ba';
-   g.beginPath();g.moveTo(px2+16,waterY+20);g.quadraticCurveTo(px2+30,waterY+30,px2+44,waterY+20);
-   g.quadraticCurveTo(px2+30,waterY+38,px2+16,waterY+20);g.fill();g.stroke();
-   g.beginPath();g.moveTo(px2+30,waterY+24);g.lineTo(px2+30,waterY+8);g.stroke();
-  }
- }
- // forage spot
- {
-  let fx,fy,fname;
-  if(typ==='port'){
-   fx=SQ.x+150;fy=waterY+28;fname='The Fish Quay';
-   g.fillStyle='#b6a37a';g.strokeStyle='#3a2c1a';g.lineWidth=1.2;
-   g.fillRect(fx-26,waterY-22,10,10);g.strokeRect(fx-26,waterY-22,10,10);
-   g.fillRect(fx-38,waterY-18,9,9);g.strokeRect(fx-38,waterY-18,9,9);
-  }else{
-   const spots=[[150,140],[850,140],[140,520],[860,520]];
-   let best=spots[2],bd=-1;
-   for(const[sx2,sy2]of spots){
-    if(hasKeep&&sy2<250)continue;
-    let d2=1e9;for(const gt of gates)d2=Math.min(d2,Math.hypot(gt.x-sx2,gt.y-sy2));
-    if(d2>bd){bd=d2;best=[sx2,sy2];}
-   }
-   fx=best[0];fy=best[1];
-   fname=reg==='Ulster'?'The Hazel Wood':reg==='Connacht'?'The Machair':
-     bog?'The Eel Pools':reg==='Munster'?'The Orchard Rows':'The Hedgerows';
-   if(bog){
-    g.fillStyle='#8fa89a';g.strokeStyle='#3a2c1a';g.lineWidth=1.2;
-    g.beginPath();g.ellipse(fx,fy,26,14,0.3,0,7);g.fill();g.stroke();
-    g.beginPath();g.ellipse(fx+30,fy+16,16,9,-0.2,0,7);g.fill();g.stroke();
-   }else{
-    for(let i=0;i<6;i++){const a5=rng()*7,r5=10+rng()*26;
-     const x4=fx+Math.cos(a5)*r5*1.4,y4=fy+Math.sin(a5)*r5*0.8;
-     if(rng()<0.35)drawPineL(g,x4,y4,10+rng()*4);else drawOakL(g,x4,y4,9+rng()*4);}
-   }
-  }
-  pois.push({id:'forage',kind:'forage',x:fx,y:fy,name:fname});
-  label(fname,fx,fy+28);
- }
- // cottages along the lanes
- const nC={village:5,town:9,capital:12,castle:6,fort:3,port:8,hill:0}[typ]??6;
- let placedC=0,triesC=0;
- while(placedC<nC&&triesC<90&&lanes.length){
-  triesC++;
-  const ln=lanes[Math.floor(rng()*lanes.length)];
-  const t=0.25+rng()*0.55;
-  const p=qpoint(ln.a,ln.b,ln.c,t);
-  const dx=2*(1-t)*(ln.b.x-ln.a.x)+2*t*(ln.c.x-ln.b.x),
-        dy=2*(1-t)*(ln.b.y-ln.a.y)+2*t*(ln.c.y-ln.b.y);
-  const dl=Math.hypot(dx,dy)||1,side=rng()<0.5?-1:1,off=27+rng()*16;
-  const x=p.x-dy/dl*off*side,y=p.y+dx/dl*off*side;
-  if(x<70||x>LW-70||y<100||y>(waterY?waterY-26:LH-70))continue;
-  let ok=Math.hypot(x-SQ.x,y-SQ.y)>114;
-  for(const q of pois)if(Math.hypot(q.x-x,q.y-y)<50)ok=false;
-  for(const gt of gates)if(Math.hypot(gt.x-x,gt.y-y)<42)ok=false;
-  if(hasKeep&&y<252&&Math.abs(x-SQ.x)<192)ok=false;
-  if(!ok)continue;
-  placedC++;
-  drawHouse(g,x,y,20+rng()*12,14+rng()*7,Math.atan2(dy,dx)+(rng()-0.5)*0.3,thatchA,thatchB);
- }
- // fair tents on the royal hill
- if(typ==='hill'){
-  for(let i=0;i<6;i++){
-   const a6=rng()*7,r6=124+rng()*54;
-   const x5=SQ.x+Math.cos(a6)*r6,y5=SQ.y+Math.sin(a6)*r6*0.7;
-   if(y5<300)continue;
-   g.fillStyle=i%2?'#e0cda0':'#c98f83';g.strokeStyle='#3a2c1a';g.lineWidth=1.2;
-   g.beginPath();g.moveTo(x5-12,y5+7);g.lineTo(x5,y5-10);g.lineTo(x5+12,y5+7);g.closePath();g.fill();g.stroke();
-   g.beginPath();g.moveTo(x5,y5-10);g.lineTo(x5,y5-16);g.stroke();
-  }
- }
- // scattered trees
- for(let i=0;i<26;i++){
-  const x3=60+rng()*(LW-120),y3=95+rng()*((waterY?waterY-50:LH-95)-95);
-  if(Math.hypot(x3-SQ.x,y3-SQ.y)<184)continue;
-  let ok=true;
-  for(const p of pois)if(Math.hypot(p.x-x3,p.y-y3)<56)ok=false;
-  for(const gt of gates)if(Math.hypot(gt.x-x3,gt.y-y3)<46)ok=false;
-  if(hasKeep&&y3<246&&Math.abs(x3-SQ.x)<190)ok=false;
-  if(!ok)continue;
-  if(typ==='hill'&&y3<300&&Math.abs(x3-SQ.x)<220)continue;
-  if(rng()<(reg==='Ulster'?0.5:0.3))drawPineL(g,x3,y3,9+rng()*4);
-  else drawOakL(g,x3,y3,8+rng()*4);
- }
- // gate signposts
- for(const gt of gates){
-  g.strokeStyle='#3a2c1a';g.lineWidth=1.6;
-  g.beginPath();g.moveTo(gt.x,gt.y+8);g.lineTo(gt.x,gt.y-16);g.stroke();
-  const s3=Math.cos(gt.ang)>=0?1:-1;
-  g.fillStyle='#efe2ba';g.lineWidth=1.2;
-  g.beginPath();
-  g.moveTo(gt.x-14*s3,gt.y-16);g.lineTo(gt.x+10*s3,gt.y-16);g.lineTo(gt.x+16*s3,gt.y-12);
-  g.lineTo(gt.x+10*s3,gt.y-8);g.lineTo(gt.x-14*s3,gt.y-8);g.closePath();g.fill();g.stroke();
-  label('to '+gt.name,gt.x,gt.y+12);
- }
- // vignette + frame + cartouche
- const vg=g.createRadialGradient(500,340,260,500,340,760);
- vg.addColorStop(0,'rgba(90,70,40,0)');vg.addColorStop(1,'rgba(90,70,40,.20)');
- g.fillStyle=vg;g.fillRect(0,0,LW,LH);
- g.strokeStyle='#3a2c1a';g.lineWidth=5;g.strokeRect(8,8,LW-16,LH-16);
- g.strokeStyle='rgba(58,44,26,.55)';g.lineWidth=1.3;g.strokeRect(16,16,LW-32,LH-32);
- const cy=LH-82;
- g.fillStyle='rgba(238,224,182,.94)';g.strokeStyle='#3a2c1a';g.lineWidth=1.5;
- g.fillRect(26,cy,262,52);g.strokeRect(26,cy,262,52);
- g.fillStyle='#3a2c1a';g.textAlign='left';g.textBaseline='alphabetic';
- g.font='700 14px Georgia';g.letterSpacing='2px';
- g.fillText(l.name.toUpperCase(),38,cy+22);
- g.font='italic 10.5px Georgia';g.letterSpacing='0px';
- g.fillText('a plan of the '+(typ==='capital'?'king’s city':typ==='castle'?'castle town':typ==='port'?'harbor town':typ==='hill'?'royal hill':typ==='fort'?'garrison':'village'),38,cy+38);
-
- return {c,pois,gates,waterY,spawn:{x:SQ.x,y:SQ.y+42}};
-}
 function playerPos(){
  if(anim){return anim.pos;}
  const l=LOC[S.loc];return{x:l.x,y:l.y};
@@ -1208,46 +767,9 @@ function roadPoint(r,t,rev){
 function draw(){
  if(!needsDraw&&!S){requestAnimationFrame(draw);return;}
  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
- ctx.fillStyle=view==='local'?'#4a3a28':'#a8b499';ctx.fillRect(0,0,innerWidth,innerHeight);
+ ctx.fillStyle='#a8b499';ctx.fillRect(0,0,innerWidth,innerHeight);
  ctx.save();
  ctx.scale(cam.s,cam.s);ctx.translate(-cam.x,-cam.y);
-
- if(view==='local'&&S){
-  const lm=getLocal(S.loc);
-  ctx.drawImage(lm.c,0,0,LW,LH);
-  for(const p of localItems()){
-   const hov=hoverPOI===p.id,sel=curPOI===p.id;
-   if(hov||sel){
-    ctx.beginPath();ctx.arc(p.x,p.y,hov?27:22,0,7);
-    ctx.strokeStyle=hov?'rgba(138,47,43,.9)':'rgba(138,47,43,.5)';
-    ctx.lineWidth=(hov?2.4:1.6)/Math.sqrt(cam.s);
-    ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);
-   }
-  }
-  if(walkAnim){
-   const k=clamp((performance.now()-walkAnim.start)/walkAnim.dur,0,1);
-   const e=k<0.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
-   localPos.x=walkAnim.fx+(walkAnim.tx-walkAnim.fx)*e;
-   localPos.y=walkAnim.fy+(walkAnim.ty-walkAnim.fy)*e;
-   if(k>=1){const fn=walkAnim.then;walkAnim=null;fn&&fn();}
-  }
-  pulseT+=0.03;
-  const pr=11+Math.sin(pulseT)*0.7;
-  ctx.beginPath();ctx.ellipse(localPos.x,localPos.y+9,10,4,0,0,7);
-  ctx.fillStyle='rgba(0,0,0,.22)';ctx.fill();
-  ctx.beginPath();ctx.arc(localPos.x,localPos.y,pr+5+Math.sin(pulseT*1.7)*1.4,0,7);
-  ctx.strokeStyle='rgba(138,47,43,.35)';ctx.lineWidth=1.4;ctx.stroke();
-  ctx.beginPath();ctx.arc(localPos.x,localPos.y,pr,0,7);
-  ctx.fillStyle=S.color;ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=2.2;ctx.stroke();
-  ctx.strokeStyle='rgba(255,240,210,.55)';ctx.lineWidth=1;ctx.stroke();
-  ctx.font='12px serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(S.sigil,localPos.x,localPos.y+1);
-  ctx.restore();
-  needsDraw=false;
-  requestAnimationFrame(draw);
-  return;
- }
 
  if(staticMap)ctx.drawImage(staticMap,0,0,W,H);
 
@@ -1330,10 +852,7 @@ cv.addEventListener('pointermove',e=>{
  }else{
   const w=s2w(e.clientX,e.clientY);
   let found=null;
-  if(S&&view==='local'){
-   for(const p of localItems()){if(Math.hypot(p.x-w.x,p.y-w.y)<30){found=p.id;break;}}
-   if(found!==hoverPOI){hoverPOI=found;needsDraw=true;}
-  }else if(S&&!anim){
+  if(S&&!anim){
    for(const nid of neighborsOf(S.loc)){const l=LOC[nid];if(Math.hypot(l.x-w.x,l.y-w.y)<20){found=nid;break;}}
    if(found!==hoverLoc){hoverLoc=found;needsDraw=true;}
   }
@@ -1343,23 +862,11 @@ cv.addEventListener('pointermove',e=>{
 function endPointer(e){
  if(pinch){pinch=null;drag=null;return;}
  if(drag&&drag.id===e.pointerId){
-  if(!drag.moved&&S&&!modalOpen()){
+  if(!drag.moved&&S&&!anim&&!modalOpen()){
    const w=s2w(e.clientX,e.clientY);
-   if(view==='local'){
-    let hit=null;
-    for(const p of localItems()){if(Math.hypot(p.x-w.x,p.y-w.y)<30){hit=p;break;}}
-    if(hit){
-     if(hit.kind==='gate'){const to=hit.id.slice(5);walkTo(hit.x,hit.y+14,()=>askTravel(to));}
-     else gotoPOI(hit.id);
-    }else{
-     const lm=getLocal(S.loc);
-     walkTo(clamp(w.x,70,LW-70),clamp(w.y,95,(lm.waterY?lm.waterY-12:LH-70)));
-    }
-   }else if(!anim){
-    for(const nid of neighborsOf(S.loc)){
-     const l=LOC[nid];
-     if(Math.hypot(l.x-w.x,l.y-w.y)<20){askTravel(nid);break;}
-    }
+   for(const nid of neighborsOf(S.loc)){
+    const l=LOC[nid];
+    if(Math.hypot(l.x-w.x,l.y-w.y)<20){askTravel(nid);break;}
    }
   }
   drag=null;cv.classList.remove('dragging');
@@ -1411,17 +918,12 @@ function askTravel(toId){
   [['Ride out',()=>{closeModal();startTravel(toId);}],['Stay',closeModal]]);
 }
 function startTravel(toId){
- if(view==='local'){
-  view='realm';resize();
-  if(camSaved){cam.s=camSaved.s;cam.x=camSaved.x;cam.y=camSaved.y;}
-  clampCam();walkAnim=null;hoverPOI=null;
- }
  const r=roadBetween(S.loc,toId);
  const rev=r.b===S.loc;
  const days=travelDays(r);
  hideLocPanel();
  anim={r,rev,toId,days,day:0,t:0,pos:roadPoint(r,0,rev),paused:false};
- hoverLoc=null;updateViewBtn();
+ hoverLoc=null;
  centerOnSmooth(LOC[S.loc].x,LOC[S.loc].y);
  stepTravel();
 }
@@ -1486,9 +988,9 @@ function arriveCommon(announce){
   modal('Delivery complete','The consignee counts out <b>'+sum+' gold</b> and asks no questions about the road.',[['Good coin',closeModal]]);
  }
  checkVictory();
- centerOn(l.x,l.y);
+ centerOnSmooth(l.x,l.y);
  refreshHUD();save();
- enterLocal();needsDraw=true;
+ showLocPanel();needsDraw=true;
 }
 function centerOnSmooth(x,y){
  const sx=cam.x,sy=cam.y;centerOn(x,y);const tx=cam.x,ty=cam.y;cam.x=sx;cam.y=sy;
@@ -1551,7 +1053,7 @@ function buy(kind,arg){
 function checkVictory(){
  if(S.won||S.renown<100)return;
  S.won=true;save();
- modal('High King at Tara','Word of your deeds has reached every hall in Ireland. The chieftains gather on the Hill of Tara, and when your hand touches the Lia Fáil, the Stone of Destiny <b>cries out</b> so the whole island hears it.<br><br>You began with nothing. You are crowned <b>High King of Éire</b>.',
+ modal('A Crown Restored','Word of your deeds has reached every hall in Vaelmore. The great houses gather at the Kingsmound, and when your hand touches the Kingstone, the coronation stone of the old kings <b>rings out</b> so the whole realm can hear it.<br><br>You began with nothing. You end it <b>crowned</b>.',
   [['Rule well',closeModal]],'Renown 100 · Day '+S.day);
 }
 
@@ -1596,7 +1098,6 @@ function panelShell(regionTxt,title,desc){
  const b=$('#p-body');b.innerHTML='';return b;
 }
 function addSec(b,title){const s=document.createElement('div');s.className='psec';s.innerHTML='<h4>'+title+'</h4>';b.appendChild(s);return s;}
-function refreshPanel(){if(view==='local')showLocalPanel();else showLocPanel();}
 
 function addMissions(s){
  const board=boardFor(S.loc);
@@ -1618,152 +1119,69 @@ function addMissions(s){
  });
  if(!shown){const p=document.createElement('p');p.className='hint';p.textContent='The board is bare. Work returns with the morning — travel or rest to pass the day.';s.appendChild(p);}
 }
+function refreshPanel(){showLocPanel();}
 function dailyDone(k){return S.daily&&S.daily.day===S.day&&S.daily[k];}
 function markDaily(k){if(!S.daily||S.daily.day!==S.day)S.daily={day:S.day};S.daily[k]=1;}
-function poiAction(kind){
- if(dailyDone(kind))return;
- if(kind==='well'){
-  const amt=LOC[S.loc].type==='hill'?2:1;
-  S.water=Math.min(S.waterCap,S.water+amt);
-  log('You draw cold sweet water from the '+(amt>1?'holy well':'well')+'. +'+amt+' water.','good');
- }
- if(kind==='sept'){
-  if(S.gold<1)return;
-  S.gold-=1;S.health=Math.min(S.maxHealth,S.health+6);
-  log('You light a candle in the abbey for the road ahead. +6 health.','good');
- }
- if(kind==='stones'){
-  S.health=Math.min(S.maxHealth,S.health+4);
-  if(S.renown>=50)log('You lay a palm on the Lia Fáil. Deep in the stone, something stirs. +4 health.','gold');
-  else log('The Stone of Destiny is cold under your hand. Cold, and waiting. +4 health.','good');
- }
- if(kind==='forage'){
-  if(Math.random()<0.6){S.food=Math.min(S.foodCap,S.food+1);
-   log('An hour of picking and poking about pays off. +1 food.','good');}
-  else log('You find nothing but nettles and one very indignant hare.');
- }
- if(kind==='hearth'){
-  S.health=Math.min(S.maxHealth,S.health+10);
-  log('You sup at your family’s hearth. The old hall still knows you. +10 health.','good');
- }
- markDaily(kind);
+function touchStone(){
+ if(dailyDone('stones'))return;
+ S.health=Math.min(S.maxHealth,S.health+4);
+ if(S.renown>=50)log('You lay a palm on the Kingstone. Deep in the rock, something stirs. +4 health.','gold');
+ else log('The Kingstone is cold under your hand. Cold, and waiting. +4 health.','good');
+ markDaily('stones');
  refreshHUD();refreshPanel();save();
 }
-const POI_HINT={board:'work & wages',market:'provisions & goods',smith:'armor for sale',stables:'horses for sale',
- inn:'bed & board',well:'free water, once a day',sept:'a candle for the road',forage:'live off the land',keep:'the lord’s seat',
- stones:'the stone of destiny',gate:'the road out'};
-
-function renderPOISec(b,poi,l){
- if(poi.kind==='board'){addMissions(addSec(b,'Notice Board'));return;}
- if(poi.kind==='market'){
-  const s=addSec(b,'Market Row');
-  s.insertAdjacentHTML('beforeend',
-   shopRow('Oatbread & salt beef','+1 food',priceMod(3)+'g',()=>buy('food',1),S.gold<priceMod(3)||S.food>=S.foodCap)
-   +shopRow('Fill waterskin','+1 water',priceMod(2)+'g',()=>buy('water',1),S.gold<priceMod(2)||S.water>=S.waterCap)
-   +(l.shops.includes('pack')&&S.pack==='satchel'?shopRow('Traveler’s pack','carry 20 food & water',priceMod(50)+'g',()=>buy('pack'),S.gold<priceMod(50)):''));
-  bindShopRows(s);return;
+function showLocPanel(){
+ const l=LOC[S.loc];
+ const b=panelShell(l.region,l.name,l.desc);
+ addMissions(addSec(b,'Notice Board'));
+ if(l.type==='hill'){
+  const s=addSec(b,'The Kingstone');
+  s.insertAdjacentHTML('beforeend','<p class="hint">The coronation stone of the old kings. When the rightful ruler lays a hand upon it, they say, it rings out so the whole realm can hear.</p>'
+   +shopRow('Touch the stone','+4 health, once a day\u2026 and perhaps more','free',()=>touchStone(),dailyDone('stones')));
+  bindShopRows(s);
  }
- if(poi.kind==='smith'){
-  const s=addSec(b,'The Forge');
+ if(l.shops.includes('market')){
+  const s=addSec(b,'Market');
+  s.insertAdjacentHTML('beforeend',
+   shopRow('Bread & salt meat','+1 food',priceMod(3)+'g',()=>buy('food',1),S.gold<priceMod(3)||S.food>=S.foodCap)
+   +shopRow('Fill waterskin','+1 water',priceMod(2)+'g',()=>buy('water',1),S.gold<priceMod(2)||S.water>=S.waterCap)
+   +(l.shops.includes('pack')&&S.pack==='satchel'?shopRow('Traveler\u2019s pack','carry 20 food & water',priceMod(50)+'g',()=>buy('pack'),S.gold<priceMod(50)):''));
+  bindShopRows(s);
+ }
+ if(l.shops.includes('smith')){
+  const s=addSec(b,'Blacksmith');
   let rows='';const cur=armorOf(S);
   for(const a of ARMORS){if(a.cost<=cur.cost||a.id==='none')continue;
    const p=priceMod(a.cost-Math.floor(cur.cost/2));
-   rows+=shopRow(a.name,'+'+Math.round(a.hit*100)+'% mission success, −'+a.red+' harm',p+'g',()=>buy('armor',a.id),S.gold<p);}
+   rows+=shopRow(a.name,'+'+Math.round(a.hit*100)+'% mission success, \u2212'+a.red+' harm',p+'g',()=>buy('armor',a.id),S.gold<p);}
   s.insertAdjacentHTML('beforeend',rows||'<p class="hint">The smith eyes your plate and nods. Nothing finer exists.</p>');
-  bindShopRows(s);return;
+  bindShopRows(s);
  }
- if(poi.kind==='stables'){
+ if(l.shops.includes('stables')){
   const s=addSec(b,'Stables');
   let rows='';const cur=mountOf(S);
   for(const m of MOUNTS){if(m.cost<=cur.cost||m.id==='none')continue;
    const p=priceMod(m.cost-Math.floor(cur.cost/2));
    rows+=shopRow(m.name,m.speed+' leagues a day',p+'g',()=>buy('mount',m.id),S.gold<p);}
   s.insertAdjacentHTML('beforeend',rows||'<p class="hint">Your destrier snorts at the local stock. Fair.</p>');
-  bindShopRows(s);return;
+  bindShopRows(s);
  }
- if(poi.kind==='inn'){
-  const s=addSec(b,poi.name);
+ if(l.shops.includes('inn')){
+  const s=addSec(b,'Inn');
   s.insertAdjacentHTML('beforeend',shopRow('Bed & board','+30 health, passes a day',priceMod(8)+'g',()=>buy('rest'),S.gold<priceMod(8)||S.health>=S.maxHealth));
-  bindShopRows(s);return;
+  bindShopRows(s);
  }
- if(poi.kind==='well'){
-  const s=addSec(b,poi.name);
-  const done=dailyDone('well'),full=S.water>=S.waterCap;
-  s.insertAdjacentHTML('beforeend',shopRow('Draw water',LOC[S.loc].type==='hill'?'+2 water, once a day':'+1 water, once a day','free',()=>poiAction('well'),done||full));
-  if(done)s.insertAdjacentHTML('beforeend','<p class="hint">The queue of goodwives has seen quite enough of you today.</p>');
-  bindShopRows(s);return;
- }
- if(poi.kind==='stones'){
-  const s=addSec(b,'The Lia Fáil');
-  s.insertAdjacentHTML('beforeend','<p class="hint">The Stone of Destiny. When the rightful High King sets his hand upon it, they say, it cries out so all Ireland can hear.</p>'
-   +shopRow('Touch the stone','+4 health, once a day… and perhaps more','free',()=>poiAction('stones'),dailyDone('stones')));
-  bindShopRows(s);return;
- }
- if(poi.kind==='sept'){
-  const s=addSec(b,poi.name);
-  s.insertAdjacentHTML('beforeend',shopRow('Light a candle','+6 health, once a day','1g',()=>poiAction('sept'),dailyDone('sept')||S.gold<1||S.health>=S.maxHealth));
-  bindShopRows(s);return;
- }
- if(poi.kind==='forage'){
-  const s=addSec(b,poi.name);
-  s.insertAdjacentHTML('beforeend',shopRow('Forage','a fair chance of +1 food, once a day','free',()=>poiAction('forage'),dailyDone('forage')));
-  bindShopRows(s);return;
- }
- if(poi.kind==='keep'){
-  const s=addSec(b,poi.name);
-  if(S.loc===S.seat){
-   s.insertAdjacentHTML('beforeend','<p class="hint">The guards straighten as you pass. Whatever the wars took, this hall is still yours.</p>'
-    +shopRow('Sup at your hearth','+10 health, once a day','free',()=>poiAction('hearth'),dailyDone('hearth')||S.health>=S.maxHealth));
-   bindShopRows(s);
-  }else{
-   const p=document.createElement('p');p.className='hint';
-   p.textContent=S.renown>=50?'The steward receives you with honors due a knight of your renown.':'The guards look you over and find you wanting. Come back when your name carries weight.';
-   s.appendChild(p);
-  }
-  return;
- }
-}
-
-function showLocPanel(){
- const l=LOC[S.loc];
- const b=panelShell(l.region,l.name,l.desc);
- const s=addSec(b,'At the Gates');
- const p=document.createElement('p');p.className='hint';
- p.textContent='You are camped outside the walls. Enter to find work, trade, and rest — or click a red-ringed settlement to ride out.';
- s.appendChild(p);
- const btn=document.createElement('button');btn.className='act';btn.style.marginTop='9px';
- btn.textContent='Enter '+l.name;btn.onclick=()=>enterLocal();
- s.appendChild(btn);
-}
-
-function showLocalPanel(){
- const l=LOC[S.loc],lm=getLocal(S.loc);
- const poi=lm.pois.find(p=>p.id===curPOI);
- const b=panelShell(l.region,l.name,l.desc);
- if(poi)renderPOISec(b,poi,l);
- const d=addSec(b,l.type==='capital'?'The City':l.type==='castle'?'The Castle Town':l.type==='hill'?'The Royal Hill':'The Village');
- let rows='';
- for(const p of lm.pois){
-  if(poi&&p.id===poi.id)continue;
-  rows+='<div class="shoprow"><div><div class="sn">'+p.name+'</div><div class="sd">'+(POI_HINT[p.kind]||'')+'</div></div>'+
-   '<button class="act gd" data-poi="'+p.id+'">Walk</button></div>';
- }
- d.insertAdjacentHTML('beforeend',rows);
- d.querySelectorAll('[data-poi]').forEach(btn=>{btn.onclick=()=>gotoPOI(btn.dataset.poi);});
  const r=addSec(b,'The Road');
  let grows='';
- for(const gt of lm.gates){
-  const rd=roadBetween(S.loc,gt.to);
-  grows+='<div class="shoprow"><div><div class="sn">to '+gt.name+'</div><div class="sd">'+rd.leagues+' leagues</div></div>'+
-   '<button class="act" data-gate="'+gt.to+'">Set out</button></div>';
+ for(const nid of neighborsOf(S.loc)){
+  const rd=roadBetween(S.loc,nid);
+  grows+='<div class="shoprow"><div><div class="sn">to '+LOC[nid].name+'</div><div class="sd">'+rd.leagues+' leagues</div></div>'+
+   '<button class="act" data-gate="'+nid+'">Set out</button></div>';
  }
  r.insertAdjacentHTML('beforeend',grows);
- r.querySelectorAll('[data-gate]').forEach(btn=>{btn.onclick=()=>{
-  const gt=lm.gates.find(x=>x.to===btn.dataset.gate);
-  walkTo(gt.x,gt.y+14,()=>askTravel(gt.to));
- };});
+ r.querySelectorAll('[data-gate]').forEach(btn=>{btn.onclick=()=>askTravel(btn.dataset.gate);});
  const tip=document.createElement('p');tip.className='hint';
- tip.textContent='Click a building to walk to it, or a signpost to take the road.';
+ tip.textContent='Or click a red-ringed settlement on the map to ride there.';
  b.appendChild(tip);
 }
 let shopFns=[];
@@ -1823,8 +1241,8 @@ function beginGame(){
  const nm=$('#begin-name').value.trim();
  let o;
  if(selHouse==='FORGE'){
-  const hn=$('#f-house').value.trim()||'Ó Duibhne';
-  o={name:nm,house:'Clan '+hn,words:$('#f-words').value.trim()||'Ours Yet to Write',
+  const hn=$('#f-house').value.trim()||'Ashgrove';
+  o={name:nm,house:'House '+hn,words:$('#f-words').value.trim()||'Ours Yet to Write',
      sigil:forge.sigil,color:forge.color,seat:$('#f-seat').value,perk:$('#f-perk').value};
  }else{
   const h=HOUSES.find(x=>x.id===selHouse);
@@ -1837,21 +1255,19 @@ function enterGame(){
  $('#create').classList.add('hidden');
  $('#topbar').style.display='flex';
  $('#ledger').style.display='flex';
- refreshHUD();view='realm';resize();fitView();
- enterLocal();
+ refreshHUD();fitView();showLocPanel();
  needsDraw=true;
 }
 
 /* ================= top bar ================= */
 $('#btn-fit').onclick=()=>{fitView();};
-$('#btn-view').onclick=()=>{view==='local'?exitLocal():enterLocal();};
 $('#btn-help').onclick=()=>{
  modal('How to Play',
  'Drag to pan, scroll or pinch to zoom.<br><br>'+
- '<b>The village:</b> you live at street level. Walk to the notice board for work, the market for provisions, the forge for armor, the stables for a horse, the inn for a bed. The well, sept, and hedgerows each give a little something once a day.<br><br>'+
- '<b>The road:</b> take a signpost (or the Realm Map) to travel. Each day on the road costs food and water — run dry and it costs health instead.<br><br>'+
- '<b>Work:</b> riskier jobs pay more; armor tips the odds. Deliveries pay on arrival at their destination.<br><br>'+
- '<b>Rise:</b> reach 100 renown and be crowned High King at Tara.',
+ '<b>Travel:</b> click a red-ringed settlement (or use The Road list) to ride there. Each day on the road costs food and water — run dry and it costs health instead.<br><br>'+
+ '<b>Work:</b> every settlement posts jobs. Riskier jobs pay more; armor tips the odds. Deliveries pay on arrival.<br><br>'+
+ '<b>Spend:</b> markets sell provisions, smiths sell armor, stables sell horses that shorten every road.<br><br>'+
+ '<b>Rise:</b> reach 100 renown and be crowned at the Kingstone.',
  [['To the road',closeModal]]);
 };
 $('#btn-new').onclick=()=>{
@@ -1867,11 +1283,9 @@ const params=new URLSearchParams(location.search);
 if(params.has('reset'))localStorage.removeItem(SAVE_KEY);
 if(params.has('demo')){
  const h=HOUSES[0];
- newState({name:'Niall',house:h.name,words:h.words,sigil:h.sigil,color:h.color,seat:h.seat,perk:h.perk});
+ newState({name:'Wren',house:h.name,words:h.words,sigil:h.sigil,color:h.color,seat:h.seat,perk:h.perk});
  enterGame();
- if(params.has('realm')||params.has('fullmap'))exitLocal();
  if(params.has('fullmap')){cam.s=fitScale;cam.x=(W-innerWidth/cam.s)/2;cam.y=(H-innerHeight/cam.s)/2;needsDraw=true;}
- if(params.has('village')){const v=params.get('village');if(LOC[v]){S.loc=v;exitLocal();enterLocal();}}
 }else if(loadSave()){
  enterGame();
  log('You take up your chronicle where it left off.');
