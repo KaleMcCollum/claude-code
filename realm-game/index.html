@@ -165,6 +165,19 @@
   #begin:hover{background:var(--wax-deep)}
   #begin:disabled{background:#4a3a2a;border-color:#4a3a2a;color:#8a7a5c;cursor:not-allowed}
 
+  #devbar{position:fixed;left:12px;bottom:12px;z-index:30;width:238px;
+    background:linear-gradient(160deg,#2b2118,#1a140d);border:1px solid var(--leather-edge);border-radius:4px;
+    box-shadow:0 8px 30px rgba(0,0,0,.55);padding:11px 12px;color:var(--parch-text);font-family:var(--body)}
+  #devbar .dhead{font-family:var(--display);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-bright);margin-bottom:9px}
+  #devbar .dhead span{color:#8a7a58;letter-spacing:0;text-transform:none;font-size:10px}
+  #devbar .drow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .dbtn{background:#171009;border:1px solid var(--leather-edge);color:var(--parch-text);font-family:var(--display);
+    font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:5px 8px;border-radius:2px;cursor:pointer}
+  .dbtn:hover{border-color:var(--gold)}
+  .dbtn.sel{background:var(--wax);border-color:var(--wax-deep);color:#f2e2c0}
+  .dbtn.danger{color:#d0a08a}.dbtn.danger:hover{border-color:var(--wax)}
+  #devbar .dhint{font-size:11.5px;font-style:italic;color:#a4936f;line-height:1.45;margin-bottom:9px}
+  #devbar .dchk{font-size:11.5px;color:#c9b990;display:flex;align-items:center;gap:6px;cursor:pointer}
   #errbanner{position:fixed;left:0;right:0;bottom:0;background:#7e1d1d;color:#fff;font:12px monospace;
     padding:6px 10px;z-index:99;display:none;white-space:pre-wrap}
 
@@ -197,7 +210,30 @@
   <span class="chip" id="c-day" style="color:#a4936f"></span>
   <button class="tbtn" id="btn-fit" title="Center the map">Center</button>
   <button class="tbtn" id="btn-help">Help</button>
+  <button class="tbtn" id="btn-dev" title="Map editor">Dev</button>
   <button class="tbtn" id="btn-new">New Game</button>
+</div>
+
+<div id="devbar" style="display:none">
+  <div class="dhead">Map Editor <span id="dev-count"></span></div>
+  <div class="drow">
+    <button class="dbtn sel" id="dt-move">Move towns</button>
+    <button class="dbtn" id="dt-trade">+ Trade Route</button>
+    <button class="dbtn" id="dt-trail">+ Trail</button>
+  </div>
+  <div class="dhint" id="dev-hint">Drag any settlement to reposition it.</div>
+  <div class="drow" id="dev-drawrow" style="display:none">
+    <button class="dbtn" id="dt-undo">Undo point</button>
+    <button class="dbtn" id="dt-cancel">Cancel</button>
+  </div>
+  <div class="drow">
+    <label class="dchk"><input type="checkbox" id="dt-auto" checked> show auto-roads</label>
+  </div>
+  <div class="drow">
+    <button class="dbtn" id="dt-export">Export</button>
+    <button class="dbtn" id="dt-import">Import</button>
+    <button class="dbtn danger" id="dt-clear">Clear edits</button>
+  </div>
 </div>
 
 <aside id="ledger" style="display:none">
@@ -734,17 +770,46 @@ const ROADS=[
  ['n138','n148',0]
 ];
 // precomputed road paths with a hand-drawn bend
-const ROADPATHS=ROADS.map(([a,b,king])=>{
+function polyLen(pts){let s=0;for(let i=1;i<pts.length;i++)s+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);return s;}
+function autoBend(a,b){
   const A=LOC[a],B=LOC[b];
   const mx=(A.x+B.x)/2,my=(A.y+B.y)/2;
-  const dx=B.x-A.x,dy=B.y-A.y,len=Math.hypot(dx,dy);
+  const dx=B.x-A.x,dy=B.y-A.y,len=Math.hypot(dx,dy)||1;
   const seed=mulberry32(a.length*131+b.length*7+Math.round(len));
   const off=(seed()-0.5)*Math.min(34,len*0.22);
-  const bend={x:mx-dy/len*off,y:my+dx/len*off};
-  return {a,b,king,pts:[{x:A.x,y:A.y},bend,{x:B.x,y:B.y}],leagues:Math.round(len/8)};
-});
+  return [{x:A.x,y:A.y},{x:mx-dy/len*off,y:my+dx/len*off},{x:B.x,y:B.y}];
+}
+let ROADPATHS=[];
+function buildRoads(){
+  ROADPATHS=[];
+  if(devShowAuto) for(const [a,b,king] of ROADS){
+    if(!LOC[a]||!LOC[b])continue;
+    const pts=autoBend(a,b);
+    ROADPATHS.push({a,b,king:!!king,type:'auto',pts,leagues:Math.max(1,Math.round(polyLen(pts)/8))});
+  }
+  for(const rt of devRoutes){
+    if(!LOC[rt.a]||!LOC[rt.b])continue;
+    const pts=[{x:LOC[rt.a].x,y:LOC[rt.a].y},...rt.pts.map(p=>({x:p.x,y:p.y})),{x:LOC[rt.b].x,y:LOC[rt.b].y}];
+    ROADPATHS.push({a:rt.a,b:rt.b,king:rt.type==='trade',type:rt.type,pts,leagues:Math.max(1,Math.round(polyLen(pts)/8))});
+  }
+}
 function roadBetween(a,b){return ROADPATHS.find(r=>(r.a===a&&r.b===b)||(r.a===b&&r.b===a));}
-function neighborsOf(id){const out=[];for(const r of ROADPATHS){if(r.a===id)out.push(r.b);if(r.b===id)out.push(r.a);}return out;}
+function neighborsOf(id){const out=[];for(const r of ROADPATHS){if(r.a===id&&!out.includes(r.b))out.push(r.b);if(r.b===id&&!out.includes(r.a))out.push(r.a);}return out;}
+
+/* ================= dev / map editor state ================= */
+let devMode=false, devTool='move', devShowAuto=true;
+let devRoutes=[], posOverrides={};
+let devDraft=null;   // route being drawn: {type,aId,pts:[{x,y}...]}
+let devDragId=null;  // settlement being dragged
+const DEV_KEY='scMapEdit1';
+function devLoad(){try{const j=JSON.parse(localStorage.getItem(DEV_KEY)||'{}');posOverrides=j.pos||{};devRoutes=j.routes||[];if(typeof j.showAuto==='boolean')devShowAuto=j.showAuto;}catch(e){posOverrides={};devRoutes=[];}}
+function devSave(){try{localStorage.setItem(DEV_KEY,JSON.stringify({pos:posOverrides,routes:devRoutes,showAuto:devShowAuto}));}catch(e){}}
+let ORIGPOS=null,devCursor=null,lastStaticT=0;
+function applyOverrides(){
+ if(!ORIGPOS){ORIGPOS={};for(const l of LOCS)ORIGPOS[l.id]={x:l.x,y:l.y};}
+ for(const l of LOCS){const o=posOverrides[l.id]||ORIGPOS[l.id];l.x=o.x;l.y=o.y;}
+}
+function locAt(w,rr){let best=null,bd=rr*rr;for(const l of LOCS){const d=(l.x-w.x)**2+(l.y-w.y)**2;if(d<bd){bd=d;best=l;}}return best;}
 
 const PERKS={
  hardy:  {name:'Winterborn', blurb:'Cold, storms and wild beasts do you half harm; +20 health.'},
@@ -952,6 +1017,26 @@ function roughen(pts,mag,rng){
  }
  return out;
 }
+function pathThrough(c,pts){
+ c.beginPath();
+ if(pts.length<3){c.moveTo(pts[0].x,pts[0].y);c.lineTo(pts[pts.length-1].x,pts[pts.length-1].y);return;}
+ c.moveTo(pts[0].x,pts[0].y);
+ for(let i=1;i<pts.length-1;i++){const mx=(pts[i].x+pts[i+1].x)/2,my=(pts[i].y+pts[i+1].y)/2;c.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);}
+ c.lineTo(pts[pts.length-1].x,pts[pts.length-1].y);
+}
+function strokeRoad(c,r){
+ if(r.type==='trade'){
+  c.setLineDash([]);
+  c.strokeStyle='rgba(60,40,20,.32)';c.lineWidth=4.6;pathThrough(c,r.pts);c.stroke();
+  c.strokeStyle='rgba(150,72,40,.92)';c.lineWidth=2.6;pathThrough(c,r.pts);c.stroke();
+ }else if(r.type==='trail'){
+  c.setLineDash([2,4]);c.strokeStyle='rgba(90,70,45,.72)';c.lineWidth=1.2;pathThrough(c,r.pts);c.stroke();c.setLineDash([]);
+ }else{
+  c.setLineDash(r.king?[7,5]:[4,5]);
+  c.strokeStyle=r.king?'rgba(90,60,30,.85)':'rgba(110,80,45,.6)';
+  c.lineWidth=r.king?2.4:1.5;pathThrough(c,r.pts);c.stroke();c.setLineDash([]);
+ }
+}
 function drawStatic(){
  const c=document.createElement('canvas');c.width=W*SS;c.height=H*SS;
  const g=c.getContext('2d');g.scale(SS,SS);
@@ -975,13 +1060,7 @@ function drawStatic(){
  }
 
  // roads
- for(const r of ROADPATHS){
-  g.strokeStyle=r.king?'rgba(90,60,30,.85)':'rgba(110,80,45,.6)';
-  g.lineWidth=r.king?2.4:1.5;
-  g.setLineDash(r.king?[7,5]:[4,5]);
-  g.beginPath();g.moveTo(r.pts[0].x,r.pts[0].y);
-  g.quadraticCurveTo(r.pts[1].x,r.pts[1].y,r.pts[2].x,r.pts[2].y);g.stroke();
- }
+ for(const r of ROADPATHS)strokeRoad(g,r);
  g.setLineDash([]);
 
  // region labels
@@ -1130,8 +1209,12 @@ function playerPos(){
 }
 function roadPoint(r,t,rev){
  if(rev)t=1-t;
- const p=r.pts,u=1-t;
- return{x:u*u*p[0].x+2*u*t*p[1].x+t*t*p[2].x, y:u*u*p[0].y+2*u*t*p[1].y+t*t*p[2].y};
+ const p=r.pts;
+ if(p.length===3){const u=1-t;return{x:u*u*p[0].x+2*u*t*p[1].x+t*t*p[2].x,y:u*u*p[0].y+2*u*t*p[1].y+t*t*p[2].y};}
+ let d=t*polyLen(p);
+ for(let i=1;i<p.length;i++){const seg=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);
+  if(d<=seg||i===p.length-1){const u=seg?d/seg:0;return{x:p[i-1].x+(p[i].x-p[i-1].x)*u,y:p[i-1].y+(p[i].y-p[i-1].y)*u};}d-=seg;}
+ return{x:p[p.length-1].x,y:p[p.length-1].y};
 }
 function draw(){
  if(!needsDraw&&!S){requestAnimationFrame(draw);return;}
@@ -1161,12 +1244,9 @@ function draw(){
   // highlight roads from current loc
   if(!anim){
    for(const nid of reach){
-    const r=roadBetween(S.loc,nid);
+    const r=roadBetween(S.loc,nid);if(!r)continue;
     ctx.strokeStyle='rgba(138,47,43,.5)';ctx.lineWidth=3/Math.sqrt(cam.s);
-    ctx.setLineDash([6,5]);
-    ctx.beginPath();ctx.moveTo(r.pts[0].x,r.pts[0].y);
-    ctx.quadraticCurveTo(r.pts[1].x,r.pts[1].y,r.pts[2].x,r.pts[2].y);ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.setLineDash([6,5]);pathThrough(ctx,r.pts);ctx.stroke();ctx.setLineDash([]);
    }
   }
   // reachable node rings
@@ -1197,9 +1277,31 @@ function draw(){
   ctx.font='8px serif';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.fillText(S.sigil,p.x,p.y+0.5);
  }
+ if(devMode)drawDevOverlay();
  ctx.restore();
  needsDraw=false;
  requestAnimationFrame(draw);
+}
+function drawDevOverlay(){
+ // highlight the town under the cursor in move mode
+ if(devTool==='move'&&hoverLoc&&LOC[hoverLoc]){const l=LOC[hoverLoc];
+  ctx.beginPath();ctx.arc(l.x,l.y,9,0,7);ctx.strokeStyle='rgba(210,175,90,.95)';ctx.lineWidth=1.4/Math.sqrt(cam.s);ctx.stroke();}
+ // route being drawn
+ if(devDraft){
+  const A=LOC[devDraft.aId];
+  const chain=[{x:A.x,y:A.y},...devDraft.pts];
+  if(devCursor)chain.push(devCursor);
+  ctx.setLineDash([4,4]);
+  ctx.strokeStyle=devDraft.type==='trade'?'rgba(150,72,40,.95)':'rgba(90,70,45,.95)';
+  ctx.lineWidth=(devDraft.type==='trade'?2.6:1.4)/Math.sqrt(cam.s);
+  ctx.beginPath();ctx.moveTo(chain[0].x,chain[0].y);for(let i=1;i<chain.length;i++)ctx.lineTo(chain[i].x,chain[i].y);ctx.stroke();
+  ctx.setLineDash([]);
+  // start marker + waypoint dots
+  ctx.fillStyle='#a9853b';ctx.strokeStyle='#3a2c1a';ctx.lineWidth=0.8;
+  ctx.beginPath();ctx.arc(A.x,A.y,4,0,7);ctx.fill();ctx.stroke();
+  ctx.fillStyle='rgba(150,72,40,.95)';
+  for(const q of devDraft.pts){ctx.beginPath();ctx.arc(q.x,q.y,2.4,0,7);ctx.fill();}
+ }
 }
 function star(c,x,y,n,R,r){
  c.beginPath();
@@ -1214,6 +1316,10 @@ cv.addEventListener('pointerdown',e=>{
  cv.setPointerCapture(e.pointerId);
  if(pinch===null&&drag&&drag.id!==e.pointerId){pinch={a:drag,b:{id:e.pointerId,x:e.clientX,y:e.clientY},s0:cam.s,d0:Math.hypot(drag.x-e.clientX,drag.y-e.clientY)};return;}
  drag={id:e.pointerId,x:e.clientX,y:e.clientY,x0:e.clientX,y0:e.clientY,moved:false};
+ if(devMode&&devTool==='move'&&!modalOpen()){
+  const w=s2w(e.clientX,e.clientY),hit=locAt(w,9+5/cam.s);
+  if(hit)drag.devTown=hit.id;
+ }
 });
 cv.addEventListener('pointermove',e=>{
  if(pinch){
@@ -1227,24 +1333,45 @@ cv.addEventListener('pointermove',e=>{
    cam.x+=before.x-after.x;cam.y+=before.y-after.y;clampCam();needsDraw=true;}
   return;
  }
+ if(devMode)devCursor=s2w(e.clientX,e.clientY);
  if(drag&&drag.id===e.pointerId){
-  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
   if(Math.abs(e.clientX-drag.x0)+Math.abs(e.clientY-drag.y0)>6)drag.moved=true;
+  if(drag.devTown){                         // drag a settlement to a new spot
+   const w=s2w(e.clientX,e.clientY),l=LOC[drag.devTown];
+   l.x=Math.round(clamp(w.x,4,W-4));l.y=Math.round(clamp(w.y,4,H-4));
+   buildRoads();
+   const now=performance.now();if(now-lastStaticT>60){if(mapImg.complete)drawStatic();lastStaticT=now;}
+   needsDraw=true;drag.x=e.clientX;drag.y=e.clientY;return;
+  }
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
   if(drag.moved){cam.x-=dx/cam.s;cam.y-=dy/cam.s;clampCam();cv.classList.add('dragging');needsDraw=true;}
   drag.x=e.clientX;drag.y=e.clientY;
+  if(devDraft)needsDraw=true;
  }else{
   const w=s2w(e.clientX,e.clientY);
   let found=null,rr=8+4/cam.s;
   for(const l of LOCS){if(Math.hypot(l.x-w.x,l.y-w.y)<rr){found=l.id;break;}}
   if(found!==hoverLoc){hoverLoc=found;needsDraw=true;}
-  const reachable=found&&S&&!anim&&neighborsOf(S.loc).includes(found);
+  if(devDraft)needsDraw=true;
+  const reachable=found&&((devMode)||(S&&!anim&&neighborsOf(S.loc).includes(found)));
   cv.classList.toggle('pointing',!!reachable);
  }
 });
 function endPointer(e){
  if(pinch){pinch=null;drag=null;return;}
  if(drag&&drag.id===e.pointerId){
-  if(!drag.moved&&S&&!anim&&!modalOpen()){
+  if(drag.devTown){                          // committed a move
+   posOverrides[drag.devTown]={x:LOC[drag.devTown].x,y:LOC[drag.devTown].y};
+   devSave();rebuildStatic();updateDevUI();
+  }else if(devMode&&!drag.moved&&!modalOpen()){
+   const w=s2w(e.clientX,e.clientY),hit=locAt(w,9+5/cam.s);
+   if(devTool==='trade'||devTool==='trail'){
+    if(!devDraft){ if(hit)devDraft={type:devTool,aId:hit.id,pts:[]}; }
+    else if(hit&&hit.id!==devDraft.aId){ devFinishRoute(hit.id); }
+    else if(!hit){ devDraft.pts.push({x:Math.round(w.x),y:Math.round(w.y)}); }
+    needsDraw=true;
+   }
+  }else if(!drag.moved&&S&&!anim&&!modalOpen()){
    const w=s2w(e.clientX,e.clientY);
    for(const nid of neighborsOf(S.loc)){
     const l=LOC[nid];
@@ -1657,11 +1784,63 @@ $('#btn-new').onclick=()=>{
   [['Burn it',()=>{localStorage.removeItem(SAVE_KEY);location.reload();}],['Keep playing',closeModal]]);
 };
 
+/* ================= dev / map editor ================= */
+function rebuildStatic(){buildRoads();if(mapImg.complete)drawStatic();needsDraw=true;}
+function updateDevUI(){$('#dev-count').textContent='· '+devRoutes.length+' routes · '+Object.keys(posOverrides).length+' moved';}
+function toggleDev(on){
+ devMode=(on===undefined)?!devMode:!!on;
+ $('#devbar').style.display=devMode?'block':'none';
+ $('#btn-dev').classList.toggle('sel',devMode);
+ if(!devMode){devDraft=null;devDragId=null;}
+ if(devMode)$('#dt-auto').checked=devShowAuto;
+ setDevTool('move');updateDevUI();needsDraw=true;
+}
+function setDevTool(t){
+ devTool=t;devDraft=null;
+ [['dt-move','move'],['dt-trade','trade'],['dt-trail','trail']].forEach(([id,v])=>$('#'+id).classList.toggle('sel',t===v));
+ $('#dev-drawrow').style.display=(t==='trade'||t==='trail')?'flex':'none';
+ $('#dev-hint').innerHTML = t==='move'
+   ? 'Drag any settlement to move it. Saved automatically.'
+   : 'Click a town to <b>start</b>, click along the way to drop points, then click another town to <b>finish</b> the '+(t==='trade'?'trade route':'trail')+'.';
+ needsDraw=true;
+}
+function devFinishRoute(bId){
+ if(!devDraft||bId===devDraft.aId)return;
+ devRoutes.push({type:devDraft.type,a:devDraft.aId,b:bId,pts:devDraft.pts.slice()});
+ devDraft=null;devSave();rebuildStatic();updateDevUI();
+}
+function devExport(){
+ const data=JSON.stringify({pos:posOverrides,routes:devRoutes});
+ modal('Export map edits','Copy this and send it to bake your map in permanently, or Import it elsewhere.<br><br><textarea id="dev-json" style="width:100%;height:170px;font:11px monospace;background:#171009;color:#e8d9b0;border:1px solid #4a3a24;border-radius:2px;padding:6px">'+data.replace(/</g,'&lt;')+'</textarea>',
+  [['Copy',()=>{const t=$('#dev-json');t.select();try{document.execCommand('copy');}catch(e){}}],['Close',closeModal]]);
+}
+function devImport(){
+ modal('Import map edits','Paste exported JSON, then Apply:<br><br><textarea id="dev-json" style="width:100%;height:170px;font:11px monospace;background:#171009;color:#e8d9b0;border:1px solid #4a3a24;border-radius:2px;padding:6px"></textarea>',
+  [['Apply',()=>{try{const j=JSON.parse($('#dev-json').value);posOverrides=j.pos||{};devRoutes=j.routes||[];devSave();applyOverrides();rebuildStatic();updateDevUI();closeModal();}catch(err){$('#m-text').insertAdjacentHTML('beforeend','<div style="color:var(--wax);font-size:12px;margin-top:6px">Could not read that JSON.</div>');}}],['Cancel',closeModal]]);
+}
+$('#btn-dev').onclick=()=>toggleDev();
+$('#dt-move').onclick=()=>setDevTool('move');
+$('#dt-trade').onclick=()=>setDevTool('trade');
+$('#dt-trail').onclick=()=>setDevTool('trail');
+$('#dt-undo').onclick=()=>{if(devDraft&&devDraft.pts.length){devDraft.pts.pop();needsDraw=true;}};
+$('#dt-cancel').onclick=()=>{devDraft=null;needsDraw=true;};
+$('#dt-auto').onchange=e=>{devShowAuto=e.target.checked;devSave();rebuildStatic();};
+$('#dt-export').onclick=devExport;
+$('#dt-import').onclick=devImport;
+$('#dt-clear').onclick=()=>modal('Clear all edits?','This removes every moved town and every route you drew here.',
+  [['Clear',()=>{posOverrides={};devRoutes=[];devSave();applyOverrides();rebuildStatic();updateDevUI();closeModal();}],['Keep',closeModal]]);
+addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&devDraft){devDraft=null;needsDraw=true;}
+ if(e.key==='d'&&(e.ctrlKey||e.metaKey)){e.preventDefault();toggleDev();}
+});
+
 /* ================= boot ================= */
+devLoad();applyOverrides();buildRoads();
 mapImg.onload=()=>{drawStatic();needsDraw=true;};
 mapImg.src=MAPSRC;
 resize();buildCreate();
 const params=new URLSearchParams(location.search);
+if(params.has('dev'))setTimeout(()=>toggleDev(true),50);
 if(params.has('reset'))localStorage.removeItem(SAVE_KEY);
 if(params.has('demo')){
  const h=HOUSES[0];
