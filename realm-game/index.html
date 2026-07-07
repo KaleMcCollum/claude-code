@@ -2177,12 +2177,12 @@ function enterRealm(o){
  if(o.perk==='rich'){R.gold+=60;}
  R.gold+=0;
  armies=[];armySeq=1;
- R.host=mkArmy('player',start.x,start.y,splitTroops(40,null));
- armies.push(R.host);
+ R.host=null;   // no host yet — muster your first levies at your village
  $('#create').classList.add('hidden');$('#topbar').style.display='flex';$('#ledger').style.display='none';
  selArmy=null;selTown=null;RLOG=[];
  log2('You raise your banner over '+start.name+' — '+terrainText(start)+'.');
  log2('No roads bring you goods yet — a trade route must be built with coin, timber, stone… and lowborn hands.','gold');
+ log2('You have no host. When coin allows, muster levies at your village.');
  cam.s=Math.max(fitScale,2.2);centerOn(start.x,start.y);
  rebuildStatic();realmHUD();showTownFor(start.id);needsDraw=true;
 }
@@ -2452,20 +2452,29 @@ function drawDragonToken(ctx,x,y,size){
 }
 function drawArmyToken(ctx,a){
  const col=bannerColor(a.owner),tot=troopsTotal(a.troops);
- const r=1.6+Math.min(1.6,Math.log10(Math.max(10,tot))*0.55);
- ctx.save();ctx.translate(a.x,a.y);
- ctx.strokeStyle='#2a1c10';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-r*2.6);ctx.stroke();
- ctx.fillStyle=col;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=0.35;
- ctx.beginPath();ctx.moveTo(0,-r*2.6);ctx.lineTo(r*2.1,-r*2.15);ctx.lineTo(0,-r*1.7);ctx.closePath();ctx.fill();ctx.stroke();
- ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fillStyle=col;ctx.fill();
- ctx.lineWidth=a.player?0.9:0.5;ctx.strokeStyle=a.player?'#f2e4c2':'rgba(0,0,0,.5)';ctx.stroke();
- ctx.restore();
+ // formation: more figures for bigger hosts
+ const nfig=clamp(3+Math.floor(Math.log10(Math.max(10,tot))),3,8);
+ const FORM=[[0,0],[-2.1,1.7],[2.1,1.7],[-1.05,-1.8],[1.05,-1.8],[-3.2,0],[3.2,0],[0,3.4]];
+ const edge=a.player?'#f2e4c2':'rgba(20,12,8,.85)';
+ for(let i=0;i<nfig;i++){
+  const fx=a.x+FORM[i][0],fy=a.y+FORM[i][1];
+  // spear
+  ctx.strokeStyle='rgba(30,20,12,.8)';ctx.lineWidth=0.22;
+  ctx.beginPath();ctx.moveTo(fx+0.55,fy+0.9);ctx.lineTo(fx+0.95,fy-2.1);ctx.stroke();
+  // body
+  ctx.strokeStyle=col;ctx.lineWidth=0.75;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(fx,fy-0.55);ctx.lineTo(fx,fy+0.95);ctx.stroke();
+  // head
+  ctx.beginPath();ctx.arc(fx,fy-1.05,0.44,0,7);ctx.fillStyle=col;ctx.fill();
+  ctx.lineWidth=0.22;ctx.strokeStyle=edge;ctx.stroke();
+ }
+ ctx.lineCap='butt';
  if(cam.s>1.5||selArmy===a.id){
   ctx.font='700 4.5px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.lineWidth=1.6;ctx.strokeStyle='rgba(238,228,196,.9)';ctx.strokeText(fmt(tot),a.x,a.y+r+3);
-  ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),a.x,a.y+r+3);
+  ctx.lineWidth=1.6;ctx.strokeStyle='rgba(238,228,196,.9)';ctx.strokeText(fmt(tot),a.x,a.y+5.6);
+  ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),a.x,a.y+5.6);
  }
- a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*(r+3.5),a.y+Math.sin(ang)*(r+3.5)-2,d.size);});
+ a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*7,a.y+Math.sin(ang)*7-2,d.size);});
 }
 function fmt(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':''+n;}
 function drawRealmLayer(){
