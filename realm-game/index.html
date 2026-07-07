@@ -178,6 +178,18 @@
   .dbtn.danger{color:#d0a08a}.dbtn.danger:hover{border-color:var(--wax)}
   #devbar .dhint{font-size:11.5px;font-style:italic;color:#a4936f;line-height:1.45;margin-bottom:9px}
   #devbar .dchk{font-size:11.5px;color:#c9b990;display:flex;align-items:center;gap:6px;cursor:pointer}
+  .teform{display:flex;flex-direction:column;gap:8px;text-align:left}
+  .teform label{font-size:11px;letter-spacing:.02em;color:#6b5530;display:flex;flex-direction:column;gap:3px}
+  .teform .te2{display:flex;gap:10px}.teform .te2>label{flex:1;min-width:0}
+  .teform input,.teform select{font:13px Georgia;padding:5px 7px;border:1px solid #a98f55;border-radius:2px;background:#fbf3dc;color:#3a2c1a;width:100%}
+  .teform .telbl{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:#8a6f3c;margin-top:2px}
+  .teform .techk{display:flex;flex-wrap:wrap;gap:5px 12px}
+  .teform .techk label{flex-direction:row;align-items:center;gap:5px;font-size:12.5px;color:#4a3a22}
+  .teform .techk input{width:auto}
+  .teform .terow{display:flex;gap:6px;align-items:center}.teform .terow input{flex:1}
+  .teform .te-famdel{padding:4px 8px;line-height:1}
+  .teform .tenote{font-size:11.5px;font-style:italic;color:#8a6f3c}
+  #devbar .dbtn#dt-town.sel,#devbar .dbtn#dt-erase.sel{background:var(--wax)}
   #errbanner{position:fixed;left:0;right:0;bottom:0;background:#7e1d1d;color:#fff;font:12px monospace;
     padding:6px 10px;z-index:99;display:none;white-space:pre-wrap}
 
@@ -217,22 +229,32 @@
 <div id="devbar" style="display:none">
   <div class="dhead">Map Editor <span id="dev-count"></span></div>
   <div class="drow">
-    <button class="dbtn sel" id="dt-move">Move towns</button>
+    <button class="dbtn" id="dt-town">+ Town</button>
+    <button class="dbtn sel" id="dt-move">Move / Edit</button>
+    <button class="dbtn" id="dt-erase">Erase</button>
+  </div>
+  <div class="drow" id="dev-tierrow" style="display:none">
+    <button class="dbtn" id="ti-capital">Capital</button>
+    <button class="dbtn" id="ti-city">City</button>
+    <button class="dbtn sel" id="ti-town">Town</button>
+    <button class="dbtn" id="ti-village">Village</button>
+  </div>
+  <div class="drow">
     <button class="dbtn" id="dt-trade">+ Trade Route</button>
     <button class="dbtn" id="dt-trail">+ Trail</button>
   </div>
-  <div class="dhint" id="dev-hint">Drag any settlement to reposition it.</div>
+  <div class="dhint" id="dev-hint">Drag a town to move it.</div>
   <div class="drow" id="dev-drawrow" style="display:none">
     <button class="dbtn" id="dt-undo">Undo point</button>
     <button class="dbtn" id="dt-cancel">Cancel</button>
   </div>
   <div class="drow">
-    <label class="dchk"><input type="checkbox" id="dt-auto" checked> show auto-roads</label>
-  </div>
-  <div class="drow">
     <button class="dbtn" id="dt-export">Export</button>
     <button class="dbtn" id="dt-import">Import</button>
-    <button class="dbtn danger" id="dt-clear">Clear edits</button>
+  </div>
+  <div class="drow">
+    <button class="dbtn" id="dt-sample">Load sample</button>
+    <button class="dbtn danger" id="dt-clear">Clear map</button>
   </div>
 </div>
 
@@ -352,7 +374,7 @@ const SEA_LABELS=[
   ['THE  SHIVERING  STRAIT',668,928,11,Math.PI/2]
 ];
 
-const LOCS=[
+const SAMPLE_LOCS=[
  {id:'aldcrown',name:'Aldcrown',type:'capital',x:496,y:1157,region:'The Crownmarch',shops:['market','smith','stables','inn','pack'],desc:'The capital. A broken crown still tops the Great Sept, and every ship in the world calls at its quays.'},
  {id:'coldmere',name:'Coldmere Keep',type:'city',x:492,y:1013,region:'The Frostreach',shops:['market','smith','stables','inn'],desc:'Seat of House Vharen. Black towers over a frozen lake, its halls warmed by great hearths.'},
  {id:'wyndmere',name:'Wyndmere Keep',type:'city',x:207,y:1125,region:'The Westermark',shops:['market','smith','stables','inn','pack'],desc:'Seat of House Wyndael — the windswept hall of the horse-lords, gazing west into the endless sea.'},
@@ -504,9 +526,26 @@ const LOCS=[
  {id:'n148',name:'Nine Elms',type:'village',x:328,y:1010,region:'The Frostreach',shops:['inn'],desc:'A muddy hamlet best known for its eels.'},
  {id:'n149',name:'Fenridge',type:'village',x:443,y:934,region:'The Frostreach',shops:['market'],desc:'A cluster of thatched crofts and a single well.'}
 ];
-const LOC=Object.fromEntries(LOCS.map(l=>[l.id,l]));
+let LOCS=[], LOC={};
+/* ---- editable world (towns + routes), persisted; empty by default ---- */
+const WORLD_KEY='scWorld1';
+let world={towns:[],routes:[]};
+function loadWorld(){try{const j=JSON.parse(localStorage.getItem(WORLD_KEY));if(j&&Array.isArray(j.towns)&&Array.isArray(j.routes))world=j;}catch(e){}}
+function saveWorld(){try{localStorage.setItem(WORLD_KEY,JSON.stringify(world));}catch(e){}}
+function indexLocs(){LOC={};for(const l of LOCS)LOC[l.id]=l;}
+function rebuildWorld(){LOCS=world.towns;indexLocs();buildRoads();if(mapImg&&mapImg.complete)drawStatic();needsDraw=true;}
+function bendPt(A,B){const mx=(A.x+B.x)/2,my=(A.y+B.y)/2,dx=B.x-A.x,dy=B.y-A.y,len=Math.hypot(dx,dy)||1;
+  const seed=mulberry32(Math.round(A.x*7+B.y*13+len));const off=(seed()-0.5)*Math.min(34,len*0.22);
+  return {x:Math.round(mx-dy/len*off),y:Math.round(my+dx/len*off)};}
+function loadSampleWorld(){
+  world={towns:SAMPLE_LOCS.map(l=>({...l,shops:l.shops.slice()})),routes:[]};
+  const byId={};for(const t of world.towns)byId[t.id]=t;
+  for(const [a,b,king] of SAMPLE_ROADS){const A=byId[a],B=byId[b];if(!A||!B)continue;
+    world.routes.push({type:king?'trade':'road',a,b,pts:[bendPt(A,B)]});}
+  saveWorld();rebuildWorld();
+}
 
-const ROADS=[
+const SAMPLE_ROADS=[
  ['aldcrown','n86',1],
  ['aldcrown','n91',1],
  ['aldcrown','n136',1],
@@ -771,45 +810,49 @@ const ROADS=[
 ];
 // precomputed road paths with a hand-drawn bend
 function polyLen(pts){let s=0;for(let i=1;i<pts.length;i++)s+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);return s;}
-function autoBend(a,b){
-  const A=LOC[a],B=LOC[b];
-  const mx=(A.x+B.x)/2,my=(A.y+B.y)/2;
-  const dx=B.x-A.x,dy=B.y-A.y,len=Math.hypot(dx,dy)||1;
-  const seed=mulberry32(a.length*131+b.length*7+Math.round(len));
-  const off=(seed()-0.5)*Math.min(34,len*0.22);
-  return [{x:A.x,y:A.y},{x:mx-dy/len*off,y:my+dx/len*off},{x:B.x,y:B.y}];
-}
 let ROADPATHS=[];
 function buildRoads(){
   ROADPATHS=[];
-  if(devShowAuto) for(const [a,b,king] of ROADS){
-    if(!LOC[a]||!LOC[b])continue;
-    const pts=autoBend(a,b);
-    ROADPATHS.push({a,b,king:!!king,type:'auto',pts,leagues:Math.max(1,Math.round(polyLen(pts)/8))});
-  }
-  for(const rt of devRoutes){
+  for(const rt of world.routes){
     if(!LOC[rt.a]||!LOC[rt.b])continue;
-    const pts=[{x:LOC[rt.a].x,y:LOC[rt.a].y},...rt.pts.map(p=>({x:p.x,y:p.y})),{x:LOC[rt.b].x,y:LOC[rt.b].y}];
-    ROADPATHS.push({a:rt.a,b:rt.b,king:rt.type==='trade',type:rt.type,pts,leagues:Math.max(1,Math.round(polyLen(pts)/8))});
+    const pts=[{x:LOC[rt.a].x,y:LOC[rt.a].y},...(rt.pts||[]).map(p=>({x:p.x,y:p.y})),{x:LOC[rt.b].x,y:LOC[rt.b].y}];
+    ROADPATHS.push({a:rt.a,b:rt.b,king:rt.type==='trade',type:rt.type,pts,route:rt,leagues:Math.max(1,Math.round(polyLen(pts)/8))});
   }
 }
 function roadBetween(a,b){return ROADPATHS.find(r=>(r.a===a&&r.b===b)||(r.a===b&&r.b===a));}
 function neighborsOf(id){const out=[];for(const r of ROADPATHS){if(r.a===id&&!out.includes(r.b))out.push(r.b);if(r.b===id&&!out.includes(r.a))out.push(r.a);}return out;}
 
 /* ================= dev / map editor state ================= */
-let devMode=false, devTool='move', devShowAuto=true;
-let devRoutes=[], posOverrides={};
+let devMode=false, devTool='move', devNewTier='town';
 let devDraft=null;   // route being drawn: {type,aId,pts:[{x,y}...]}
-let devDragId=null;  // settlement being dragged
-const DEV_KEY='scMapEdit1';
-function devLoad(){try{const j=JSON.parse(localStorage.getItem(DEV_KEY)||'{}');posOverrides=j.pos||{};devRoutes=j.routes||[];if(typeof j.showAuto==='boolean')devShowAuto=j.showAuto;}catch(e){posOverrides={};devRoutes=[];}}
-function devSave(){try{localStorage.setItem(DEV_KEY,JSON.stringify({pos:posOverrides,routes:devRoutes,showAuto:devShowAuto}));}catch(e){}}
-let ORIGPOS=null,devCursor=null,lastStaticT=0;
-function applyOverrides(){
- if(!ORIGPOS){ORIGPOS={};for(const l of LOCS)ORIGPOS[l.id]={x:l.x,y:l.y};}
- for(const l of LOCS){const o=posOverrides[l.id]||ORIGPOS[l.id];l.x=o.x;l.y=o.y;}
-}
+let devSel=null;     // selected town id (for editing)
+let devCursor=null, lastStaticT=0, townSeq=1;
 function locAt(w,rr){let best=null,bd=rr*rr;for(const l of LOCS){const d=(l.x-w.x)**2+(l.y-w.y)**2;if(d<bd){bd=d;best=l;}}return best;}
+function nextTownId(){let id;do{id='t'+(townSeq++);}while(LOC[id]);return id;}
+function regionNear(x,y){let best='The Crownmarch',bd=1e18;for(const l of LOCS){const d=(l.x-x)**2+(l.y-y)**2;if(d<bd){bd=d;best=l.region;}}return best;}
+const DEFAULT_SHOPS={capital:['market','smith','stables','inn','pack'],city:['market','smith','stables','inn'],
+ hill:['inn'],town:['market','inn'],village:['market']};
+function addTown(x,y,tier){
+ const id=nextTownId();
+ const t={id,name:(tier.charAt(0).toUpperCase()+tier.slice(1))+' '+(LOCS.length+1),type:tier,
+   x:Math.round(x),y:Math.round(y),region:regionNear(x,y),shops:(DEFAULT_SHOPS[tier]||['market']).slice(),
+   population:(DEFAULT_POP&&DEFAULT_POP[tier])||500,keep:(DEFAULT_KEEP&&DEFAULT_KEEP[tier])||0,families:[],desc:''};
+ world.towns.push(t);saveWorld();rebuildWorld();devSel=id;updateDevUI();return t;
+}
+function deleteTown(id){
+ world.towns=world.towns.filter(t=>t.id!==id);
+ world.routes=world.routes.filter(r=>r.a!==id&&r.b!==id);
+ if(devSel===id)devSel=null;
+ saveWorld();rebuildWorld();updateDevUI();
+}
+function deleteRouteNear(w){
+ let best=-1,bd=7*7;
+ world.routes.forEach((rt,i)=>{const rp=roadBetween(rt.a,rt.b);if(!rp)return;
+  // sample the path, find min dist
+  for(let t=0;t<=1;t+=0.05){const p=roadPoint(rp,t,false);const d=(p.x-w.x)**2+(p.y-w.y)**2;if(d<bd){bd=d;best=i;}}});
+ if(best>=0){world.routes.splice(best,1);saveWorld();rebuildWorld();return true;}
+ return false;
+}
 
 const PERKS={
  hardy:  {name:'Winterborn', blurb:'Cold, storms and wild beasts do you half harm; +20 health.'},
@@ -1031,10 +1074,9 @@ function strokeRoad(c,r){
   c.strokeStyle='rgba(150,72,40,.92)';c.lineWidth=2.6;pathThrough(c,r.pts);c.stroke();
  }else if(r.type==='trail'){
   c.setLineDash([2,4]);c.strokeStyle='rgba(90,70,45,.72)';c.lineWidth=1.2;pathThrough(c,r.pts);c.stroke();c.setLineDash([]);
- }else{
-  c.setLineDash(r.king?[7,5]:[4,5]);
-  c.strokeStyle=r.king?'rgba(90,60,30,.85)':'rgba(110,80,45,.6)';
-  c.lineWidth=r.king?2.4:1.5;pathThrough(c,r.pts);c.stroke();c.setLineDash([]);
+ }else{ // 'road' (and any legacy)
+  c.setLineDash([5,5]);
+  c.strokeStyle='rgba(110,80,45,.62)';c.lineWidth=1.6;pathThrough(c,r.pts);c.stroke();c.setLineDash([]);
  }
 }
 function drawStatic(){
@@ -1361,11 +1403,17 @@ function endPointer(e){
  if(pinch){pinch=null;drag=null;return;}
  if(drag&&drag.id===e.pointerId){
   if(drag.devTown){                          // committed a move
-   posOverrides[drag.devTown]={x:LOC[drag.devTown].x,y:LOC[drag.devTown].y};
-   devSave();rebuildStatic();updateDevUI();
+   if(drag.moved){saveWorld();rebuildStatic();}
+   else{devSel=drag.devTown;openTownEditor();}
+   updateDevUI();
   }else if(devMode&&!drag.moved&&!modalOpen()){
    const w=s2w(e.clientX,e.clientY),hit=locAt(w,9+5/cam.s);
-   if(devTool==='trade'||devTool==='trail'){
+   if(devTool==='town'){
+    if(hit){devSel=hit.id;openTownEditor();}
+    else addTown(w.x,w.y,devNewTier);
+   }else if(devTool==='erase'){
+    if(hit)deleteTown(hit.id); else deleteRouteNear(w);
+   }else if(devTool==='trade'||devTool==='trail'){
     if(!devDraft){ if(hit)devDraft={type:devTool,aId:hit.id,pts:[]}; }
     else if(hit&&hit.id!==devDraft.aId){ devFinishRoute(hit.id); }
     else if(!hit){ devDraft.pts.push({x:Math.round(w.x),y:Math.round(w.y)}); }
@@ -1716,7 +1764,7 @@ function buildCreate(){
    '<div><h3>'+h.name+'</h3><div class="wd">'+h.words+'</div></div></div>'+
    '<div class="ds">'+h.desc+'</div>'+
    '<div class="pk"><b>'+PERKS[h.perk].name+':</b> '+PERKS[h.perk].blurb+'</div>'+
-   '<div class="st">Seat: '+LOC[h.seat].name+' · '+LOC[h.seat].region+'</div>';
+   '<div class="st">Seat: '+(LOC[h.seat]?LOC[h.seat].name+' · '+LOC[h.seat].region:'—')+'</div>';
   card.onclick=()=>{selHouse=h.id;
    document.querySelectorAll('.hcard').forEach(c=>c.classList.remove('sel'));
    card.classList.add('sel');updateBegin();};
@@ -1786,74 +1834,129 @@ $('#btn-new').onclick=()=>{
 
 /* ================= dev / map editor ================= */
 function rebuildStatic(){buildRoads();if(mapImg.complete)drawStatic();needsDraw=true;}
-function updateDevUI(){$('#dev-count').textContent='· '+devRoutes.length+' routes · '+Object.keys(posOverrides).length+' moved';}
+function updateDevUI(){$('#dev-count').textContent='· '+world.towns.length+' towns · '+world.routes.length+' routes';}
 function toggleDev(on){
  devMode=(on===undefined)?!devMode:!!on;
  $('#devbar').style.display=devMode?'block':'none';
  $('#btn-dev').classList.toggle('sel',devMode);
- if(!devMode){devDraft=null;devDragId=null;}
- if(devMode)$('#dt-auto').checked=devShowAuto;
- setDevTool('move');updateDevUI();needsDraw=true;
+ if(!devMode){devDraft=null;devSel=null;}
+ setDevTool(devMode?devTool:'move');updateDevUI();needsDraw=true;
 }
+const TOOLS=[['dt-town','town'],['dt-move','move'],['dt-trade','trade'],['dt-trail','trail'],['dt-erase','erase']];
 function setDevTool(t){
  devTool=t;devDraft=null;
- [['dt-move','move'],['dt-trade','trade'],['dt-trail','trail']].forEach(([id,v])=>$('#'+id).classList.toggle('sel',t===v));
+ TOOLS.forEach(([id,v])=>$('#'+id).classList.toggle('sel',t===v));
  $('#dev-drawrow').style.display=(t==='trade'||t==='trail')?'flex':'none';
- $('#dev-hint').innerHTML = t==='move'
-   ? 'Drag any settlement to move it. Saved automatically.'
-   : 'Click a town to <b>start</b>, click along the way to drop points, then click another town to <b>finish</b> the '+(t==='trade'?'trade route':'trail')+'.';
- needsDraw=true;
+ $('#dev-tierrow').style.display=(t==='town')?'flex':'none';
+ if(t!=='town'&&t!=='move')devSel=null;
+ const hints={town:'Pick a size, then click empty ground to place a town. Click an existing town to edit it.',
+  move:'Drag a town to move it. Click a town to edit its name, size, region and shops.',
+  trade:'Click a town to <b>start</b> the trade route, click along the way to drop points, then click another town to <b>finish</b>.',
+  trail:'Click a town to <b>start</b> the trail, click along the way to drop points, then click another town to <b>finish</b>.',
+  erase:'Click a town to delete it (and its routes), or click a route to delete it.'};
+ $('#dev-hint').innerHTML=hints[t];needsDraw=true;
 }
+function setTier(t){devNewTier=t;[['ti-capital','capital'],['ti-city','city'],['ti-town','town'],['ti-village','village']].forEach(([id,v])=>$('#'+id).classList.toggle('sel',t===v));}
 function devFinishRoute(bId){
  if(!devDraft||bId===devDraft.aId)return;
- devRoutes.push({type:devDraft.type,a:devDraft.aId,b:bId,pts:devDraft.pts.slice()});
- devDraft=null;devSave();rebuildStatic();updateDevUI();
+ world.routes.push({type:devDraft.type,a:devDraft.aId,b:bId,pts:devDraft.pts.slice()});
+ devDraft=null;saveWorld();rebuildStatic();updateDevUI();
+}
+const REGIONS=['The Frostreach','The Westermark','The Rivenlands','The Crownmarch','The Summerlands'];
+const KEEP_NAMES=['None','Palisade','Wooden Holdfast','Stone Keep','Great Castle'];
+const DEFAULT_POP={capital:35000,city:8000,hill:80,town:1500,village:220};
+const DEFAULT_KEEP={capital:4,city:4,hill:0,town:1,village:0};
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function openTownEditor(){
+ const t=LOC[devSel];if(!t)return;
+ if(t.population==null)t.population=DEFAULT_POP[t.type]??500;
+ if(t.keep==null)t.keep=DEFAULT_KEEP[t.type]??0;
+ if(!Array.isArray(t.families))t.families=[];
+ let fam=t.families.map(f=>({name:f.name!=null?f.name:String(f)}));
+ const famRows=()=>fam.map((f,i)=>'<div class="terow"><input class="te-fam" data-i="'+i+'" value="'+esc(f.name)+'" placeholder="House name (e.g. Vharen)"><button class="dbtn danger te-famdel" data-i="'+i+'">✕</button></div>').join('')||'<div class="tenote">No highborn houses. The town answers only to its lowborn.</div>';
+ const html='<div class="teform">'+
+  '<label>Name<input id="te-name" value="'+esc(t.name)+'"></label>'+
+  '<div class="te2"><label>Size<select id="te-type">'+['capital','city','town','village','hill'].map(v=>'<option'+(v===t.type?' selected':'')+'>'+v+'</option>').join('')+'</select></label>'+
+   '<label>Region<select id="te-region">'+REGIONS.map(v=>'<option'+(v===t.region?' selected':'')+'>'+v+'</option>').join('')+'</select></label></div>'+
+  '<div class="te2"><label>Smallfolk<input id="te-pop" type="number" min="0" step="10" value="'+t.population+'"></label>'+
+   '<label>Keep<select id="te-keep">'+KEEP_NAMES.map((k,i)=>'<option value="'+i+'"'+(i===t.keep?' selected':'')+'>'+k+'</option>').join('')+'</select></label></div>'+
+  '<div class="telbl">Trades &amp; services</div><div class="techk">'+['market','smith','stables','inn','pack'].map(s=>'<label><input type="checkbox" data-shop="'+s+'"'+(t.shops.includes(s)?' checked':'')+'>'+s+'</label>').join('')+'</div>'+
+  '<div class="telbl">Highborn houses</div><div id="te-fams">'+famRows()+'</div><button class="dbtn" id="te-addfam" type="button">+ add house</button>'+
+  '</div>';
+ modal('Settlement — '+esc(t.name),html,[
+   ['Save',()=>{
+     syncFam();
+     t.name=$('#te-name').value.trim()||t.name;t.type=$('#te-type').value;t.region=$('#te-region').value;
+     t.population=Math.max(0,parseInt($('#te-pop').value)||0);t.keep=parseInt($('#te-keep').value)||0;
+     t.shops=[...document.querySelectorAll('#modal [data-shop]')].filter(c=>c.checked).map(c=>c.dataset.shop);
+     t.families=fam.map(f=>({name:f.name.trim()})).filter(f=>f.name);
+     saveWorld();rebuildStatic();updateDevUI();closeModal();
+   }],
+   ['Delete',()=>{deleteTown(t.id);closeModal();}],
+   ['Cancel',closeModal]]);
+ function syncFam(){document.querySelectorAll('.te-fam').forEach(inp=>{fam[+inp.dataset.i].name=inp.value;});}
+ function wireFams(){
+   $('#te-fams').innerHTML=famRows();
+   document.querySelectorAll('.te-famdel').forEach(b=>b.onclick=()=>{syncFam();fam.splice(+b.dataset.i,1);wireFams();});
+ }
+ $('#te-addfam').onclick=()=>{syncFam();fam.push({name:''});wireFams();document.querySelector('.te-fam[data-i="'+(fam.length-1)+'"]').focus();};
+ wireFams();
 }
 function devExport(){
- const data=JSON.stringify({pos:posOverrides,routes:devRoutes});
- modal('Export map edits','Copy this and send it to bake your map in permanently, or Import it elsewhere.<br><br><textarea id="dev-json" style="width:100%;height:170px;font:11px monospace;background:#171009;color:#e8d9b0;border:1px solid #4a3a24;border-radius:2px;padding:6px">'+data.replace(/</g,'&lt;')+'</textarea>',
+ const data=JSON.stringify(world);
+ modal('Export map','Copy this JSON and send it to me to bake your map in permanently, or Import it on another device.<br><br><textarea id="dev-json" style="width:100%;height:170px;font:11px monospace;background:#171009;color:#e8d9b0;border:1px solid #4a3a24;border-radius:2px;padding:6px">'+data.replace(/</g,'&lt;')+'</textarea>',
   [['Copy',()=>{const t=$('#dev-json');t.select();try{document.execCommand('copy');}catch(e){}}],['Close',closeModal]]);
 }
 function devImport(){
- modal('Import map edits','Paste exported JSON, then Apply:<br><br><textarea id="dev-json" style="width:100%;height:170px;font:11px monospace;background:#171009;color:#e8d9b0;border:1px solid #4a3a24;border-radius:2px;padding:6px"></textarea>',
-  [['Apply',()=>{try{const j=JSON.parse($('#dev-json').value);posOverrides=j.pos||{};devRoutes=j.routes||[];devSave();applyOverrides();rebuildStatic();updateDevUI();closeModal();}catch(err){$('#m-text').insertAdjacentHTML('beforeend','<div style="color:var(--wax);font-size:12px;margin-top:6px">Could not read that JSON.</div>');}}],['Cancel',closeModal]]);
+ modal('Import map','Paste an exported map JSON, then Apply. This replaces the current map.<br><br><textarea id="dev-json" style="width:100%;height:170px;font:11px monospace;background:#171009;color:#e8d9b0;border:1px solid #4a3a24;border-radius:2px;padding:6px"></textarea>',
+  [['Apply',()=>{try{const j=JSON.parse($('#dev-json').value);if(!Array.isArray(j.towns)||!Array.isArray(j.routes))throw 0;world=j;saveWorld();rebuildWorld();updateDevUI();closeModal();}catch(err){$('#m-text').insertAdjacentHTML('beforeend','<div style="color:var(--wax);font-size:12px;margin-top:6px">Could not read that map JSON.</div>');}}],['Cancel',closeModal]]);
 }
 $('#btn-dev').onclick=()=>toggleDev();
-$('#dt-move').onclick=()=>setDevTool('move');
-$('#dt-trade').onclick=()=>setDevTool('trade');
-$('#dt-trail').onclick=()=>setDevTool('trail');
+TOOLS.forEach(([id,v])=>$('#'+id).onclick=()=>setDevTool(v));
+[['ti-capital','capital'],['ti-city','city'],['ti-town','town'],['ti-village','village']].forEach(([id,v])=>$('#'+id).onclick=()=>setTier(v));
 $('#dt-undo').onclick=()=>{if(devDraft&&devDraft.pts.length){devDraft.pts.pop();needsDraw=true;}};
 $('#dt-cancel').onclick=()=>{devDraft=null;needsDraw=true;};
-$('#dt-auto').onchange=e=>{devShowAuto=e.target.checked;devSave();rebuildStatic();};
 $('#dt-export').onclick=devExport;
 $('#dt-import').onclick=devImport;
-$('#dt-clear').onclick=()=>modal('Clear all edits?','This removes every moved town and every route you drew here.',
-  [['Clear',()=>{posOverrides={};devRoutes=[];devSave();applyOverrides();rebuildStatic();updateDevUI();closeModal();}],['Keep',closeModal]]);
+$('#dt-sample').onclick=()=>modal('Load the sample realm?','This replaces your current map with the 150-settlement sample so you can see the format or edit it.',
+  [['Load sample',()=>{loadSampleWorld();updateDevUI();closeModal();}],['Cancel',closeModal]]);
+$('#dt-clear').onclick=()=>modal('Clear the whole map?','This deletes every town and route. You will have a blank map to build on.',
+  [['Clear it',()=>{world={towns:[],routes:[]};saveWorld();rebuildWorld();devSel=null;updateDevUI();closeModal();}],['Keep',closeModal]]);
 addEventListener('keydown',e=>{
  if(e.key==='Escape'&&devDraft){devDraft=null;needsDraw=true;}
  if(e.key==='d'&&(e.ctrlKey||e.metaKey)){e.preventDefault();toggleDev();}
 });
 
 /* ================= boot ================= */
-devLoad();applyOverrides();buildRoads();
+loadWorld();rebuildWorld();
 mapImg.onload=()=>{drawStatic();needsDraw=true;};
 mapImg.src=MAPSRC;
-resize();buildCreate();
+resize();buildCreate();setTier('town');
+function enterEditor(){
+ $('#create').classList.add('hidden');
+ $('#topbar').style.display='flex';
+ $('#ledger').style.display='none';$('#locpanel').style.display='none';
+ fitView();toggleDev(true);needsDraw=true;
+}
 const params=new URLSearchParams(location.search);
-if(params.has('dev'))setTimeout(()=>toggleDev(true),50);
+const seatsExist=world.towns.length>0 && HOUSES.every(h=>LOC[h.seat]);
 if(params.has('reset'))localStorage.removeItem(SAVE_KEY);
-if(params.has('demo')){
+if(params.has('demo')&&seatsExist){
  const h=HOUSES[0];
  newState({name:'Wren',house:h.name,words:h.words,sigil:h.sigil,color:h.color,seat:h.seat,perk:h.perk});
  enterGame();
  if(params.has('fullmap')){cam.s=fitScale;cam.x=(W-innerWidth/cam.s)/2;cam.y=(H-innerHeight/cam.s)/2;needsDraw=true;}
  if(params.has('z')){cam.s=parseFloat(params.get('z'))||2;centerOn(LOC[S.loc].x,LOC[S.loc].y);needsDraw=true;}
+}else if(!seatsExist){
+ enterEditor();          // no playable map yet — open the map editor to build one
 }else if(loadSave()){
  enterGame();
  log('You take up your chronicle where it left off.');
  refreshHUD();
+ if(params.has('dev'))toggleDev(true);
 }else{
  fitView();
+ if(params.has('dev'))toggleDev(true);
 }
 requestAnimationFrame(draw);
 </script>
