@@ -352,7 +352,6 @@
       <div class="frow">
         <div class="fcol"><label>Sigil</label><div class="sigils" id="f-sigils"></div></div>
         <div class="fcol"><label>Banner color</label><div class="swatches" id="f-colors"></div></div>
-        <div class="fcol"><label for="f-perk">House gift</label><select id="f-perk"></select></div>
         <div class="fcol"><label for="f-realm">The realm</label><select id="f-realm"><option value="random">A new random realm</option><option value="current">The current map</option></select></div>
       </div>
       <select id="f-seat" style="display:none"></select>
@@ -1971,8 +1970,6 @@ function bindShopRows(sec){
 let selHouse=null,forge={sigil:SIGIL_SET[5],color:COLOR_SET[5]};
 function buildCreate(){
  selHouse='FORGE';           // you always found your own house
- const perkSel=$('#f-perk');
- for(const k in PERKS){const o=document.createElement('option');o.value=k;o.textContent=PERKS[k].name+' — '+PERKS[k].blurb;perkSel.appendChild(o);}
  const sg=$('#f-sigils');
  SIGIL_SET.forEach(s=>{const b=document.createElement('button');b.type='button';b.className='sg'+(s===forge.sigil?' sel':'');b.textContent=s;
   b.onclick=()=>{forge.sigil=s;sg.querySelectorAll('.sg').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');pickForge();};sg.appendChild(b);});
@@ -1991,7 +1988,7 @@ function beginGame(){
  const hn=$('#f-house').value.trim()||'Ashgrove';
  if(($('#f-realm')&&$('#f-realm').value)==='random')generateWorld();
  enterRealm({name:nm,house:'House '+hn,words:$('#f-words').value.trim()||'Ours Yet to Write',
-   sigil:forge.sigil,color:forge.color,perk:$('#f-perk').value});
+   sigil:forge.sigil,color:forge.color,perk:null});
 }
 function enterGame(){
  $('#create').classList.add('hidden');
@@ -2138,8 +2135,8 @@ const BUILDINGS={
  fields: {name:'Fields',       wood:15,stone:5, gold:10, max:3, desc:'+3 food a turn. Rich river- and coast-side soil doubles it.'},
  sawmill:{name:'Sawmill',      wood:20,stone:5, gold:15, max:3, req:'forest', desc:'+3 wood a turn. Needs woodland nearby.'},
  quarry: {name:'Quarry',       wood:10,stone:20,gold:20, max:3, req:'stone',  desc:'+3 stone a turn. Needs high country nearby.'},
- homes:  {name:'Lowborn Homes',wood:20,stone:5, gold:15, max:5, desc:'The smallfolk multiply faster — population is tax and levies.'},
- manor:  {name:'Highborn Manor',wood:15,stone:25,gold:40,max:2, desc:'+4 gold a turn in noble rents.'},
+ homes:  {name:'Lowborn Homes',wood:20,stone:5, gold:15, max:5000, desc:'Houses 10 smallfolk each — your population cap and levy pool. Pays no rent.'},
+ manor:  {name:'Highborn Manor',wood:15,stone:25,gold:40,max:50, desc:'+1 gold a turn in rents. Houses 2 highborn each.'},
  smith:  {name:'Blacksmith',   wood:20,stone:20,gold:30, max:1, desc:'Recruiting costs 15% less here.'},
  walls:  {name:'Town Walls',   wood:10,stone:40,gold:30, max:1, desc:'Much harder to storm.'},
  granary:{name:'Granary',      wood:20,stone:10,gold:15, max:12,desc:'+250 food storage. Full granaries mean armies and growth.'},
@@ -2148,10 +2145,10 @@ const BUILDINGS={
 const SPEED=30, ROADMULT=1.6;
 const TIER_CAP={capital:1,city:10,town:30};          // the realm only supports so much
 const BUILD_CAPS={                                   // villages farm; capitals house
- village:{fields:6, sawmill:2,quarry:2,homes:4,  manor:1,smith:1,walls:1,granary:2},
- town:   {fields:10,sawmill:3,quarry:3,homes:12, manor:2,smith:1,walls:1,granary:4},
- city:   {fields:14,sawmill:4,quarry:4,homes:40, manor:4,smith:1,walls:1,granary:8},
- capital:{fields:16,sawmill:5,quarry:5,homes:120,manor:8,smith:1,walls:1,granary:12},
+ village:{fields:6, sawmill:2,quarry:2,homes:50,  manor:1, smith:1,walls:1,granary:2},
+ town:   {fields:10,sawmill:3,quarry:3,homes:250, manor:5, smith:1,walls:1,granary:4},
+ city:   {fields:14,sawmill:4,quarry:4,homes:1000,manor:25,smith:1,walls:1,granary:8},
+ capital:{fields:16,sawmill:5,quarry:5,homes:5000,manor:50,smith:1,walls:1,granary:12},
 };
 function tierCounts(){const c={capital:0,city:0,town:0};for(const t of world.towns)if(c[t.type]!=null)c[t.type]++;return c;}
 function slotFree(next){return tierCounts()[next]<TIER_CAP[next];}
@@ -2159,15 +2156,15 @@ function charterCosts(type){return type==='village'?{next:'town',pop:800,gold:15
  :type==='town'?{next:'city',pop:4000,gold:500,wood:250,stone:300}
  :type==='city'?{next:'capital',pop:12000,gold:1500,wood:600,stone:900}:null;}
 function townEats(t){return Math.ceil((t.population||0)/150);}
-function homeCap(t){return 150+(((t.b&&t.b.homes)||0)*90)*(t.type==='capital'?1.2:1);}
+function homeCap(t){const b=t.b||{};return ((b.homes||0)*10)+((b.manor||0)*2);}
 function foodCapTotal(){let c=0;for(const t of myTowns())c+=200+((t.b&&t.b.granary)||0)*250;return c;}
 function initDem(t){const p=t.population||200;
  t.dem={children:Math.round(p*0.25),men:Math.round(p*0.30),women:Math.round(p*0.30),elders:Math.round(p*0.15)};}
 function demTick(t){
  if(!t.dem)initDem(t);
  const d=t.dem,cap=homeCap(t),pop=d.children+d.men+d.women+d.elders,fed=R.food>5;
- // births: women bear children when there is food and room
- const room=pop<cap?1:0.25;
+ // births: women bear children only when there is food AND a home to raise them
+ const room=pop<cap?1:0;
  d.children+=Math.round(d.women*0.055*(fed?1:0.2)*room);
  // children come of age
  const g=Math.round(d.children*0.042);d.children-=g;d.men+=Math.ceil(g/2);d.women+=Math.floor(g/2);
@@ -2177,6 +2174,8 @@ function demTick(t){
  d.elders=Math.round(d.elders*0.95);
  if(!fed){d.children=Math.round(d.children*0.97);d.elders=Math.round(d.elders*0.9);}
  t.population=d.children+d.men+d.women+d.elders;
+ // never exceed the homes you have — surplus newborns seek their fortune elsewhere
+ if(cap>0&&t.population>cap){const over=t.population-cap;d.children=Math.max(0,d.children-over);t.population=d.children+d.men+d.women+d.elders;}
 }
 function charterUp(townId){
  const t=LOC[townId];if(!t||t.owner!=='player')return;
@@ -2254,8 +2253,9 @@ function production(t){
  const food=(2+T.water*3+(b.fields||0)*(T.water?4:3))*(t.ownerPerk==='farmer'?1.25:1);
  const wood=(T.forest*2+(b.sawmill||0)*3+(T.forest?1:0));
  const stone=(T.stone*2+(b.quarry||0)*3);
- const gold=1+Math.round((t.population||100)/400)+(b.manor||0)*4+(t.type==='town'?3:t.type==='city'?9:0);
- return {food:Math.round(food),wood,stone,gold};
+ const gold=(b.manor||0);   // only highborn manors pay rent — 1 gold each; lowborn pay none
+ // every holdfast yields at least one of each good, however poor its land
+ return {food:Math.max(1,Math.round(food)),wood:Math.max(1,wood),stone:Math.max(1,stone),gold:Math.max(1,gold)};
 }
 
 /* ---- world setup: every town begins an independent village ---- */
@@ -2269,7 +2269,10 @@ function enterRealm(o){
   t.terrain=terrainAt(t.x,t.y);
   const q=t.terrain.water*3+t.terrain.forest*2+t.terrain.stone;   // land quality
   t.population=120+Math.round(Math.random()*120)+q*40;
-  t.b={}; t.owner=t.id; t.allies=[]; autoName(t);
+  // the standing village already has homes for its smallfolk (cap = homes*10 + manor*2)
+  const hmz=Math.min(50,Math.max(12,Math.ceil(t.population/10)));
+  t.b={homes:hmz,manor:1}; t.population=Math.min(t.population,hmz*10+2);   // a village cannot hold more than its homes
+  t.owner=t.id; t.allies=[]; autoName(t);
   t.garrison=splitTroops(20+Math.round(Math.random()*20)+q*6,mulberry32(hashStr(t.id)));
   let hn;do{hn='House '+pick(HOUSE_A)+pick(HOUSE_B);}while(used.has(hn));used.add(hn);
   t.ownerPerk=null;
@@ -2565,17 +2568,40 @@ function showBattleReport(rep,att,def,town){
 }
 
 /* ---- player actions ---- */
-function recruit(u,n){
+function playerTroops(){let n=0;for(const a of armies)if(a.owner==='player')n+=troopsTotal(a.troops);for(const t of myTowns())n+=troopsTotal(t.garrison||{});return n;}
+function playerPop(){let n=0;for(const t of myTowns())n+=t.population||0;return n;}
+function recruit(u,n,dest){
  const t=LOC[selTown];if(!t||t.owner!=='player')return;
  if(!t.dem)initDem(t);
+ dest=dest||'host';
+ if(playerTroops()+n>playerPop()){log2('You cannot field more troops than you have smallfolk — grow your realm first.','bad');refreshRealmView();return;}
  if(t.dem.men<n){log2('Not enough men of fighting age in '+t.name+'.','bad');refreshRealmView();return;}
  const disc=(t.b&&t.b.smith)?0.85:1,c=UNITS[u];
  const cost=Math.round(c.gold*n*disc),fcost=c.food*n;
  if(R.gold<cost||R.food<fcost)return;
  R.gold-=cost;R.food-=fcost;
  t.dem.men-=n;t.population-=n;         // soldiers leave the fields for good
- if(!R.host){R.host=mkArmy('player',t.x,t.y,{});R.host.supply=0;armies.push(R.host);}
- R.host.troops[u]=(R.host.troops[u]||0)+n;
+ if(dest==='garrison'){t.garrison=t.garrison||{};t.garrison[u]=(t.garrison[u]||0)+n;}
+ else{
+  if(!R.host){R.host=mkArmy('player',t.x,t.y,{});R.host.supply=0;armies.push(R.host);}
+  R.host.troops[u]=(R.host.troops[u]||0)+n;
+ }
+ realmHUD();refreshRealmView();
+}
+// shuffle a company between a town's garrison and your standing host
+function shiftGarrison(townId,u,n,toGarrison){
+ const t=LOC[townId];if(!t||t.owner!=='player')return;
+ t.garrison=t.garrison||{};
+ if(toGarrison){                    // host -> garrison
+  if(!R.host)return;const have=R.host.troops[u]||0,mv=Math.min(n,have);if(mv<=0)return;
+  R.host.troops[u]=have-mv;if(R.host.troops[u]<=0)delete R.host.troops[u];
+  t.garrison[u]=(t.garrison[u]||0)+mv;
+ }else{                             // garrison -> host
+  const have=t.garrison[u]||0,mv=Math.min(n,have);if(mv<=0)return;
+  t.garrison[u]=have-mv;if(t.garrison[u]<=0)delete t.garrison[u];
+  if(!R.host){R.host=mkArmy('player',t.x,t.y,{});R.host.supply=0;armies.push(R.host);}
+  R.host.troops[u]=(R.host.troops[u]||0)+mv;
+ }
  realmHUD();refreshRealmView();
 }
 function buildCap(t,k){if(k==='keep')return 4;const caps=BUILD_CAPS[t.type]||BUILD_CAPS.village;return caps[k]!=null?caps[k]:BUILDINGS[k].max;}
@@ -2584,13 +2610,17 @@ function canBuild(t,k){const bd=BUILDINGS[k];
  if(have>=buildCap(t,k))return false;
  if(bd.req&&!(t.terrain&&t.terrain[bd.req]))return false;
  return R.gold>=bd.gold&&R.wood>=bd.wood&&R.stone>=bd.stone;}
-function build(k,townId){
- const t=LOC[townId];if(!t||t.owner!=='player'||!canBuild(t,k))return;
- const bd=BUILDINGS[k];R.gold-=bd.gold;R.wood-=bd.wood;R.stone-=bd.stone;
- t.b=t.b||{};
- if(k==='keep'){t.keep=Math.min(4,(t.keep||0)+1);rebuildStatic();}
- else t.b[k]=(t.b[k]||0)+1;
- log2('Built '+bd.name+' at '+t.name+'.','gold');realmHUD();refreshRealmView();
+function build(k,townId,qty){
+ const t=LOC[townId];if(!t||t.owner!=='player')return;
+ qty=Math.max(1,qty||1);const bd=BUILDINGS[k];let n=0;
+ while(n<qty&&canBuild(t,k)){
+  R.gold-=bd.gold;R.wood-=bd.wood;R.stone-=bd.stone;t.b=t.b||{};
+  if(k==='keep'){t.keep=Math.min(4,(t.keep||0)+1);rebuildStatic();}
+  else t.b[k]=(t.b[k]||0)+1;
+  n++;
+ }
+ if(n)log2('Built '+n+'× '+bd.name+' at '+t.name+'.','gold');
+ realmHUD();refreshRealmView();
 }
 function buyEgg(){if(R.gold<150||R.food<40)return;R.gold-=150;R.food-=40;R.eggs.push({t:ri(2,4)});log2('A dragon egg warms by your hearth.');realmHUD();refreshRealmView();}
 function tradeOffer(t){ // what a town exports, by its land
@@ -2604,15 +2634,12 @@ function townSurplus(t,res,exceptDeal){
  for(const d of R.trades)if(d!==exceptDeal&&d.from===t.id&&d.give===res)s-=d.amt;
  return s;
 }
-function dealGold(amt){return Math.max(1,Math.ceil(amt*0.75));}
+function dealGold(amt){return amt;}   // a deal earns gold equal to the goods it carries
 function addTrade(withId,give,get,fromId,amt){
  amt=clamp(amt||4,1,12);
  const home=LOC[fromId||R.seat];
  if(!home||townSurplus(home,give)<amt)return false;   // only surplus above the burn rate may leave
- const C={gold:20,wood:15,stone:10,food:10};
- if(R.gold<C.gold||R.wood<C.wood||R.stone<C.stone||R.food<C.food)return false;
- R.gold-=C.gold;R.wood-=C.wood;R.stone-=C.stone;R.food-=C.food;
- const toll=8+ri(0,8);                        // the road is paid for in lowborn lives
+ const toll=8+ri(0,8);                        // a trade road costs only lowborn lives to cut
  home.population=Math.max(50,(home.population||200)-toll);
  R.trades.push({from:home.id,with:withId,give,get,amt,gold:dealGold(amt)});
  if(!roadBetween(home.id,withId)){
@@ -2776,9 +2803,24 @@ function showTownPanel(){
      '<button class="act" id="charter"'+(ok?'':' disabled')+'>Charter</button></div></div>');
     s0.querySelector('#charter').onclick=()=>charterUp(t.id);
    }
+   // housing gets its own section — you raise homes by the dozen, not one at a time
+   const hs=addSec(b,'Housing · caps your population');
+   [['homes',[1,10,50]],['manor',[1,5]]].forEach(([k,steps])=>{
+    const bd=BUILDINGS[k],have=(t.b&&t.b[k])||0,cap=buildCap(t,k);
+    const row=document.createElement('div');row.className='shoprow';
+    let btns='';for(const q of steps){const use=Math.min(q,cap-have);
+     const afford=R.gold>=bd.gold*use&&R.wood>=bd.wood*use&&R.stone>=bd.stone*use;
+     const off=have>=cap||!afford;
+     btns+='<button class="act gd" data-bk="'+k+'" data-bq="'+q+'"'+(off?' disabled':'')+'>+'+q+'</button>';}
+    row.innerHTML='<div><div class="sn">'+bd.name+' <span style="color:var(--ink3)">'+have+'/'+cap+'</span></div>'+
+     '<div class="sd">'+bd.wood+'\u{1FAB5} '+bd.stone+'⛰ '+bd.gold+'g each · '+(k==='homes'?'+10 smallfolk room, no rent':'+2 highborn room, +1 gold/turn')+'</div></div>'+
+     '<div style="display:flex;align-items:center;gap:4px">'+btns+'</div>';
+    hs.appendChild(row);
+   });
+   hs.querySelectorAll('[data-bk]').forEach(btn=>btn.onclick=()=>build(btn.dataset.bk,t.id,+btn.dataset.bq));
    const s=addSec(b,'Build');
    const grid=document.createElement('div');grid.className='bgrid';
-   for(const k in BUILDINGS){const bd=BUILDINGS[k];
+   for(const k in BUILDINGS){if(k==='homes'||k==='manor')continue;const bd=BUILDINGS[k];
     const have=k==='keep'?(t.keep||0):((t.b&&t.b[k])||0);
     const cap=buildCap(t,k),capped=have>=cap;
     const blocked=bd.req&&!(t.terrain&&t.terrain[bd.req]);
@@ -2815,7 +2857,7 @@ function showTownPanel(){
    const partners=nearTowns(t,140).filter(x=>x.owner!=='player').slice(0,12);
    const giveable=['food','wood','stone'].filter(r=>sur[r]>0);
    if(partners.length&&giveable.length){
-    const f=addSec(b,'Strike a new deal (20g 15\u{1FAB5} 10\u26F0 10\u{1F35E} + workers)');
+    const f=addSec(b,'Strike a new deal (costs only smallfolk to cut the road)');
     f.insertAdjacentHTML('beforeend','<div class="teform">'+
      '<label>Partner<select id="tr-with">'+partners.map(x=>'<option value="'+x.id+'">'+x.name+' \u2014 offers '+tradeOffer(x).join('/')+'</option>').join('')+'</select></label>'+
      '<div class="te2"><label>You give<select id="tr-give">'+giveable.map(r=>'<option>'+r+'</option>').join('')+'</select></label>'+
@@ -2833,13 +2875,30 @@ function showTownPanel(){
    } else if(!giveable.length) addSec(b,'Strike a new deal').insertAdjacentHTML('beforeend','<p class="hint">No surplus to trade \u2014 build fields, mills or quarries first.</p>');
    else addSec(b,'Strike a new deal').insertAdjacentHTML('beforeend','<p class="hint">No holdfasts near enough to trade with.</p>');
   }else if(townTab==='muster'){
-   const s=addSec(b,'Muster into your host \u00b7 '+t.dem.men+' men of age');
+   const cap2=document.createElement('div');cap2.className='chips';
+   cap2.innerHTML='<span class="chip2">\u2694 '+playerTroops()+' / '+playerPop()+' troops (of your smallfolk)</span>';
+   b.appendChild(cap2);
+   const s=addSec(b,'Recruit \u00b7 '+t.dem.men+' men of age');
    const disc=(t.b&&t.b.smith)?0.85:1;
    let rows='';for(const u of UORDER){const c=UNITS[u];
     rows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">atk '+c.atk+' def '+c.def+' \u00b7 beats '+c.strong.map(x=>UNITS[x].name.split(/[ -]/)[0]).join(', ')+'</div></div>'+
-     '<div style="display:flex;align-items:center;gap:6px"><span class="pr">'+Math.round(c.gold*10*disc)+'g</span><button class="act gd" data-rec="'+u+'">+10</button></div></div>';}
+     '<div style="display:flex;align-items:center;gap:5px"><span class="pr">'+Math.round(c.gold*10*disc)+'g</span>'+
+     '<button class="act gd" data-rec="'+u+'" data-dest="host">+10 host</button>'+
+     '<button class="act gd" data-rec="'+u+'" data-dest="garrison">+10 garr</button></div></div>';}
    s.insertAdjacentHTML('beforeend',rows);
-   s.querySelectorAll('[data-rec]').forEach(btn=>btn.onclick=()=>recruit(btn.dataset.rec,10));
+   s.querySelectorAll('[data-rec]').forEach(btn=>btn.onclick=()=>recruit(btn.dataset.rec,10,btn.dataset.dest));
+   // move standing companies between this holdfast's garrison and your host
+   const g=addSec(b,'Garrison \u21c4 Host');
+   const units=UORDER.filter(u=>(t.garrison&&t.garrison[u])||(R.host&&R.host.troops[u]));
+   if(units.length){
+    let grows='';for(const u of units){const c=UNITS[u],gn=(t.garrison&&t.garrison[u])||0,hn=(R.host&&R.host.troops[u])||0;
+     grows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">garrison '+gn+' \u00b7 host '+hn+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:5px">'+
+      '<button class="act gd" data-mv="'+u+'" data-to="host"'+(gn<=0?' disabled':'')+'>\u2192 host</button>'+
+      '<button class="act gd" data-mv="'+u+'" data-to="garrison"'+(hn<=0?' disabled':'')+'>\u2190 garr</button></div></div>';}
+    g.insertAdjacentHTML('beforeend',grows);
+    g.querySelectorAll('[data-mv]').forEach(btn=>btn.onclick=()=>shiftGarrison(t.id,btn.dataset.mv,10,btn.dataset.to==='garrison'));
+   } else g.insertAdjacentHTML('beforeend','<p class="hint">No companies here yet \u2014 recruit some above.</p>');
   }else{
    const s=addSec(b,'Dragons');
    const dr=R.host?R.host.dragons.map(d=>'<div class="kv"><span>'+DRAGONS[d.size].name+'</span><b>pow '+DRAGONS[d.size].power+'</b></div>').join(''):'';
