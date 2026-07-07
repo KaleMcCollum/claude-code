@@ -2138,10 +2138,10 @@ const DRAGONS={
 const DHATCH=[['hatchling',45],['drake',30],['wyvern',18],['wyrm',7]];
 const KEEP_NAMES2=['None','Palisade','Wooden Holdfast','Stone Keep','Great Castle'];
 const BUILDINGS={
- fields: {name:'Fields',       wood:15,stone:5, gold:10, max:50, desc:'+100 food a turn — each soul eats 1. Open plains hold the most farmland.'},
+ fields: {name:'Fields',       wood:15,stone:5, gold:5, max:50, desc:'+100 food a turn — each soul eats 1. Open plains hold the most farmland.'},
  sawmill:{name:'Sawmill',      wood:20,stone:5, gold:15, max:25, desc:'+8 wood a turn. Woodland holdfasts can raise far more.'},
  quarry: {name:'Quarry',       wood:10,stone:20,gold:20, max:25, desc:'+8 stone a turn. High country holdfasts can raise far more.'},
- homes:  {name:'Lowborn Homes',wood:20,stone:5, gold:15, max:5000, desc:'Houses 10 smallfolk each — your population cap and levy pool. Pays no rent.'},
+ homes:  {name:'Lowborn Homes',wood:20,stone:5, gold:8, max:5000, desc:'Houses 10 smallfolk each — your population cap and levy pool. Pays no rent.'},
  manor:  {name:'Highborn Manor',wood:15,stone:25,gold:40,max:50, desc:'+1 gold a turn in rents. Houses 2 highborn each.'},
  granary:{name:'Granary',      wood:20,stone:10,gold:15, max:12,desc:'Deepens your grain stores so a holdfast can weather more lean turns.'},
  keep:   {name:'Raise the Keep',wood:15,stone:50,gold:60,max:4, desc:'Upgrade the keep one level — the castle grows on the map.'},
@@ -2160,10 +2160,10 @@ const BUILD_CAPS={                                   // villages farm; capitals 
 };
 function tierCounts(){const c={capital:0,city:0,town:0};for(const t of world.towns)if(c[t.type]!=null)c[t.type]++;return c;}
 function slotFree(next){return tierCounts()[next]<TIER_CAP[next];}
-// thresholds sit below each tier's housing cap (village 502, town 2510, city 10050) and its gold vault
-function charterCosts(type){return type==='village'?{next:'town',pop:450,gold:45,wood:100,stone:60}
- :type==='town'?{next:'city',pop:2200,gold:200,wood:250,stone:300}
- :type==='city'?{next:'capital',pop:9000,gold:800,wood:600,stone:900}:null;}
+// thresholds sit well within reach of a growing holdfast so you can climb the tiers
+function charterCosts(type){return type==='village'?{next:'town',pop:100,gold:40,wood:80,stone:50}
+ :type==='town'?{next:'city',pop:800,gold:180,wood:220,stone:260}
+ :type==='city'?{next:'capital',pop:4500,gold:700,wood:550,stone:800}:null;}
 function townEats(t){return t.population||0;}   // every soul eats one food a turn
 function homeCap(t){const b=t.b||{};return ((b.homes||0)*10)+((b.manor||0)*2);}
 // ---- logistics: each holdfast keeps its own grain; supply lines carry it between them ----
@@ -2180,7 +2180,7 @@ function demTick(t){
  const d=t.dem,cap=homeCap(t),pop=d.children+d.men+d.women+d.elders,fed=(t.foodStore==null?true:t.foodStore>0);
  // births: a fed, roomy holdfast grows quickly at first, then levels off as it fills its homes
  const room=cap>0&&pop<cap?(1-pop/cap):0;
- d.children+=Math.max(0,Math.round((pop*0.08+d.women*0.03)*(fed?1:0.15)*room));
+ d.children+=Math.max(0,Math.round((pop*0.11+d.women*0.04+(fed&&room>0?1:0))*(fed?1:0.15)*room));
  // children come of age
  const g=Math.round(d.children*0.042);d.children-=g;d.men+=Math.ceil(g/2);d.women+=Math.floor(g/2);
  // adults grow old, elders pass
@@ -2972,10 +2972,13 @@ function showTownPanel(){
    const cc=charterCosts(t.type),counts=tierCounts();
    if(cc){
     const s0=addSec(b,'Charter');
-    const free=slotFree(cc.next),ok=t.population>=cc.pop&&free&&R.gold>=cc.gold&&R.wood>=cc.wood&&R.stone>=cc.stone;
+    const free=slotFree(cc.next),popOk=t.population>=cc.pop;
+    const ok=popOk&&free&&R.gold>=cc.gold&&R.wood>=cc.wood&&R.stone>=cc.stone;
+    const lack=c=>c?'':' style="color:var(--wax)"';   // red-wax what you still lack
+    const capHint=(!popOk&&homeCap(t)<cc.pop)?' \u2014 build more homes to raise your population cap':'';
     s0.insertAdjacentHTML('beforeend','<div class="shoprow"><div><div class="sn">Raise to '+cc.next+'</div><div class="sd">'+
-     (free?('needs '+cc.pop+' smallfolk \u00b7 '+(TIER_CAP[cc.next]-counts[cc.next])+' slot'+(TIER_CAP[cc.next]-counts[cc.next]===1?'':'s')+' left in the realm'):('no '+cc.next+' slots remain in the realm'))+
-     '</div></div><div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span class="pr">'+cc.wood+'\u{1FAB5}'+cc.stone+'\u{1FAA8}'+cc.gold+'g</span>'+
+     (free?('<span'+lack(popOk)+'>'+t.population+'/'+cc.pop+' smallfolk</span>'+capHint+' \u00b7 '+(TIER_CAP[cc.next]-counts[cc.next])+' slot'+(TIER_CAP[cc.next]-counts[cc.next]===1?'':'s')+' left in the realm'):('no '+cc.next+' slots remain in the realm'))+
+     '</div></div><div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span class="pr"><span'+lack(R.wood>=cc.wood)+'>'+cc.wood+'\u{1FAB5}</span> <span'+lack(R.stone>=cc.stone)+'>'+cc.stone+'\u{1FAA8}</span> <span'+lack(R.gold>=cc.gold)+'>'+cc.gold+'\u{1F7E8}</span></span>'+
      '<button class="act" id="charter"'+(ok?'':' disabled')+'>Charter</button></div></div>');
     s0.querySelector('#charter').onclick=()=>charterUp(t.id);
    }
