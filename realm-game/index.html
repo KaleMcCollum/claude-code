@@ -2605,11 +2605,35 @@ function drawArmyToken(ctx,a){
   ctx.font='700 4.5px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineWidth=1.6;ctx.strokeStyle='rgba(238,228,196,.9)';ctx.strokeText(fmt(tot),a.x,a.y+6.2);
   ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),a.x,a.y+6.2);
+  drawHouseCaption(a.x,a.y+8.6,a.owner);
  }
  a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*7.5,a.y+Math.sin(ang)*7.5-2,d.size);});
 }
 function fmt(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':''+n;}
+function drawHouseCaption(x,y,owner){
+ ctx.font='600 3.1px Georgia';ctx.textAlign='center';ctx.textBaseline='top';
+ ctx.lineWidth=1.1;ctx.strokeStyle='rgba(238,228,196,.85)';ctx.lineJoin='round';
+ const nm=bannerName(owner);
+ ctx.strokeText(nm,x,y);
+ ctx.fillStyle=bannerColor(owner);ctx.fillText(nm,x,y);
+}
 function drawRealmLayer(){
+ // who holds each holdfast — tiny caption beneath the name, revealed on zoom
+ if(cam.s>1.2){
+  const vx0=cam.x-20,vy0=cam.y-20,vx1=cam.x+innerWidth/cam.s+20,vy1=cam.y+innerHeight/cam.s+20;
+  for(const t of world.towns){
+   if(t.x<vx0||t.x>vx1||t.y<vy0||t.y>vy1)continue;
+   const major=(t.type==='capital'||t.type==='city'||t.type==='hill'||t.type==='keep');
+   if(!major){
+    if(t.type==='town'&&cam.s<1.4)continue;
+    if(t.type==='village'&&cam.s<1.75)continue;
+   }
+   let gap=t.type==='capital'?11:(t.type==='city'||t.type==='hill'||t.type==='keep')?9:t.type==='town'?6.5:4.5;
+   if(t.type!=='keep'&&t.keep>0)gap+=4+t.keep*0.4;
+   const fs=t.type==='capital'?9:(t.type==='city'||t.type==='hill')?8:t.type==='keep'?7.5:t.type==='town'?6.5:5.5;
+   drawHouseCaption(t.x,t.y+gap+fs+0.8,t.owner);
+  }
+ }
  for(const a of armies)drawArmyToken(ctx,a);
  const sa=selArmy&&armies.find(x=>x.id===selArmy);
  if(sa){ctx.beginPath();ctx.arc(sa.x,sa.y,6,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1/Math.sqrt(cam.s);ctx.setLineDash([2.5,2.5]);ctx.stroke();ctx.setLineDash([]);
