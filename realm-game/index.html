@@ -2339,6 +2339,9 @@ const BUILD_CAPS={                                   // villages farm; capitals 
  capital:{fields:25,sawmill:16,quarry:16,homes:5000,manor:50,granary:12},
 };
 function tierCounts(){const c={capital:0,city:0,town:0};for(const t of world.towns)if(c[t.type]!=null)c[t.type]++;return c;}
+// keep only the ~max biggest cities; demote the rest to towns (fixes older maps that generated dozens)
+function capCitiesTo(max){const cities=world.towns.filter(t=>t.type==='city').sort((a,b)=>(b.population||0)-(a.population||0));
+ for(let i=max;i<cities.length;i++)cities[i].type='town';}
 function slotFree(next){return tierCounts()[next]<TIER_CAP[next];}
 // thresholds sit well within reach of a growing holdfast so you can climb the tiers
 function charterCosts(type){return type==='village'?{next:'town',pop:100,gold:40,wood:80,stone:50}
@@ -2491,6 +2494,7 @@ function enterRealm(o){
   let hn;do{hn='House '+pick(HOUSE_A)+pick(HOUSE_B);}while(used.has(hn));used.add(hn);
   F[t.id]={name:hn,color:FREE_COLORS[Math.abs(hashStr(t.id))%FREE_COLORS.length],ambition:0.3,towns:1};
  }
+ capCitiesTo(10);   // a realm holds ~10 cities — trim any excess from older saved maps
  world.routes=[];buildRoads();
  const seatPool=world.towns.filter(t=>t.type==='city'||t.type==='capital');
  const start=(seatPool.length?pick(seatPool):world.towns[0]);
@@ -3499,6 +3503,7 @@ function applyState(d){
  alliances=new Set(d.alliances||[]);
  if(d.R){R=d.R;if(typeof R.host==='string')R.host=armies.find(x=>x.id===R.host)||null;}
  selArmy=selTown=selShip=null;
+ capCitiesTo(10);
  rebuildWorld();realmHUD();fitView();showRealmPanel();needsDraw=true;
 }
 function listChapters(){return Object.keys(localStorage).filter(k=>k.indexOf('scChapter:')===0).map(k=>k.slice(10)).sort();}
