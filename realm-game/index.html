@@ -393,6 +393,10 @@
         <div class="fcol"><label>Banner color</label><div class="swatches" id="f-colors"></div></div>
         <div class="fcol"><label for="f-realm">The realm</label><select id="f-realm"><option value="random">A new random realm</option><option value="current">The current map</option></select></div>
       </div>
+      <div class="frow">
+        <div class="fcol"><label for="f-seed">Seed <span style="opacity:.6">(optional — same seed, same realm)</span></label><input type="text" id="f-seed" maxlength="24" placeholder="leave blank for a fresh realm"></div>
+        <div class="fcol"><label for="f-density">Realm size</label><select id="f-density"><option value="180">Sparse (~180)</option><option value="300" selected>Standard (~300)</option><option value="450">Crowded (~450)</option></select></div>
+      </div>
       <select id="f-seat" style="display:none"></select>
     </div>
     <div id="beginrow">
@@ -632,9 +636,12 @@ const GSUF=['brook','bury','ford','ton','ham','wick','hollow','mere','moor','gat
 const RADJ=['Frost','Sunset','Storm','Amber','Green','Iron','Shadow','Golden','Wolf','Bramble','Misty','Broken','Silver','Weeping','Thunder'];
 const RNOUN=['reach','march','vale','wold','fen','moor','hold','wilds','downs','coast','marches','expanse'];
 function genName(used){for(let i=0;i<500;i++){const n=pick(GPRE)+pick(GSUF);if(!used.has(n)){used.add(n);return n;}}return 'Holdfast '+used.size;}
-function generateWorld(){
+function generateWorld(seed,target){
  buildLandMask();
- const used=new Set(),pts=[],MIND=12,rnd=Math.random,TARGET=300;
+ // a seed makes the whole realm reproducible (same layout + names); blank = fresh each time
+ const _mrand=Math.random,useSeed=(seed!=null&&seed!=='');
+ if(useSeed)Math.random=mulberry32((typeof seed==='number'?seed:hashStr(String(seed)))>>>0);
+ const used=new Set(),pts=[],MIND=12,rnd=Math.random,TARGET=clamp(Math.round(target||300),60,600);
  // 1) scatter many "settled regions" — water-side centres, spread across the realm, wild gaps between
  const centers=[];let ctries=0;
  while(centers.length<34&&ctries<80000){ctries++;
@@ -712,7 +719,8 @@ function generateWorld(){
  seats.forEach((s,i)=>{labels.push({text:('THE '+pick(RADJ)+pick(RNOUN)).toUpperCase(),x:s.x,y:s.y+70,size:14,kind:'land',rot:0});});
  // assign each town's region to nearest label text
  for(const t of towns){let bd=1e18,rt='';for(const L of labels){const d=(L.x-t.x)**2+(L.y-t.y)**2;if(d<bd){bd=d;rt=L.text.replace(/^THE /,'The ').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());}}t.region=rt;}
- world={towns,routes,mountains:[],labels};   // mountains added by hand via the editor
+ world={towns,routes,mountains:[],labels,seed:useSeed?String(seed):''};   // mountains added by hand via the editor
+ Math.random=_mrand;   // restore the real RNG
  saveWorld();rebuildWorld();
 }
 function loadSampleWorld(){
@@ -2153,7 +2161,11 @@ function updateBegin(){
 }
 function beginGame(){
  const hn=$('#f-house').value.trim()||'Ashgrove';
- if(($('#f-realm')&&$('#f-realm').value)==='random')generateWorld();
+ if(($('#f-realm')&&$('#f-realm').value)==='random'){
+  const seed=($('#f-seed')&&$('#f-seed').value.trim())||'';
+  const dens=($('#f-density')&&+$('#f-density').value)||300;
+  generateWorld(seed,dens);
+ }
  enterRealm({house:'House '+hn,words:'Ours Yet to Write',
    sigil:forge.sigil,color:forge.color,perk:null});
 }
