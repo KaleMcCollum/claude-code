@@ -1719,6 +1719,14 @@ function endPointer(e){
     else if(!hit){ devDraft.pts.push({x:Math.round(w.x),y:Math.round(w.y)}); }
     needsDraw=true;
    }
+  }else if(R&&!drag.moved&&!modalOpen()&&labelPlace!=null){   // place a custom map label
+   const w=s2w(e.clientX,e.clientY);
+   world.labels=world.labels||[];world.labels.push({text:labelPlace,x:Math.round(w.x),y:Math.round(w.y),size:15,kind:'land',rot:0});
+   labelPlace=null;rebuildStatic();log2('Label placed on the map.','gold');showRealmPanel();needsDraw=true;
+  }else if(R&&!drag.moved&&!modalOpen()&&paintMode){         // paint a town's holding house
+   const w=s2w(e.clientX,e.clientY);const tt=locAt(w,8+5/cam.s);
+   if(tt){if(paintSample){paintOwner=tt.owner;paintSample=false;log2('Brush set to '+bannerName(paintOwner)+'.','gold');showRealmPanel();}
+    else if(tt.owner!==paintOwner){tt.owner=paintOwner;rebuildStatic();needsDraw=true;}}
   }else if(R&&!drag.moved&&!modalOpen()){
    const w=s2w(e.clientX,e.clientY);
    const sh=shipAt(w), a=armyAt(w), t=locAt(w,7+5/cam.s);
@@ -2353,6 +2361,7 @@ const HOUSE_B=['brook','field','gate','mere','moor','wick','ford','holt','shaw',
 let R=null, F={};                 // realm state, faction table
 let armies=[], armySeq=1, selArmy=null, selTown=null, armyCmd='move'; // 'move' | 'attack' | 'merge' | 'ally'
 let ships=[], shipSeq=1, selShip=null;
+let paintMode=false,paintOwner='player',paintSample=false,labelPlace=null;   // map-authoring tools
 let alliances=new Set();   // "ownerA|ownerB" pairs of houses sworn not to fight
 function allyKey(a,b){return a<b?a+'|'+b:b+'|'+a;}
 function areAllied(a,b){return !!(a&&b&&a!==b&&alliances.has(allyKey(a,b)));}
@@ -3326,9 +3335,17 @@ function showRealmPanel(){
   row.onclick=()=>showTownFor(t.id);ts.appendChild(row);
  }} else ts.insertAdjacentHTML('beforeend','<p class="hint">You hold no cities. Click any city on the map and take it, or just direct the realm.</p>');
  const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='▶ Sim';btn.onclick=endTurn;e.appendChild(btn);
+ if(paintMode){
+  const ps=addSec(b,'🖌 Painting realms');
+  ps.insertAdjacentHTML('beforeend','<p class="hint">Tap towns to hand them to <b style="color:'+bannerColor(paintOwner)+'">'+bannerName(paintOwner)+'</b>.'+(paintSample?' <b>Now tap a town to pick its house as the brush.</b>':'')+'</p>');
+  const s1=document.createElement('button');s1.className='act';s1.textContent=paintSample?'Cancel pick':'Pick a house from the map';s1.onclick=()=>{paintSample=!paintSample;showRealmPanel();};ps.appendChild(s1);
+  const s2=document.createElement('button');s2.className='act';s2.style.marginTop='6px';s2.textContent='Stop painting';s2.onclick=()=>{paintMode=false;paintSample=false;showRealmPanel();};ps.appendChild(s2);
+ }
  const tools=addSec(b,'Tools');
  const ex=document.createElement('button');ex.className='act';ex.textContent='📷 Save map image';ex.onclick=exportMap;tools.appendChild(ex);
  const sv=document.createElement('button');sv.className='act';sv.style.marginTop='6px';sv.textContent='💾 Save chapter';sv.onclick=saveChapter;tools.appendChild(sv);
+ const pa=document.createElement('button');pa.className='act';pa.style.marginTop='6px';pa.textContent='🖌 Paint realms';pa.onclick=()=>{paintMode=true;paintOwner='player';paintSample=false;selArmy=selTown=selShip=null;showRealmPanel();if(window.collapsePanel)collapsePanel();};tools.appendChild(pa);
+ const la=document.createElement('button');la.className='act';la.style.marginTop='6px';la.textContent='🏷 Add map label';la.onclick=()=>{const tx=(prompt('Label text (a region, a battle site…):','')||'').trim();if(tx){labelPlace=tx;log2('Tap the map where the label should sit.','gold');if(window.collapsePanel)collapsePanel();}};tools.appendChild(la);
  const chs=listChapters();
  if(chs.length){
   const ct=addSec(b,'Chapters · '+chs.length);
