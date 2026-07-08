@@ -1747,10 +1747,13 @@ function endPointer(e){
    const sh=shipAt(w), a=armyAt(w), t=locAt(w,7+5/cam.s);
    const selA=selArmy&&armies.find(x=>x.id===selArmy);
    const selS=selShip&&ships.find(x=>x.id===selShip);
-   if(selS&&!sh&&!a){                // ordering the selected ship — water only
-    if(!isLand(w.x,w.y)){selS.dest={x:Math.round(w.x),y:Math.round(w.y)};log2('The ship sets sail.');endOrder();}
-    else if(t){const wn=waterNear(t.x,t.y,60);if(wn){selS.dest=wn;log2('The ship makes for '+t.name+'’s harbour.');endOrder();}else refreshRealmView();needsDraw=true;}
-    else{log2('Ships sail only on open water.','bad');}
+   if(selS&&!sh&&!a){                // order the ship anywhere — it routes around land to the nearest water
+    let target=null,msg='The ship sets sail.';
+    if(t){target=waterNear(t.x,t.y,60);msg='The ship makes for '+t.name+'’s harbour.';}
+    else if(!isLand(w.x,w.y)){target={x:Math.round(w.x),y:Math.round(w.y)};}
+    else{target=nearestWater(w.x,w.y);msg='The ship steers for the nearest shore.';}
+    if(target){orderShip(selS,target);log2(msg);endOrder();}
+    else{log2('No open water lies within reach of there.','bad');refreshRealmView();needsDraw=true;}
    }
    else if(selA){                       // commanding the selected host (any house — you direct all)
     if(armyCmd==='attack'){            // ATTACK: pick a host (even your own) or town
@@ -2328,7 +2331,7 @@ const BUILDINGS={
 };
 const SPEED=12, ROADMULT=1.6;   // a host covers less ground now — campaigns take real time
 const NSPEED=20;                // ships run swifter over open water
-const SHIP_CAP=100;             // troops a ship can carry
+const SHIP_CAP=500;             // troops a ship can carry
 const SHIP_TURNS=2;             // turns to build a ship
 function shipCap(t){if(!t||!(t.terrain&&t.terrain.water))return 0;return t.type==='city'||t.type==='capital'?3:t.type==='town'?1:0;}
 const TIER_CAP={capital:1,city:10,town:30};          // the realm only supports so much
@@ -2719,6 +2722,38 @@ function waterNear(x,y,maxR){                 // find a water point near a coast
   if(px>0&&py>0&&px<W&&py<H&&!isLand(px,py))return{x:px,y:py};}}
  return null;
 }
+function nearestWater(x,y){                    // closest open-water point to any spot, even deep inland
+ if(!isLand(x,y))return{x:Math.round(x),y:Math.round(y)};
+ for(let r=6;r<=800;r+=5){for(let k=0;k<24;k++){const a=k/24*Math.PI*2,px=x+Math.cos(a)*r,py=y+Math.sin(a)*r;
+  if(px>0&&py>0&&px<W&&py<H&&!isLand(px,py))return{x:Math.round(px),y:Math.round(py)};}}
+ return null;
+}
+function seaPath(sx,sy,tx,ty){                 // BFS a water-only route around land; null if none exists
+ if(!LANDMASK)return null;
+ const gw=LANDMASK.gw,gh=LANDMASK.gh,mask=LANDMASK.mask,N=gw*gh;
+ const cw=(gx,gy)=>gx>=0&&gy>=0&&gx<gw&&gy<gh&&mask[gy*gw+gx]===0;
+ const gcx=x=>Math.floor(x/W*gw), gcy=y=>Math.floor(y/H*gh);
+ const wcx=gx=>(gx+0.5)*W/gw, wcy=gy=>(gy+0.5)*H/gh;
+ const snap=(gx,gy)=>{if(cw(gx,gy))return gy*gw+gx;                 // nudge a land/edge cell to the closest water cell
+  for(let r=1;r<=8;r++)for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;if(cw(gx+dx,gy+dy))return (gy+dy)*gw+(gx+dx);}return -1;};
+ const start=snap(gcx(sx),gcy(sy)),goal=snap(gcx(tx),gcy(ty));
+ if(start<0||goal<0)return null;
+ if(start===goal)return [{x:Math.round(tx),y:Math.round(ty)}];
+ const prev=new Int32Array(N).fill(-1),seen=new Uint8Array(N),q=[start];seen[start]=1;let head=0,found=false;
+ while(head<q.length){const c=q[head++];if(c===goal){found=true;break;}
+  const cx=c%gw,cy=(c/gw)|0;
+  for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){const nx=cx+dx,ny=cy+dy;
+   if(!cw(nx,ny))continue;const ni=ny*gw+nx;if(seen[ni])continue;seen[ni]=1;prev[ni]=c;q.push(ni);}}
+ if(!found)return null;
+ const cells=[];for(let c=goal;c!==-1;c=prev[c]){cells.push(c);if(c===start)break;}cells.reverse();
+ const pts=cells.map(c=>({x:wcx(c%gw),y:wcy((c/gw)|0)}));pts[pts.length-1]={x:Math.round(tx),y:Math.round(ty)};
+ // string-pull: keep only turns, dropping any waypoint reachable in a straight water line
+ const clear=(a,b)=>{const dd=Math.hypot(b.x-a.x,b.y-a.y),n=Math.ceil(dd/3);for(let i=1;i<n;i++)if(isLand(a.x+(b.x-a.x)*i/n,a.y+(b.y-a.y)*i/n))return false;return true;};
+ const out=[pts[0]];let i=0;
+ while(i<pts.length-1){let j=pts.length-1;while(j>i+1&&!clear(pts[i],pts[j]))j--;out.push(pts[j]);i=j;}
+ return out;
+}
+function orderShip(s,dest){s.dest={x:dest.x,y:dest.y};const r=seaPath(s.x,s.y,dest.x,dest.y);s.route=(r&&r.length)?r:null;s.routeIdx=0;}
 function spawnBoat(id){
  const t=LOC[id];if(!t)return;
  const w=waterNear(t.x,t.y,80);if(!w){log2('No open water near '+t.name+' to launch a boat.','bad');return;}
@@ -2735,6 +2770,15 @@ function sellBoat(s,cityId){
  selShip=null;showRealmPanel();realmHUD();needsDraw=true;
 }
 function stepShip(s){
+ if(s.route&&s.route.length){                  // follow the water route waypoint by waypoint
+  let left=NSPEED;s.routeIdx=s.routeIdx||0;
+  while(left>0&&s.routeIdx<s.route.length){
+   const p=s.route[s.routeIdx],d=Math.hypot(p.x-s.x,p.y-s.y);
+   if(d<=left){s.x=p.x;s.y=p.y;left-=d;s.routeIdx++;}
+   else{s.x+=(p.x-s.x)/d*left;s.y+=(p.y-s.y)/d*left;left=0;}}
+  if(s.routeIdx>=s.route.length){s.route=null;s.dest=null;}
+  return;
+ }
  if(!s.dest)return;
  const d=Math.hypot(s.dest.x-s.x,s.dest.y-s.y);
  if(d<=NSPEED){s.x=s.dest.x;s.y=s.dest.y;s.dest=null;}
@@ -2749,11 +2793,16 @@ function loadShip(s){                          // embark soldiers from the neare
  t.garrison={n:troopsTotal(t.garrison||{})-take};s.troops={n:shipTroops(s)+take};
  log2(take+' soldiers board the boat at '+t.name+'.','gold');realmHUD();refreshRealmView();
 }
-function unloadShip(s){                         // disembark into the nearest city (yours = garrison; else seizes)
+function unloadShip(s){                         // disembark as a host on the shore outside the nearest city — never into its garrison
  const t=coastTownNear(s.x,s.y,30);if(!t){log2('Sail closer to a coastal city to land the soldiers.','bad');return;}
  const n=shipTroops(s);if(n<=0)return;
- t.garrison={n:troopsTotal(t.garrison||{})+n};s.troops={n:0};
- log2(n+' soldiers land at '+t.name+'.','gold');realmHUD();refreshRealmView();
+ // land the host just outside the walls, on the seaward side between the town and the boat
+ const dx=s.x-t.x,dy=s.y-t.y,dd=Math.hypot(dx,dy)||1;let land={x:t.x+dx/dd*4,y:t.y+dy/dd*4};
+ for(let r=4;r<=12;r+=2){const px=t.x+dx/dd*r,py=t.y+dy/dd*r;if(px>0&&py>0&&px<W&&py<H&&isLand(px,py))land={x:px,y:py};}
+ const host=mkArmy(s.owner,land.x,land.y,{n});host.homeName=t.name;armies.push(host);
+ s.troops={n:0};
+ log2(n+' soldiers land on the shore outside '+t.name+'.','gold');
+ selShip=null;selArmy=host.id;selTown=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;
 }
 // ---- dragons: spawn a beast of any size and colour ----
 function dragonPower(d){return d&&d.ft?Math.round(d.ft*d.ft*0.6):((DRAGONS[d&&d.size]||DRAGONS.hatchling).power);}
@@ -3314,13 +3363,16 @@ function drawRealmLayer(){
   if(sa.dest){ctx.setLineDash(sa.attacking?[3,2]:[2,3]);ctx.strokeStyle=sa.attacking?'rgba(176,40,40,.85)':'rgba(90,74,45,.6)';ctx.lineWidth=(sa.attacking?1.1:0.8)/Math.sqrt(cam.s);
    ctx.beginPath();ctx.moveTo(sa.x,sa.y);ctx.lineTo(sa.dest.x,sa.dest.y);ctx.stroke();ctx.setLineDash([]);}}
  const ss=selShip&&ships.find(x=>x.id===selShip);
- if(ss){ctx.beginPath();ctx.arc(ss.x,ss.y,6.5,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1/Math.sqrt(cam.s);ctx.setLineDash([2.5,2.5]);ctx.stroke();ctx.setLineDash([]);
-  if(ss.dest){ctx.setLineDash([2,3]);ctx.strokeStyle='rgba(60,110,150,.7)';ctx.lineWidth=0.8/Math.sqrt(cam.s);
+ if(ss){ctx.beginPath();ctx.arc(ss.x,ss.y,4,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1/Math.sqrt(cam.s);ctx.setLineDash([2.5,2.5]);ctx.stroke();ctx.setLineDash([]);
+  if(ss.route&&ss.route.length){ctx.setLineDash([2,3]);ctx.strokeStyle='rgba(60,110,150,.7)';ctx.lineWidth=0.8/Math.sqrt(cam.s);
+   ctx.beginPath();ctx.moveTo(ss.x,ss.y);for(const p of ss.route.slice(ss.routeIdx||0))ctx.lineTo(p.x,p.y);ctx.stroke();ctx.setLineDash([]);}
+  else if(ss.dest){ctx.setLineDash([2,3]);ctx.strokeStyle='rgba(60,110,150,.7)';ctx.lineWidth=0.8/Math.sqrt(cam.s);
    ctx.beginPath();ctx.moveTo(ss.x,ss.y);ctx.lineTo(ss.dest.x,ss.dest.y);ctx.stroke();ctx.setLineDash([]);}}
 }
 function drawShipToken(ctx,s){
  const house=entHouse(s),col=house.color,x=s.x,y=s.y,WOOD='#6a4726',WOODL='#8a6234',WD='#3a2614',ED='#140a05',lt=shade(col,0.32),dk=shade(col,-0.42),CANVAS='#e7dbbd',STEEL='#b9bfc7';
  ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
+ ctx.translate(x,y);ctx.scale(0.5,0.5);ctx.translate(-x,-y);   // half-size boat icon
  // wake
  ctx.strokeStyle='rgba(96,126,146,.55)';ctx.lineWidth=0.24;
  ctx.beginPath();ctx.moveTo(x-4.2,y+1.9);ctx.quadraticCurveTo(x,y+3.1,x+4.2,y+1.9);ctx.stroke();
@@ -3350,9 +3402,9 @@ function drawShipToken(ctx,s){
  ctx.strokeStyle=ED;ctx.lineWidth=0.12;ctx.beginPath();ctx.moveTo(x,y-6.0);ctx.lineTo(x+1.7,y-5.7);ctx.lineTo(x,y-5.4);ctx.stroke();ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x,y-6.0);ctx.lineTo(x+1.7,y-5.7);ctx.lineTo(x,y-5.4);ctx.closePath();ctx.fill();
  ctx.restore();
  if(cam.s>1.5||selShip===s.id){ctx.font='700 4px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.lineWidth=1.5;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText('⚓ '+shipTroops(s),x,y+4.4);
-  ctx.fillStyle='#22405a';ctx.fillText('⚓ '+shipTroops(s),x,y+4.4);
-  drawCaption(x,y+6.6,house.name,house.color);}
+  ctx.lineWidth=1.5;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText('⚓ '+shipTroops(s),x,y+2.8);
+  ctx.fillStyle='#22405a';ctx.fillText('⚓ '+shipTroops(s),x,y+2.8);
+  drawCaption(x,y+4.8,house.name,house.color);}
 }
 function armyAt(w){let best=null,bd=6*6;for(const a of armies){const d=(a.x-w.x)**2+(a.y-w.y)**2;if(d<bd){bd=d;best=a;}}return best;}
 function shipAt(w){let best=null,bd=7*7;for(const s of ships){const d=(s.x-w.x)**2+(s.y-w.y)**2;if(d<bd){bd=d;best=s;}}return best;}
@@ -3564,12 +3616,12 @@ function showShipPanel(){
   const room=s.cap-troopsTotal(s.troops);
   const lb=document.createElement('button');lb.className='act';lb.textContent='Load up to '+Math.min(room,troopsTotal(near.garrison||{}))+' from '+near.name;
   lb.disabled=room<=0||troopsTotal(near.garrison||{})<=0;lb.onclick=()=>loadShip(s);act.appendChild(lb);
-  const ub=document.createElement('button');ub.className='act';ub.style.marginTop='6px';ub.textContent='Land soldiers at '+near.name;
+  const ub=document.createElement('button');ub.className='act';ub.style.marginTop='6px';ub.textContent='Land soldiers outside '+near.name;
   ub.disabled=troopsTotal(s.troops)<=0;ub.onclick=()=>unloadShip(s);act.appendChild(ub);
   const sb=document.createElement('button');sb.className='act';sb.style.marginTop='6px';sb.textContent='Sell this boat to '+near.name+' (+800\u{1F7E8})';
   sb.onclick=()=>sellBoat(s,near.id);act.appendChild(sb);
  } else act.insertAdjacentHTML('beforeend','<p class="hint">Sail beside a coastal city to load, land or sell.</p>');
- addSec(b,'Orders').insertAdjacentHTML('beforeend','<p class="hint">Click open water to sail, or a coastal city to make for its harbour. Carries up to '+s.cap+' soldiers.</p>');
+ addSec(b,'Orders').insertAdjacentHTML('beforeend','<p class="hint">Click anywhere to sail — the boat rounds any land and makes for the nearest water. Beside a coastal city it can land its soldiers as a host outside the walls. Carries up to '+s.cap+' soldiers.</p>');
  const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selShip=null;showRealmPanel();};back.appendChild(bb);
 }
 function numRow(sec,label,icon,val,onset){
