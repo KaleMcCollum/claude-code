@@ -3419,25 +3419,46 @@ function showRealmPanel(){
  }
  const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,14).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm awaits your hand.</p>');
 }
-let rankSort='pop';
+let rankSort='pop', rankView='houses';
 function showRankingsPanel(){
  selArmy=selTown=selShip=null;
- const b=panelShell('The Great Houses','Rankings','The mightiest houses of the realm — tap a house to fly to its seat.');
- const opts=[['pop','People'],['gold','Gold'],['cities','Cities'],['food','Food'],['soldiers','Soldiers']];
+ const houses=rankView==='houses';
+ const b=panelShell('Rankings',houses?'The Great Houses':'The Settlements',houses?'The mightiest houses — tap one to fly to its seat.':'Every holdfast, ranked — tap one to fly to it.');
+ // Houses vs Settlements toggle
+ const vseg=document.createElement('div');vseg.style.cssText='display:flex;gap:6px;margin-bottom:6px';
+ for(const v of [['houses','🛡 Houses'],['towns','🏰 Settlements']]){const btn=document.createElement('button');btn.className='act';btn.textContent=v[1];btn.style.cssText='flex:1';
+  if(rankView!==v[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
+  btn.onclick=()=>{rankView=v[0];const ok=houses?['pop','gold','food','garrison']:['pop','gold','cities','food','soldiers'];if(ok.indexOf(rankSort)<0)rankSort='pop';showRankingsPanel();};vseg.appendChild(btn);}
+ b.appendChild(vseg);
+ // sort options (differ per view)
+ const opts=houses?[['pop','People'],['gold','Gold'],['cities','Cities'],['food','Food'],['soldiers','Soldiers']]
+                  :[['pop','People'],['gold','Gold'],['food','Food'],['garrison','Garrison']];
+ if(!opts.some(o=>o[0]===rankSort))rankSort='pop';
  const seg=document.createElement('div');seg.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px';
  for(const o of opts){const btn=document.createElement('button');btn.className='act';btn.textContent=o[1];btn.style.cssText='flex:1 1 30%';
   if(rankSort!==o[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
   btn.onclick=()=>{rankSort=o[0];showRankingsPanel();};seg.appendChild(btn);}
  addSec(b,'Sort by').appendChild(seg);
- const rows=allHouseStats().sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
- const val=r=>rankSort==='gold'?fmt(r.gold)+'\u{1F7E8}':rankSort==='food'?fmt(r.food)+'\u{1F35E}':rankSort==='cities'?r.cities+' cities':rankSort==='soldiers'?fmt(r.soldiers)+'⚔':fmt(r.pop)+'\u{1F465}';
- const list=addSec(b,rows.length+' houses');
- rows.slice(0,50).forEach((r,i)=>{
-  const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer';
-  row.innerHTML='<div class="dl" style="min-width:0"><b style="color:'+r.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(i+1)+'. '+r.name+'</b><span>'+(r.caps?'\u{1F451} ':'')+r.cities+'c · '+r.towns+'t · '+r.villages+'v</span></div><b style="flex:none">'+val(r)+'</b>';
-  row.onclick=()=>{const big=world.towns.filter(t=>t.owner===r.owner).sort((a,c)=>(c.population||0)-(a.population||0))[0];if(big){cam.s=Math.max(cam.s,2);centerOn(big.x,big.y);showTownFor(big.id);}};
-  list.appendChild(row);
- });
+ const mval=(r,k)=>k==='gold'?fmt(r.gold)+'\u{1F7E8}':k==='food'?fmt(r.food)+'\u{1F35E}':k==='cities'?r.cities+' cities':k==='soldiers'?fmt(r.soldiers)+'⚔':k==='garrison'?fmt(r.garrison)+'⚔':fmt(r.pop)+'\u{1F465}';
+ if(houses){
+  const rows=allHouseStats().sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
+  const list=addSec(b,rows.length+' houses');
+  rows.slice(0,50).forEach((r,i)=>{
+   const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer';
+   row.innerHTML='<div class="dl" style="min-width:0"><b style="color:'+r.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(i+1)+'. '+r.name+'</b><span>'+(r.caps?'\u{1F451} ':'')+r.cities+'c · '+r.towns+'t · '+r.villages+'v</span></div><b style="flex:none">'+mval(r,rankSort)+'</b>';
+   row.onclick=()=>{const big=world.towns.filter(t=>t.owner===r.owner).sort((a,c)=>(c.population||0)-(a.population||0))[0];if(big){cam.s=Math.max(cam.s,2);centerOn(big.x,big.y);showTownFor(big.id);}};
+   list.appendChild(row);
+  });
+ }else{
+  const rows=world.towns.map(t=>({t,name:t.name,type:t.type,owner:t.owner,pop:t.population||0,gold:t.gold||0,food:t.food||0,garrison:troopsTotal(t.garrison||{})})).sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
+  const list=addSec(b,rows.length+' settlements');
+  rows.slice(0,60).forEach((r,i)=>{
+   const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer';
+   row.innerHTML='<div class="dl" style="min-width:0"><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(i+1)+'. '+r.name+'</b><span>'+r.type+' · <span style="color:'+bannerColor(r.owner)+'">'+bannerName(r.owner)+'</span></span></div><b style="flex:none">'+mval(r,rankSort)+'</b>';
+   row.onclick=()=>{cam.s=Math.max(cam.s,2.2);centerOn(r.t.x,r.t.y);showTownFor(r.t.id);};
+   list.appendChild(row);
+  });
+ }
  const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>showRealmPanel();back.appendChild(bb);
  window.revealPanel&&revealPanel();needsDraw=true;
 }
