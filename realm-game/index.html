@@ -3533,6 +3533,23 @@ function showArmyPanel(){
     a.troops={n:troopsTotal(a.troops)-give};near.garrison={n:troopsTotal(near.garrison||{})+give};
     log2(fmt(give)+' peel off to hold '+near.name+'.','gold');realmHUD();refreshRealmView();};
   }
+  // split this host into two, choosing how many peel off with a slider
+  const tot=troopsTotal(a.troops);
+  if(!isDragon&&tot>=2){
+   const sp=addSec(b,'Divide the host');
+   const half=Math.floor(tot/2);
+   sp.insertAdjacentHTML('beforeend','<label style="display:block;font-size:12px;margin-bottom:2px">New host takes <b id="splv">'+fmt(half)+'</b> · this keeps <b id="splk">'+fmt(tot-half)+'</b></label><input type="range" min="1" max="'+(tot-1)+'" step="1" value="'+half+'" id="splr" style="width:100%">');
+   const rng=()=>{const el=document.getElementById('splr');return el?Math.min(tot-1,Math.max(1,Math.round(+el.value||1))):half;};
+   sp.querySelector('#splr').oninput=()=>{const g=rng(),kv=document.getElementById('splv'),kk=document.getElementById('splk');if(kv)kv.textContent=fmt(g);if(kk)kk.textContent=fmt(tot-g);};
+   const spb=document.createElement('button');spb.className='act';spb.style.marginTop='4px';spb.textContent='⚔ Split into two hosts';
+   spb.onclick=()=>{const give=rng();if(give<1||give>=tot)return;
+    a.troops={n:tot-give};
+    const nb=mkArmy(a.owner,a.x+3,a.y,{n:give});nb.home=a.home;nb.homeName=a.homeName;armies.push(nb);
+    selArmy=nb.id;armyCmd='move';
+    log2(a.player?'You divide your host — '+fmt(give)+' march off as a new column.':bannerName(a.owner)+'’s host divides in two.','gold');
+    realmHUD();showArmyPanel();needsDraw=true;};
+   sp.appendChild(spb);
+  }
   const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband';db.onclick=()=>{const i=armies.indexOf(a);if(i>=0)armies.splice(i,1);selArmy=null;showRealmPanel();needsDraw=true;};dz.appendChild(db);
  }
  const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selArmy=null;showRealmPanel();};back.appendChild(bb);
