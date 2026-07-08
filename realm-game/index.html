@@ -2463,9 +2463,9 @@ function setCity(id,field,val){const t=LOC[id];if(!t)return;val=Math.max(0,Math.
  realmHUD();refreshRealmView();needsDraw=true;}
 function spawnArmy(id,n){const t=LOC[id];if(!t)return;n=Math.max(1,Math.round(n||0));
  const take=Math.min(n,t.population);t.population-=take;
- const a=mkArmy('player',t.x,t.y,{n:take});
+ const a=mkArmy(t.owner,t.x,t.y,{n:take});   // the host is loyal to the house that holds this city
  a.home=id; a.homeName=t.name; armies.push(a);
- log2('A host of '+take+' rises from '+t.name+'.','gold');
+ log2('A host of '+take+' rises from '+t.name+' under '+bannerName(t.owner)+'.','gold');
  selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;}
 function mkArmy(owner,x,y,troops){const a={id:'a'+(armySeq++),owner,x,y,troops,dragons:[],dest:null,roadPath:null,player:owner==='player'};armies.push?0:0;return a;}
 function myTowns(){return world.towns.filter(t=>t.owner==='player');}
@@ -2657,14 +2657,14 @@ function waterNear(x,y,maxR){                 // find a water point near a coast
 function spawnBoat(id){
  const t=LOC[id];if(!t)return;
  const w=waterNear(t.x,t.y,80);if(!w){log2('No open water near '+t.name+' to launch a boat.','bad');return;}
- const s={id:'s'+(shipSeq++),owner:'player',player:true,x:w.x,y:w.y,cap:SHIP_CAP,troops:{n:0},dragons:[],dest:null,home:id};
+ const s={id:'s'+(shipSeq++),owner:t.owner,player:t.owner==='player',x:w.x,y:w.y,cap:SHIP_CAP,troops:{n:0},dragons:[],dest:null,home:id};
  ships.push(s);log2('A boat is launched from '+t.name+'.','gold');
  selShip=s.id;selTown=null;selArmy=null;showShipPanel();needsDraw=true;
 }
 function sellBoat(s,cityId){
  const t=LOC[cityId];if(!t)return;
  // your nearest city pockets the coin from the sale
- const home=coastTownNear(s.x,s.y,300);if(home&&home.owner==='player')home.gold=(home.gold||0)+800;
+ const home=coastTownNear(s.x,s.y,300);if(home&&home.owner===s.owner)home.gold=(home.gold||0)+800;
  const i=ships.indexOf(s);if(i>=0)ships.splice(i,1);
  log2('You sell the boat to '+t.name+' for 800 gold.','gold');
  selShip=null;showRealmPanel();realmHUD();needsDraw=true;
@@ -2678,7 +2678,7 @@ function stepShip(s){
 function shipTroops(s){return troopsTotal(s.troops);}
 function coastTownNear(x,y,r){let best=null,bd=(r||16)**2;for(const t of world.towns){const d=(t.x-x)**2+(t.y-y)**2;if(d<bd){bd=d;best=t;}}return best;}
 function loadShip(s){                          // embark soldiers from the nearest coastal city you hold
- const t=coastTownNear(s.x,s.y,30);if(!t||t.owner!=='player'){log2('No city of yours is close enough to embark from.','bad');return;}
+ const t=coastTownNear(s.x,s.y,30);if(!t||t.owner!==s.owner){log2('No city of that house is close enough to embark from.','bad');return;}
  const room=s.cap-shipTroops(s),take=Math.min(room,troopsTotal(t.garrison||{}));
  if(take<=0){realmHUD();refreshRealmView();return;}
  t.garrison={n:troopsTotal(t.garrison||{})-take};s.troops={n:shipTroops(s)+take};
@@ -2694,7 +2694,7 @@ function unloadShip(s){                         // disembark into the nearest ci
 function dragonPower(d){return d&&d.ft?Math.round(d.ft*d.ft*0.6):((DRAGONS[d&&d.size]||DRAGONS.hatchling).power);}
 function spawnDragon(id,ft,color){
  const t=LOC[id];if(!t)return;ft=clamp(Math.round(ft||30),5,400);
- const a=mkArmy('player',t.x,t.y,{n:0});a.home=id;a.homeName=t.name;
+ const a=mkArmy(t.owner,t.x,t.y,{n:0});a.home=id;a.homeName=t.name;   // dragon serves the city's house
  a.dragons=[{ft,color:color||'#b23b3b'}];armies.push(a);
  log2('A '+ft+'-foot dragon takes wing over '+t.name+'!','gold');
  selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;
