@@ -147,7 +147,7 @@
   #forge h3{font-family:var(--display);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#907d55;margin-bottom:13px}
   #forge .frow{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px}
   #forge label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#907d55;display:block;margin-bottom:5px}
-  #forge input[type=text],#forge select,#begin-name{background:#171209;border:1px solid var(--leather-edge);color:var(--parch-text);
+  #forge input[type=text],#forge select{background:#171209;border:1px solid var(--leather-edge);color:var(--parch-text);
     font-family:var(--body);font-size:14px;padding:8px 10px;border-radius:2px;width:100%}
   #forge .fcol{flex:1;min-width:170px}
   .swatches,.sigils{display:flex;gap:7px;flex-wrap:wrap}
@@ -396,7 +396,6 @@
       <select id="f-seat" style="display:none"></select>
     </div>
     <div id="beginrow">
-      <div class="fcol"><label for="begin-name">Your given name</label><input type="text" id="begin-name" maxlength="16" placeholder="e.g. Alys, Roderic, Wren…"></div>
       <button id="begin" disabled>Take Up Your Banner</button>
     </div>
   </div>
@@ -2123,17 +2122,15 @@ function buildCreate(){
  COLOR_SET.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='sw'+(c===forge.color?' sel':'');b.style.background=c;b.setAttribute('aria-label','banner color '+c);
   b.onclick=()=>{forge.color=c;sw.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');pickForge();};sw.appendChild(b);});
  $('#f-house').addEventListener('input',updateBegin);
- $('#begin-name').addEventListener('input',updateBegin);
  $('#begin').onclick=beginGame;
 }
 function updateBegin(){
- $('#begin').disabled=!($('#begin-name').value.trim().length>=2&&$('#f-house').value.trim().length>=1);
+ $('#begin').disabled=$('#f-house').value.trim().length<1;
 }
 function beginGame(){
- const nm=$('#begin-name').value.trim();
  const hn=$('#f-house').value.trim()||'Ashgrove';
  if(($('#f-realm')&&$('#f-realm').value)==='random')generateWorld();
- enterRealm({name:nm,house:'House '+hn,words:'Ours Yet to Write',
+ enterRealm({house:'House '+hn,words:'Ours Yet to Write',
    sigil:forge.sigil,color:forge.color,perk:null});
 }
 function enterGame(){
@@ -3215,7 +3212,7 @@ function refreshRealmView(){if(selShip)showShipPanel();else if(selArmy)showArmyP
 function showRealmPanel(){
  selArmy=null;selTown=null;selShip=null;
  const sh=realmShare();
- const b=panelShell(R.meName,R.name+' of '+R.meName,'Your sandbox realm — click any city to set its people, gold and food, or raise hosts, boats and dragons from it.');
+ const b=panelShell(R.meName,'Your realm','Your sandbox realm — click any city to set its people, gold and food, or raise hosts, boats and dragons from it.');
  const obj=addSec(b,'The Realm · you hold '+sh.held+' of '+sh.total);
  obj.insertAdjacentHTML('beforeend','<div style="height:7px;border-radius:4px;background:rgba(0,0,0,.18);overflow:hidden"><div style="height:100%;width:'+Math.min(100,sh.pct)+'%;background:linear-gradient(90deg,#b7902f,#e6c34a)"></div></div>');
  let g=0,f=0,p=0;for(const t of myTowns()){g+=t.gold||0;f+=t.food||0;p+=t.population||0;}
