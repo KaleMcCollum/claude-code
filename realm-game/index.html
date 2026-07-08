@@ -1728,13 +1728,27 @@ function endPointer(e){
     else if(t){const wn=waterNear(t.x,t.y,60);if(wn){selS.dest=wn;log2('The ship makes for '+t.name+'’s harbour.');}refreshRealmView();needsDraw=true;}
     else{log2('Ships sail only on open water.','bad');}
    }
-   else if(selA&&selA.player&&!a&&!sh){   // ordering the selected host — land only
-    if(t){orderMove(selA,{x:t.x,y:t.y,townId:t.id});log2('Your host marches on '+t.name+'.');}
-    else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});}
-    refreshRealmView();needsDraw=true;
+   else if(selA&&selA.player){          // commanding the selected host
+    if(armyCmd==='attack'){            // ATTACK: pick an enemy host or town
+     if(a&&a.owner!==selA.owner){
+      orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;
+      log2('Your host charges '+bannerName(a.owner)+'’s host!','bad');refreshRealmView();needsDraw=true;
+     }else if(t&&t.owner!==selA.owner){
+      orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;
+      log2('Your host marches to attack '+t.name+'.','bad');refreshRealmView();needsDraw=true;
+     }else if(a&&a.owner===selA.owner){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+     else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+     else{log2('Tap an enemy host or town to attack it.','bad');}
+    }else{                             // MOVE: just march to the spot
+     if(a&&a.id!==selA.id){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+     else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+     else if(t){orderMove(selA,{x:t.x,y:t.y,townId:t.owner===selA.owner?t.id:null});selA.attacking=false;
+      log2('Your host marches to '+t.name+'.');refreshRealmView();needsDraw=true;}
+     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});selA.attacking=false;refreshRealmView();needsDraw=true;}
+    }
    }
    else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
-   else if(a){selArmy=a.id;selShip=null;selTown=null;showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+   else if(a){selArmy=a.id;selShip=null;selTown=null;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
    else if(t){selTown=t.id;selArmy=null;selShip=null;showTownPanel();window.revealPanel&&revealPanel();needsDraw=true;}
    else {selArmy=null;selShip=null;selTown=null;showRealmPanel();window.revealPanel&&revealPanel();needsDraw=true;}
   }else if(!drag.moved&&S&&!anim&&!modalOpen()){
@@ -2314,7 +2328,7 @@ const HOUSE_A=['Ash','Black','Cold','Grey','Stone','Thorn','Oak','Fen','Wren','D
 const HOUSE_B=['brook','field','gate','mere','moor','wick','ford','holt','shaw','burn','combe','dale','worth','stead','fall','march','grave','helm','wood','water'];
 
 let R=null, F={};                 // realm state, faction table
-let armies=[], armySeq=1, selArmy=null, selTown=null;
+let armies=[], armySeq=1, selArmy=null, selTown=null, armyCmd='move'; // 'move' | 'attack'
 let ships=[], shipSeq=1, selShip=null;
 let RLOG=[];
 function log2(t,cls){RLOG.unshift({t,cls:cls||''});if(RLOG.length>40)RLOG.pop();}
@@ -2427,7 +2441,7 @@ function spawnArmy(id,n){const t=LOC[id];if(!t)return;n=Math.max(1,Math.round(n|
  const a=mkArmy('player',t.x,t.y,{n:take});
  a.home=id; a.homeName=t.name; armies.push(a);
  log2('A host of '+take+' rises from '+t.name+'.','gold');
- selArmy=a.id;selTown=null;selShip=null;showArmyPanel();realmHUD();needsDraw=true;}
+ selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;}
 function mkArmy(owner,x,y,troops){const a={id:'a'+(armySeq++),owner,x,y,troops,dragons:[],dest:null,roadPath:null,player:owner==='player'};armies.push?0:0;return a;}
 function myTowns(){return world.towns.filter(t=>t.owner==='player');}
 function factionTowns(fid){return world.towns.filter(t=>t.owner===fid);}
@@ -2658,7 +2672,7 @@ function spawnDragon(id,ft,color){
  const a=mkArmy('player',t.x,t.y,{n:0});a.home=id;a.homeName=t.name;
  a.dragons=[{ft,color:color||'#b23b3b'}];armies.push(a);
  log2('A '+ft+'-foot dragon takes wing over '+t.name+'!','gold');
- selArmy=a.id;selTown=null;selShip=null;showArmyPanel();realmHUD();needsDraw=true;
+ selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;
 }
 function linkDragon(a){                 // glue a dragon to the nearest host so it keeps pace
  let best=null,bd=60*60;for(const x of armies){if(x===a||x.owner!=='player')continue;if(troopsTotal(x.troops)<=0)continue;const d=(x.x-a.x)**2+(x.y-a.y)**2;if(d<bd){bd=d;best=x;}}
@@ -3131,7 +3145,7 @@ function drawRealmLayer(){
  for(const a of armies)drawArmyToken(ctx,a);
  const sa=selArmy&&armies.find(x=>x.id===selArmy);
  if(sa){ctx.beginPath();ctx.arc(sa.x,sa.y,6,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1/Math.sqrt(cam.s);ctx.setLineDash([2.5,2.5]);ctx.stroke();ctx.setLineDash([]);
-  if(sa.dest){ctx.setLineDash([2,3]);ctx.strokeStyle='rgba(138,47,43,.6)';ctx.lineWidth=0.8/Math.sqrt(cam.s);
+  if(sa.dest){ctx.setLineDash(sa.attacking?[3,2]:[2,3]);ctx.strokeStyle=sa.attacking?'rgba(176,40,40,.85)':'rgba(90,74,45,.6)';ctx.lineWidth=(sa.attacking?1.1:0.8)/Math.sqrt(cam.s);
    ctx.beginPath();ctx.moveTo(sa.x,sa.y);ctx.lineTo(sa.dest.x,sa.dest.y);ctx.stroke();ctx.setLineDash([]);}}
  const ss=selShip&&ships.find(x=>x.id===selShip);
  if(ss){ctx.beginPath();ctx.arc(ss.x,ss.y,6.5,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1/Math.sqrt(cam.s);ctx.setLineDash([2.5,2.5]);ctx.stroke();ctx.setLineDash([]);
@@ -3213,7 +3227,17 @@ function showArmyPanel(){
   (isDragon?dragonFt(a)+'-foot dragon':fmt(troopsTotal(a.troops))+' soldiers'+(a.dragons.length?' · '+a.dragons.length+' dragon(s)':''))+(a.dest?' · marching':' · encamped')+(a.homeName?' · from '+a.homeName:''));
  if(a.dragons.length){const d=addSec(b,'Dragons');d.insertAdjacentHTML('beforeend',a.dragons.map(x=>'<div class="kv"><span>'+(x.ft?x.ft+'-foot dragon':'Dragon')+'</span><b>power '+fmt(dragonPower(x))+'</b></div>').join(''));}
  if(a.player){
-  const o=addSec(b,'Orders');o.insertAdjacentHTML('beforeend','<p class="hint">Click the map to set a march, then press Sim. Smaller hosts move faster; great hosts crawl.</p>');
+  const o=addSec(b,'Orders');
+  // Move / Attack command toggle
+  const seg=document.createElement('div');seg.style.cssText='display:flex;gap:6px;margin-bottom:6px';
+  const mkCmd=(label,mode)=>{const btn=document.createElement('button');btn.className='act';btn.textContent=label;btn.style.flex='1';
+   if(armyCmd!==mode){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
+   btn.onclick=()=>{armyCmd=mode;showArmyPanel();};return btn;};
+  seg.appendChild(mkCmd('➤ Move','move'));seg.appendChild(mkCmd('⚔ Attack','attack'));
+  o.appendChild(seg);
+  o.insertAdjacentHTML('beforeend','<p class="hint">'+(armyCmd==='attack'
+   ?'<b>Attack:</b> tap an enemy host or town to march on and fight it.'
+   :'<b>Move:</b> tap anywhere to march there — no attack.')+' Then press Sim. Smaller hosts move faster.</p>');
   if(isDragon){
    const lk=document.createElement('button');lk.className='act';lk.style.marginTop='4px';
    lk.textContent=a.linkedTo?'Unlink from host (fly free)':'Link to nearest host';
