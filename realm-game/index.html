@@ -1729,17 +1729,18 @@ function endPointer(e){
     else{log2('Ships sail only on open water.','bad');}
    }
    else if(selA&&selA.player){          // commanding the selected host
-    if(armyCmd==='attack'){            // ATTACK: pick an enemy host or town
-     if(a&&a.owner!==selA.owner){
-      if(areAllied(selA.owner,a.owner)){log2('You are allied with '+bannerName(a.owner)+'.','bad');}
-      else{orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;
-       log2('Your host charges '+bannerName(a.owner)+'’s host!','bad');refreshRealmView();needsDraw=true;}
+    if(armyCmd==='attack'){            // ATTACK: pick a host (even your own) or town
+     if(a&&a.id!==selA.id){
+      if(a.owner!==selA.owner&&areAllied(selA.owner,a.owner)){log2('You are allied with '+bannerName(a.owner)+'. Break the alliance first.','bad');}
+      else{orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;selA.attackTarget=a.id;
+       const who=a.owner===selA.owner?'your own host':bannerName(a.owner)+'’s host';
+       log2('Your host charges '+who+'!','bad');refreshRealmView();needsDraw=true;}
      }else if(t&&t.owner!==selA.owner){
       if(areAllied(selA.owner,t.owner)){log2(t.name+' belongs to your ally.','bad');}
-      else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;
+      else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;selA.attackTarget=null;
        log2('Your host marches to attack '+t.name+'.','bad');refreshRealmView();needsDraw=true;}
-     }else if(a&&a.owner===selA.owner){log2('That’s your own host — tap an enemy host or town to attack (or use Merge / Ally).','bad');}
-     else{log2('Tap an enemy host or town to attack it.','bad');}
+     }else if(t&&t.owner===selA.owner){log2('That’s your own town — march there in Move mode to garrison it.','bad');}
+     else{log2('Tap a host or town to attack it.','bad');}
     }else if(armyCmd==='merge'){       // MERGE: join two of your own hosts
      if(a&&a.owner===selA.owner&&a.id!==selA.id){
       mergeHosts(a,selA);selArmy=a.id;armyCmd='move';
@@ -1756,9 +1757,9 @@ function endPointer(e){
     }else{                             // MOVE: just march to the spot
      if(a&&a.id!==selA.id){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
-     else if(t){orderMove(selA,{x:t.x,y:t.y,townId:t.owner===selA.owner?t.id:null});selA.attacking=false;
+     else if(t){orderMove(selA,{x:t.x,y:t.y,townId:t.owner===selA.owner?t.id:null});selA.attacking=false;selA.attackTarget=null;
       log2('Your host marches to '+t.name+'.');refreshRealmView();needsDraw=true;}
-     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});selA.attacking=false;refreshRealmView();needsDraw=true;}
+     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});selA.attacking=false;selA.attackTarget=null;refreshRealmView();needsDraw=true;}
     }
    }
    else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
@@ -2830,7 +2831,9 @@ function moveArmies(){
  // battles: armies that meet
  for(let i=0;i<armies.length;i++)for(let j=i+1;j<armies.length;j++){
   const a=armies[i],b=armies[j];
-  if(a.owner===b.owner||areAllied(a.owner,b.owner))continue;
+  // friends & allies only clash when one has been explicitly ordered to attack the other
+  const targeted=(a.attacking&&a.attackTarget===b.id)||(b.attacking&&b.attackTarget===a.id);
+  if((a.owner===b.owner||areAllied(a.owner,b.owner))&&!targeted)continue;
   if(dist2(a,b)<10*10&&troopsTotal(a.troops)&&troopsTotal(b.troops))resolveField(a,b);
  }
  // sieges: army adjacent to enemy town it targeted
@@ -2866,6 +2869,7 @@ function resolveField(a,b){
  applyLoss(a.troops,rep.attLoss,a.player?R.perk:null);applyLoss(b.troops,rep.defLoss,b.player?R.perk:null);
  if(rep.attLoss>0.6)a.dragons=a.dragons.filter(()=>Math.random()>0.3);
  if(rep.defLoss>0.6)b.dragons=b.dragons.filter(()=>Math.random()>0.3);
+ a.attackTarget=null;b.attackTarget=null;   // one clash per order — don't auto-re-engage friends
  if(a.player||b.player)showBattleReport(rep,a,{name:bannerName(b.owner)+'’s host',owner:b.owner,player:b.player},null);
 }
 function resolveSiege(att,town){
