@@ -1735,11 +1735,13 @@ function endPointer(e){
       if(a.owner!==selA.owner&&areAllied(selA.owner,a.owner)){log2('You are allied with '+bannerName(a.owner)+'. Break the alliance first.','bad');}
       else{orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;selA.attackTarget=a.id;
        const who=a.owner===selA.owner?'your own host':bannerName(a.owner)+'’s host';
-       log2('Your host charges '+who+'!','bad');endOrder();}
+       const atk=armyStrength(selA),def=armyStrength(a);
+       log2('Your host ('+fmt(atk)+') charges '+who+' ('+fmt(def)+') — '+oddsVerdict(atk,def)+'.','bad');endOrder();}
      }else if(t&&t.owner!==selA.owner){
       if(areAllied(selA.owner,t.owner)){log2(t.name+' belongs to your ally.','bad');}
       else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;selA.attackTarget=null;
-       log2('Your host marches to attack '+t.name+'.','bad');endOrder();}
+       const atk=armyStrength(selA),def=townDefStrength(t);
+       log2('Your host ('+fmt(atk)+') marches on '+t.name+' ('+fmt(def)+' behind its walls) — '+oddsVerdict(atk,def)+'.','bad');endOrder();}
      }else if(t&&t.owner===selA.owner){log2('That’s your own town — march there in Move mode to garrison it.','bad');}
      else{log2('Tap a host or town to attack it.','bad');}
     }else if(armyCmd==='merge'){       // MERGE: join two of your own hosts
@@ -2367,6 +2369,11 @@ function log2(t,cls){RLOG.unshift({t,cls:cls||''});if(RLOG.length>40)RLOG.pop();
 function troopsTotal(tr){return typeof tr==='number'?tr:((tr&&tr.n)||0);}
 function splitTroops(n,rng){return {n:Math.max(0,Math.round(n||0))};}
 function armyPower(tr,drs){let p=troopsTotal(tr);for(const d of (drs||[]))p+=dragonPower(d);return p;}
+// battle strength of a host including any escort linked to it, and a plain-language verdict
+function armyStrength(a){const g=(typeof battleGroup==='function')?battleGroup(a):[a];return armyPower(groupTroops(g),groupDragons(g));}
+function townDefStrength(t){let d=troopsTotal(t.garrison||{});for(const x of armies)if(x.owner===t.owner&&Math.hypot(x.x-t.x,x.y-t.y)<7)d+=armyStrength(x);return Math.round(d*defenseMult(t));}
+function oddsVerdict(atk,def){if(def<=0)return 'a certain victory';const r=atk/(def||1);
+ return r>=2?'a certain victory':r>=1.4?'a likely victory':r>=1.08?'a hard-won victory':r>=0.92?'a coin toss':r>=0.6?'a likely defeat':'near-certain death';}
 function bannerColor(id){if(id==='player')return R?R.meColor:'#8a2f2b';return (F[id]&&F[id].color)||'#8a7a58';}
 function bannerName(id){if(id==='player')return R?R.meName:'your house';return (F[id]&&F[id].name)||'the free folk';}
 const POP_CAP={village:2500,town:12000,city:45000,capital:130000,hill:400,keep:600};
@@ -2532,6 +2539,8 @@ function endTurn(){
  for(const e of hatched){const sz=weightedPick(DHATCH);if(R.host)R.host.dragons.push({size:sz});
   log2('An egg cracks open — a '+DRAGONS[sz].name+' joins your host!','gold');}
  moveArmies();
+ // dragons that survive keep growing — a hatchling can become a world-ender over a long saga
+ for(const a of armies)for(const d of (a.dragons||[]))if(d.ft)d.ft=Math.min(400,d.ft+Math.max(1,Math.round((400-d.ft)*0.018)));
  R.turn++;
  if(!myTowns().length&&(!R.host||troopsTotal(R.host.troops)<10)){
   modal('Your House Has Fallen','Your last holdfast is lost and your host is scattered. The chronicles will remember '+R.meName+' — briefly.',[['Begin anew',()=>{location.reload();}]],'☠');
@@ -2938,10 +2947,17 @@ function resolveSiege(att,town){
 function showBattleReport(rep,att,def,town){
  const meAtt=!!att.player;
  const win=meAtt?rep.attackerWins:!rep.attackerWins;
+ const aName=meAtt?'Your host':bannerName(att.owner),dName=def.name;
+ const aCol=bannerColor(att.owner),dCol=bannerColor(def.owner);
+ const tot=rep.aP+rep.dP||1,aPct=Math.round(rep.aP/tot*100);
+ const bar='<div style="display:flex;height:14px;border-radius:3px;overflow:hidden;margin:8px 0;box-shadow:0 1px 2px rgba(0,0,0,.3)">'+
+  '<div style="width:'+aPct+'%;background:'+aCol+'"></div><div style="width:'+(100-aPct)+'%;background:'+dCol+'"></div></div>';
  modal(win?'Victory':'Defeat',
-  '<b>'+(meAtt?'Your host':bannerName(att.owner))+'</b> ('+rep.aP+' strength) against <b>'+def.name+'</b> ('+rep.dP+' strength).'+
-  (town?'<br>'+(rep.attackerWins?(meAtt?'The holdfast is yours!':town.name+' has fallen.'):town.name+' holds.'):'')+
-  '<br><br>'+(rep.attackerWins?'The attackers carried the field.':'The defenders held the field.'),
+  '<div style="display:flex;justify-content:space-between;font-weight:700"><span style="color:'+aCol+'">'+aName+'</span><span style="color:'+dCol+'">'+dName+'</span></div>'+
+  '<div style="display:flex;justify-content:space-between;font-variant-numeric:tabular-nums"><span>'+fmt(rep.aP)+' strength</span><span>'+fmt(rep.dP)+' strength</span></div>'+
+  bar+
+  (town?(rep.attackerWins?(meAtt?'<b>The holdfast is yours!</b>':town.name+' has fallen.'):'<b>'+town.name+' holds.</b>'):
+   (rep.attackerWins?'The field is won — the enemy host is destroyed.':'The field is lost — your host is destroyed.')),
   [['Continue',()=>{closeModal();realmHUD();refreshRealmView();needsDraw=true;}]],'⚔');
 }
 
@@ -3304,7 +3320,15 @@ function showRealmPanel(){
   row.onclick=()=>showTownFor(t.id);ts.appendChild(row);
  }} else ts.insertAdjacentHTML('beforeend','<p class="hint">You hold no cities. Click any city on the map and take it, or just direct the realm.</p>');
  const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='▶ Sim';btn.onclick=endTurn;e.appendChild(btn);
+ const tools=addSec(b,'Tools');
+ const ex=document.createElement('button');ex.className='act';ex.textContent='📷 Save map image';ex.onclick=exportMap;tools.appendChild(ex);
  const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,14).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm awaits your hand.</p>');
+}
+function exportMap(){        // save the current view as a PNG the player can share
+ try{const url=cv.toDataURL('image/png');const a=document.createElement('a');
+  a.href=url;a.download='sundered-crown-map.png';document.body.appendChild(a);a.click();a.remove();
+  log2('Saved this view as an image — zoom out first to capture the whole realm.','gold');}
+ catch(e){log2('Could not export the map image.','bad');}
 }
 function dragonFt(a){return a.dragons&&a.dragons[0]&&a.dragons[0].ft;}
 function showArmyPanel(){
@@ -3312,7 +3336,7 @@ function showArmyPanel(){
  selTown=null;selShip=null;
  const isDragon=dragonFt(a)&&troopsTotal(a.troops)<=0;
  const b=panelShell(a.player?R.meName:bannerName(a.owner),isDragon?(a.player?'Your Dragon':bannerName(a.owner)+'’s dragon'):(a.player?'Your Host':bannerName(a.owner)+'’s host'),
-  (isDragon?dragonFt(a)+'-foot dragon':fmt(troopsTotal(a.troops))+' soldiers'+(a.dragons.length?' · '+a.dragons.length+' dragon(s)':''))+(a.dest?' · marching':' · encamped')+(a.homeName?' · from '+a.homeName:''));
+  (isDragon?dragonFt(a)+'-foot dragon':fmt(troopsTotal(a.troops))+' soldiers'+(a.dragons.length?' · '+a.dragons.length+' dragon(s)':''))+' · ⚔ '+fmt(armyStrength(a))+' strength'+(a.dest?' · marching':' · encamped')+(a.homeName?' · from '+a.homeName:''));
  if(a.dragons.length){const d=addSec(b,'Dragons');d.insertAdjacentHTML('beforeend',a.dragons.map(x=>'<div class="kv"><span>'+(x.ft?x.ft+'-foot dragon':'Dragon')+'</span><b>power '+fmt(dragonPower(x))+'</b></div>').join(''));}
  {                                    // you direct every house — any host takes orders
   const o=addSec(b,'Orders'+(a.player?'':' · '+bannerName(a.owner)));
