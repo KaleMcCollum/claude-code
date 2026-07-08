@@ -2591,6 +2591,16 @@ function endTurn(){
  realmHUD();refreshRealmView();needsDraw=true;
 }
 function realmShare(){const total=world.towns.length;let held=0;for(const t of world.towns)if(t.owner==='player')held++;return {held,total,pct:total?Math.round(held/total*100):0};}
+// realm-wide totals for a house across all its holdings
+function houseStats(owner){
+ let pop=0,gold=0,food=0,cities=0,towns=0,villages=0,caps=0,holdings=0,soldiers=0;
+ for(const t of world.towns){if(t.owner!==owner)continue;holdings++;
+  pop+=t.population||0;gold+=t.gold||0;food+=t.food||0;soldiers+=troopsTotal(t.garrison||{});
+  if(t.type==='capital')caps++;else if(t.type==='city')cities++;else if(t.type==='town')towns++;else villages++;}
+ for(const a of armies)if(a.owner===owner)soldiers+=troopsTotal(a.troops);
+ return {owner,name:bannerName(owner),color:bannerColor(owner),holdings,pop,gold,food,cities,towns,villages,caps,soldiers};
+}
+function allHouseStats(){const owners=[...new Set(world.towns.map(t=>t.owner))];return owners.map(houseStats).filter(h=>h.holdings>0);}
 
 /* the smallfolk raise their own homes and fields — you never micromanage survival */
 function autoDevelop(t){
@@ -3383,6 +3393,7 @@ function showRealmPanel(){
   row.onclick=()=>showTownFor(t.id);ts.appendChild(row);
  }} else ts.insertAdjacentHTML('beforeend','<p class="hint">You hold no cities. Click any city on the map and take it, or just direct the realm.</p>');
  const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='▶ Sim';btn.onclick=endTurn;e.appendChild(btn);
+ const rk=document.createElement('button');rk.className='act';rk.style.marginTop='6px';rk.textContent='🏆 House rankings';rk.onclick=()=>showRankingsPanel();e.appendChild(rk);
  if(paintMode){
   const ps=addSec(b,'🖌 Painting realms');
   ps.insertAdjacentHTML('beforeend','<p class="hint">Tap towns to hand them to <b style="color:'+bannerColor(paintOwner)+'">'+bannerName(paintOwner)+'</b>.'+(paintSample?' <b>Now tap a town to pick its house as the brush.</b>':'')+'</p>');
@@ -3407,6 +3418,28 @@ function showRealmPanel(){
   }
  }
  const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,14).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm awaits your hand.</p>');
+}
+let rankSort='pop';
+function showRankingsPanel(){
+ selArmy=selTown=selShip=null;
+ const b=panelShell('The Great Houses','Rankings','The mightiest houses of the realm — tap a house to fly to its seat.');
+ const opts=[['pop','People'],['gold','Gold'],['cities','Cities'],['food','Food'],['soldiers','Soldiers']];
+ const seg=document.createElement('div');seg.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px';
+ for(const o of opts){const btn=document.createElement('button');btn.className='act';btn.textContent=o[1];btn.style.cssText='flex:1 1 30%';
+  if(rankSort!==o[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
+  btn.onclick=()=>{rankSort=o[0];showRankingsPanel();};seg.appendChild(btn);}
+ addSec(b,'Sort by').appendChild(seg);
+ const rows=allHouseStats().sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
+ const val=r=>rankSort==='gold'?fmt(r.gold)+'\u{1F7E8}':rankSort==='food'?fmt(r.food)+'\u{1F35E}':rankSort==='cities'?r.cities+' cities':rankSort==='soldiers'?fmt(r.soldiers)+'⚔':fmt(r.pop)+'\u{1F465}';
+ const list=addSec(b,rows.length+' houses');
+ rows.slice(0,50).forEach((r,i)=>{
+  const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer';
+  row.innerHTML='<div class="dl" style="min-width:0"><b style="color:'+r.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(i+1)+'. '+r.name+'</b><span>'+(r.caps?'\u{1F451} ':'')+r.cities+'c · '+r.towns+'t · '+r.villages+'v</span></div><b style="flex:none">'+val(r)+'</b>';
+  row.onclick=()=>{const big=world.towns.filter(t=>t.owner===r.owner).sort((a,c)=>(c.population||0)-(a.population||0))[0];if(big){cam.s=Math.max(cam.s,2);centerOn(big.x,big.y);showTownFor(big.id);}};
+  list.appendChild(row);
+ });
+ const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>showRealmPanel();back.appendChild(bb);
+ window.revealPanel&&revealPanel();needsDraw=true;
 }
 function exportMap(){        // save the current view as a PNG the player can share
  try{const url=cv.toDataURL('image/png');const a=document.createElement('a');
@@ -3521,6 +3554,18 @@ function showTownPanel(){
  const st=document.createElement('div');st.className='chips';
  st.innerHTML='<span class="chip2">\u{1F465} '+fmt(t.population||0)+'</span><span class="chip2">\u{1F7E8} '+fmt(t.gold||0)+'</span><span class="chip2">\u{1F35E} '+fmt(t.food||0)+'</span><span class="chip2">⚔ '+fmt(troopsTotal(t.garrison||{}))+' garrison</span>'+(t.keep?'<span class="chip2">\u{1F3F0} keep '+(t.keepCap?fmt(t.keepCap):'')+'</span>':'');
  b.appendChild(st);
+ // ---- the house that holds this city, realm-wide ----
+ const hs=houseStats(t.owner),hn=bannerName(t.owner),ranks=allHouseStats();
+ const rankBy=(k)=>ranks.slice().sort((a,c)=>(c[k]||0)-(a[k]||0)).findIndex(x=>x.owner===t.owner)+1;
+ const hsec=addSec(b,'House of '+hn.replace(/^House\s+/i,''));
+ hsec.insertAdjacentHTML('beforeend',
+  '<div class="kv"><span>\u{1F465} People</span><b>'+fmt(hs.pop)+'</b></div>'+
+  '<div class="kv"><span>\u{1F7E8} Gold</span><b>'+fmt(hs.gold)+'</b></div>'+
+  '<div class="kv"><span>\u{1F35E} Food</span><b>'+fmt(hs.food)+'</b></div>'+
+  '<div class="kv"><span>⚔ Soldiers</span><b>'+fmt(hs.soldiers)+'</b></div>'+
+  '<div class="kv"><span>\u{1F3F0} Holdings</span><b>'+(hs.caps?hs.caps+' capital · ':'')+hs.cities+' cities · '+hs.towns+' towns · '+hs.villages+' villages</b></div>'+
+  '<div class="kv"><span>\u{1F3C6} Rank</span><b>#'+rankBy('pop')+' by people · #'+rankBy('gold')+' by gold</b></div>');
+ const rkb=document.createElement('button');rkb.className='act';rkb.textContent='🏆 See all house rankings';rkb.onclick=()=>showRankingsPanel();hsec.appendChild(rkb);
  // ---- name this place & its house ----
  const nm=addSec(b,'Name');
  textRow(nm,'Town',t.name,v=>{t.name=v;log2('The town is renamed '+v+'.');needsDraw=true;refreshRealmView();});
