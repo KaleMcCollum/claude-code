@@ -1728,7 +1728,7 @@ function endPointer(e){
     else if(t){const wn=waterNear(t.x,t.y,60);if(wn){selS.dest=wn;log2('The ship makes for '+t.name+'’s harbour.');}refreshRealmView();needsDraw=true;}
     else{log2('Ships sail only on open water.','bad');}
    }
-   else if(selA&&selA.player){          // commanding the selected host
+   else if(selA){                       // commanding the selected host (any house — you direct all)
     if(armyCmd==='attack'){            // ATTACK: pick a host (even your own) or town
      if(a&&a.id!==selA.id){
       if(a.owner!==selA.owner&&areAllied(selA.owner,a.owner)){log2('You are allied with '+bannerName(a.owner)+'. Break the alliance first.','bad');}
@@ -3304,11 +3304,11 @@ function showArmyPanel(){
  const a=armies.find(x=>x.id===selArmy);if(!a){showRealmPanel();return;}
  selTown=null;selShip=null;
  const isDragon=dragonFt(a)&&troopsTotal(a.troops)<=0;
- const b=panelShell(a.player?R.meName:bannerName(a.owner),isDragon?'Your Dragon':(a.player?'Your Host':bannerName(a.owner)+'’s host'),
+ const b=panelShell(a.player?R.meName:bannerName(a.owner),isDragon?(a.player?'Your Dragon':bannerName(a.owner)+'’s dragon'):(a.player?'Your Host':bannerName(a.owner)+'’s host'),
   (isDragon?dragonFt(a)+'-foot dragon':fmt(troopsTotal(a.troops))+' soldiers'+(a.dragons.length?' · '+a.dragons.length+' dragon(s)':''))+(a.dest?' · marching':' · encamped')+(a.homeName?' · from '+a.homeName:''));
  if(a.dragons.length){const d=addSec(b,'Dragons');d.insertAdjacentHTML('beforeend',a.dragons.map(x=>'<div class="kv"><span>'+(x.ft?x.ft+'-foot dragon':'Dragon')+'</span><b>power '+fmt(dragonPower(x))+'</b></div>').join(''));}
- if(a.player){
-  const o=addSec(b,'Orders');
+ {                                    // you direct every house — any host takes orders
+  const o=addSec(b,'Orders'+(a.player?'':' · '+bannerName(a.owner)));
   // Move / Attack / Merge / Ally command toggle
   const seg=document.createElement('div');seg.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px';
   const mkCmd=(label,mode)=>{const btn=document.createElement('button');btn.className='act';btn.textContent=label;btn.style.cssText='flex:1 1 40%';
@@ -3335,7 +3335,7 @@ function showShipPanel(){
  const s=ships.find(x=>x.id===selShip);if(!s){selShip=null;showRealmPanel();return;}
  selTown=null;selArmy=null;
  const near=coastTownNear(s.x,s.y,30);
- const b=panelShell(R.meName,'Your Boat',troopsTotal(s.troops)+' / '+s.cap+' soldiers aboard'+(s.dest?' · sailing':' · at anchor'));
+ const b=panelShell(s.player?R.meName:bannerName(s.owner),s.player?'Your Boat':bannerName(s.owner)+'’s boat',troopsTotal(s.troops)+' / '+s.cap+' soldiers aboard'+(s.dest?' · sailing':' · at anchor'));
  const act=addSec(b,near?('Beside '+near.name):'In open water');
  if(near){
   const room=s.cap-troopsTotal(s.troops);
