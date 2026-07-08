@@ -3086,8 +3086,9 @@ function drawDragonToken(ctx,x,y,d){
  ctx.fillStyle='#e9c24a';ctx.beginPath();ctx.arc(-0.18*s,-4.6*s,0.075*s,0,7);ctx.arc(0.18*s,-4.6*s,0.075*s,0,7);ctx.fill();
  ctx.restore();
 }
-// a raised host/boat/dragon flies the house of the town it came from
-function entHouse(e){if(e&&e.home&&F[e.home])return{name:F[e.home].name,color:F[e.home].color};return{name:bannerName(e.owner),color:bannerColor(e.owner)};}
+// a host/boat/dragon flies the banner of the house that OWNS it (not the town's
+// original house) — so your hosts always fly your colours, and each faction its own.
+function entHouse(e){return{name:bannerName(e.owner),color:bannerColor(e.owner)};}
 function drawArmyToken(ctx,a){
  const house=entHouse(a),col=house.color,tot=troopsTotal(a.troops);
  const dragonOnly=tot<=0&&a.dragons&&a.dragons.length;
