@@ -2830,15 +2830,20 @@ function stepArmy(a){
  if(Math.hypot(a.dest.x-a.x,a.dest.y-a.y)<2&&!a.roadPath)a.arrived=true;
 }
 function moveArmies(){
+ // a host under an attack order chases its target; if the target is gone, the order lapses
+ for(const a of armies){if(a.attackTarget){const tgt=armies.find(x=>x.id===a.attackTarget);
+  if(tgt&&(troopsTotal(tgt.troops)>0||(tgt.dragons&&tgt.dragons.length))){a.dest={x:tgt.x,y:tgt.y,townId:null};a.roadPath=null;}
+  else{a.attackTarget=null;a.attacking=false;}}}
  // hosts never go hungry in the sandbox — they march as long as you command
  for(const a of armies)stepArmy(a);
  for(const s of ships)stepShip(s);
  // battles: armies that meet
  for(let i=0;i<armies.length;i++)for(let j=i+1;j<armies.length;j++){
   const a=armies[i],b=armies[j];
-  // friends & allies only clash when one has been explicitly ordered to attack the other
+  // a clash happens ONLY when one host was explicitly ordered to attack the other —
+  // marching toward or past someone never starts a fight on its own
   const targeted=(a.attacking&&a.attackTarget===b.id)||(b.attacking&&b.attackTarget===a.id);
-  if((a.owner===b.owner||areAllied(a.owner,b.owner))&&!targeted)continue;
+  if(!targeted)continue;
   const force=x=>troopsTotal(x.troops)>0||(x.dragons&&x.dragons.length>0); // dragons count as a host
   if(dist2(a,b)<10*10&&force(a)&&force(b))resolveField(a,b);
  }
