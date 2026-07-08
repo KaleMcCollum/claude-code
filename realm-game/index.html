@@ -3364,34 +3364,34 @@ function refreshRealmView(){if(selShip)showShipPanel();else if(selArmy)showArmyP
 function endOrder(){selArmy=null;selShip=null;selTown=null;showRealmPanel();if(window.collapsePanel)collapsePanel();needsDraw=true;}
 function showRealmPanel(){
  selArmy=null;selTown=null;selShip=null;
- const sh=realmShare();
- const b=panelShell(R.meName,'Your realm','Your sandbox realm — click any city to set its people, gold and food, or raise hosts, boats and dragons from it.');
- const obj=addSec(b,'The Realm · you hold '+sh.held+' of '+sh.total);
- obj.insertAdjacentHTML('beforeend','<div style="height:7px;border-radius:4px;background:rgba(0,0,0,.18);overflow:hidden"><div style="height:100%;width:'+Math.min(100,sh.pct)+'%;background:linear-gradient(90deg,#b7902f,#e6c34a)"></div></div>');
- let g=0,f=0,p=0;for(const t of myTowns()){g+=t.gold||0;f+=t.food||0;p+=t.population||0;}
- const s=addSec(b,'Your Holdings');
- s.insertAdjacentHTML('beforeend',
-  '<div class="kv"><span>\u{1F7E8} Gold</span><b>'+fmt(g)+'</b></div>'+
-  '<div class="kv"><span>\u{1F35E} Food</span><b>'+fmt(f)+'</b></div>'+
-  '<div class="kv"><span>\u{1F465} People</span><b>'+fmt(p)+'</b></div>'+
-  '<div class="kv"><span>⚔ Hosts afield</span><b>'+armies.filter(a=>a.owner==='player').length+'</b></div>'+
-  '<div class="kv"><span>⚓ Boats</span><b>'+ships.filter(x=>x.owner==='player').length+'</b></div>');
+ const b=panelShell('Vaelmore','The Realm','Direct the whole story — click any city to set its people, gold and food, or raise hosts, boats and dragons from any house.');
+ // realm-wide overview (not tied to any one house)
+ let pop=0,gold=0,food=0,cities=0,towns=0,vills=0,caps=0;
+ for(const t of world.towns){pop+=t.population||0;gold+=t.gold||0;food+=t.food||0;
+  if(t.type==='capital')caps++;else if(t.type==='city')cities++;else if(t.type==='town')towns++;else vills++;}
+ const houses=new Set(world.towns.map(t=>t.owner)).size;
+ const ov=addSec(b,'The Realm at a glance');
+ ov.insertAdjacentHTML('beforeend',
+  '<div class="kv"><span>\u{1F3F0} Settlements</span><b>'+(caps?caps+' capital · ':'')+cities+' cities · '+towns+' towns · '+vills+' villages</b></div>'+
+  '<div class="kv"><span>\u{1F6E1} Great houses</span><b>'+houses+'</b></div>'+
+  '<div class="kv"><span>\u{1F465} People</span><b>'+fmt(pop)+'</b></div>'+
+  '<div class="kv"><span>\u{1F7E8} Gold</span><b>'+fmt(gold)+'</b></div>'+
+  '<div class="kv"><span>⚔ Hosts afield</span><b>'+armies.length+'</b></div>');
+ // the leading houses, straight to the rankings
+ const top=allHouseStats().sort((a,c)=>c.pop-a.pop).slice(0,3);
+ if(top.length){const ts=addSec(b,'Leading houses');
+  for(let i=0;i<top.length;i++){const r=top[i];const row=document.createElement('div');row.className='deal';row.style.cursor='pointer';
+   row.innerHTML='<div class="dl"><b style="color:'+r.color+'">'+(i+1)+'. '+r.name+'</b><span>'+(r.caps?'\u{1F451} ':'')+r.cities+'c · '+r.towns+'t · '+r.villages+'v · \u{1F465} '+fmt(r.pop)+'</span></div>';
+   row.onclick=()=>{const big=world.towns.filter(t=>t.owner===r.owner).sort((a,c)=>(c.population||0)-(a.population||0))[0];if(big){cam.s=Math.max(cam.s,2);centerOn(big.x,big.y);showTownFor(big.id);}};ts.appendChild(row);}
+ }
  if(alliances.size){
   const al=addSec(b,'Alliances · '+alliances.size);
-  const names=[...alliances].map(k=>{const pr=k.split('|'),other=pr[0]==='player'?pr[1]:(pr[1]==='player'?pr[0]:null);
-   return other?bannerName(other):bannerName(pr[0])+' & '+bannerName(pr[1]);});
-  al.insertAdjacentHTML('beforeend','<p class="hint">Sworn with: '+names.join(', ')+'. Allied hosts won’t fight and stand together in battle.</p>');
+  const names=[...alliances].map(k=>{const pr=k.split('|');return bannerName(pr[0])+' & '+bannerName(pr[1]);});
+  al.insertAdjacentHTML('beforeend','<p class="hint">'+names.join('; ')+'. Allied hosts won’t fight and stand together in battle.</p>');
   const ab=document.createElement('button');ab.className='act';ab.textContent='Disband all alliances';
   ab.onclick=()=>{breakAlliances();log2('All alliances are dissolved.','bad');showRealmPanel();needsDraw=true;};
   al.appendChild(ab);
  }
- const tw=myTowns().slice().sort((a,c)=>TIER_ORDER[c.type]-TIER_ORDER[a.type]||(c.population||0)-(a.population||0));
- const ts=addSec(b,'Your Cities · '+tw.length);
- if(tw.length){for(const t of tw){
-  const row=document.createElement('div');row.className='deal';row.style.cursor='pointer';
-  row.innerHTML='<div class="dl"><b>'+t.name+'</b><span>'+t.type+' · \u{1F465} '+fmt(t.population||0)+' · ⚔ '+fmt(troopsTotal(t.garrison||{}))+'</span></div>';
-  row.onclick=()=>showTownFor(t.id);ts.appendChild(row);
- }} else ts.insertAdjacentHTML('beforeend','<p class="hint">You hold no cities. Click any city on the map and take it, or just direct the realm.</p>');
  const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='▶ Sim';btn.onclick=endTurn;e.appendChild(btn);
  const rk=document.createElement('button');rk.className='act';rk.style.marginTop='6px';rk.textContent='🏆 House rankings';rk.onclick=()=>showRankingsPanel();e.appendChild(rk);
  if(paintMode){
