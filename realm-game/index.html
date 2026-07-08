@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>The Sundered Crown</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%238a2f2b'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='%23ead9ac'%3E♛%3C/text%3E%3C/svg%3E">
 <style>
@@ -220,15 +220,53 @@
 
   @media (max-width:940px){
     #ledger{width:228px}
-    #locpanel{width:290px}
+    #locpanel{width:300px}
   }
-  @media (max-width:740px){
-    #topbar{gap:9px;padding:0 9px}
+  #sheetgrip{display:none}
+  #panelToggle{display:none}
+  #simFab{position:fixed;left:12px;bottom:12px;z-index:24;display:flex;align-items:center;gap:5px;
+    background:var(--wax);color:#f2e2c0;border:1px solid rgba(0,0,0,.25);border-radius:22px;padding:10px 17px;
+    font-family:var(--display);font-size:13px;letter-spacing:.1em;box-shadow:0 3px 12px rgba(0,0,0,.55);cursor:pointer}
+  #simFab:hover{background:var(--wax-deep)}
+  #simFab:active{transform:translateY(1px)}
+  @media (max-width:760px), (pointer:coarse){
+    #topbar{gap:6px;padding:0 8px;height:44px;overflow:hidden}
     #topbar .title{display:none}
-    #ledger{left:8px;right:8px;width:auto;top:auto;bottom:8px;max-height:34vh}
+    #topbar .chip{font-size:12px;padding:0}
+    #c-day{display:none}
+    .tbtn{padding:7px 8px;font-size:12px}
+    /* the map editor is a desktop tool — keep it out of the way on phones */
+    #btn-dev,#btn-help{display:none}
+    #devbar{display:none!important}
+    /* keep the Sim button clear of the bottom sheet */
+    #simFab{bottom:calc(66vh + 8px);transition:bottom .22s ease;padding:9px 15px}
+    body.sheetdown #simFab{bottom:70px}
+    #ledger{left:8px;right:8px;width:auto;top:auto;bottom:8px;max-height:32vh}
     #ledger.min .scroll{display:none}
-    #locpanel{left:8px;right:8px;width:auto;top:54px;bottom:auto;max-height:52vh}
+    /* the side panel becomes a bottom sheet you can drag down */
+    #locpanel{left:0;right:0;width:auto;top:auto;bottom:0;max-height:66vh;border-radius:16px 16px 0 0;
+      border-bottom:none;box-shadow:0 -8px 30px rgba(0,0,0,.5);transition:transform .22s ease;padding-top:14px}
+    #sheetgrip{display:block;position:absolute;top:6px;left:50%;transform:translateX(-50%);
+      width:44px;height:5px;border-radius:3px;background:rgba(120,95,50,.5);z-index:2}
+    #locpanel .head{padding-top:6px}
+    body.sheetdown #locpanel{transform:translateY(calc(100% - 60px))}
+    #locpanel .body{padding-bottom:24px}
+    /* bigger tap targets */
+    .act{padding:9px 14px;font-size:12px}
+    .shoprow{padding:9px 2px}
+    .shoprow .sn{font-size:14px}
+    input[type=number],input[type=text],select{font-size:16px;padding:7px 8px}
+    input[type=range]{height:26px}
+    /* floating button to show/hide the sheet and reach the map */
+    #panelToggle{display:flex;align-items:center;justify-content:center;position:fixed;right:10px;z-index:22;
+      bottom:calc(66vh + 8px);width:44px;height:44px;border-radius:50%;border:none;
+      background:var(--wax);color:#f2e2c0;font-size:18px;box-shadow:0 3px 10px rgba(0,0,0,.5);transition:bottom .22s ease}
+    body.sheetdown #panelToggle{bottom:70px}
+    /* modals fit the screen */
+    .letter{max-width:96vw!important;max-height:90vh;overflow-y:auto;padding:18px 16px}
+    #kdCanvas{max-width:100%;height:auto}
   }
+  @media (max-width:760px){ #topbar .title{display:none} }
   @media (prefers-reduced-motion:reduce){
     *{transition:none!important;animation:none!important}
   }
@@ -320,6 +358,7 @@
 </aside>
 
 <aside id="locpanel" style="display:none">
+  <div id="sheetgrip"></div>
   <div class="head">
     <div class="rg" id="p-region"></div>
     <h3 id="p-name"></h3>
@@ -327,6 +366,8 @@
   </div>
   <div class="body" id="p-body"></div>
 </aside>
+<button id="panelToggle" title="Show / hide panel" aria-label="Show or hide the panel">▾</button>
+<button id="simFab" title="Advance the board" style="display:none">▶ Sim</button>
 
 <div class="veil hidden" id="modal">
   <div class="letter">
@@ -586,6 +627,7 @@ function isLand(x,y){if(!LANDMASK)return false;const gx=Math.floor(x/W*LANDMASK.
  return gx>=0&&gy>=0&&gx<LANDMASK.gw&&gy<LANDMASK.gh&&LANDMASK.mask[gy*LANDMASK.gw+gx]>=1;}
 function isLandFirm(x,y){return isLand(x,y)&&isLand(x-6,y)&&isLand(x+6,y)&&isLand(x,y-6)&&isLand(x,y+6);}
 function nearWater(x,y){for(const[dx,dy]of[[16,0],[-16,0],[0,16],[0,-16],[12,12],[-12,-12]])if(!isLand(x+dx,y+dy))return true;return false;}
+function nearWaterR(x,y,r){for(let a=0;a<12;a++){const t=a/12*Math.PI*2;if(!isLand(x+Math.cos(t)*r,y+Math.sin(t)*r))return true;}return false;}
 const GPRE=['Ash','Black','Cold','Grey','Green','Red','Stone','Thorn','Oak','Elm','Fen','Mill','Wren','Dun','Har','Wester','Salt','Wind','Crow','Fox','Hart','Rye','Barrow','Withy','Nor','Deep','High','Bram','Moss','Reed','Hazel','Raven','Sparrow','Weir','Fell','Peat','Sled','Tarn','Birch','Alder'];
 const GSUF=['brook','bury','ford','ton','ham','wick','hollow','mere','moor','gate','beck','dale','cross','marsh','field','stead','worth','by','den','mill','bridge','hill','combe','stone','fen','vale','burn','ridge','row','hurst','well'];
 const RADJ=['Frost','Sunset','Storm','Amber','Green','Iron','Shadow','Golden','Wolf','Bramble','Misty','Broken','Silver','Weeping','Thunder'];
@@ -598,7 +640,10 @@ function generateWorld(){
   const x=60+Math.random()*(W-120),y=200+Math.random()*(H-240);
   if(!isLandFirm(x,y))continue;
   if(pts.some(p=>(p.x-x)**2+(p.y-y)**2<MIND*MIND))continue;
-  if(!nearWater(x,y)&&Math.random()<0.55)continue; // bias toward coasts/rivers
+  // strongly favour the water's edge: almost every holdfast sits by coast, river or lake
+  const nw=nearWater(x,y), nwFar=nearWaterR(x,y,26);
+  if(!nw){ if(!nwFar || Math.random()<0.9) continue;  // a rare inland town, and only near-ish water
+  } else if(Math.random()<0.12) continue;             // thin out the very densest coast a touch
   pts.push({x:Math.round(x),y:Math.round(y)});
  }
  // tiers: spread 5 seats, some cities, towns, rest villages
@@ -1390,8 +1435,9 @@ function drawLocGlyph(g,l){
   g.beginPath();g.arc(x,y,6.4,0,7);g.fillStyle=HALO;g.fill();
   g.beginPath();g.arc(x,y,5,0,7);g.strokeStyle='#6e5417';g.lineWidth=1.3;g.stroke();
   g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle=GOLD;g.fill();g.strokeStyle='#5b4318';g.lineWidth=0.7;g.stroke();
- }else if(ty==='keep'){ // a fortress with no town of its own (Dragonstone-style)
-  if(l.keepDesign)drawKeepPlaced(g,x,y+2,l.keepDesign);else drawKeep(g,x,y+2,l.keep||3);
+ }else if(ty==='keep'){ // legacy fortress marker — render a designed keep, else a plain town dot
+  if(l.keepDesign)drawKeepPlaced(g,x,y+2,l.keepDesign);
+  else{g.beginPath();g.arc(x,y,4.4,0,7);g.fillStyle='rgba(238,228,196,.85)';g.fill();g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle='#9c4331';g.strokeStyle='#3a2c1a';g.lineWidth=0.8;g.fill();g.stroke();}
  }else if(ty==='town'){
   g.beginPath();g.arc(x,y,4.4,0,7);g.fillStyle=HALO;g.fill();
   g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle='#9c4331';g.strokeStyle=INK;g.lineWidth=0.8;g.fill();g.stroke();
@@ -1401,7 +1447,8 @@ function drawLocGlyph(g,l){
   g.beginPath();g.arc(x,y,0.6,0,7);g.fillStyle='#5b4530';g.fill();
  }
  // a keep on a settlement: small castle tucked below-right of the main mark
- if(ty!=='keep'&&l.keep>0){const kx=x+4+l.keep*0.4,ky=y+4.5+l.keep*0.4;if(l.keepDesign)drawKeepPlaced(g,kx,ky,l.keepDesign);else drawKeep(g,kx,ky,l.keep);}
+ // ONLY a keep you designed shows on the map — no stray castles/palisades
+ if(ty!=='keep'&&l.keep>0&&l.keepDesign){const kx=x+4+l.keep*0.4,ky=y+4.5+l.keep*0.4;drawKeepPlaced(g,kx,ky,l.keepDesign);}
  // the great places (and any keep) carry a baked label; towns & villages label on zoom/hover
  if(ty==='capital'||ty==='city'||ty==='hill'||ty==='keep')drawLocLabel(g,l);
 }
@@ -1649,10 +1696,10 @@ function endPointer(e){
     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});}
     refreshRealmView();needsDraw=true;
    }
-   else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();needsDraw=true;}
-   else if(a){selArmy=a.id;selShip=null;selTown=null;showArmyPanel();needsDraw=true;}
-   else if(t){selTown=t.id;selArmy=null;selShip=null;showTownPanel();needsDraw=true;}
-   else {selArmy=null;selShip=null;selTown=null;showRealmPanel();needsDraw=true;}
+   else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+   else if(a){selArmy=a.id;selShip=null;selTown=null;showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+   else if(t){selTown=t.id;selArmy=null;selShip=null;showTownPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+   else {selArmy=null;selShip=null;selTown=null;showRealmPanel();window.revealPanel&&revealPanel();needsDraw=true;}
   }else if(!drag.moved&&S&&!anim&&!modalOpen()){
    const w=s2w(e.clientX,e.clientY);
    for(const nid of neighborsOf(S.loc)){
@@ -1673,6 +1720,15 @@ cv.addEventListener('wheel',e=>{
  cam.x+=before.x-after.x;cam.y+=before.y-after.y;clampCam();needsDraw=true;
 },{passive:false});
 addEventListener('resize',()=>{resize();clampCam();});
+// bottom-sheet toggle for mobile
+(function(){
+ const tog=document.getElementById('panelToggle'),grip=document.getElementById('sheetgrip');
+ function setDown(down){document.body.classList.toggle('sheetdown',down);if(tog)tog.textContent=down?'▴':'▾';}
+ if(tog)tog.onclick=()=>setDown(!document.body.classList.contains('sheetdown'));
+ if(grip)grip.onclick=()=>setDown(!document.body.classList.contains('sheetdown'));
+ window.revealPanel=()=>setDown(false);
+ const sf=document.getElementById('simFab');if(sf)sf.onclick=()=>{if(R)endTurn();};
+})();
 
 /* ================= modal ================= */
 function modalOpen(){return !$('#modal').classList.contains('hidden');}
@@ -2297,8 +2353,10 @@ function enterRealm(o){
  F={};
  const used=new Set();
  for(const t of world.towns){
-  const typ=(t.type&&CITY_STATS[t.type])?t.type:'village';
-  t.type=typ; t.keep=Math.min(t.keep||0, typ==='capital'?3:typ==='city'?2:typ==='town'?1:0);
+  // fold the odd standalone keeps/hill-seats into ordinary settlements — no stray castles on the map
+  let typ=(t.type&&CITY_STATS[t.type])?t.type:'village';
+  if(typ==='keep')typ='town'; if(typ==='hill')typ='city';
+  t.type=typ; t.keep=0; t.keepDesign=null; t.keepCap=0;   // keeps only appear where YOU design one
   t.terrain=terrainAt(t.x,t.y);
   const st=CITY_STATS[typ], r=mulberry32(hashStr(t.id)), vary=0.7+r()*0.6;   // cities vary ±30%
   t.population=Math.round(st.pop*vary);
@@ -2318,6 +2376,7 @@ function enterRealm(o){
  armies=[];armySeq=1;ships=[];shipSeq=1;selShip=null;R.host=null;
  $('#create').classList.add('hidden');$('#topbar').style.display='flex';$('#ledger').style.display='none';
  toggleDev(false);          // the map editor stays out of the way while you play
+ {const sf=document.getElementById('simFab');if(sf)sf.style.display='flex';}
  selArmy=null;selTown=null;selShip=null;RLOG=[];
  log2('The realm lies before you. Click any city to set its people and coffers — or raise a host from it.','gold');
  cam.s=Math.max(fitScale,1.7);centerOn(start.x,start.y);
@@ -2608,11 +2667,11 @@ function openKeepDesigner(id){
  const CW=360,CH=330,cx=180,groundY=250,SC=13;
  let brush='keep',dragIdx=-1,dox=0,doy=0;
  const pal=PIECES.map(([k,n])=>'<div class="kd-pal" data-k="'+k+'" title="'+n+'" style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:grab;padding:3px;border-radius:6px;border:1px solid transparent"><canvas width="46" height="46" style="background:#e9dcc0;border-radius:5px"></canvas><span style="font-size:9px;color:#5a4a2c;text-align:center;line-height:1">'+n+'</span></div>').join('');
- const body='<div style="display:flex;gap:12px;align-items:flex-start;text-align:left">'+
-  '<div style="flex:none"><canvas id="kdCanvas" width="'+CW+'" height="'+CH+'" style="background:#efe3c7;border-radius:8px;touch-action:none;cursor:crosshair"></canvas>'+
+ const body='<div style="display:flex;gap:12px;align-items:flex-start;text-align:left;flex-wrap:wrap">'+
+  '<div style="flex:1 1 300px;min-width:0"><canvas id="kdCanvas" width="'+CW+'" height="'+CH+'" style="background:#efe3c7;border-radius:8px;touch-action:none;cursor:crosshair;max-width:100%"></canvas>'+
    '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;font-size:12px">Colour <input type="color" id="kdCol" value="'+design.color+'"> Capacity <input type="number" id="kdCap" min="0" step="100" value="'+(t.keepCap||1000)+'" style="width:84px"> <button class="btn" id="kdUndo">Undo</button> <button class="btn" id="kdClear">Clear</button></div>'+
-   '<p style="font-size:11px;margin:6px 0 0;color:#6a5a3c">Pick a piece, then click the frame to drop it. Drag placed pieces to move them. Right-click a piece to remove it.</p></div>'+
-  '<div style="flex:1;max-height:320px;overflow:auto"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px" id="kdPalette">'+pal+'</div></div>'+
+   '<p style="font-size:11px;margin:6px 0 0;color:#6a5a3c">Pick a piece, then tap the frame to drop it. Drag placed pieces to move them. Right-click (or long-press) a piece to remove it.</p></div>'+
+  '<div style="flex:1 1 200px;min-width:170px;max-height:320px;overflow:auto"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px" id="kdPalette">'+pal+'</div></div>'+
   '</div>';
  modal('Design the Keep',body,[['Save',()=>{t.keepDesign={color:$('#kdCol').value,pieces:design.pieces};t.keepCap=Math.max(0,Math.floor(+$('#kdCap').value||0));t.keep=Math.max(1,t.keep||1);rebuildStatic();closeModal();log2('The keep at '+t.name+' is built.','gold');realmHUD();refreshRealmView();needsDraw=true;}],['Cancel',()=>closeModal()]],'🏰');
  const L=document.querySelector('#modal .letter');if(L)L.style.maxWidth='700px';
@@ -2631,12 +2690,17 @@ function openKeepDesigner(id){
   el.onclick=()=>{brush=el.dataset.k;document.querySelectorAll('#kdPalette .kd-pal').forEach(x=>x.style.borderColor='transparent');el.style.borderColor='#b7902f';};
   if(el.dataset.k===brush)el.style.borderColor='#b7902f';
  });
+ let lpTimer=null,downX=0,downY=0,moved=false;
+ const clearLP=()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}};
  cv.addEventListener('contextmenu',e=>{e.preventDefault();const[px,py]=evPos(e);const i=hitAt(px,py);if(i>=0){design.pieces.splice(i,1);draw();}});
- cv.addEventListener('pointerdown',e=>{const[px,py]=evPos(e);let i=hitAt(px,py);
+ cv.addEventListener('pointerdown',e=>{const[px,py]=evPos(e);let i=hitAt(px,py);downX=px;downY=py;moved=false;
+  const existing=i>=0;
   if(i<0&&brush){const[ux,uy]=toU(px,py);design.pieces.push({k:brush,x:ux,y:uy});i=design.pieces.length-1;}
-  if(i>=0){dragIdx=i;const[bx,by]=baseP(design.pieces[i]);dox=px-bx;doy=py-by;try{cv.setPointerCapture(e.pointerId);}catch(_){}}draw();});
- cv.addEventListener('pointermove',e=>{if(dragIdx<0)return;const[px,py]=evPos(e);const[ux,uy]=toU(px-dox,py-doy);design.pieces[dragIdx].x=ux;design.pieces[dragIdx].y=uy;draw();});
- cv.addEventListener('pointerup',()=>{dragIdx=-1;});
+  if(i>=0){dragIdx=i;const[bx,by]=baseP(design.pieces[i]);dox=px-bx;doy=py-by;try{cv.setPointerCapture(e.pointerId);}catch(_){}
+   if(existing){const idx=i;lpTimer=setTimeout(()=>{if(!moved&&dragIdx===idx){design.pieces.splice(idx,1);dragIdx=-1;draw();}},550);}}
+  draw();});
+ cv.addEventListener('pointermove',e=>{if(dragIdx<0)return;const[px,py]=evPos(e);if(Math.abs(px-downX)+Math.abs(py-downY)>4){moved=true;clearLP();}const[ux,uy]=toU(px-dox,py-doy);design.pieces[dragIdx].x=ux;design.pieces[dragIdx].y=uy;draw();});
+ cv.addEventListener('pointerup',()=>{clearLP();dragIdx=-1;});
  $('#kdCol').oninput=draw;
  $('#kdUndo').onclick=()=>{design.pieces.pop();draw();};
  $('#kdClear').onclick=()=>{design.pieces.length=0;draw();};
@@ -2858,105 +2922,90 @@ function cancelSupply(i){const s=(R.supply||[])[i];if(!s)return;R.supply.splice(
 
 /* ---- tokens ---- */
 function drawDragonToken(ctx,x,y,d){
- const s=(d&&d.ft)?clamp(d.ft/38,0.55,4.8):({hatchling:0.45,drake:0.7,wyvern:1.0,wyrm:1.4}[d&&d.size]||0.6);
+ // much smaller on the map now; a 60ft drake is only a little larger than a host
+ const s=(d&&d.ft)?clamp(0.4+d.ft/330,0.4,2.2):(({hatchling:0.35,drake:0.5,wyvern:0.75,wyrm:1.0}[d&&d.size])||0.5);
  const col=(d&&d.color)||'#6d6f72';
  const lt=shade(col,0.38),ltr=shade(col,0.18),md=shade(col,-0.12),mdk=shade(col,-0.34),dk=shade(col,-0.56),ED='#0f0805';
  ctx.save();ctx.translate(x,y);ctx.lineJoin='round';ctx.lineCap='round';
- // soft cast shadow for depth
- ctx.save();ctx.globalAlpha=0.16;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(0.5*s,3.4*s,4.8*s,3.6*s,0,0,7);ctx.fill();ctx.restore();
- const tips=[[5.9,1.3],[4.5,2.45],[3.4,2.35],[2.3,2.3],[1.15,2.0]];
- const wristX=3.0,wristY=-1.2,rootX=0.5,rootY=-2.5;
+ ctx.save();ctx.globalAlpha=0.15;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(0.3*s,3.0*s,4.4*s,3.0*s,0,0,7);ctx.fill();ctx.restore();
+ const tips=[[5.6,1.3],[4.3,2.35],[3.2,2.25],[2.2,2.2],[1.1,1.9]];
+ const wristX=2.9,wristY=-1.1,rootX=0.5,rootY=-2.3;
  // ===== WINGS =====
  for(const dir of [-1,1]){ctx.save();ctx.scale(dir,1);
-  const wg=ctx.createRadialGradient(1.6*s,-1.2*s,0.3*s,3.9*s,0.9*s,7.2*s);wg.addColorStop(0,ltr);wg.addColorStop(0.62,md);wg.addColorStop(1,mdk);
-  ctx.fillStyle=wg;ctx.strokeStyle=ED;ctx.lineWidth=0.15*s;
+  const wg=ctx.createRadialGradient(1.5*s,-1.1*s,0.3*s,3.7*s,0.9*s,7*s);wg.addColorStop(0,ltr);wg.addColorStop(0.62,md);wg.addColorStop(1,mdk);
+  ctx.fillStyle=wg;ctx.strokeStyle=ED;ctx.lineWidth=0.14*s;
   ctx.beginPath();ctx.moveTo(rootX*s,rootY*s);
-  ctx.quadraticCurveTo(2.5*s,-2.6*s,3.5*s,-1.6*s);
-  ctx.quadraticCurveTo(4.9*s,-0.3*s,tips[0][0]*s,tips[0][1]*s);
+  ctx.quadraticCurveTo(2.4*s,-2.4*s,3.4*s,-1.5*s);
+  ctx.quadraticCurveTo(4.7*s,-0.3*s,tips[0][0]*s,tips[0][1]*s);
   for(let i=0;i<tips.length-1;i++){const a=tips[i],b=tips[i+1],mx=(a[0]+b[0])/2,my=Math.max(a[1],b[1])+0.4;ctx.quadraticCurveTo(mx*s,my*s,b[0]*s,b[1]*s);}
-  ctx.quadraticCurveTo(0.7*s,1.1*s,0.5*s,0.4*s);ctx.closePath();ctx.fill();ctx.stroke();
-  // membrane fold shading between alternate fingers
-  ctx.fillStyle='rgba(0,0,0,0.11)';
+  ctx.quadraticCurveTo(0.7*s,1.0*s,0.5*s,0.4*s);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.fillStyle='rgba(0,0,0,0.10)';
   for(let i=0;i<tips.length-1;i++){if(i%2)continue;const a=tips[i],b=tips[i+1],mx=(a[0]+b[0])/2,my=Math.max(a[1],b[1])+0.35;ctx.beginPath();ctx.moveTo(wristX*s,wristY*s);ctx.lineTo(a[0]*s,a[1]*s);ctx.quadraticCurveTo(mx*s,my*s,b[0]*s,b[1]*s);ctx.closePath();ctx.fill();}
-  // finger bones (thick) then secondary veins (thin)
-  ctx.strokeStyle=dk;ctx.lineWidth=0.14*s;
+  ctx.strokeStyle=dk;ctx.lineWidth=0.12*s;
   for(const t of tips){ctx.beginPath();ctx.moveTo(wristX*s,wristY*s);ctx.lineTo(t[0]*s,t[1]*s);ctx.stroke();}
   ctx.beginPath();ctx.moveTo(rootX*s,rootY*s);ctx.lineTo(wristX*s,wristY*s);ctx.stroke();
-  ctx.strokeStyle='rgba(0,0,0,0.20)';ctx.lineWidth=0.06*s;
-  for(const t of tips){const mx=(wristX+t[0])/2,my=(wristY+t[1])/2;ctx.beginPath();ctx.moveTo(mx*s,my*s);ctx.lineTo((mx+0.35)*s,(my+0.8)*s);ctx.stroke();}
-  // claws at each finger tip + thumb claw at the wrist
-  ctx.fillStyle=dk;for(const t of tips){ctx.beginPath();ctx.moveTo(t[0]*s,t[1]*s);ctx.lineTo((t[0]+0.4)*s,(t[1]+0.55)*s);ctx.lineTo((t[0]+0.06)*s,(t[1]+0.18)*s);ctx.closePath();ctx.fill();}
-  ctx.beginPath();ctx.moveTo(3.5*s,-1.6*s);ctx.lineTo(4.35*s,-2.35*s);ctx.lineTo(3.72*s,-1.3*s);ctx.closePath();ctx.fill();
-  // shoulder muscle where the wing meets the body
-  ctx.fillStyle=md;ctx.strokeStyle=ED;ctx.lineWidth=0.1*s;ctx.beginPath();ctx.ellipse(1.05*s,-1.95*s,0.75*s,0.5*s,-0.5,0,7);ctx.fill();ctx.stroke();
+  ctx.fillStyle=dk;for(const t of tips){ctx.beginPath();ctx.moveTo(t[0]*s,t[1]*s);ctx.lineTo((t[0]+0.35)*s,(t[1]+0.5)*s);ctx.lineTo((t[0]+0.05)*s,(t[1]+0.16)*s);ctx.closePath();ctx.fill();}
+  ctx.beginPath();ctx.moveTo(3.4*s,-1.5*s);ctx.lineTo(4.2*s,-2.2*s);ctx.lineTo(3.6*s,-1.2*s);ctx.closePath();ctx.fill();
   ctx.restore();
  }
  // ===== BODY =====
- const bodyGrad=ctx.createLinearGradient(-1.35*s,0,1.35*s,0);
+ const bodyGrad=ctx.createLinearGradient(-1.1*s,0,1.1*s,0);
  bodyGrad.addColorStop(0,dk);bodyGrad.addColorStop(0.32,col);bodyGrad.addColorStop(0.5,lt);bodyGrad.addColorStop(0.68,col);bodyGrad.addColorStop(1,dk);
- ctx.fillStyle=bodyGrad;ctx.strokeStyle=ED;ctx.lineWidth=0.17*s;
- ctx.beginPath();ctx.moveTo(0,-3.6*s);
- ctx.quadraticCurveTo(1.5*s,-2.7*s,1.25*s,-0.5*s);
- ctx.quadraticCurveTo(1.0*s,0.9*s,0.55*s,1.7*s);
- ctx.quadraticCurveTo(0,2.15*s,-0.55*s,1.7*s);
- ctx.quadraticCurveTo(-1.0*s,0.9*s,-1.25*s,-0.5*s);
- ctx.quadraticCurveTo(-1.5*s,-2.7*s,0,-3.6*s);
- ctx.closePath();ctx.fill();ctx.stroke();
- // ===== TAIL =====
  ctx.fillStyle=bodyGrad;ctx.strokeStyle=ED;ctx.lineWidth=0.16*s;
- ctx.beginPath();ctx.moveTo(-0.55*s,1.5*s);
- ctx.quadraticCurveTo(-0.66*s,4.7*s,-0.28*s,7.8*s);ctx.quadraticCurveTo(-0.14*s,8.9*s,0,9.5*s);
- ctx.quadraticCurveTo(0.14*s,8.9*s,0.28*s,7.8*s);ctx.quadraticCurveTo(0.66*s,4.7*s,0.55*s,1.5*s);
+ ctx.beginPath();ctx.moveTo(0,-3.4*s);
+ ctx.quadraticCurveTo(1.15*s,-2.5*s,0.95*s,-0.5*s);
+ ctx.quadraticCurveTo(0.78*s,0.8*s,0.4*s,1.6*s);
+ ctx.quadraticCurveTo(0,1.95*s,-0.4*s,1.6*s);
+ ctx.quadraticCurveTo(-0.78*s,0.8*s,-0.95*s,-0.5*s);
+ ctx.quadraticCurveTo(-1.15*s,-2.5*s,0,-3.4*s);
  ctx.closePath();ctx.fill();ctx.stroke();
- // ===== scale texture (fish-scale arcs) down body + tail =====
- ctx.strokeStyle='rgba(0,0,0,0.26)';ctx.lineWidth=0.055*s;
- const widthAt=(yy)=>yy<1.5?(1.2-0.12*Math.abs(yy+0.9)):Math.max(0.12,0.58-(yy-1.5)*0.06);
+ // ===== TAIL — long but slender =====
+ ctx.fillStyle=bodyGrad;ctx.strokeStyle=ED;ctx.lineWidth=0.14*s;
+ ctx.beginPath();ctx.moveTo(-0.3*s,1.4*s);
+ ctx.quadraticCurveTo(-0.32*s,4.4*s,-0.14*s,7.0*s);ctx.quadraticCurveTo(-0.07*s,8.0*s,0,8.5*s);
+ ctx.quadraticCurveTo(0.07*s,8.0*s,0.14*s,7.0*s);ctx.quadraticCurveTo(0.32*s,4.4*s,0.3*s,1.4*s);
+ ctx.closePath();ctx.fill();ctx.stroke();
+ // ===== scale texture down body + tail =====
+ ctx.strokeStyle='rgba(0,0,0,0.24)';ctx.lineWidth=0.05*s;
+ const widthAt=(yy)=>yy<1.4?(0.95-0.1*Math.abs(yy+0.9)):Math.max(0.07,0.3-(yy-1.4)*0.03);
  let row=0;
- for(let yy=-2.7;yy<8.6;yy+=0.6){const w=widthAt(yy),n=Math.max(2,Math.round(w/0.34));row++;
-  for(let c=0;c<n;c++){const xx=(-w+(c+((row%2)?0.5:0))*(2*w/n));ctx.beginPath();ctx.arc(xx*s,yy*s,0.2*s,0.18*Math.PI,0.82*Math.PI);ctx.stroke();}}
- // central sheen highlight
- ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=0.18*s;ctx.beginPath();ctx.moveTo(-0.15*s,-2.6*s);ctx.quadraticCurveTo(-0.25*s,3*s,-0.12*s,7.5*s);ctx.stroke();
- // ===== tail barbed tip + lateral spikes =====
- ctx.fillStyle=dk;ctx.beginPath();ctx.moveTo(0,9.5*s);ctx.lineTo(-0.6*s,10.6*s);ctx.lineTo(0,9.9*s);ctx.lineTo(0.6*s,10.6*s);ctx.closePath();ctx.fill();
- for(let i=0;i<4;i++){const yy=(3.0+i*1.3)*s,w=widthAt(3.0+i*1.3)*s;ctx.beginPath();ctx.moveTo(-w,yy);ctx.lineTo(-w-0.4*s,yy+0.35*s);ctx.lineTo(-w+0.1*s,yy+0.25*s);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(w,yy);ctx.lineTo(w+0.4*s,yy+0.35*s);ctx.lineTo(w-0.1*s,yy+0.25*s);ctx.closePath();ctx.fill();}
- // ===== dorsal spine spikes down the back =====
- ctx.fillStyle=dk;ctx.strokeStyle=ED;ctx.lineWidth=0.07*s;
- for(let i=0;i<5;i++){const yy=(-2.4+i*0.85)*s;ctx.beginPath();ctx.moveTo(-0.18*s,yy);ctx.lineTo(0,yy-0.55*s);ctx.lineTo(0.18*s,yy);ctx.closePath();ctx.fill();ctx.stroke();}
- // ===== hind legs + three talons =====
- ctx.strokeStyle=ED;ctx.lineWidth=0.12*s;
- for(const dir of[-1,1]){ctx.fillStyle=md;ctx.beginPath();ctx.moveTo(dir*0.85*s,0.6*s);ctx.quadraticCurveTo(dir*1.7*s,1.0*s,dir*1.95*s,1.75*s);ctx.lineTo(dir*1.7*s,1.95*s);ctx.quadraticCurveTo(dir*1.2*s,1.2*s,dir*0.55*s,1.05*s);ctx.closePath();ctx.fill();ctx.stroke();
-  ctx.fillStyle=dk;for(let c=-1;c<=1;c++){ctx.beginPath();ctx.moveTo(dir*1.9*s,1.8*s);ctx.lineTo(dir*(1.9+0.34*c)*s,2.5*s);ctx.lineTo(dir*(1.9+0.34*c+0.12)*s,2.35*s);ctx.closePath();ctx.fill();}}
- // ===== neck + detailed head =====
- ctx.fillStyle=col;ctx.strokeStyle=ED;ctx.lineWidth=0.15*s;
- // neck
- ctx.beginPath();ctx.moveTo(-0.55*s,-3.2*s);ctx.quadraticCurveTo(-0.45*s,-4.0*s,-0.32*s,-4.3*s);ctx.lineTo(0.32*s,-4.3*s);ctx.quadraticCurveTo(0.45*s,-4.0*s,0.55*s,-3.2*s);ctx.closePath();ctx.fill();ctx.stroke();
- // skull
- const hg=ctx.createLinearGradient(-0.7*s,0,0.7*s,0);hg.addColorStop(0,mdk);hg.addColorStop(0.5,col);hg.addColorStop(1,mdk);
- ctx.fillStyle=hg;ctx.beginPath();
- ctx.moveTo(-0.62*s,-4.2*s);ctx.quadraticCurveTo(-0.78*s,-4.9*s,-0.4*s,-5.3*s);
- ctx.quadraticCurveTo(-0.12*s,-5.9*s,0,-6.05*s);ctx.quadraticCurveTo(0.12*s,-5.9*s,0.4*s,-5.3*s);
- ctx.quadraticCurveTo(0.78*s,-4.9*s,0.62*s,-4.2*s);ctx.closePath();ctx.fill();ctx.stroke();
- // brow ridges
- ctx.strokeStyle=dk;ctx.lineWidth=0.09*s;ctx.beginPath();ctx.moveTo(-0.5*s,-4.75*s);ctx.quadraticCurveTo(-0.3*s,-5.0*s,-0.12*s,-4.9*s);ctx.moveTo(0.5*s,-4.75*s);ctx.quadraticCurveTo(0.3*s,-5.0*s,0.12*s,-4.9*s);ctx.stroke();
- // three pairs of swept horns
- ctx.strokeStyle=dk;ctx.lineWidth=0.15*s;ctx.lineCap='round';
- for(const[hx,hy,tx,ty] of [[-0.45,-4.55,-1.35,-5.35],[0.45,-4.55,1.35,-5.35],[-0.28,-5.05,-0.7,-6.15],[0.28,-5.05,0.7,-6.15],[-0.12,-5.5,-0.28,-6.5],[0.12,-5.5,0.28,-6.5]]){ctx.beginPath();ctx.moveTo(hx*s,hy*s);ctx.quadraticCurveTo((hx+tx)/2*s,(hy+ty-0.2)*s,tx*s,ty*s);ctx.stroke();}
- // snout, nostrils, slit eyes
- ctx.fillStyle=dk;ctx.beginPath();ctx.moveTo(-0.2*s,-5.95*s);ctx.lineTo(0,-6.35*s);ctx.lineTo(0.2*s,-5.95*s);ctx.closePath();ctx.fill();
- ctx.fillStyle=ED;ctx.beginPath();ctx.arc(-0.1*s,-5.95*s,0.05*s,0,7);ctx.arc(0.1*s,-5.95*s,0.05*s,0,7);ctx.fill();
- ctx.fillStyle='#f2d24a';ctx.beginPath();ctx.ellipse(-0.28*s,-5.05*s,0.11*s,0.17*s,0.3,0,7);ctx.ellipse(0.28*s,-5.05*s,0.11*s,0.17*s,-0.3,0,7);ctx.fill();
- ctx.fillStyle=ED;ctx.beginPath();ctx.ellipse(-0.28*s,-5.05*s,0.04*s,0.14*s,0.3,0,7);ctx.ellipse(0.28*s,-5.05*s,0.04*s,0.14*s,-0.3,0,7);ctx.fill();
+ for(let yy=-2.6;yy<7.8;yy+=0.6){const w=widthAt(yy),n=Math.max(2,Math.round(w/0.34));row++;
+  for(let c=0;c<n;c++){const xx=(-w+(c+((row%2)?0.5:0))*(2*w/n));ctx.beginPath();ctx.arc(xx*s,yy*s,0.18*s,0.18*Math.PI,0.82*Math.PI);ctx.stroke();}}
+ ctx.strokeStyle='rgba(255,255,255,0.10)';ctx.lineWidth=0.16*s;ctx.beginPath();ctx.moveTo(-0.12*s,-2.4*s);ctx.quadraticCurveTo(-0.2*s,3*s,-0.06*s,7*s);ctx.stroke();
+ // slender barbed tail tip
+ ctx.fillStyle=dk;ctx.beginPath();ctx.moveTo(0,8.5*s);ctx.lineTo(-0.32*s,9.3*s);ctx.lineTo(0,8.8*s);ctx.lineTo(0.32*s,9.3*s);ctx.closePath();ctx.fill();
+ // ===== dorsal spine spikes =====
+ ctx.fillStyle=dk;ctx.strokeStyle=ED;ctx.lineWidth=0.06*s;
+ for(let i=0;i<5;i++){const yy=(-2.2+i*0.8)*s;ctx.beginPath();ctx.moveTo(-0.15*s,yy);ctx.lineTo(0,yy-0.48*s);ctx.lineTo(0.15*s,yy);ctx.closePath();ctx.fill();ctx.stroke();}
+ // ===== hind legs + talons =====
+ ctx.strokeStyle=ED;ctx.lineWidth=0.11*s;
+ for(const dir of[-1,1]){ctx.fillStyle=md;ctx.beginPath();ctx.moveTo(dir*0.7*s,0.6*s);ctx.quadraticCurveTo(dir*1.45*s,1.0*s,dir*1.65*s,1.65*s);ctx.lineTo(dir*1.45*s,1.85*s);ctx.quadraticCurveTo(dir*1.0*s,1.2*s,dir*0.45*s,1.0*s);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.fillStyle=dk;for(let c=-1;c<=1;c++){ctx.beginPath();ctx.moveTo(dir*1.6*s,1.7*s);ctx.lineTo(dir*(1.6+0.3*c)*s,2.3*s);ctx.lineTo(dir*(1.6+0.3*c+0.1)*s,2.15*s);ctx.closePath();ctx.fill();}}
+ // ===== neck + clean head (no antennae, no eye lines) =====
+ ctx.fillStyle=col;ctx.strokeStyle=ED;ctx.lineWidth=0.13*s;
+ ctx.beginPath();ctx.moveTo(-0.36*s,-3.1*s);ctx.quadraticCurveTo(-0.3*s,-3.7*s,-0.24*s,-4.0*s);ctx.lineTo(0.24*s,-4.0*s);ctx.quadraticCurveTo(0.3*s,-3.7*s,0.36*s,-3.1*s);ctx.closePath();ctx.fill();ctx.stroke();
+ ctx.fillStyle=col;ctx.beginPath();
+ ctx.moveTo(-0.46*s,-3.95*s);ctx.quadraticCurveTo(-0.56*s,-4.65*s,-0.26*s,-5.05*s);
+ ctx.quadraticCurveTo(0,-5.45*s,0.26*s,-5.05*s);ctx.quadraticCurveTo(0.56*s,-4.65*s,0.46*s,-3.95*s);ctx.closePath();ctx.fill();ctx.stroke();
+ // two small solid swept-back horns
+ ctx.fillStyle=dk;
+ ctx.beginPath();ctx.moveTo(-0.36*s,-4.75*s);ctx.lineTo(-0.9*s,-5.5*s);ctx.lineTo(-0.24*s,-4.95*s);ctx.closePath();ctx.fill();
+ ctx.beginPath();ctx.moveTo(0.36*s,-4.75*s);ctx.lineTo(0.9*s,-5.5*s);ctx.lineTo(0.24*s,-4.95*s);ctx.closePath();ctx.fill();
+ // two small eyes (simple dots, no slits)
+ ctx.fillStyle='#e9c24a';ctx.beginPath();ctx.arc(-0.18*s,-4.6*s,0.075*s,0,7);ctx.arc(0.18*s,-4.6*s,0.075*s,0,7);ctx.fill();
  ctx.restore();
 }
+// a raised host/boat/dragon flies the house of the town it came from
+function entHouse(e){if(e&&e.home&&F[e.home])return{name:F[e.home].name,color:F[e.home].color};return{name:bannerName(e.owner),color:bannerColor(e.owner)};}
 function drawArmyToken(ctx,a){
- const col=bannerColor(a.owner),tot=troopsTotal(a.troops);
+ const house=entHouse(a),col=house.color,tot=troopsTotal(a.troops);
  const dragonOnly=tot<=0&&a.dragons&&a.dragons.length;
  if(dragonOnly){
   a.dragons.forEach((d,i)=>drawDragonToken(ctx,a.x+i*2,a.y-1,d));
   if(cam.s>1.5||selArmy===a.id){ctx.font='700 4px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
    const lbl=(a.dragons[0].ft||'')+'ft';
    ctx.lineWidth=1.4;ctx.strokeStyle='rgba(238,228,196,.9)';ctx.strokeText(lbl,a.x,a.y+6);
-   ctx.fillStyle='#5a1c1c';ctx.fillText(lbl,a.x,a.y+6);drawHouseCaption(a.x,a.y+8.4,a.owner);}
+   ctx.fillStyle='#5a1c1c';ctx.fillText(lbl,a.x,a.y+6);drawCaption(a.x,a.y+8.4,house.name,house.color);}
   return;
  }
  const ED='#120a06',lt=shade(col,0.36),md=shade(col,0.12),dk=shade(col,-0.5),STEEL='#b9bfc7',STEELD='#727984',WOOD='#3a2a18';
@@ -2990,7 +3039,7 @@ function drawArmyToken(ctx,a){
   ctx.font='700 4.6px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineWidth=1.7;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText(fmt(tot),a.x,a.y+6.6);
   ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),a.x,a.y+6.6);
-  drawHouseCaption(a.x,a.y+9,a.owner);
+  drawCaption(a.x,a.y+9,house.name,house.color);
  }
  a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*8,a.y+Math.sin(ang)*8-2,d);});
 }
@@ -3002,13 +3051,13 @@ function shade(hex,amt){ // amt in -1..1: negative darkens toward black, positiv
  r=Math.round(r+(f-r)*p);g=Math.round(g+(f-g)*p);b=Math.round(b+(f-b)*p);
  return 'rgb('+r+','+g+','+b+')';
 }
-function drawHouseCaption(x,y,owner){
+function drawCaption(x,y,name,color){
  ctx.font='600 3.1px Georgia';ctx.textAlign='center';ctx.textBaseline='top';
  ctx.lineWidth=1.1;ctx.strokeStyle='rgba(238,228,196,.85)';ctx.lineJoin='round';
- const nm=bannerName(owner);
- ctx.strokeText(nm,x,y);
- ctx.fillStyle=bannerColor(owner);ctx.fillText(nm,x,y);
+ ctx.strokeText(name,x,y);
+ ctx.fillStyle=color;ctx.fillText(name,x,y);
 }
+function drawHouseCaption(x,y,owner){drawCaption(x,y,bannerName(owner),bannerColor(owner));}
 function drawRealmLayer(){
  // who holds each holdfast — tiny caption beneath the name, revealed on zoom
  if(cam.s>1.2){
@@ -3038,7 +3087,7 @@ function drawRealmLayer(){
    ctx.beginPath();ctx.moveTo(ss.x,ss.y);ctx.lineTo(ss.dest.x,ss.dest.y);ctx.stroke();ctx.setLineDash([]);}}
 }
 function drawShipToken(ctx,s){
- const col=bannerColor(s.owner),x=s.x,y=s.y,WOOD='#6a4726',WOODL='#8a6234',WD='#3a2614',ED='#140a05',lt=shade(col,0.32),dk=shade(col,-0.42),CANVAS='#e7dbbd',STEEL='#b9bfc7';
+ const house=entHouse(s),col=house.color,x=s.x,y=s.y,WOOD='#6a4726',WOODL='#8a6234',WD='#3a2614',ED='#140a05',lt=shade(col,0.32),dk=shade(col,-0.42),CANVAS='#e7dbbd',STEEL='#b9bfc7';
  ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
  // wake
  ctx.strokeStyle='rgba(96,126,146,.55)';ctx.lineWidth=0.24;
@@ -3070,7 +3119,8 @@ function drawShipToken(ctx,s){
  ctx.restore();
  if(cam.s>1.5||selShip===s.id){ctx.font='700 4px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineWidth=1.5;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText('⚓ '+shipTroops(s),x,y+4.4);
-  ctx.fillStyle='#22405a';ctx.fillText('⚓ '+shipTroops(s),x,y+4.4);}
+  ctx.fillStyle='#22405a';ctx.fillText('⚓ '+shipTroops(s),x,y+4.4);
+  drawCaption(x,y+6.6,house.name,house.color);}
 }
 function armyAt(w){let best=null,bd=6*6;for(const a of armies){const d=(a.x-w.x)**2+(a.y-w.y)**2;if(d<bd){bd=d;best=a;}}return best;}
 function shipAt(w){let best=null,bd=7*7;for(const s of ships){const d=(s.x-w.x)**2+(s.y-w.y)**2;if(d<bd){bd=d;best=s;}}return best;}
