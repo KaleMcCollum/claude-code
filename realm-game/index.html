@@ -1443,55 +1443,69 @@ function drawKeep(g,x,y,level){
   g.fillStyle='#8a2f2b';g.beginPath();g.moveTo(x,y-9.3);g.lineTo(x+2.2,y-8.75);g.lineTo(x,y-8.2);g.closePath();g.fill();
  }
 }
-// a heraldic seat-crest — dark laurel ring around a house-coloured heater shield,
+// pull a house colour to a saturated, mid-bright hue so the shield always reads
+// on the map — muted/dark banners otherwise blend into the crest's ring.
+function crestTint(hex){
+ hex=(hex||'#8a2f2b').replace('#','');if(hex.length===3)hex=hex.split('').map(c=>c+c).join('');
+ let r=parseInt(hex.slice(0,2),16)/255,g=parseInt(hex.slice(2,4),16)/255,b=parseInt(hex.slice(4,6),16)/255;
+ const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h=0,s=0,l=(mx+mn)/2;
+ if(mx!==mn){const d=mx-mn;s=l>0.5?d/(2-mx-mn):d/(mx+mn);
+  h=mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4;h/=6;}
+ s=Math.min(1,Math.max(s,0.52));l=Math.min(0.60,Math.max(0.46,l));
+ const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q,f=t=>{t=(t+1)%1;return t<1/6?p+(q-p)*6*t:t<1/2?q:t<2/3?p+(q-p)*(2/3-t)*6:p;};
+ const to=v=>{const n=Math.round(v*255).toString(16);return n.length<2?'0'+n:n;};
+ return '#'+to(f(h+1/3))+to(f(h))+to(f(h-1/3));
+}
+// a heraldic seat-crest — thin dark ring around a house-coloured heater shield,
 // grand form (capital) adds crossed swords and a pennant. Coloured by the holding house.
 function drawCrest(g,x,y,col,sc,grand){
- const ED='#120a06',lt=shade(col,0.42),md=shade(col,0.12),dk=shade(col,-0.5),
-  HALO='rgba(238,228,196,.94)',RING='#2b2016',RINGL='#5c4a30',STEEL='#b9bfc7',STEELD='#727984',WOOD='#3a2a18';
+ const base=crestTint(col),ED='#140b06',lt=shade(base,0.44),md=shade(base,0.14),dk=shade(base,-0.4),
+  HALO='rgba(240,231,201,.96)',RING='#3a2a1a',RINGL='#6b5636',STEEL='#c3c9d0',STEELD='#7c838d',WOOD='#3a2a18';
  g.lineJoin='round';g.lineCap='round';
  const cy=y-0.2*sc;
- // parchment disc + dark laurel ring
- g.beginPath();g.arc(x,y,7.6*sc,0,7);g.fillStyle=HALO;g.fill();
- g.beginPath();g.arc(x,y,6.7*sc,0,7);g.strokeStyle=RING;g.lineWidth=1.15*sc;g.stroke();
- g.beginPath();g.arc(x,y,5.6*sc,0,7);g.strokeStyle=RINGL;g.lineWidth=0.34*sc;g.stroke();
+ // parchment disc + a slimmer dark ring, so the shield dominates
+ g.beginPath();g.arc(x,y,7.4*sc,0,7);g.fillStyle=HALO;g.fill();
+ g.beginPath();g.arc(x,y,6.5*sc,0,7);g.strokeStyle=RING;g.lineWidth=0.85*sc;g.stroke();
+ g.beginPath();g.arc(x,y,5.75*sc,0,7);g.strokeStyle=RINGL;g.lineWidth=0.3*sc;g.stroke();
  if(grand){ // crossed swords behind the shield
   for(const dir of [-1,1]){
-   g.strokeStyle=STEELD;g.lineWidth=0.72*sc;g.beginPath();g.moveTo(x+dir*4.2*sc,cy+4.7*sc);g.lineTo(x-dir*4.2*sc,cy-4.9*sc);g.stroke();
-   g.strokeStyle=STEEL;g.lineWidth=0.34*sc;g.beginPath();g.moveTo(x+dir*4.2*sc,cy+4.7*sc);g.lineTo(x-dir*4.2*sc,cy-4.9*sc);g.stroke();
-   g.fillStyle=WOOD;g.beginPath();g.arc(x+dir*4.2*sc,cy+4.7*sc,0.5*sc,0,7);g.fill();
+   g.strokeStyle=STEELD;g.lineWidth=0.72*sc;g.beginPath();g.moveTo(x+dir*4.4*sc,cy+5.0*sc);g.lineTo(x-dir*4.4*sc,cy-5.2*sc);g.stroke();
+   g.strokeStyle=STEEL;g.lineWidth=0.34*sc;g.beginPath();g.moveTo(x+dir*4.4*sc,cy+5.0*sc);g.lineTo(x-dir*4.4*sc,cy-5.2*sc);g.stroke();
+   g.fillStyle=WOOD;g.beginPath();g.arc(x+dir*4.4*sc,cy+5.0*sc,0.5*sc,0,7);g.fill();
   }
  }
+ // larger heater shield that fills most of the disc
  const sh=()=>{g.beginPath();
-  g.moveTo(x-3.0*sc,cy-3.5*sc);g.quadraticCurveTo(x,cy-4.0*sc,x+3.0*sc,cy-3.5*sc);
-  g.lineTo(x+3.0*sc,cy+0.8*sc);g.quadraticCurveTo(x+2.6*sc,cy+3.7*sc,x,cy+4.9*sc);
-  g.quadraticCurveTo(x-2.6*sc,cy+3.7*sc,x-3.0*sc,cy+0.8*sc);g.closePath();};
- const sg=g.createLinearGradient(0,cy-3.8*sc,0,cy+4.9*sc);sg.addColorStop(0,lt);sg.addColorStop(0.55,col);sg.addColorStop(1,dk);
- g.save();g.shadowColor='rgba(0,0,0,.35)';g.shadowBlur=1.1*sc;g.shadowOffsetY=0.5*sc;g.fillStyle=sg;sh();g.fill();g.restore();
- g.strokeStyle=ED;g.lineWidth=0.4*sc;sh();g.stroke();
- g.strokeStyle=shade(col,0.22);g.lineWidth=0.2*sc;
- g.beginPath();g.moveTo(x-2.4*sc,cy-2.9*sc);g.quadraticCurveTo(x,cy-3.3*sc,x+2.4*sc,cy-2.9*sc);
- g.lineTo(x+2.4*sc,cy+0.6*sc);g.quadraticCurveTo(x+2.1*sc,cy+3.0*sc,x,cy+4.0*sc);
- g.quadraticCurveTo(x-2.1*sc,cy+3.0*sc,x-2.4*sc,cy+0.6*sc);g.closePath();g.stroke();
+  g.moveTo(x-3.5*sc,cy-4.0*sc);g.quadraticCurveTo(x,cy-4.55*sc,x+3.5*sc,cy-4.0*sc);
+  g.lineTo(x+3.5*sc,cy+1.0*sc);g.quadraticCurveTo(x+3.0*sc,cy+4.3*sc,x,cy+5.7*sc);
+  g.quadraticCurveTo(x-3.0*sc,cy+4.3*sc,x-3.5*sc,cy+1.0*sc);g.closePath();};
+ const sg=g.createLinearGradient(0,cy-4.4*sc,0,cy+5.7*sc);sg.addColorStop(0,lt);sg.addColorStop(0.5,base);sg.addColorStop(1,dk);
+ g.save();g.shadowColor='rgba(0,0,0,.4)';g.shadowBlur=1.2*sc;g.shadowOffsetY=0.5*sc;g.fillStyle=sg;sh();g.fill();g.restore();
+ g.strokeStyle=ED;g.lineWidth=0.46*sc;sh();g.stroke();
+ g.strokeStyle=shade(base,0.3);g.lineWidth=0.22*sc;
+ g.beginPath();g.moveTo(x-2.8*sc,cy-3.35*sc);g.quadraticCurveTo(x,cy-3.8*sc,x+2.8*sc,cy-3.35*sc);
+ g.lineTo(x+2.8*sc,cy+0.75*sc);g.quadraticCurveTo(x+2.45*sc,cy+3.5*sc,x,cy+4.7*sc);
+ g.quadraticCurveTo(x-2.45*sc,cy+3.5*sc,x-2.8*sc,cy+0.75*sc);g.closePath();g.stroke();
  // charge: pale diagonal bend + central boss + rivets
- g.save();sh();g.clip();g.strokeStyle=lt;g.lineWidth=0.82*sc;
- g.beginPath();g.moveTo(x-3.0*sc,cy-3.2*sc);g.lineTo(x+3.0*sc,cy+2.6*sc);g.stroke();g.restore();
- g.fillStyle=STEEL;g.strokeStyle=ED;g.lineWidth=0.12*sc;g.beginPath();g.arc(x,cy-0.1*sc,0.7*sc,0,7);g.fill();g.stroke();
- g.fillStyle=STEELD;for(const p of [[-2.5,-3.0],[2.5,-3.0],[0,4.2]]){g.beginPath();g.arc(x+p[0]*sc,cy+p[1]*sc,0.28*sc,0,7);g.fill();}
+ g.save();sh();g.clip();g.strokeStyle=lt;g.lineWidth=0.95*sc;
+ g.beginPath();g.moveTo(x-3.5*sc,cy-3.7*sc);g.lineTo(x+3.5*sc,cy+3.0*sc);g.stroke();g.restore();
+ g.fillStyle=STEEL;g.strokeStyle=ED;g.lineWidth=0.13*sc;g.beginPath();g.arc(x,cy-0.1*sc,0.8*sc,0,7);g.fill();g.stroke();
+ g.fillStyle=STEELD;for(const p of [[-2.9,-3.45],[2.9,-3.45],[0,4.9]]){g.beginPath();g.arc(x+p[0]*sc,cy+p[1]*sc,0.3*sc,0,7);g.fill();}
  if(grand){ // pennant flag rising from behind the shield
-  g.strokeStyle=WOOD;g.lineWidth=0.36*sc;g.beginPath();g.moveTo(x,cy-4.0*sc);g.lineTo(x,cy-9.3*sc);g.stroke();
-  g.fillStyle='#efe6cd';g.beginPath();g.arc(x,cy-9.3*sc,0.55*sc,0,7);g.fill();
-  const fg=g.createLinearGradient(x,0,x+4.0*sc,0);fg.addColorStop(0,col);fg.addColorStop(1,md);
+  g.strokeStyle=WOOD;g.lineWidth=0.36*sc;g.beginPath();g.moveTo(x,cy-4.55*sc);g.lineTo(x,cy-9.8*sc);g.stroke();
+  g.fillStyle='#efe6cd';g.beginPath();g.arc(x,cy-9.8*sc,0.55*sc,0,7);g.fill();
+  const fg=g.createLinearGradient(x,0,x+4.2*sc,0);fg.addColorStop(0,base);fg.addColorStop(1,md);
   g.fillStyle=fg;g.strokeStyle=ED;g.lineWidth=0.14*sc;
-  g.beginPath();g.moveTo(x+0.1*sc,cy-9.1*sc);g.lineTo(x+4.0*sc,cy-8.4*sc);g.quadraticCurveTo(x+2.9*sc,cy-7.65*sc,x+4.0*sc,cy-6.9*sc);g.lineTo(x+0.1*sc,cy-6.3*sc);g.closePath();g.fill();g.stroke();
+  g.beginPath();g.moveTo(x+0.1*sc,cy-9.6*sc);g.lineTo(x+4.2*sc,cy-8.9*sc);g.quadraticCurveTo(x+3.05*sc,cy-8.15*sc,x+4.2*sc,cy-7.4*sc);g.lineTo(x+0.1*sc,cy-6.8*sc);g.closePath();g.fill();g.stroke();
  }
 }
 function drawLocGlyph(g,l){
  const x=l.x,y=l.y,ty=l.type,WAX='#8a2f2b',INK='#3a2c1a',GOLD='#a9853b',HALO='rgba(238,228,196,.92)';
  g.lineJoin='round';
  if(ty==='capital'){
-  drawCrest(g,x,y,bannerColor(l.owner),1.18,true);
+  drawCrest(g,x,y,bannerColor(l.owner),1.24,true);
  }else if(ty==='city'){
-  drawCrest(g,x,y,bannerColor(l.owner),0.94,false);
+  drawCrest(g,x,y,bannerColor(l.owner),1.04,false);
  }else if(ty==='hill'){ // coronation seat — gold ringed mark
   g.beginPath();g.arc(x,y,6.4,0,7);g.fillStyle=HALO;g.fill();
   g.beginPath();g.arc(x,y,5,0,7);g.strokeStyle='#6e5417';g.lineWidth=1.3;g.stroke();
@@ -1515,7 +1529,7 @@ function drawLocGlyph(g,l){
 // labels shrink (in world units) as you zoom in, so names never balloon on screen
 function labelScale(){return Math.min(1.0,Math.max(0.3,Math.pow(cam.s,-0.6)));}
 // how far a name sits below the marker — just enough to clear it (world units, constant)
-function markerGap(l){const ty=l.type;let g=ty==='capital'?9.6:ty==='city'?8.2:ty==='hill'?7.4:ty==='keep'?6.2:ty==='town'?3.9:2.5;if(ty!=='keep'&&(l.keep||0)>0)g+=3+l.keep*0.3;return g;}
+function markerGap(l){const ty=l.type;let g=ty==='capital'?10.2:ty==='city'?8.7:ty==='hill'?7.4:ty==='keep'?6.2:ty==='town'?3.9:2.5;if(ty!=='keep'&&(l.keep||0)>0)g+=3+l.keep*0.3;return g;}
 function labelFs(l){const ty=l.type;return (ty==='capital'?9:(ty==='city'||ty==='hill')?8:ty==='keep'?7.5:ty==='town'?6.2:5.2)*labelScale();}
 function drawLocLabel(g,l){
  const ty=l.type,fs=labelFs(l),gap=markerGap(l),L=labelScale();
