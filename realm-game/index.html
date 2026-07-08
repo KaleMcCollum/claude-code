@@ -1755,6 +1755,10 @@ function endPointer(e){
       log2(R.meName+' and '+bannerName(oth)+' are now allied — their hosts will fight side by side.','gold');
       endOrder();}
      else{log2('Tap another house’s host or town to ally with them.','bad');}
+    }else if(armyCmd==='link'){        // LINK: a dragon guards a chosen host
+     if(a&&canEscort(selA,a)){linkDragonTo(selA,a);}
+     else if(a){log2('A dragon can only guard your own or an allied host.','bad');}
+     else{log2('Tap one of your or an ally’s hosts for the dragon to guard.','bad');}
     }else{                             // MOVE: just march to the spot
      if(a&&a.id!==selA.id){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
@@ -2701,10 +2705,16 @@ function spawnDragon(id,ft,color){
  log2('A '+ft+'-foot dragon takes wing over '+t.name+'!','gold');
  selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;
 }
-function linkDragon(a){                 // glue a dragon to the nearest host so it keeps pace
- let best=null,bd=60*60;for(const x of armies){if(x===a||x.owner!=='player')continue;if(troopsTotal(x.troops)<=0)continue;const d=(x.x-a.x)**2+(x.y-a.y)**2;if(d<bd){bd=d;best=x;}}
- if(!best){log2('No host of yours is close enough to escort.','bad');return;}
- a.linkedTo=best.id;a.dest=null;log2('The dragon flies with '+(best.homeName||'your host')+'.','gold');refreshRealmView();needsDraw=true;
+function canEscort(dragon,host){    // a dragon may guard its own house's hosts or an ally's
+ return host&&host!==dragon&&troopsTotal(host.troops)>0&&(host.owner===dragon.owner||areAllied(dragon.owner,host.owner));}
+function linkDragonTo(dragon,host){
+ dragon.linkedTo=host.id;dragon.dest=null;dragon.attacking=false;dragon.attackTarget=null;
+ log2('The dragon flies with '+(host.homeName||bannerName(host.owner)+'’s host')+' to guard it.','gold');endOrder();
+}
+function linkDragon(a){                 // glue a dragon to the nearest eligible host so it keeps pace
+ let best=null,bd=80*80;for(const x of armies){if(!canEscort(a,x))continue;const d=(x.x-a.x)**2+(x.y-a.y)**2;if(d<bd){bd=d;best=x;}}
+ if(!best){log2('No host of yours or an ally is close enough to guard.','bad');return;}
+ linkDragonTo(a,best);
 }
 // ---- keep designer: drag premade pieces onto the keep ----
 // ---- keep designer: a free-placement palette of premade pieces ----
@@ -2840,6 +2850,7 @@ function moveArmies(){
  // battles: armies that meet
  for(let i=0;i<armies.length;i++)for(let j=i+1;j<armies.length;j++){
   const a=armies[i],b=armies[j];
+  if(a.linkedTo||b.linkedTo)continue;   // escorts fight as part of the host they're linked to
   // a clash happens ONLY when one host was explicitly ordered to attack the other —
   // marching toward or past someone never starts a fight on its own
   const targeted=(a.attacking&&a.attackTarget===b.id)||(b.attacking&&b.attackTarget===a.id);
@@ -2849,6 +2860,7 @@ function moveArmies(){
  }
  // sieges: army adjacent to enemy town it targeted
  for(const a of armies){
+  if(a.linkedTo)continue;   // escorts besiege as part of their host
   if(!a.dest||!a.dest.townId)continue;
   const t=LOC[a.dest.townId];if(!t)continue;
   if(t.owner===a.owner){ if(Math.hypot(t.x-a.x,t.y-a.y)<6){mergeIntoGarrison(a,t);} continue; }
@@ -2877,15 +2889,23 @@ function battleMath(aTr,aDr,dTr,dDr,defMult){
  return {attackerWins,aP:Math.round(aP),dP:Math.round(dP),winnerLoss};
 }
 function applyLoss(tr,frac,perk){if(perk==='hardy')frac*=0.9;for(const u in tr)tr[u]=Math.max(0,Math.floor((tr[u]||0)*(1-frac)));}
+// a host fights together with any dragons/hosts linked to it — its escort joins the fray
+function battleGroup(x){return [x].concat(armies.filter(u=>u!==x&&u.linkedTo===x.id));}
+function groupTroops(units){const tr={};for(const u of units)for(const k in (u.troops||{}))tr[k]=(tr[k]||0)+(u.troops[k]||0);return tr;}
+function groupDragons(units){let dr=[];for(const u of units)dr=dr.concat(u.dragons||[]);return dr;}
+function groupLoss(units,frac,perk){for(const u of units)applyLoss(u.troops,frac,perk);}   // survivors keep their dragons
+function groupWipe(units){for(const u of units){u.troops={};u.dragons=[];}}
 function resolveField(a,b){
- const rep=battleMath(a.troops,a.dragons,b.troops,b.dragons,1);
- // the beaten host is destroyed; the victor loses a share scaled to how hard the fight was
- if(rep.attackerWins){applyLoss(a.troops,rep.winnerLoss,a.player?R.perk:null);b.troops={};b.dragons=[];}
- else{applyLoss(b.troops,rep.winnerLoss,b.player?R.perk:null);a.troops={};a.dragons=[];}
+ const ga=battleGroup(a),gb=battleGroup(b);
+ const rep=battleMath(groupTroops(ga),groupDragons(ga),groupTroops(gb),groupDragons(gb),1);
+ // the beaten side (host + its escort) is destroyed; the victor loses a share scaled to the fight
+ if(rep.attackerWins){groupLoss(ga,rep.winnerLoss,a.player?R.perk:null);groupWipe(gb);}
+ else{groupLoss(gb,rep.winnerLoss,b.player?R.perk:null);groupWipe(ga);}
  a.attackTarget=null;b.attackTarget=null;   // one clash per order — don't auto-re-engage friends
  if(a.player||b.player)showBattleReport(rep,a,{name:bannerName(b.owner)+'’s host',owner:b.owner,player:b.player},null);
 }
 function resolveSiege(att,town){
+ const attGroup=battleGroup(att);   // the besieging host plus any dragons/hosts escorting it
  let defTr=Object.assign({},town.garrison||{}),defDr=[];
  // any friendly hosts standing in the town join the walls
  const stationed=armies.filter(x=>x!==att&&x.owner===town.owner&&Math.hypot(x.x-town.x,x.y-town.y)<7);
@@ -2893,13 +2913,13 @@ function resolveSiege(att,town){
  for(const aid of (town.allies||[])){const at=LOC[aid];if(at&&at.owner!==att.owner){
   const lev=splitTroops(Math.round(troopsTotal(at.garrison||{})*0.4),null);
   for(const u in lev)defTr[u]=(defTr[u]||0)+lev[u];}}
- const rep=battleMath(att.troops,att.dragons,defTr,defDr,defenseMult(town));
+ const rep=battleMath(groupTroops(attGroup),groupDragons(attGroup),defTr,defDr,defenseMult(town));
  att.dest=null;
  if(rep.attackerWins){
   // the defence is broken and the town falls; the attacker keeps his survivors
   town.garrison={};
   for(const s of stationed){s.troops={};s.dragons=[];s.merged=true;}
-  applyLoss(att.troops,rep.winnerLoss,att.player?R.perk:null);
+  groupLoss(attGroup,rep.winnerLoss,att.player?R.perk:null);
   const old=town.owner;town.owner=att.owner;
   if(att.player){if(town.foodStore==null)town.foodStore=townEats(town);if(!town.dem)initDem(town);}
   if(att.player)log2('You have taken '+town.name+' from '+bannerName(old)+'!','gold');
@@ -2907,8 +2927,8 @@ function resolveSiege(att,town){
   rebuildStatic();
   if(!att.player)mergeIntoGarrison(att,town);
  }else{
-  // the assault is thrown back — the attacking host is destroyed; the defenders lose their share
-  att.troops={};att.dragons=[];
+  // the assault is thrown back — the attacking host (and escort) is destroyed; defenders lose their share
+  groupWipe(attGroup);
   for(const s of stationed)applyLoss(s.troops,rep.winnerLoss,s.player?R.perk:null);
   const garTot=Math.max(0,Math.round(troopsTotal(town.garrison||{})*(1-rep.winnerLoss)));
   town.garrison=clampTroops(splitTroops(garTot,null),garrisonCap(town));
@@ -3303,16 +3323,18 @@ function showArmyPanel(){
    btn.onclick=()=>{armyCmd=mode;showArmyPanel();};return btn;};
   seg.appendChild(mkCmd('➤ Move','move'));seg.appendChild(mkCmd('⚔ Attack','attack'));
   seg.appendChild(mkCmd('⛊ Merge','merge'));seg.appendChild(mkCmd('🤝 Ally','ally'));
+  if(isDragon)seg.appendChild(mkCmd('🔗 Link','link'));
   o.appendChild(seg);
   const hints={move:'<b>Move:</b> tap anywhere to march there — no attack.',
-   attack:'<b>Attack:</b> tap an enemy host or town to march on and fight it.',
+   attack:'<b>Attack:</b> tap an enemy host, town or dragon to march on and fight it.',
    merge:'<b>Merge:</b> tap another of your hosts to fold this one into it.',
-   ally:'<b>Ally:</b> tap another house’s host or town to swear an alliance — allied hosts won’t fight and stand together.'};
+   ally:'<b>Ally:</b> tap another house’s host or town to swear an alliance — allied hosts won’t fight and stand together.',
+   link:'<b>Link:</b> tap one of your or an ally’s hosts for the dragon to fly with and guard it in battle.'};
   o.insertAdjacentHTML('beforeend','<p class="hint">'+(hints[armyCmd]||hints.move)+' Then press Sim. Smaller hosts move faster.</p>');
-  if(isDragon){
+  if(isDragon&&a.linkedTo){
    const lk=document.createElement('button');lk.className='act';lk.style.marginTop='4px';
-   lk.textContent=a.linkedTo?'Unlink from host (fly free)':'Link to nearest host';
-   lk.onclick=()=>{if(a.linkedTo){a.linkedTo=null;log2('The dragon flies free.');refreshRealmView();}else linkDragon(a);};o.appendChild(lk);
+   lk.textContent='Unlink (fly free)';
+   lk.onclick=()=>{a.linkedTo=null;log2('The dragon flies free.');refreshRealmView();};o.appendChild(lk);
   }
   const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband';db.onclick=()=>{const i=armies.indexOf(a);if(i>=0)armies.splice(i,1);selArmy=null;showRealmPanel();needsDraw=true;};dz.appendChild(db);
  }
