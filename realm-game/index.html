@@ -241,8 +241,7 @@
   <span class="title">The Sundered Crown</span>
   <span class="chip">🟨 <b id="c-gold">0</b></span>
   <span class="chip">🍞 <b id="c-food">0</b></span>
-  <span class="chip">🪵 <b id="c-wood">0</b></span>
-  <span class="chip">🪨 <b id="c-stone">0</b></span>
+  <span class="chip">👥 <b id="c-pop">0</b></span>
   <span class="spacer"></span>
   <span class="chip" id="c-day" style="color:#a4936f"></span>
   <button class="tbtn" id="btn-fit" title="Center the map">Center</button>
@@ -1317,6 +1316,23 @@ function drawStatic(){
 
 // simple cartographic marks, tiered by settlement size (keeps a dense map legible)
 // dark keep silhouettes — grander and more intricate at each level
+// a keep composed from the parts you choose in the designer
+function drawKeepDesign(g,x,y,d){
+ const DK=d.color||'#241a10',ED='#0f0a06',LT='#d8c791';
+ g.lineJoin='miter';g.strokeStyle=ED;g.lineWidth=0.45;
+ if(d.wall){g.fillStyle=DK;g.fillRect(x-5,y-2.6,10,3);g.strokeRect(x-5,y-2.6,10,3);
+  for(let i=0;i<6;i++)g.fillRect(x-5+i*1.9,y-3.2,0.8,0.6);}
+ if(d.lt){g.fillStyle=DK;g.fillRect(x-5.4,y-5,1.9,5.2);g.strokeRect(x-5.4,y-5,1.9,5.2);
+  g.fillRect(x-5.5,y-5.7,0.7,0.8);g.fillRect(x-4,y-5.7,0.7,0.8);}
+ if(d.rt){g.fillStyle=DK;g.fillRect(x+3.5,y-5,1.9,5.2);g.strokeRect(x+3.5,y-5,1.9,5.2);
+  g.fillRect(x+3.4,y-5.7,0.7,0.8);g.fillRect(x+4.9,y-5.7,0.7,0.8);}
+ if(d.keep){g.fillStyle=DK;g.fillRect(x-1.7,y-7,3.4,7.2);g.strokeRect(x-1.7,y-7,3.4,7.2);
+  g.fillRect(x-1.8,y-7.7,0.8,0.85);g.fillRect(x-0.4,y-7.7,0.8,0.85);g.fillRect(x+1.0,y-7.7,0.8,0.85);
+  g.fillStyle=LT;g.fillRect(x-0.85,y-5.6,0.55,0.9);g.fillRect(x+0.3,y-5.6,0.55,0.9);}
+ if(d.gate){g.fillStyle='#120c07';g.fillRect(x-0.7,y-1.6,1.4,1.9);}
+ if(d.banner){g.strokeStyle=ED;g.lineWidth=0.4;g.beginPath();g.moveTo(x,y-7);g.lineTo(x,y-9);g.stroke();
+  g.fillStyle='#8a2f2b';g.beginPath();g.moveTo(x,y-9);g.lineTo(x+2.2,y-8.45);g.lineTo(x,y-7.9);g.closePath();g.fill();}
+}
 function drawKeep(g,x,y,level){
  level=clamp(level,1,4);
  const DK='#241a10',ED='#0f0a06',LT='#d8c791';
@@ -1375,7 +1391,7 @@ function drawLocGlyph(g,l){
   g.beginPath();g.arc(x,y,5,0,7);g.strokeStyle='#6e5417';g.lineWidth=1.3;g.stroke();
   g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle=GOLD;g.fill();g.strokeStyle='#5b4318';g.lineWidth=0.7;g.stroke();
  }else if(ty==='keep'){ // a fortress with no town of its own (Dragonstone-style)
-  drawKeep(g,x,y+2,l.keep||3);
+  if(l.keepDesign)drawKeepPieces(g,x,y+2,l.keepDesign);else drawKeep(g,x,y+2,l.keep||3);
  }else if(ty==='town'){
   g.beginPath();g.arc(x,y,4.4,0,7);g.fillStyle=HALO;g.fill();
   g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle='#9c4331';g.strokeStyle=INK;g.lineWidth=0.8;g.fill();g.stroke();
@@ -1385,7 +1401,7 @@ function drawLocGlyph(g,l){
   g.beginPath();g.arc(x,y,0.6,0,7);g.fillStyle='#5b4530';g.fill();
  }
  // a keep on a settlement: small castle tucked below-right of the main mark
- if(ty!=='keep'&&l.keep>0)drawKeep(g,x+4+l.keep*0.4,y+4.5+l.keep*0.4,l.keep);
+ if(ty!=='keep'&&l.keep>0){const kx=x+4+l.keep*0.4,ky=y+4.5+l.keep*0.4;if(l.keepDesign)drawKeepPieces(g,kx,ky,l.keepDesign);else drawKeep(g,kx,ky,l.keep);}
  // the great places (and any keep) carry a baked label; towns & villages label on zoom/hover
  if(ty==='capital'||ty==='city'||ty==='hill'||ty==='keep')drawLocLabel(g,l);
 }
@@ -2210,21 +2226,10 @@ let armies=[], armySeq=1, selArmy=null, selTown=null;
 let ships=[], shipSeq=1, selShip=null;
 let RLOG=[];
 function log2(t,cls){RLOG.unshift({t,cls:cls||''});if(RLOG.length>40)RLOG.pop();}
-function troopsTotal(tr){let s=0;for(const u in tr)s+=tr[u]||0;return s;}
-function dominant(tr){let best='sword',bv=-1;for(const u of UORDER)if((tr[u]||0)>bv){bv=tr[u]||0;best=u;}return best;}
-function splitTroops(n,rng){
- rng=rng||Math.random; const w={spear:.34,sword:.2,horse:.12,knight:.06,longbow:.16,crossbow:.12};
- const tr={};let used=0;for(const u of UORDER){const c=Math.round(n*w[u]);tr[u]=c;used+=c;}
- tr.spear+=n-used; if(tr.spear<0)tr.spear=0; return tr;
-}
-function armyPower(tr,drs,enemyTr){
- const dom=dominant(enemyTr||{});let p=0;
- for(const u of UORDER){const c=tr[u]||0;if(!c)continue;
-  let m=1; if(UNITS[u].strong.includes(dom))m=1.5; else if(UNITS[u].weak.includes(dom))m=0.6;
-  p+=c*(UNITS[u].atk*0.6+UNITS[u].def*0.4)*m;}
- for(const d of (drs||[]))p+=(DRAGONS[d.size]||DRAGONS.hatchling).power;
- return p;
-}
+// troops are just a count, carried as {n: soldiers} so existing call-sites keep working
+function troopsTotal(tr){return typeof tr==='number'?tr:((tr&&tr.n)||0);}
+function splitTroops(n,rng){return {n:Math.max(0,Math.round(n||0))};}
+function armyPower(tr,drs){let p=troopsTotal(tr);for(const d of (drs||[]))p+=(DRAGONS[d.size]||DRAGONS.hatchling).power;return p;}
 function bannerColor(id){if(id==='player')return R?R.meColor:'#8a2f2b';return (F[id]&&F[id].color)||'#8a7a58';}
 function bannerName(id){if(id==='player')return R?R.meName:'your house';return (F[id]&&F[id].name)||'the free folk';}
 const POP_CAP={village:2500,town:12000,city:45000,capital:130000,hill:400,keep:600};
@@ -2277,45 +2282,56 @@ function production(t){
  return {food:Math.round(food),wood,stone,gold};
 }
 
-/* ---- world setup: every town begins an independent village ---- */
+/* ---- sandbox: the realm is already built; you direct the story ---- */
+const CITY_STATS={
+ capital:{pop:40000,gold:6000,food:60000},
+ city:   {pop:12000,gold:1800,food:18000},
+ town:   {pop:2500, gold:400,  food:3500},
+ keep:   {pop:800,  gold:120,  food:1000},
+ hill:   {pop:600,  gold:90,   food:800},
+ village:{pop:400,  gold:60,   food:600},
+};
 function enterRealm(o){
  if(!world.towns.length)loadSampleWorld();
  if(!LANDMASK)buildLandMask();
  F={};
  const used=new Set();
  for(const t of world.towns){
-  t.type='village'; t.keep=Math.min(t.keep||0,1);
+  const typ=(t.type&&CITY_STATS[t.type])?t.type:'village';
+  t.type=typ; t.keep=Math.min(t.keep||0, typ==='capital'?3:typ==='city'?2:typ==='town'?1:0);
   t.terrain=terrainAt(t.x,t.y);
-  const q=t.terrain.water*3+t.terrain.forest*2+t.terrain.stone;   // land quality
-  // every village begins exactly the same: a tiny holdfast with one of each works,
-  // so it already produces every good — no random head-starts
-  t.population=10;
-  t.b={homes:5,fields:1,sawmill:1,quarry:1,manor:1};
-  t.owner=t.id; t.allies=[]; autoName(t);
-  t.garrison=splitTroops(3,mulberry32(hashStr(t.id)));   // a handful of town watch, no more
+  const st=CITY_STATS[typ], r=mulberry32(hashStr(t.id)), vary=0.7+r()*0.6;   // cities vary ±30%
+  t.population=Math.round(st.pop*vary);
+  t.gold=Math.round(st.gold*vary);
+  t.food=Math.round(st.food*vary);
+  t.b={}; t.owner=t.id; t.allies=[]; autoName(t);
+  t.garrison=splitTroops(Math.round(t.population*0.01)+5, r);   // a standing garrison, ~1% of the city
   let hn;do{hn='House '+pick(HOUSE_A)+pick(HOUSE_B);}while(used.has(hn));used.add(hn);
-  t.ownerPerk=null;
-  F[t.id]={name:hn,color:FREE_COLORS[Math.abs(hashStr(t.id))%FREE_COLORS.length],
-    ambition:Math.min(1,0.15+q*0.09+Math.random()*0.35), towns:1};
+  F[t.id]={name:hn,color:FREE_COLORS[Math.abs(hashStr(t.id))%FREE_COLORS.length],ambition:0.3,towns:1};
  }
- world.routes=[];buildRoads();          // a young realm: no roads yet — trade builds them
- const start=pick(world.towns.filter(t=>(t.terrain.water+t.terrain.forest+t.terrain.stone)>=1)||world.towns);
- start.owner='player'; start.ownerPerk=o.perk||null; initDem(start);
- start.foodStore=townEats(start)*3;   // a little grain in the granary to begin
- R={me:'player',meColor:o.color||'#8a2f2b',meName:o.house||'House Ashgrove',name:o.name||'Wren',perk:o.perk||null,
-    seat:start.id,turn:1,gold:60,food:30,wood:25,stone:15,eggs:[],trades:[],supply:[]};
- if(o.perk==='rich'){R.gold+=60;}
- R.gold+=0;
- armies=[];armySeq=1;ships=[];shipSeq=1;selShip=null;
- R.host=null;   // no host yet — muster your first levies at your village
+ world.routes=[];buildRoads();
+ const seatPool=world.towns.filter(t=>t.type==='city'||t.type==='capital');
+ const start=(seatPool.length?pick(seatPool):world.towns[0]);
+ start.owner='player';
+ R={me:'player',meColor:o.color||'#8a2f2b',meName:o.house||'House Ashgrove',name:o.name||'Wren',
+    seat:start.id,turn:1,gold:0,food:0,wood:0,stone:0,eggs:[],trades:[],supply:[]};
+ armies=[];armySeq=1;ships=[];shipSeq=1;selShip=null;R.host=null;
  $('#create').classList.add('hidden');$('#topbar').style.display='flex';$('#ledger').style.display='none';
  selArmy=null;selTown=null;RLOG=[];
- log2('You raise your banner over '+start.name+' — '+terrainText(start)+'.');
- log2('No roads bring you goods yet — a trade route must be built with coin, timber, stone… and lowborn hands.','gold');
- log2('You have no host. When coin allows, muster levies at your village.');
- cam.s=Math.max(fitScale,2.2);centerOn(start.x,start.y);
+ log2('The realm lies before you. Click any city to set its people and coffers — or raise a host from it.','gold');
+ cam.s=Math.max(fitScale,1.7);centerOn(start.x,start.y);
  rebuildStatic();realmHUD();showTownFor(start.id);needsDraw=true;
 }
+// ---- sandbox actions: edit a city, or raise a host from it ----
+function setCity(id,field,val){const t=LOC[id];if(!t)return;val=Math.max(0,Math.round(val||0));
+ if(field==='population')t.population=val; else if(field==='gold')t.gold=val; else if(field==='food')t.food=val;
+ realmHUD();refreshRealmView();needsDraw=true;}
+function spawnArmy(id,n){const t=LOC[id];if(!t)return;n=Math.max(1,Math.round(n||0));
+ const take=Math.min(n,t.population);t.population-=take;
+ const a=mkArmy('player',t.x,t.y,{n:take});
+ a.home=id; a.homeName=t.name; armies.push(a);
+ log2('A host of '+take+' rises from '+t.name+'.','gold');
+ selArmy=a.id;selTown=null;selShip=null;showArmyPanel();realmHUD();needsDraw=true;}
 function mkArmy(owner,x,y,troops){const a={id:'a'+(armySeq++),owner,x,y,troops,dragons:[],dest:null,roadPath:null,player:owner==='player'};armies.push?0:0;return a;}
 function myTowns(){return world.towns.filter(t=>t.owner==='player');}
 function factionTowns(fid){return world.towns.filter(t=>t.owner===fid);}
@@ -2323,7 +2339,8 @@ function showTownFor(id){selTown=id;selArmy=null;showTownPanel();}
 
 /* ---- HUD / economy ---- */
 function realmHUD(){
- const gc=goldCapTotal();$('#c-gold').textContent=Math.min(R.gold,gc)+'/'+gc;setChip('c-food',foodStoreTotal());setChip('c-wood',R.wood);setChip('c-stone',R.stone);
+ let g=0,f=0,p=0;for(const t of myTowns()){g+=t.gold||0;f+=t.food||0;p+=t.population||0;}
+ setChip('c-gold',g);setChip('c-food',f);const cp=$('#c-pop');if(cp)cp.textContent=fmt(p);
  $('#c-day').textContent='Turn '+R.turn+' · '+R.meName;
 }
 function setChip(id,val){const b=$('#'+id);if(b)b.textContent=Math.floor(val);}
@@ -2360,52 +2377,43 @@ function foodTick(){
   if(move<=0){s.ok=false;continue;}
   from.foodStore-=move;to.foodStore+=move;s.ok=true;
  }
- // clamp granaries and starve any holdfast whose store runs dry
+ // a short harvest only pauses growth — no one starves to death, so you can never spiral out
  for(const t of myTowns()){
   const fc=townFoodCap(t);
   if(t.foodStore>fc)t.foodStore=fc;
-  if(t.foodStore<0){t.foodStore=0;
-   t.population=Math.max(40,Math.round((t.population||50)*0.96));
-   if(t.dem){t.dem.children=Math.round(t.dem.children*0.88);t.dem.elders=Math.round(t.dem.elders*0.82);t.population=t.dem.children+t.dem.men+t.dem.women+t.dem.elders;}
-   log2(t.name+' goes hungry — its granaries are bare and its people starve.','bad');}
+  if(t.foodStore<0)t.foodStore=0;
  }
 }
 function endTurn(){
  if(!R)return;
- const inc=playerIncome(),up=upkeep();
- R.wood+=inc.wood;R.stone+=inc.stone;R.gold+=inc.gold-up.gold;
- tickTrades();
- foodTick();
- // your host eats from the seat's stores; empty wagons mean deserters
- const seat=LOC[R.seat];
- if(seat&&up.food>0){seat.foodStore=(seat.foodStore||0)-up.food;
-  if(seat.foodStore<0){seat.foodStore=0;
-   for(const a of armies)if(a.owner==='player')for(const u in a.troops)a.troops[u]=Math.floor(a.troops[u]*0.95);
-   log2('Your host outruns its supply — men desert for want of food.','bad');}}
- R.food=foodStoreTotal();   // the ledger's food is the sum of every granary
- if(!R.mapBuilt){const c=tierCounts();
-  if(c.town>=Math.floor(TIER_CAP.town*0.9)&&c.city>=Math.floor(TIER_CAP.city*0.9)){
-   R.mapBuilt=true;log2('The realm has taken its shape — the age of building gives way to the age of swords.','bad');}}
- if(R.gold<0)R.gold=0;
- const gcap=goldCapTotal();if(R.gold>gcap)R.gold=gcap;   // coin overflows a full vault — build manors to hold more
+ // sandbox: cities keep whatever gold/food/people you set — the turn just advances the action
  for(const e of R.eggs)e.t--;const hatched=R.eggs.filter(e=>e.t<=0);R.eggs=R.eggs.filter(e=>e.t>0);
  for(const e of hatched){const sz=weightedPick(DHATCH);if(R.host)R.host.dragons.push({size:sz});
   log2('An egg cracks open — a '+DRAGONS[sz].name+' joins your host!','gold');}
- npcTurn();
  moveArmies();
- growTowns();
- shipTick();
  R.turn++;
  if(!myTowns().length&&(!R.host||troopsTotal(R.host.troops)<10)){
   modal('Your House Has Fallen','Your last holdfast is lost and your host is scattered. The chronicles will remember '+R.meName+' — briefly.',[['Begin anew',()=>{location.reload();}]],'☠');
  }
+ const sh=realmShare();
+ if(!R.won&&sh.total>0&&sh.held/sh.total>=0.6){R.won=true;
+  modal('The Realm is Yours','You hold '+sh.held+' of '+sh.total+' holdfasts — no rival can stand against you. The lords bend the knee and name you ruler of the realm. Long may you reign.',[['Reign on',()=>{closeModal();}]],'👑');}
  realmHUD();refreshRealmView();needsDraw=true;
 }
+function realmShare(){const total=world.towns.length;let held=0;for(const t of world.towns)if(t.owner==='player')held++;return {held,total,pct:total?Math.round(held/total*100):0};}
 
+/* the smallfolk raise their own homes and fields — you never micromanage survival */
+function autoDevelop(t){
+ t.b=t.b||{};
+ const eats=townEats(t);let g=0;
+ while(production(t).food<eats+Math.max(20,eats*0.15)&&(t.b.fields||0)<buildCap(t,'fields')&&g++<5)t.b.fields=(t.b.fields||0)+1;
+ g=0;
+ while(t.population>=homeCap(t)-8&&(t.b.homes||0)<buildCap(t,'homes')&&g++<5)t.b.homes=(t.b.homes||0)+1;
+}
 /* ---- town growth & tier-ups (everyone, player included) ---- */
 function growTowns(){
  for(const t of world.towns){
-  if(t.owner==='player'){demTick(t);continue;}
+  if(t.owner==='player'){autoDevelop(t);demTick(t);continue;}
   const T=t.terrain||{};
   let amb=(F[t.owner]?F[t.owner].ambition:0.3);
   if(t.owner!=='player'&&F[t.owner])amb=Math.min(1,amb+0.05*(factionTowns(t.owner).length-1));
@@ -2511,24 +2519,20 @@ function waterNear(x,y,maxR){                 // find a water point near a coast
   if(px>0&&py>0&&px<W&&py<H&&!isLand(px,py))return{x:px,y:py};}}
  return null;
 }
-function townShipCount(id){let n=0;for(const s of ships)if(s.home===id)n++;const t=LOC[id];return n+((t&&t.shipQueue)?t.shipQueue.length:0);}
-function canBuildShip(t){return t&&t.owner==='player'&&shipCap(t)>0&&townShipCount(t.id)<shipCap(t)&&R.gold>=40&&R.wood>=60;}
-function buildShip(townId){
- const t=LOC[townId];if(!canBuildShip(t))return;
- R.gold-=40;R.wood-=60;t.shipQueue=t.shipQueue||[];t.shipQueue.push(SHIP_TURNS);
- log2('Shipwrights lay a keel at '+t.name+' — a ship will be ready in '+SHIP_TURNS+' turns.','gold');
- realmHUD();refreshRealmView();
+function spawnBoat(id){
+ const t=LOC[id];if(!t)return;
+ const w=waterNear(t.x,t.y,80);if(!w){log2('No open water near '+t.name+' to launch a boat.','bad');return;}
+ const s={id:'s'+(shipSeq++),owner:'player',player:true,x:w.x,y:w.y,cap:SHIP_CAP,troops:{n:0},dragons:[],dest:null,home:id};
+ ships.push(s);log2('A boat is launched from '+t.name+'.','gold');
+ selShip=s.id;selTown=null;selArmy=null;showShipPanel();needsDraw=true;
 }
-function shipTick(){
- for(const t of myTowns()){
-  if(!t.shipQueue||!t.shipQueue.length)continue;
-  const keep=[];
-  for(let q of t.shipQueue){q--;if(q<=0){const w=waterNear(t.x,t.y,60);
-    if(w){ships.push({id:'s'+(shipSeq++),owner:'player',player:true,x:w.x,y:w.y,cap:SHIP_CAP,troops:{},dragons:[],dest:null,home:t.id});
-     log2('A ship is launched from '+t.name+'!','gold');}
-   }else keep.push(q);}
-  t.shipQueue=keep;
- }
+function sellBoat(s,cityId){
+ const t=LOC[cityId];if(!t)return;
+ // your nearest city pockets the coin from the sale
+ const home=coastTownNear(s.x,s.y,300);if(home&&home.owner==='player')home.gold=(home.gold||0)+800;
+ const i=ships.indexOf(s);if(i>=0)ships.splice(i,1);
+ log2('You sell the boat to '+t.name+' for 800 gold.','gold');
+ selShip=null;showRealmPanel();realmHUD();needsDraw=true;
 }
 function stepShip(s){
  if(!s.dest)return;
@@ -2537,22 +2541,110 @@ function stepShip(s){
  else{s.x+=(s.dest.x-s.x)/d*NSPEED;s.y+=(s.dest.y-s.y)/d*NSPEED;}
 }
 function shipTroops(s){return troopsTotal(s.troops);}
-function coastTownNear(x,y,r){let best=null,bd=(r||16)**2;for(const t of world.towns){if(t.owner!=='player')continue;const d=(t.x-x)**2+(t.y-y)**2;if(d<bd){bd=d;best=t;}}return best;}
-function loadShip(s){                          // embark garrison of the nearest owned coastal town
- const t=coastTownNear(s.x,s.y,26);if(!t){log2('No holdfast of yours is close enough to embark from.','bad');return;}
- t.garrison=t.garrison||{};let room=s.cap-shipTroops(s);
- for(const u of UORDER){if(room<=0)break;const take=Math.min(t.garrison[u]||0,room);if(take>0){s.troops[u]=(s.troops[u]||0)+take;t.garrison[u]-=take;room-=take;if(t.garrison[u]<=0)delete t.garrison[u];}}
- log2(shipTroops(s)+' troops board the ship at '+t.name+'.','gold');realmHUD();refreshRealmView();
+function coastTownNear(x,y,r){let best=null,bd=(r||16)**2;for(const t of world.towns){const d=(t.x-x)**2+(t.y-y)**2;if(d<bd){bd=d;best=t;}}return best;}
+function loadShip(s){                          // embark soldiers from the nearest coastal city you hold
+ const t=coastTownNear(s.x,s.y,30);if(!t||t.owner!=='player'){log2('No city of yours is close enough to embark from.','bad');return;}
+ const room=s.cap-shipTroops(s),take=Math.min(room,troopsTotal(t.garrison||{}));
+ if(take<=0){realmHUD();refreshRealmView();return;}
+ t.garrison={n:troopsTotal(t.garrison||{})-take};s.troops={n:shipTroops(s)+take};
+ log2(take+' soldiers board the boat at '+t.name+'.','gold');realmHUD();refreshRealmView();
 }
-function unloadShip(s){                         // disembark into the nearest owned coastal town
- const t=coastTownNear(s.x,s.y,26);if(!t){log2('Sail closer to one of your coastal holdfasts to land the troops.','bad');return;}
- t.garrison=t.garrison||{};for(const u in s.troops)t.garrison[u]=(t.garrison[u]||0)+s.troops[u];
- clampTroops(t.garrison,garrisonCap(t));const n=shipTroops(s);s.troops={};
- log2(n+' troops land at '+t.name+'.','gold');realmHUD();refreshRealmView();
+function unloadShip(s){                         // disembark into the nearest city (yours = garrison; else seizes)
+ const t=coastTownNear(s.x,s.y,30);if(!t){log2('Sail closer to a coastal city to land the soldiers.','bad');return;}
+ const n=shipTroops(s);if(n<=0)return;
+ t.garrison={n:troopsTotal(t.garrison||{})+n};s.troops={n:0};
+ log2(n+' soldiers land at '+t.name+'.','gold');realmHUD();refreshRealmView();
+}
+// ---- dragons: spawn a beast of any size and colour ----
+function dragonPower(d){return d&&d.ft?Math.round(d.ft*d.ft*0.6):((DRAGONS[d&&d.size]||DRAGONS.hatchling).power);}
+function spawnDragon(id,ft,color){
+ const t=LOC[id];if(!t)return;ft=clamp(Math.round(ft||30),5,400);
+ const a=mkArmy('player',t.x,t.y,{n:0});a.home=id;a.homeName=t.name;
+ a.dragons=[{ft,color:color||'#b23b3b'}];armies.push(a);
+ log2('A '+ft+'-foot dragon takes wing over '+t.name+'!','gold');
+ selArmy=a.id;selTown=null;selShip=null;showArmyPanel();realmHUD();needsDraw=true;
+}
+function linkDragon(a){                 // glue a dragon to the nearest host so it keeps pace
+ let best=null,bd=60*60;for(const x of armies){if(x===a||x.owner!=='player')continue;if(troopsTotal(x.troops)<=0)continue;const d=(x.x-a.x)**2+(x.y-a.y)**2;if(d<bd){bd=d;best=x;}}
+ if(!best){log2('No host of yours is close enough to escort.','bad');return;}
+ a.linkedTo=best.id;a.dest=null;log2('The dragon flies with '+(best.homeName||'your host')+'.','gold');refreshRealmView();needsDraw=true;
+}
+// ---- keep designer: drag premade pieces onto the keep ----
+const KEEP_PIECES=[
+ {k:'great',n:'Great Keep'},{k:'roundL',n:'Round Tower L'},{k:'roundR',n:'Round Tower R'},
+ {k:'squareL',n:'Square Tower L'},{k:'squareR',n:'Square Tower R'},{k:'wall',n:'Curtain Wall'},
+ {k:'battlement',n:'Battlements'},{k:'gate',n:'Gatehouse'},{k:'drawbridge',n:'Drawbridge'},
+ {k:'bailey',n:'Outer Bailey'},{k:'spire',n:'Tall Spire'},{k:'twin',n:'Twin Towers'},
+ {k:'barbican',n:'Barbican'},{k:'moat',n:'Moat'},{k:'banner',n:'Banner'},
+ {k:'flagL',n:'Left Pennant'},{k:'flagR',n:'Right Pennant'},{k:'watchtower',n:'Watchtower'},
+ {k:'donjon',n:'Bulky Donjon'},{k:'chapel',n:'Chapel'},
+];
+function drawPiece(g,x,y,k,DK,LT){
+ const ED='#0f0a06';g.strokeStyle=ED;g.lineWidth=0.45;g.fillStyle=DK;
+ switch(k){
+  case 'great': g.fillRect(x-1.7,y-7,3.4,7.2);g.strokeRect(x-1.7,y-7,3.4,7.2);g.fillRect(x-1.8,y-7.7,0.8,0.85);g.fillRect(x-0.4,y-7.7,0.8,0.85);g.fillRect(x+1.0,y-7.7,0.8,0.85);g.fillStyle=LT;g.fillRect(x-0.85,y-5.6,0.55,0.9);g.fillRect(x+0.3,y-5.6,0.55,0.9);break;
+  case 'donjon': g.fillRect(x-2.4,y-6,4.8,6.2);g.strokeRect(x-2.4,y-6,4.8,6.2);for(let i=0;i<4;i++)g.fillRect(x-2.4+i*1.35,y-6.7,0.9,0.75);g.fillStyle=LT;g.fillRect(x-0.4,y-4.4,0.8,1.1);break;
+  case 'roundL': g.beginPath();g.arc(x-4.4,y-2.4,2,0,7);g.fill();g.stroke();g.fillRect(x-5.4,y-2.4,2,2.6);break;
+  case 'roundR': g.beginPath();g.arc(x+4.4,y-2.4,2,0,7);g.fill();g.stroke();g.fillRect(x+3.4,y-2.4,2,2.6);break;
+  case 'squareL': g.fillRect(x-5.4,y-5,1.9,5.2);g.strokeRect(x-5.4,y-5,1.9,5.2);g.fillRect(x-5.5,y-5.7,0.7,0.8);g.fillRect(x-4,y-5.7,0.7,0.8);break;
+  case 'squareR': g.fillRect(x+3.5,y-5,1.9,5.2);g.strokeRect(x+3.5,y-5,1.9,5.2);g.fillRect(x+3.4,y-5.7,0.7,0.8);g.fillRect(x+4.9,y-5.7,0.7,0.8);break;
+  case 'watchtower': g.fillRect(x+2.6,y-6.5,1.3,6.6);g.strokeRect(x+2.6,y-6.5,1.3,6.6);g.beginPath();g.moveTo(x+2.4,y-6.5);g.lineTo(x+3.25,y-7.6);g.lineTo(x+4.1,y-6.5);g.closePath();g.fill();break;
+  case 'wall': g.fillRect(x-5,y-2.6,10,3);g.strokeRect(x-5,y-2.6,10,3);break;
+  case 'battlement': g.fillRect(x-5,y-2.6,10,3);g.strokeRect(x-5,y-2.6,10,3);for(let i=0;i<6;i++)g.fillRect(x-5+i*1.9,y-3.3,0.85,0.7);break;
+  case 'bailey': g.strokeRect(x-6.6,y-1.4,13.2,1.8);g.fillRect(x-6.6,y-1.4,13.2,1.8);break;
+  case 'gate': g.fillStyle='#120c07';g.fillRect(x-0.9,y-2.1,1.8,2.4);g.fillStyle=DK;g.beginPath();g.arc(x,y-2.1,0.9,Math.PI,0);g.fill();break;
+  case 'drawbridge': g.fillRect(x-0.9,y+0.2,1.8,1.9);g.strokeRect(x-0.9,y+0.2,1.8,1.9);break;
+  case 'barbican': g.fillRect(x-2.2,y-3.6,4.4,3.8);g.strokeRect(x-2.2,y-3.6,4.4,3.8);g.fillRect(x-2.4,y-4.2,0.9,0.7);g.fillRect(x+1.5,y-4.2,0.9,0.7);break;
+  case 'twin': g.fillRect(x-3.1,y-5.2,2,5.4);g.strokeRect(x-3.1,y-5.2,2,5.4);g.fillRect(x+1.1,y-5.2,2,5.4);g.strokeRect(x+1.1,y-5.2,2,5.4);break;
+  case 'spire': g.fillRect(x-0.8,y-8,1.6,8.2);g.strokeRect(x-0.8,y-8,1.6,8.2);g.beginPath();g.moveTo(x-1.1,y-8);g.lineTo(x,y-10);g.lineTo(x+1.1,y-8);g.closePath();g.fill();break;
+  case 'chapel': g.fillRect(x-1.4,y-4,2.8,4.2);g.strokeRect(x-1.4,y-4,2.8,4.2);g.beginPath();g.moveTo(x-1.6,y-4);g.lineTo(x,y-5.6);g.lineTo(x+1.6,y-4);g.closePath();g.fill();break;
+  case 'moat': g.strokeStyle='#3b5566';g.lineWidth=1.1;g.beginPath();g.ellipse(x,y+0.4,7,2,0,0,7);g.stroke();break;
+  case 'banner': g.strokeStyle=ED;g.lineWidth=0.4;g.beginPath();g.moveTo(x,y-7);g.lineTo(x,y-9.4);g.stroke();g.fillStyle='#8a2f2b';g.beginPath();g.moveTo(x,y-9.4);g.lineTo(x+2.3,y-8.8);g.lineTo(x,y-8.2);g.closePath();g.fill();break;
+  case 'flagL': g.strokeStyle=ED;g.lineWidth=0.35;g.beginPath();g.moveTo(x-4.5,y-5);g.lineTo(x-4.5,y-7);g.stroke();g.fillStyle='#8a2f2b';g.beginPath();g.moveTo(x-4.5,y-7);g.lineTo(x-2.9,y-6.6);g.lineTo(x-4.5,y-6.2);g.closePath();g.fill();break;
+  case 'flagR': g.strokeStyle=ED;g.lineWidth=0.35;g.beginPath();g.moveTo(x+4.5,y-5);g.lineTo(x+4.5,y-7);g.stroke();g.fillStyle='#8a2f2b';g.beginPath();g.moveTo(x+4.5,y-7);g.lineTo(x+6.1,y-6.6);g.lineTo(x+4.5,y-6.2);g.closePath();g.fill();break;
+ }
+}
+function drawKeepPieces(g,x,y,d){
+ const DK=d.color||'#241a10',LT='#d8c791';g.lineJoin='miter';
+ const order=['moat','bailey','wall','battlement','twin','squareL','squareR','roundL','roundR','watchtower','barbican','great','donjon','spire','chapel','gate','drawbridge','banner','flagL','flagR'];
+ for(const k of order)if(d.parts&&d.parts[k])drawPiece(g,x,y,k,DK,LT);
+}
+function openKeepDesigner(id){
+ const t=LOC[id];if(!t)return;
+ const cur=(t.keepDesign&&t.keepDesign.parts)?Object.assign({},t.keepDesign.parts):{great:true,squareL:true,squareR:true,wall:true,gate:true,banner:true};
+ const color=(t.keepDesign&&t.keepDesign.color)||'#2a1f13';
+ const body='<div style="display:flex;gap:14px;align-items:flex-start;text-align:left">'+
+  '<div style="flex:none"><canvas id="keepPrev" width="150" height="150" style="background:#e9dcc0;border-radius:8px"></canvas>'+
+   '<div style="margin-top:8px">Colour <input type="color" id="keepCol" value="'+color+'"></div>'+
+   '<div style="margin-top:6px">Capacity <input type="number" id="keepCap" min="0" step="100" value="'+(t.keepCap||1000)+'" style="width:100px"></div></div>'+
+  '<div style="flex:1;max-height:230px;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:3px">'+
+   KEEP_PIECES.map(p=>'<label style="display:flex;gap:5px;align-items:center;font-size:12px"><input type="checkbox" data-kp="'+p.k+'"'+(cur[p.k]?' checked':'')+'> '+p.n+'</label>').join('')+
+  '</div></div>';
+ modal('Design the Keep — add pieces',body,[['Save',()=>{
+   const parts={};document.querySelectorAll('[data-kp]').forEach(c=>parts[c.dataset.kp]=c.checked);
+   t.keepDesign={parts,color:$('#keepCol').value};
+   t.keepCap=Math.max(0,Math.floor(+$('#keepCap').value||0));
+   t.keep=Math.max(1,t.keep||1);
+   rebuildStatic();closeModal();log2('The keep at '+t.name+' is raised.','gold');realmHUD();refreshRealmView();needsDraw=true;
+  }],['Cancel',()=>closeModal()]],'🏰');
+ const cv=$('#keepPrev'),g=cv.getContext('2d');
+ const redraw=()=>{g.clearRect(0,0,150,150);g.save();g.translate(75,105);g.scale(6.5,6.5);
+   const parts={};document.querySelectorAll('[data-kp]').forEach(c=>parts[c.dataset.kp]=c.checked);
+   drawKeepPieces(g,0,0,{parts,color:$('#keepCol').value});g.restore();};
+ document.querySelectorAll('[data-kp]').forEach(c=>c.onchange=redraw);$('#keepCol').oninput=redraw;redraw();
+}
+// a lone dragon is swift; a small host is quick; a great host is slow
+function armySpeed(a){
+ if(a.dragons&&a.dragons.length&&troopsTotal(a.troops)<=0)return SPEED*2.4;
+ const n=troopsTotal(a.troops);
+ const f=n<=1000?1.5:n<=3000?1.15:n<=8000?0.85:n<=20000?0.6:0.45;
+ return SPEED*f;
 }
 function stepArmy(a){
+ // a dragon linked to a host rides along with it and never jumps ahead
+ if(a.linkedTo){const host=armies.find(x=>x.id===a.linkedTo);if(host){a.x=host.x;a.y=host.y;a.dest=null;return;}else a.linkedTo=null;}
  if(!a.dest)return;
- let sp=SPEED*(a.player&&R.perk==='rider'?1.15:1);
+ let sp=armySpeed(a);
  if(a.roadPath){
   sp*=ROADMULT;
   let left=sp;
@@ -2775,18 +2867,29 @@ function cancelSupply(i){const s=(R.supply||[])[i];if(!s)return;R.supply.splice(
  log2('The supply line to '+(LOC[s.to]?LOC[s.to].name:'?')+' is ended.');realmHUD();refreshRealmView();}
 
 /* ---- tokens ---- */
-function drawDragonToken(ctx,x,y,size){
- const s={hatchling:0.45,drake:0.7,wyvern:1.0,wyrm:1.4}[size]||0.6;
- ctx.save();ctx.translate(x,y);ctx.fillStyle='#22140e';
+function drawDragonToken(ctx,x,y,d){
+ const s=(d&&d.ft)?clamp(d.ft/45,0.5,3.4):({hatchling:0.45,drake:0.7,wyvern:1.0,wyrm:1.4}[d&&d.size]||0.6);
+ const col=(d&&d.color)||'#22140e';
+ ctx.save();ctx.translate(x,y);ctx.fillStyle=col;
  ctx.beginPath();
  ctx.moveTo(0,-3*s);ctx.lineTo(0.7*s,-1.3*s);
  ctx.quadraticCurveTo(3.4*s,-2.3*s,4*s,-0.5*s);ctx.quadraticCurveTo(2*s,-0.8*s,1*s,0.3*s);
  ctx.lineTo(0.5*s,2.6*s);ctx.lineTo(0,3.4*s);ctx.lineTo(-0.5*s,2.6*s);ctx.lineTo(-1*s,0.3*s);
  ctx.quadraticCurveTo(-2*s,-0.8*s,-4*s,-0.5*s);ctx.quadraticCurveTo(-3.4*s,-2.3*s,-0.7*s,-1.3*s);
- ctx.closePath();ctx.fill();ctx.restore();
+ ctx.closePath();ctx.fill();
+ ctx.lineWidth=0.18;ctx.strokeStyle='rgba(20,12,8,.7)';ctx.stroke();ctx.restore();
 }
 function drawArmyToken(ctx,a){
  const col=bannerColor(a.owner),tot=troopsTotal(a.troops);
+ const dragonOnly=tot<=0&&a.dragons&&a.dragons.length;
+ if(dragonOnly){
+  a.dragons.forEach((d,i)=>drawDragonToken(ctx,a.x+i*2,a.y-1,d));
+  if(cam.s>1.5||selArmy===a.id){ctx.font='700 4px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
+   const lbl=(a.dragons[0].ft||'')+'ft';
+   ctx.lineWidth=1.4;ctx.strokeStyle='rgba(238,228,196,.9)';ctx.strokeText(lbl,a.x,a.y+6);
+   ctx.fillStyle='#5a1c1c';ctx.fillText(lbl,a.x,a.y+6);drawHouseCaption(a.x,a.y+8.4,a.owner);}
+  return;
+ }
  const nfig=clamp(3+Math.floor(Math.log10(Math.max(10,tot))),3,8);
  const FORM=[[0,0],[-2.3,1.8],[2.3,1.8],[-1.15,-2.0],[1.15,-2.0],[-3.5,-0.1],[3.5,-0.1],[0,3.7]];
  const DK='#1d140c';
@@ -2815,7 +2918,7 @@ function drawArmyToken(ctx,a){
   ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),a.x,a.y+6.2);
   drawHouseCaption(a.x,a.y+8.6,a.owner);
  }
- a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*7.5,a.y+Math.sin(ang)*7.5-2,d.size);});
+ a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*7.5,a.y+Math.sin(ang)*7.5-2,d);});
 }
 function fmt(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':''+n;}
 function drawHouseCaption(x,y,owner){
@@ -2874,270 +2977,120 @@ function shipAt(w){let best=null,bd=7*7;for(const s of ships){const d=(s.x-w.x)*
 let townTab='manage';
 function refreshRealmView(){if(selShip)showShipPanel();else if(selArmy)showArmyPanel();else if(selTown)showTownPanel();else showRealmPanel();}
 function showRealmPanel(){
- selArmy=null;selTown=null;
- const inc=playerIncome(),up=upkeep();
- const b=panelShell(R.meName,R.name+' of '+R.meName,'You hold '+myTowns().length+' holdfast'+(myTowns().length===1?'':'s')+'. Click a town or an army to act.');
- const s=addSec(b,'Treasury');
+ selArmy=null;selTown=null;selShip=null;
+ const sh=realmShare();
+ const b=panelShell(R.meName,R.name+' of '+R.meName,'Your sandbox realm — click any city to set its people, gold and food, or raise hosts, boats and dragons from it.');
+ const obj=addSec(b,'The Realm · you hold '+sh.held+' of '+sh.total);
+ obj.insertAdjacentHTML('beforeend','<div style="height:7px;border-radius:4px;background:rgba(0,0,0,.18);overflow:hidden"><div style="height:100%;width:'+Math.min(100,sh.pct)+'%;background:linear-gradient(90deg,#b7902f,#e6c34a)"></div></div>');
+ let g=0,f=0,p=0;for(const t of myTowns()){g+=t.gold||0;f+=t.food||0;p+=t.population||0;}
+ const s=addSec(b,'Your Holdings');
  s.insertAdjacentHTML('beforeend',
-  '<div class="kv"><span>Gold</span><b>'+Math.floor(R.gold)+' (+'+(inc.gold-up.gold)+')</b></div>'+
-  '<div class="kv"><span>Food (all granaries)</span><b>'+Math.floor(foodStoreTotal())+' / '+foodCapTotal()+' (+'+(inc.food-up.food)+')</b></div>'+
-  '<div class="kv"><span>Wood</span><b>'+Math.floor(R.wood)+' (+'+inc.wood+')</b></div>'+
-  '<div class="kv"><span>Stone</span><b>'+Math.floor(R.stone)+' (+'+inc.stone+')</b></div>'+
-  '<div class="kv"><span>Trade deals</span><b>'+R.trades.length+'</b></div>'+
-  '<div class="kv"><span>Supply lines</span><b>'+((R.supply&&R.supply.length)||0)+'</b></div>');
- // every holdfast you hold, at a glance — click to manage, build, trade or send
+  '<div class="kv"><span>\u{1F7E8} Gold</span><b>'+fmt(g)+'</b></div>'+
+  '<div class="kv"><span>\u{1F35E} Food</span><b>'+fmt(f)+'</b></div>'+
+  '<div class="kv"><span>\u{1F465} People</span><b>'+fmt(p)+'</b></div>'+
+  '<div class="kv"><span>⚔ Hosts afield</span><b>'+armies.filter(a=>a.owner==='player').length+'</b></div>'+
+  '<div class="kv"><span>⚓ Boats</span><b>'+ships.filter(x=>x.owner==='player').length+'</b></div>');
  const tw=myTowns().slice().sort((a,c)=>TIER_ORDER[c.type]-TIER_ORDER[a.type]||(c.population||0)-(a.population||0));
- const ts=addSec(b,'Your Holdfasts · '+tw.length);
- for(const t of tw){
-  const p=production(t),net=p.food-townEats(t);
+ const ts=addSec(b,'Your Cities · '+tw.length);
+ if(tw.length){for(const t of tw){
   const row=document.createElement('div');row.className='deal';row.style.cursor='pointer';
-  row.innerHTML='<div class="dl"><b>'+t.name+'</b>'+
-   '<span>'+t.type+' · \u{1F465} '+(t.population||0)+'/'+homeCap(t)+' · ⚔ '+troopsTotal(t.garrison||{})+'</span></div>'+
-   '<div class="dr"><span class="'+(net<0?'':'')+'" style="color:'+(net<0?'var(--wax)':'var(--ink3)')+'">\u{1F35E} '+(net>=0?'+':'')+net+'/t'+(net<0?' — needs feeding':'')+
-   '</span> · \u{1F7E8} +'+p.gold+'/t</div>';
-  row.onclick=()=>showTownFor(t.id);
-  ts.appendChild(row);
- }
- const h=addSec(b,'Your Host');
- h.insertAdjacentHTML('beforeend','<p class="hint">'+(R.host?troopsTotal(R.host.troops)+' troops, '+R.host.dragons.length+' dragons'+(R.host.dest?' — marching':''):'No host in the field — muster one at your town.')+'</p>');
- const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='End Turn ▸';btn.onclick=endTurn;e.appendChild(btn);
- const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,14).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm is quiet… for now.</p>');
+  row.innerHTML='<div class="dl"><b>'+t.name+'</b><span>'+t.type+' · \u{1F465} '+fmt(t.population||0)+' · ⚔ '+fmt(troopsTotal(t.garrison||{}))+'</span></div>';
+  row.onclick=()=>showTownFor(t.id);ts.appendChild(row);
+ }} else ts.insertAdjacentHTML('beforeend','<p class="hint">You hold no cities. Click any city on the map and take it, or just direct the realm.</p>');
+ const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='▶ Sim';btn.onclick=endTurn;e.appendChild(btn);
+ const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,14).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm awaits your hand.</p>');
 }
+function dragonFt(a){return a.dragons&&a.dragons[0]&&a.dragons[0].ft;}
 function showArmyPanel(){
  const a=armies.find(x=>x.id===selArmy);if(!a){showRealmPanel();return;}
- selTown=null;
- const b=panelShell(a.player?R.meName:bannerName(a.owner),a.player?'Your Host':bannerName(a.owner)+'’s host',
-  troopsTotal(a.troops)+' troops · '+a.dragons.length+' dragons'+(a.player?' · '+Math.floor(a.supply||0)+' food in the wagons':'')+(a.dest?' · marching':' · encamped'));
- const s=addSec(b,'Composition');
- let rows='';for(const u of UORDER)if(a.troops[u])rows+='<div class="kv"><span>'+UNITS[u].name+'</span><b>'+a.troops[u]+'</b></div>';
- s.insertAdjacentHTML('beforeend',rows||'<p class="hint">Broken and scattered.</p>');
- if(a.dragons.length){const d=addSec(b,'Dragons');d.insertAdjacentHTML('beforeend',a.dragons.map(x=>'<div class="kv"><span>'+DRAGONS[x.size].name+'</span><b>pow '+DRAGONS[x.size].power+'</b></div>').join(''));}
- if(a.player)addSec(b,'Orders').insertAdjacentHTML('beforeend','<p class="hint">With your host selected, click anywhere on the map to march there — enemy towns will be besieged on arrival. Roads are swifter than open country.</p>');
+ selTown=null;selShip=null;
+ const isDragon=dragonFt(a)&&troopsTotal(a.troops)<=0;
+ const b=panelShell(a.player?R.meName:bannerName(a.owner),isDragon?'Your Dragon':(a.player?'Your Host':bannerName(a.owner)+'’s host'),
+  (isDragon?dragonFt(a)+'-foot dragon':fmt(troopsTotal(a.troops))+' soldiers'+(a.dragons.length?' · '+a.dragons.length+' dragon(s)':''))+(a.dest?' · marching':' · encamped')+(a.homeName?' · from '+a.homeName:''));
+ if(a.dragons.length){const d=addSec(b,'Dragons');d.insertAdjacentHTML('beforeend',a.dragons.map(x=>'<div class="kv"><span>'+(x.ft?x.ft+'-foot dragon':'Dragon')+'</span><b>power '+fmt(dragonPower(x))+'</b></div>').join(''));}
+ if(a.player){
+  const o=addSec(b,'Orders');o.insertAdjacentHTML('beforeend','<p class="hint">Click the map to set a march, then press Sim. Smaller hosts move faster; great hosts crawl.</p>');
+  if(isDragon){
+   const lk=document.createElement('button');lk.className='act';lk.style.marginTop='4px';
+   lk.textContent=a.linkedTo?'Unlink from host (fly free)':'Link to nearest host';
+   lk.onclick=()=>{if(a.linkedTo){a.linkedTo=null;log2('The dragon flies free.');refreshRealmView();}else linkDragon(a);};o.appendChild(lk);
+  }
+  const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband';db.onclick=()=>{const i=armies.indexOf(a);if(i>=0)armies.splice(i,1);selArmy=null;showRealmPanel();needsDraw=true;};dz.appendChild(db);
+ }
  const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selArmy=null;showRealmPanel();};back.appendChild(bb);
 }
 function showShipPanel(){
  const s=ships.find(x=>x.id===selShip);if(!s){selShip=null;showRealmPanel();return;}
  selTown=null;selArmy=null;
- const near=coastTownNear(s.x,s.y,26);
- const b=panelShell(R.meName,'Your Ship',shipTroops(s)+' / '+s.cap+' troops aboard'+(s.dest?' · sailing':' · at anchor'));
- const comp=addSec(b,'Aboard');
- let rows='';for(const u of UORDER)if(s.troops[u])rows+='<div class="kv"><span>'+UNITS[u].name+'</span><b>'+s.troops[u]+'</b></div>';
- comp.insertAdjacentHTML('beforeend',rows||'<p class="hint">The hold is empty — bring the ship beside a coastal holdfast and load your garrison.</p>');
- const act=addSec(b,near?('At '+near.name):'In open water');
+ const near=coastTownNear(s.x,s.y,30);
+ const b=panelShell(R.meName,'Your Boat',troopsTotal(s.troops)+' / '+s.cap+' soldiers aboard'+(s.dest?' · sailing':' · at anchor'));
+ const act=addSec(b,near?('Beside '+near.name):'In open water');
  if(near){
-  const lb=document.createElement('button');lb.className='act';lb.textContent='Load garrison of '+near.name;
-  lb.disabled=shipTroops(s)>=s.cap||troopsTotal(near.garrison||{})<=0;lb.onclick=()=>loadShip(s);act.appendChild(lb);
-  const ub=document.createElement('button');ub.className='act';ub.style.marginTop='6px';ub.textContent='Land troops at '+near.name;
-  ub.disabled=shipTroops(s)<=0;ub.onclick=()=>unloadShip(s);act.appendChild(ub);
- } else act.insertAdjacentHTML('beforeend','<p class="hint">Sail beside one of your coastal holdfasts to load or land troops.</p>');
- addSec(b,'Orders').insertAdjacentHTML('beforeend','<p class="hint">With the ship selected, click open water to set sail, or click one of your coastal holdfasts to make for its harbour. Ships carry up to '+s.cap+' troops.</p>');
+  const room=s.cap-troopsTotal(s.troops);
+  const lb=document.createElement('button');lb.className='act';lb.textContent='Load up to '+Math.min(room,troopsTotal(near.garrison||{}))+' from '+near.name;
+  lb.disabled=room<=0||troopsTotal(near.garrison||{})<=0;lb.onclick=()=>loadShip(s);act.appendChild(lb);
+  const ub=document.createElement('button');ub.className='act';ub.style.marginTop='6px';ub.textContent='Land soldiers at '+near.name;
+  ub.disabled=troopsTotal(s.troops)<=0;ub.onclick=()=>unloadShip(s);act.appendChild(ub);
+  const sb=document.createElement('button');sb.className='act';sb.style.marginTop='6px';sb.textContent='Sell this boat to '+near.name+' (+800\u{1F7E8})';
+  sb.onclick=()=>sellBoat(s,near.id);act.appendChild(sb);
+ } else act.insertAdjacentHTML('beforeend','<p class="hint">Sail beside a coastal city to load, land or sell.</p>');
+ addSec(b,'Orders').insertAdjacentHTML('beforeend','<p class="hint">Click open water to sail, or a coastal city to make for its harbour. Carries up to '+s.cap+' soldiers.</p>');
  const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selShip=null;showRealmPanel();};back.appendChild(bb);
+}
+function numRow(sec,label,icon,val,onset){
+ const wrap=document.createElement('div');wrap.className='shoprow';
+ wrap.innerHTML='<div><div class="sn">'+icon+' '+label+'</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="0" step="1" value="'+val+'" style="width:110px" class="numin"><button class="act gd">Set</button></div>';
+ const inp=wrap.querySelector('input');wrap.querySelector('button').onclick=()=>onset(Math.max(0,Math.floor(+inp.value||0)));
+ sec.appendChild(wrap);
 }
 function showTownPanel(){
  const t=LOC[selTown];if(!t){showRealmPanel();return;}
- selArmy=null;
+ selArmy=null;selShip=null;
  const mine=t.owner==='player';
- const RES_ICON={food:'\u{1F35E}',wood:'\u{1FAB5}',stone:'\u{1FAA8}',gold:'\u{1F7E8}'};
- const b=panelShell(mine?R.meName+' \u00b7 yours':bannerName(t.owner),t.name,'');
+ const b=panelShell(mine?R.meName+' · yours':bannerName(t.owner),t.name,'');
  $('#p-name').insertAdjacentHTML('beforeend','<span class="tierbadge">'+t.type+'</span>');
- // terrain + status chips
- const T=t.terrain||{};
- const chips=[];
- if(T.water)chips.push('\u{1F4A7} '+(T.water>1?'rich waters':'water'));
- if(T.forest)chips.push('\u{1F332} '+(T.forest>1?'deep woods':'woodland'));
- if(T.stone)chips.push('\u26F0 '+(T.stone>1?'high crags':'stony hills'));
- if(!chips.length)chips.push('poor open ground');
- const chiprow=document.createElement('div');chiprow.className='chips';
- chiprow.innerHTML=chips.map(c=>'<span class="chip2">'+c+'</span>').join('');
- b.appendChild(chiprow);
- if(mine){
-  if(!t.dem)initDem(t);
-  if(t.foodStore==null)t.foodStore=townEats(t)*2;
-  const p=production(t),eats=townEats(t),net=p.food-eats;
-  const st=document.createElement('div');st.className='chips';
-  st.innerHTML=
-   '<span class="chip2">\u{1F465} '+(t.population||0)+' / '+Math.round(homeCap(t))+'</span>'+
-   '<span class="chip2 '+((t.foodStore||0)<=0?'neg':'')+'">\u{1F33E} '+Math.floor(t.foodStore||0)+'/'+townFoodCap(t)+' grain</span>'+
-   '<span class="chip2 '+(net<0?'neg':'pos')+'">'+RES_ICON.food+' '+(net>=0?'+':'')+net+'/t</span>'+
-   '<span class="chip2 pos">'+RES_ICON.wood+' +'+p.wood+'/t</span>'+
-   '<span class="chip2 pos">'+RES_ICON.stone+' +'+p.stone+'/t</span>'+
-   '<span class="chip2 pos">'+RES_ICON.gold+' +'+p.gold+'/t</span>'+
-   '<span class="chip2">\u2694 '+troopsTotal(t.garrison||{})+' garrison</span>';
-  b.appendChild(st);
-  const tabs=document.createElement('div');tabs.className='rtabs';
-  [['manage','Build'],['trade','Trade'],['muster','Muster'],['dragons','Dragons']].forEach(([k,lbl])=>{
-   const x=document.createElement('button');x.className='rtab'+(townTab===k?' sel':'');x.textContent=lbl;x.onclick=()=>{townTab=k;showTownPanel();};tabs.appendChild(x);});
-  b.appendChild(tabs);
-  if(townTab==='manage'){
-   const cc=charterCosts(t.type),counts=tierCounts();
-   if(cc){
-    const s0=addSec(b,'Charter');
-    const free=slotFree(cc.next),popOk=t.population>=cc.pop;
-    const ok=popOk&&free&&R.gold>=cc.gold&&R.wood>=cc.wood&&R.stone>=cc.stone;
-    const lack=c=>c?'':' style="color:var(--wax)"';   // red-wax what you still lack
-    const capHint=(!popOk&&homeCap(t)<cc.pop)?' \u2014 build more homes to raise your population cap':'';
-    s0.insertAdjacentHTML('beforeend','<div class="shoprow"><div><div class="sn">Raise to '+cc.next+'</div><div class="sd">'+
-     (free?('<span'+lack(popOk)+'>'+t.population+'/'+cc.pop+' smallfolk</span>'+capHint+' \u00b7 '+(TIER_CAP[cc.next]-counts[cc.next])+' slot'+(TIER_CAP[cc.next]-counts[cc.next]===1?'':'s')+' left in the realm'):('no '+cc.next+' slots remain in the realm'))+
-     '</div></div><div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span class="pr"><span'+lack(R.wood>=cc.wood)+'>'+cc.wood+'\u{1FAB5}</span> <span'+lack(R.stone>=cc.stone)+'>'+cc.stone+'\u{1FAA8}</span> <span'+lack(R.gold>=cc.gold)+'>'+cc.gold+'\u{1F7E8}</span></span>'+
-     '<button class="act" id="charter"'+(ok?'':' disabled')+'>Charter</button></div></div>');
-    s0.querySelector('#charter').onclick=()=>charterUp(t.id);
-   }
-   // housing & fields get their own section — you raise these by the dozen, not one at a time
-   const hs=addSec(b,'Homes & Fields · population and food');
-   [['homes',[1,10,50]],['manor',[1,5]],['fields',[1,10,25]]].forEach(([k,steps])=>{
-    const bd=BUILDINGS[k],have=(t.b&&t.b[k])||0,cap=buildCap(t,k);
-    const row=document.createElement('div');row.className='shoprow';
-    let btns='';for(const q of steps){const use=Math.min(q,cap-have);
-     const afford=R.gold>=bd.gold*use&&R.wood>=bd.wood*use&&R.stone>=bd.stone*use;
-     const off=have>=cap||!afford;
-     btns+='<button class="act gd" data-bk="'+k+'" data-bq="'+q+'"'+(off?' disabled':'')+'>+'+q+'</button>';}
-    const note=k==='homes'?'+10 smallfolk room, no rent':k==='manor'?'+2 highborn room, +1 gold/turn':'+100 food/turn';
-    row.innerHTML='<div><div class="sn">'+bd.name+' <span style="color:var(--ink3)">'+have+'/'+cap+'</span></div>'+
-     '<div class="sd">'+bd.wood+'\u{1FAB5} '+bd.stone+'🪨 '+bd.gold+'g each · '+note+'</div></div>'+
-     '<div style="display:flex;align-items:center;gap:4px">'+btns+'</div>';
-    hs.appendChild(row);
-   });
-   hs.querySelectorAll('[data-bk]').forEach(btn=>btn.onclick=()=>build(btn.dataset.bk,t.id,+btn.dataset.bq));
-   const s=addSec(b,'Build');
-   const grid=document.createElement('div');grid.className='bgrid';
-   for(const k in BUILDINGS){if(k==='homes'||k==='manor'||k==='fields')continue;const bd=BUILDINGS[k];
-    const have=k==='keep'?(t.keep||0):((t.b&&t.b[k])||0);
-    const cap=buildCap(t,k),capped=have>=cap;
-    const blocked=bd.req&&!(t.terrain&&t.terrain[bd.req]);
-    const afford=R.gold>=bd.gold&&R.wood>=bd.wood&&R.stone>=bd.stone;
-    const off=capped||blocked||!afford;
-    const card=document.createElement('button');card.type='button';
-    card.className='bcard'+(off?' off':'');
-    card.innerHTML='<div class="bn">'+bd.name+'<span>'+have+'/'+cap+'</span></div>'+
-     '<div class="bd">'+(blocked?'needs '+(bd.req==='forest'?'woodland':'high country')+' nearby':bd.desc)+'</div>'+
-     '<div class="bc'+(afford?'':' no')+'">'+(capped?'at its limit':bd.wood+'\u{1FAB5} '+bd.stone+'\u{1FAA8} '+bd.gold+'g')+'</div>';
-    if(!off)card.onclick=()=>build(k,t.id);
-    grid.appendChild(card);
-   }
-   s.appendChild(grid);
-  }else if(townTab==='trade'){
-   // Supply lines — send grain to your own holdfasts, nothing in return
-   const mySup=(R.supply||[]).map((s,i)=>({s,i})).filter(x=>x.s.from===t.id);
-   const others=myTowns().filter(x=>x.id!==t.id);
-   const sp=addSec(b,'Supply your holdfasts · send food, ask nothing back');
-   if(mySup.length){for(const {s,i} of mySup){
-    const el=document.createElement('div');el.className='deal';
-    el.innerHTML='<div class="dl"><b>→ '+(LOC[s.to]?LOC[s.to].name:'?')+'</b><span>\u{1F33E} '+s.amt+' food/turn</span>'+
-     '<button class="dx" title="end this supply line" data-si="'+i+'">✕</button></div>'+
-     '<div class="dr">'+(s.ok===false?'<span style="color:var(--wax)">nothing to send this turn</span>':'wagons rolling')+'</div>';
-    el.querySelector('.dx').onclick=()=>cancelSupply(i);sp.appendChild(el);
-   }}
-   if(others.length){
-    sp.insertAdjacentHTML('beforeend','<div class="teform"><label>Send to<select id="sp-to">'+others.map(x=>'<option value="'+x.id+'">'+x.name+' ('+x.type+', \u{1F33E} '+Math.floor(x.foodStore||0)+')</option>').join('')+'</select></label>'+
-     '<label>Food/turn<select id="sp-amt">'+[25,50,100,200,300,500,1000,2000].map(v=>'<option'+(v===100?' selected':'')+'>'+v+'</option>').join('')+'</select></label></div>');
-    const sb=document.createElement('button');sb.className='act';sb.style.marginTop='8px';sb.textContent='Open supply line';
-    sb.onclick=()=>addSupply(t.id,$('#sp-to').value,parseInt($('#sp-amt').value)||100);
-    sp.appendChild(sb);
-   } else sp.insertAdjacentHTML('beforeend','<p class="hint">You hold no other holdfast to supply yet.</p>');
-   const myDeals=R.trades.map((d,i)=>({d,i})).filter(x=>x.d.from===t.id);
-   const s=addSec(b,t.name+' trades with');
-   if(myDeals.length){
-    for(const {d,i} of myDeals){
-     const el=document.createElement('div');el.className='deal';
-     el.innerHTML='<div class="dl"><b>'+ (LOC[d.with]?LOC[d.with].name:'?') +'</b>'+
-      '<span>'+d.amt+' '+RES_ICON[d.give]+' \u2192 '+d.amt+' '+RES_ICON[d.get]+' \u00b7 +'+(d.gold||3)+'g</span>'+
-      '<button class="dx" title="end this deal" data-i="'+i+'">\u2715</button></div>'+
-      '<div class="dr">'+(d.ok===false?'<span style="color:var(--wax)">short this turn \u2014 no surplus '+d.give+'</span>':'paying steadily')+'</div>';
-     el.querySelector('.dx').onclick=()=>cancelTrade(i);
-     s.appendChild(el);
-    }
-   } else s.insertAdjacentHTML('beforeend','<p class="hint">No deals from this holdfast yet.</p>');
-   // surplus readout
-   const sur={food:townSurplus(t,'food'),wood:townSurplus(t,'wood'),stone:townSurplus(t,'stone')};
-   const surRow=document.createElement('div');surRow.className='chips';
-   surRow.innerHTML='<span class="chip2">tradable surplus:</span>'+['food','wood','stone'].map(r=>'<span class="chip2 '+(sur[r]>0?'pos':'neg')+'">'+RES_ICON[r]+' '+sur[r]+'</span>').join('');
-   b.appendChild(surRow);
-   const partners=nearTowns(t,140).filter(x=>x.owner!=='player').slice(0,12);
-   const giveable=['food','wood','stone'].filter(r=>sur[r]>0);
-   if(partners.length&&giveable.length){
-    const f=addSec(b,'Strike a new deal (costs only smallfolk to cut the road)');
-    f.insertAdjacentHTML('beforeend','<div class="teform">'+
-     '<label>Partner<select id="tr-with">'+partners.map(x=>'<option value="'+x.id+'">'+x.name+' \u2014 offers '+tradeOffer(x).join('/')+'</option>').join('')+'</select></label>'+
-     '<div class="te2"><label>You give<select id="tr-give">'+giveable.map(r=>'<option>'+r+'</option>').join('')+'</select></label>'+
-     '<label>Amount<input type="number" id="tr-amt" min="1" step="1" value="4" style="width:100%"></label></div>'+
-     '<label>You get<select id="tr-get"></select></label></div>');
-    const gp=document.createElement('p');gp.className='hint';gp.style.margin='4px 0 0';f.appendChild(gp);
-    const updGold=()=>{const v=Math.max(1,Math.floor(+$('#tr-amt').value||0)),g=$('#tr-give').value,mx=sur[g]||0;
-     gp.innerHTML='Earns <b>+'+dealGold(v)+'g</b>/turn (5% of goods, to each side). Surplus '+g+': '+mx+(v>mx?' \u2014 <span style="color:var(--wax)">over surplus!</span>':'');};
-    const updGet=()=>{const px=LOC[$('#tr-with').value];$('#tr-get').innerHTML=tradeOffer(px).map(x=>'<option>'+x+'</option>').join('');};
-    $('#tr-give').onchange=updGold;$('#tr-amt').oninput=updGold;$('#tr-with').onchange=updGet;updGet();updGold();
-    const bt=document.createElement('button');bt.className='act';bt.style.marginTop='8px';bt.textContent='Strike the deal';
-    bt.onclick=()=>{const g=$('#tr-give').value,r=$('#tr-get').value,amt=Math.max(1,Math.floor(+$('#tr-amt').value||0));
-     if(g!==r){if(!addTrade($('#tr-with').value,g,r,t.id,amt))log2('That is more '+g+' than this holdfast can spare.','bad');}};
-    f.appendChild(bt);
-    f.insertAdjacentHTML('beforeend','<p class="hint" style="margin-top:6px">Type how much to trade each turn \u2014 only surplus above this holdfast\u2019s burn may leave. Both sides earn gold worth 5% of the goods moved.</p>');
-   } else if(!giveable.length) addSec(b,'Strike a new deal').insertAdjacentHTML('beforeend','<p class="hint">No surplus to trade \u2014 build fields, mills or quarries first.</p>');
-   else addSec(b,'Strike a new deal').insertAdjacentHTML('beforeend','<p class="hint">No holdfasts near enough to trade with.</p>');
-  }else if(townTab==='muster'){
-   const cap2=document.createElement('div');cap2.className='chips';
-   cap2.innerHTML='<span class="chip2">\u2694 '+playerTroops()+' / '+playerPop()+' troops (of your smallfolk)</span>';
-   b.appendChild(cap2);
-   const s=addSec(b,'Recruit \u00b7 '+t.dem.men+' men of age');
-   const disc=1;
-   let rows='';for(const u of UORDER){const c=UNITS[u];
-    rows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">atk '+c.atk+' def '+c.def+' \u00b7 beats '+c.strong.map(x=>UNITS[x].name.split(/[ -]/)[0]).join(', ')+'</div></div>'+
-     '<div style="display:flex;align-items:center;gap:5px"><span class="pr">'+Math.round(c.gold*10*disc)+'g</span>'+
-     '<button class="act gd" data-rec="'+u+'" data-dest="host">+10 host</button>'+
-     '<button class="act gd" data-rec="'+u+'" data-dest="garrison">+10 garr</button></div></div>';}
-   s.insertAdjacentHTML('beforeend',rows);
-   s.querySelectorAll('[data-rec]').forEach(btn=>btn.onclick=()=>recruit(btn.dataset.rec,10,btn.dataset.dest));
-   // move standing companies between this holdfast's garrison and your host
-   const g=addSec(b,'Garrison \u21c4 Host');
-   const units=UORDER.filter(u=>(t.garrison&&t.garrison[u])||(R.host&&R.host.troops[u]));
-   if(units.length){
-    let grows='';for(const u of units){const c=UNITS[u],gn=(t.garrison&&t.garrison[u])||0,hn=(R.host&&R.host.troops[u])||0;
-     grows+='<div class="shoprow"><div><div class="sn">'+c.name+'</div><div class="sd">garrison '+gn+' \u00b7 host '+hn+'</div></div>'+
-      '<div style="display:flex;align-items:center;gap:5px">'+
-      '<button class="act gd" data-mv="'+u+'" data-to="host"'+(gn<=0?' disabled':'')+'>\u2192 host</button>'+
-      '<button class="act gd" data-mv="'+u+'" data-to="garrison"'+(hn<=0?' disabled':'')+'>\u2190 garr</button></div></div>';}
-    g.insertAdjacentHTML('beforeend',grows);
-    g.querySelectorAll('[data-mv]').forEach(btn=>btn.onclick=()=>shiftGarrison(t.id,btn.dataset.mv,10,btn.dataset.to==='garrison'));
-   } else g.insertAdjacentHTML('beforeend','<p class="hint">No companies here yet \u2014 recruit some above.</p>');
-   // Shipyard \u2014 coastal towns, cities and capitals build ships to carry armies over water
-   const sy=addSec(b,'Shipyard');
-   const cap=shipCap(t);
-   if(cap<=0){
-    sy.insertAdjacentHTML('beforeend','<p class="hint">'+((t.terrain&&t.terrain.water)?'Only towns, cities and capitals can build ships.':'This holdfast has no coast \u2014 ships need open water nearby.')+'</p>');
-   } else {
-    const built=townShipCount(t.id),queued=(t.shipQueue&&t.shipQueue.length)||0;
-    const afford=R.gold>=40&&R.wood>=60;
-    sy.insertAdjacentHTML('beforeend','<div class="shoprow"><div><div class="sn">Build a ship <span style="color:var(--ink3)">'+built+'/'+cap+'</span></div>'+
-     '<div class="sd">carries '+SHIP_CAP+' troops \u00b7 '+SHIP_TURNS+' turns to build'+(queued?' \u00b7 '+queued+' on the ways':'')+'</div></div>'+
-     '<div style="display:flex;align-items:center;gap:6px"><span class="pr">60\u{1FAB5} 40g</span><button class="act gd" id="build-ship"'+(built>=cap||!afford?' disabled':'')+'>Lay keel</button></div></div>');
-    const bs=sy.querySelector('#build-ship');if(bs)bs.onclick=()=>buildShip(t.id);
-   }
-  }else{
-   const s=addSec(b,'Dragons');
-   const dr=R.host?R.host.dragons.map(d=>'<div class="kv"><span>'+DRAGONS[d.size].name+'</span><b>pow '+DRAGONS[d.size].power+'</b></div>').join(''):'';
-   s.insertAdjacentHTML('beforeend',(dr||'<p class="hint">No dragons yet.</p>')+(R.eggs.length?'<p class="hint">'+R.eggs.length+' egg(s) warming.</p>':'')+
-    '<div class="shoprow"><div><div class="sn">Dragon egg</div><div class="sd">hatches to a random size in a few turns</div></div><div style="display:flex;align-items:center;gap:6px"><span class="pr">150g\u00b740f</span><button class="act gd" id="buyegg">Acquire</button></div></div>');
-   s.querySelector('#buyegg').onclick=buyEgg;
-  }
-  const e=addSec(b,'');const eb=document.createElement('button');eb.className='act';eb.textContent='End Turn \u25b8';eb.onclick=endTurn;e.appendChild(eb);
- }else{
-  const s=addSec(b,'Holdfast');
-  s.insertAdjacentHTML('beforeend','<div class="kv"><span>Allegiance</span><b>'+bannerName(t.owner)+'</b></div>'+
-   '<div class="kv"><span>Smallfolk</span><b>'+(t.population||'\u2014')+'</b></div>'+
-   '<div class="kv"><span>Keep</span><b>'+KEEP_NAMES2[t.keep||0]+'</b></div>'+
-   '<div class="kv"><span>Garrison</span><b>'+troopsTotal(t.garrison||{})+' troops</b></div>'+
-   (t.families&&t.families.length?'<div class="kv"><span>Houses</span><b>'+t.families.map(f=>f.name).join(', ')+'</b></div>':''));
-  // its trade roads
-  const links=world.routes.filter(r=>r.a===t.id||r.b===t.id).map(r=>LOC[r.a===t.id?r.b:r.a]).filter(Boolean);
-  if(links.length){const tr=addSec(b,'Trade roads');
-   tr.insertAdjacentHTML('beforeend','<p class="hint">'+links.map(x=>x.name).join(' \u00b7 ')+'</p>');}
-  const w=addSec(b,'War');
-  if(R.host){const btn=document.createElement('button');btn.className='act';
-   btn.textContent='March your host here';
-   btn.onclick=()=>{orderMove(R.host,{x:t.x,y:t.y,townId:t.id});log2('Your host marches on '+t.name+'.');selTown=null;showRealmPanel();needsDraw=true;};
-   w.appendChild(btn);
-  } else w.insertAdjacentHTML('beforeend','<p class="hint">You have no host in the field.</p>');
+ const st=document.createElement('div');st.className='chips';
+ st.innerHTML='<span class="chip2">\u{1F465} '+fmt(t.population||0)+'</span><span class="chip2">\u{1F7E8} '+fmt(t.gold||0)+'</span><span class="chip2">\u{1F35E} '+fmt(t.food||0)+'</span><span class="chip2">⚔ '+fmt(troopsTotal(t.garrison||{}))+' garrison</span>'+(t.keep?'<span class="chip2">\u{1F3F0} keep '+(t.keepCap?fmt(t.keepCap):'')+'</span>':'');
+ b.appendChild(st);
+ // ---- edit the city ----
+ const ed=addSec(b,'Set this city');
+ numRow(ed,'People','\u{1F465}',t.population||0,v=>setCity(t.id,'population',v));
+ numRow(ed,'Gold','\u{1F7E8}',t.gold||0,v=>setCity(t.id,'gold',v));
+ numRow(ed,'Food','\u{1F35E}',t.food||0,v=>setCity(t.id,'food',v));
+ // ---- raise a host ----
+ const ar=addSec(b,'Raise a host');
+ const arow=document.createElement('div');arow.className='shoprow';
+ arow.innerHTML='<div><div class="sn">Soldiers</div><div class="sd">drawn from this city’s people</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="1" step="1" value="1000" style="width:110px" id="spawn-n"><button class="act gd" id="spawn-army">Spawn</button></div>';
+ ar.appendChild(arow);
+ ar.querySelector('#spawn-army').onclick=()=>spawnArmy(t.id,Math.max(1,Math.floor(+ar.querySelector('#spawn-n').value||0)));
+ // add straight to the city garrison too
+ const gr=document.createElement('div');gr.className='shoprow';
+ gr.innerHTML='<div><div class="sn">Add to garrison</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="1" step="1" value="500" style="width:110px" id="garr-n"><button class="act gd" id="garr-add">Add</button></div>';
+ ar.appendChild(gr);
+ gr.querySelector('#garr-add').onclick=()=>{const n=Math.max(1,Math.floor(+gr.querySelector('#garr-n').value||0));const take=Math.min(n,t.population||0);t.population-=take;t.garrison={n:(troopsTotal(t.garrison||{})+take)};log2(fmt(take)+' join the garrison of '+t.name+'.');realmHUD();refreshRealmView();};
+ // ---- boats ----
+ if(t.terrain&&t.terrain.water){
+  const bo=addSec(b,'Boats');
+  const bb2=document.createElement('button');bb2.className='act';bb2.textContent='Spawn a boat (holds '+SHIP_CAP+')';bb2.onclick=()=>spawnBoat(t.id);bo.appendChild(bb2);
  }
- const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='\u25c2 Realm';bb.onclick=()=>{selTown=null;showRealmPanel();};back.appendChild(bb);
+ // ---- dragons ----
+ const dr=addSec(b,'Spawn a dragon');
+ const drow=document.createElement('div');
+ drow.innerHTML='<div class="teform"><div class="te2"><label>Size (feet)<input type="number" min="5" max="400" step="1" value="60" id="drag-ft" style="width:100%"></label><label>Colour<input type="color" value="#b23b3b" id="drag-col" style="width:100%;height:34px;padding:0;border:none;background:none"></label></div></div>';
+ dr.appendChild(drow);
+ const dbn=document.createElement('button');dbn.className='act';dbn.style.marginTop='6px';dbn.textContent='Spawn dragon';dbn.onclick=()=>spawnDragon(t.id,+$('#drag-ft').value||60,$('#drag-col').value);dr.appendChild(dbn);
+ dr.insertAdjacentHTML('beforeend','<p class="hint" style="margin-top:5px">Bigger dragons hit far harder — a 60ft drake is worth thousands of soldiers.</p>');
+ // ---- keep ----
+ const kp=addSec(b,'Keep');
+ const kb=document.createElement('button');kb.className='act';kb.textContent=t.keep?'Redesign keep':'Add a keep';kb.onclick=()=>openKeepDesigner(t.id);kp.appendChild(kb);
+ if(t.keep)kp.insertAdjacentHTML('beforeend','<p class="hint" style="margin-top:5px">Holds up to '+fmt(t.keepCap||1000)+' soldiers behind its walls.</p>');
+ // ---- war / ownership ----
+ if(!mine){
+  const w=addSec(b,'Allegiance');
+  w.insertAdjacentHTML('beforeend','<p class="hint">Held by '+bannerName(t.owner)+'. March a host here to take it, or seize it now.</p>');
+  const sz=document.createElement('button');sz.className='act';sz.textContent='Seize for your house';sz.onclick=()=>{t.owner='player';rebuildStatic();log2(t.name+' raises your banner.','gold');realmHUD();refreshRealmView();needsDraw=true;};w.appendChild(sz);
+ }
+ const back=addSec(b,'');const bb3=document.createElement('button');bb3.className='act';bb3.textContent='◂ Realm';bb3.onclick=()=>{selTown=null;showRealmPanel();};back.appendChild(bb3);
 }
 
 /* ================= boot ================= */
