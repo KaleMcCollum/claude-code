@@ -3268,7 +3268,9 @@ function showTownPanel(){
 }
 
 /* ================= boot ================= */
-loadWorld();rebuildWorld();
+loadWorld();
+if(!world.towns.length)loadSampleWorld();   // always have a playable map so the create screen shows (never the empty editor)
+rebuildWorld();
 mapImg.onload=()=>{drawStatic();needsDraw=true;};
 mapImg.src=MAPSRC;
 resize();buildCreate();setTier('town');

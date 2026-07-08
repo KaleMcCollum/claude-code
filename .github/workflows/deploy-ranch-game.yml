@@ -2,6 +2,7 @@ name: Deploy site to GitHub Pages
 
 # Publishes static sites to GitHub Pages on every push to main:
 #   ranch-game/         -> site root            (https://<user>.github.io/claude-code/)
+#   realm-game/         -> /realm-game/         (https://<user>.github.io/claude-code/realm-game/)
 #   armoimc/            -> /armoimc/            (https://<user>.github.io/claude-code/armoimc/)
 #   lake-weekend/       -> /lake-weekend/       (https://<user>.github.io/claude-code/lake-weekend/)
 #   real-estate-funnel/ -> /real-estate-funnel/ (https://<user>.github.io/claude-code/real-estate-funnel/)
@@ -10,6 +11,7 @@ on:
     branches: ["main"]
     paths:
       - "ranch-game/**"
+      - "realm-game/**"
       - "armoimc/**"
       - "lake-weekend/**"
       - "real-estate-funnel/**"
@@ -37,8 +39,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Assemble site (ranch-game at root, others in subfolders)
         run: |
-          mkdir -p _site/armoimc _site/lake-weekend _site/real-estate-funnel
+          mkdir -p _site/realm-game _site/armoimc _site/lake-weekend _site/real-estate-funnel
           cp -r ranch-game/. _site/
+          cp -r realm-game/. _site/realm-game/
           cp -r armoimc/. _site/armoimc/
           cp -r lake-weekend/. _site/lake-weekend/
           cp -r real-estate-funnel/. _site/real-estate-funnel/
