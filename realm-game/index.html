@@ -1738,8 +1738,7 @@ function endPointer(e){
       if(areAllied(selA.owner,t.owner)){log2(t.name+' belongs to your ally.','bad');}
       else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;
        log2('Your host marches to attack '+t.name+'.','bad');refreshRealmView();needsDraw=true;}
-     }else if(a&&a.owner===selA.owner){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
-     else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
+     }else if(a&&a.owner===selA.owner){log2('That’s your own host — tap an enemy host or town to attack (or use Merge / Ally).','bad');}
      else{log2('Tap an enemy host or town to attack it.','bad');}
     }else if(armyCmd==='merge'){       // MERGE: join two of your own hosts
      if(a&&a.owner===selA.owner&&a.id!==selA.id){
