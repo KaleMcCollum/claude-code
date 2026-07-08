@@ -1725,8 +1725,8 @@ function endPointer(e){
    const selA=selArmy&&armies.find(x=>x.id===selArmy);
    const selS=selShip&&ships.find(x=>x.id===selShip);
    if(selS&&!sh&&!a){                // ordering the selected ship — water only
-    if(!isLand(w.x,w.y)){selS.dest={x:Math.round(w.x),y:Math.round(w.y)};log2('The ship sets sail.');refreshRealmView();needsDraw=true;}
-    else if(t){const wn=waterNear(t.x,t.y,60);if(wn){selS.dest=wn;log2('The ship makes for '+t.name+'’s harbour.');}refreshRealmView();needsDraw=true;}
+    if(!isLand(w.x,w.y)){selS.dest={x:Math.round(w.x),y:Math.round(w.y)};log2('The ship sets sail.');endOrder();}
+    else if(t){const wn=waterNear(t.x,t.y,60);if(wn){selS.dest=wn;log2('The ship makes for '+t.name+'’s harbour.');endOrder();}else refreshRealmView();needsDraw=true;}
     else{log2('Ships sail only on open water.','bad');}
    }
    else if(selA){                       // commanding the selected host (any house — you direct all)
@@ -1735,32 +1735,32 @@ function endPointer(e){
       if(a.owner!==selA.owner&&areAllied(selA.owner,a.owner)){log2('You are allied with '+bannerName(a.owner)+'. Break the alliance first.','bad');}
       else{orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;selA.attackTarget=a.id;
        const who=a.owner===selA.owner?'your own host':bannerName(a.owner)+'’s host';
-       log2('Your host charges '+who+'!','bad');refreshRealmView();needsDraw=true;}
+       log2('Your host charges '+who+'!','bad');endOrder();}
      }else if(t&&t.owner!==selA.owner){
       if(areAllied(selA.owner,t.owner)){log2(t.name+' belongs to your ally.','bad');}
       else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;selA.attackTarget=null;
-       log2('Your host marches to attack '+t.name+'.','bad');refreshRealmView();needsDraw=true;}
+       log2('Your host marches to attack '+t.name+'.','bad');endOrder();}
      }else if(t&&t.owner===selA.owner){log2('That’s your own town — march there in Move mode to garrison it.','bad');}
      else{log2('Tap a host or town to attack it.','bad');}
     }else if(armyCmd==='merge'){       // MERGE: join two of your own hosts
      if(a&&a.owner===selA.owner&&a.id!==selA.id){
-      mergeHosts(a,selA);selArmy=a.id;armyCmd='move';
+      mergeHosts(a,selA);armyCmd='move';
       log2('Your hosts join into one — '+fmt(troopsTotal(a.troops))+' strong.','gold');
-      showArmyPanel();window.revealPanel&&revealPanel();refreshRealmView();needsDraw=true;
+      endOrder();
      }else if(a&&a.owner!==selA.owner){log2('You can only merge your own hosts — use Ally instead.','bad');}
      else{log2('Tap another of your hosts to merge with.','bad');}
     }else if(armyCmd==='ally'){        // ALLY: swear peace with another house
      const oth=(a&&a.owner!==selA.owner&&a.owner)||(t&&t.owner!==selA.owner&&t.owner)||null;
      if(oth){addAlliance(selA.owner,oth);
       log2(R.meName+' and '+bannerName(oth)+' are now allied — their hosts will fight side by side.','gold');
-      refreshRealmView();needsDraw=true;}
+      endOrder();}
      else{log2('Tap another house’s host or town to ally with them.','bad');}
     }else{                             // MOVE: just march to the spot
      if(a&&a.id!==selA.id){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else if(t){orderMove(selA,{x:t.x,y:t.y,townId:t.owner===selA.owner?t.id:null});selA.attacking=false;selA.attackTarget=null;
-      log2('Your host marches to '+t.name+'.');refreshRealmView();needsDraw=true;}
-     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});selA.attacking=false;selA.attackTarget=null;refreshRealmView();needsDraw=true;}
+      log2('Your host marches to '+t.name+'.');endOrder();}
+     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});selA.attacking=false;selA.attackTarget=null;endOrder();}
     }
    }
    else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
@@ -1794,6 +1794,7 @@ addEventListener('resize',()=>{resize();clampCam();});
  if(tog)tog.onclick=()=>setDown(!document.body.classList.contains('sheetdown'));
  if(grip)grip.onclick=()=>setDown(!document.body.classList.contains('sheetdown'));
  window.revealPanel=()=>setDown(false);
+ window.collapsePanel=()=>setDown(true);
  const sf=document.getElementById('simFab');if(sf)sf.onclick=()=>{if(R)endTurn();};
 })();
 
@@ -2838,7 +2839,8 @@ function moveArmies(){
   // friends & allies only clash when one has been explicitly ordered to attack the other
   const targeted=(a.attacking&&a.attackTarget===b.id)||(b.attacking&&b.attackTarget===a.id);
   if((a.owner===b.owner||areAllied(a.owner,b.owner))&&!targeted)continue;
-  if(dist2(a,b)<10*10&&troopsTotal(a.troops)&&troopsTotal(b.troops))resolveField(a,b);
+  const force=x=>troopsTotal(x.troops)>0||(x.dragons&&x.dragons.length>0); // dragons count as a host
+  if(dist2(a,b)<10*10&&force(a)&&force(b))resolveField(a,b);
  }
  // sieges: army adjacent to enemy town it targeted
  for(const a of armies){
@@ -3244,6 +3246,8 @@ function shipAt(w){let best=null,bd=7*7;for(const s of ships){const d=(s.x-w.x)*
 /* ---- panels ---- */
 let townTab='manage';
 function refreshRealmView(){if(selShip)showShipPanel();else if(selArmy)showArmyPanel();else if(selTown)showTownPanel();else showRealmPanel();}
+// after issuing an order, drop the selection (and tuck the sheet away on mobile) so the next tap picks a fresh unit/city
+function endOrder(){selArmy=null;selShip=null;selTown=null;showRealmPanel();if(window.collapsePanel)collapsePanel();needsDraw=true;}
 function showRealmPanel(){
  selArmy=null;selTown=null;selShip=null;
  const sh=realmShare();
