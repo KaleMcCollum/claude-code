@@ -681,15 +681,22 @@ function generateWorld(seed,target){
  while(seats.length<5&&shuffled.length)seats.push(shuffled[seats.length]);
  const SEAT_IDS=['aldcrown','coldmere','wyndmere','appleford','tidereach'];
  const SEAT_NAMES=['Aldcrown','Coldmere Keep','Wyndmere Keep','Appleford Hall','Tidereach Keep'];
+ // a realm has only a handful of true cities — pick ~10 total (incl. the 4 seat-cities),
+ // preferring the coast and spreading them out; everything else is a town or village
+ const CITY_TARGET=10, wantMore=Math.max(0,CITY_TARGET-4);
+ const nonSeat=shuffled.filter(p=>seats.indexOf(p)<0);
+ const coastFirst=nonSeat.slice().sort((a,b)=>(nearWaterR(b.x,b.y,16)?1:0)-(nearWaterR(a.x,a.y,16)?1:0));
+ const cityPicks=[];
+ for(const p of coastFirst){if(cityPicks.length>=wantMore)break;
+  if(cityPicks.every(c=>(c.x-p.x)**2+(c.y-p.y)**2>130*130))cityPicks.push(p);}
+ for(const p of coastFirst){if(cityPicks.length>=wantMore)break;if(cityPicks.indexOf(p)<0)cityPicks.push(p);}
+ const citySet=new Set(cityPicks);
  const towns=[];
  pts.forEach((p,i)=>{
   const si=seats.indexOf(p);
   let type,name,id;
   if(si>=0){type=si===0?'capital':'city';id=SEAT_IDS[si];name=SEAT_NAMES[si];}
-  else{const r=Math.random(),coastal=nearWaterR(p.x,p.y,16);
-   // coasts grow into cities far more often than the interior
-   if(coastal)type=r<0.17?'city':r<0.42?'town':'village';
-   else       type=r<0.035?'city':r<0.20?'town':'village';
+  else{type=citySet.has(p)?'city':(Math.random()<0.32?'town':'village');
    id='g'+i;name=genName(used);}
   const keep=DEFAULT_KEEP[type]||0;
   towns.push({id,name,type,x:p.x,y:p.y,region:'',shops:(DEFAULT_SHOPS[type]||['market']).slice(),
