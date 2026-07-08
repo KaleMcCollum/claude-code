@@ -635,10 +635,10 @@ const RNOUN=['reach','march','vale','wold','fen','moor','hold','wilds','downs','
 function genName(used){for(let i=0;i<500;i++){const n=pick(GPRE)+pick(GSUF);if(!used.has(n)){used.add(n);return n;}}return 'Holdfast '+used.size;}
 function generateWorld(){
  buildLandMask();
- const used=new Set(),pts=[],MIND=13,rnd=Math.random,TARGET=200;
+ const used=new Set(),pts=[],MIND=12,rnd=Math.random,TARGET=300;
  // 1) scatter many "settled regions" — water-side centres, spread across the realm, wild gaps between
  const centers=[];let ctries=0;
- while(centers.length<26&&ctries<60000){ctries++;
+ while(centers.length<34&&ctries<80000){ctries++;
   const x=70+rnd()*(W-140),y=210+rnd()*(H-270);
   if(!isLandFirm(x,y)||!nearWaterR(x,y,34))continue;
   if(centers.some(c=>(c.x-x)**2+(c.y-y)**2<110*110))continue;
@@ -680,7 +680,11 @@ function generateWorld(){
   const si=seats.indexOf(p);
   let type,name,id;
   if(si>=0){type=si===0?'capital':'city';id=SEAT_IDS[si];name=SEAT_NAMES[si];}
-  else{const r=Math.random();type=r<0.05?'city':r<0.24?'town':'village';id='g'+i;name=genName(used);}
+  else{const r=Math.random(),coastal=nearWaterR(p.x,p.y,16);
+   // coasts grow into cities far more often than the interior
+   if(coastal)type=r<0.17?'city':r<0.42?'town':'village';
+   else       type=r<0.035?'city':r<0.20?'town':'village';
+   id='g'+i;name=genName(used);}
   const keep=DEFAULT_KEEP[type]||0;
   towns.push({id,name,type,x:p.x,y:p.y,region:'',shops:(DEFAULT_SHOPS[type]||['market']).slice(),
     population:DEFAULT_POP[type]||300,keep,families:[],desc:''});
@@ -1440,17 +1444,55 @@ function drawKeep(g,x,y,level){
   g.fillStyle='#8a2f2b';g.beginPath();g.moveTo(x,y-9.3);g.lineTo(x+2.2,y-8.75);g.lineTo(x,y-8.2);g.closePath();g.fill();
  }
 }
+// a heraldic seat-crest — dark laurel ring around a house-coloured heater shield,
+// grand form (capital) adds crossed swords and a pennant. Coloured by the holding house.
+function drawCrest(g,x,y,col,sc,grand){
+ const ED='#120a06',lt=shade(col,0.42),md=shade(col,0.12),dk=shade(col,-0.5),
+  HALO='rgba(238,228,196,.94)',RING='#2b2016',RINGL='#5c4a30',STEEL='#b9bfc7',STEELD='#727984',WOOD='#3a2a18';
+ g.lineJoin='round';g.lineCap='round';
+ const cy=y-0.2*sc;
+ // parchment disc + dark laurel ring
+ g.beginPath();g.arc(x,y,7.6*sc,0,7);g.fillStyle=HALO;g.fill();
+ g.beginPath();g.arc(x,y,6.7*sc,0,7);g.strokeStyle=RING;g.lineWidth=1.15*sc;g.stroke();
+ g.beginPath();g.arc(x,y,5.6*sc,0,7);g.strokeStyle=RINGL;g.lineWidth=0.34*sc;g.stroke();
+ if(grand){ // crossed swords behind the shield
+  for(const dir of [-1,1]){
+   g.strokeStyle=STEELD;g.lineWidth=0.72*sc;g.beginPath();g.moveTo(x+dir*4.2*sc,cy+4.7*sc);g.lineTo(x-dir*4.2*sc,cy-4.9*sc);g.stroke();
+   g.strokeStyle=STEEL;g.lineWidth=0.34*sc;g.beginPath();g.moveTo(x+dir*4.2*sc,cy+4.7*sc);g.lineTo(x-dir*4.2*sc,cy-4.9*sc);g.stroke();
+   g.fillStyle=WOOD;g.beginPath();g.arc(x+dir*4.2*sc,cy+4.7*sc,0.5*sc,0,7);g.fill();
+  }
+ }
+ const sh=()=>{g.beginPath();
+  g.moveTo(x-3.0*sc,cy-3.5*sc);g.quadraticCurveTo(x,cy-4.0*sc,x+3.0*sc,cy-3.5*sc);
+  g.lineTo(x+3.0*sc,cy+0.8*sc);g.quadraticCurveTo(x+2.6*sc,cy+3.7*sc,x,cy+4.9*sc);
+  g.quadraticCurveTo(x-2.6*sc,cy+3.7*sc,x-3.0*sc,cy+0.8*sc);g.closePath();};
+ const sg=g.createLinearGradient(0,cy-3.8*sc,0,cy+4.9*sc);sg.addColorStop(0,lt);sg.addColorStop(0.55,col);sg.addColorStop(1,dk);
+ g.save();g.shadowColor='rgba(0,0,0,.35)';g.shadowBlur=1.1*sc;g.shadowOffsetY=0.5*sc;g.fillStyle=sg;sh();g.fill();g.restore();
+ g.strokeStyle=ED;g.lineWidth=0.4*sc;sh();g.stroke();
+ g.strokeStyle=shade(col,0.22);g.lineWidth=0.2*sc;
+ g.beginPath();g.moveTo(x-2.4*sc,cy-2.9*sc);g.quadraticCurveTo(x,cy-3.3*sc,x+2.4*sc,cy-2.9*sc);
+ g.lineTo(x+2.4*sc,cy+0.6*sc);g.quadraticCurveTo(x+2.1*sc,cy+3.0*sc,x,cy+4.0*sc);
+ g.quadraticCurveTo(x-2.1*sc,cy+3.0*sc,x-2.4*sc,cy+0.6*sc);g.closePath();g.stroke();
+ // charge: pale diagonal bend + central boss + rivets
+ g.save();sh();g.clip();g.strokeStyle=lt;g.lineWidth=0.82*sc;
+ g.beginPath();g.moveTo(x-3.0*sc,cy-3.2*sc);g.lineTo(x+3.0*sc,cy+2.6*sc);g.stroke();g.restore();
+ g.fillStyle=STEEL;g.strokeStyle=ED;g.lineWidth=0.12*sc;g.beginPath();g.arc(x,cy-0.1*sc,0.7*sc,0,7);g.fill();g.stroke();
+ g.fillStyle=STEELD;for(const p of [[-2.5,-3.0],[2.5,-3.0],[0,4.2]]){g.beginPath();g.arc(x+p[0]*sc,cy+p[1]*sc,0.28*sc,0,7);g.fill();}
+ if(grand){ // pennant flag rising from behind the shield
+  g.strokeStyle=WOOD;g.lineWidth=0.36*sc;g.beginPath();g.moveTo(x,cy-4.0*sc);g.lineTo(x,cy-9.3*sc);g.stroke();
+  g.fillStyle='#efe6cd';g.beginPath();g.arc(x,cy-9.3*sc,0.55*sc,0,7);g.fill();
+  const fg=g.createLinearGradient(x,0,x+4.0*sc,0);fg.addColorStop(0,col);fg.addColorStop(1,md);
+  g.fillStyle=fg;g.strokeStyle=ED;g.lineWidth=0.14*sc;
+  g.beginPath();g.moveTo(x+0.1*sc,cy-9.1*sc);g.lineTo(x+4.0*sc,cy-8.4*sc);g.quadraticCurveTo(x+2.9*sc,cy-7.65*sc,x+4.0*sc,cy-6.9*sc);g.lineTo(x+0.1*sc,cy-6.3*sc);g.closePath();g.fill();g.stroke();
+ }
+}
 function drawLocGlyph(g,l){
  const x=l.x,y=l.y,ty=l.type,WAX='#8a2f2b',INK='#3a2c1a',GOLD='#a9853b',HALO='rgba(238,228,196,.92)';
  g.lineJoin='round';
  if(ty==='capital'){
-  g.fillStyle=WAX;g.strokeStyle=INK;g.lineWidth=0.8;
-  star(g,x,y,8,7.5,3);g.fill();g.stroke();
-  g.beginPath();g.arc(x,y,1.8,0,7);g.fillStyle='#f2e4c2';g.fill();
+  drawCrest(g,x,y,bannerColor(l.owner),1.18,true);
  }else if(ty==='city'){
-  g.beginPath();g.arc(x,y,6.4,0,7);g.fillStyle=HALO;g.fill();
-  g.beginPath();g.arc(x,y,5,0,7);g.strokeStyle=INK;g.lineWidth=1.3;g.stroke();
-  g.beginPath();g.arc(x,y,2.7,0,7);g.fillStyle=WAX;g.fill();g.lineWidth=0.7;g.stroke();
+  drawCrest(g,x,y,bannerColor(l.owner),0.94,false);
  }else if(ty==='hill'){ // coronation seat — gold ringed mark
   g.beginPath();g.arc(x,y,6.4,0,7);g.fillStyle=HALO;g.fill();
   g.beginPath();g.arc(x,y,5,0,7);g.strokeStyle='#6e5417';g.lineWidth=1.3;g.stroke();
@@ -1469,21 +1511,22 @@ function drawLocGlyph(g,l){
  // a keep on a settlement: small castle tucked below-right of the main mark
  // ONLY a keep you designed shows on the map — no stray castles/palisades
  if(ty!=='keep'&&l.keep>0&&l.keepDesign){const kx=x+4+l.keep*0.4,ky=y+4.5+l.keep*0.4;drawKeepPlaced(g,kx,ky,l.keepDesign);}
- // the great places (and any keep) carry a baked label; towns & villages label on zoom/hover
- if(ty==='capital'||ty==='city'||ty==='hill'||ty==='keep')drawLocLabel(g,l);
+ // labels are NOT baked — they're drawn live in the dynamic layer so they counter-scale on zoom
 }
+// labels shrink (in world units) as you zoom in, so names never balloon on screen
+function labelScale(){return Math.min(1.0,Math.max(0.3,Math.pow(cam.s,-0.6)));}
+// how far a name sits below the marker — just enough to clear it (world units, constant)
+function markerGap(l){const ty=l.type;let g=ty==='capital'?9.6:ty==='city'?8.2:ty==='hill'?7.4:ty==='keep'?6.2:ty==='town'?3.9:2.5;if(ty!=='keep'&&(l.keep||0)>0)g+=3+l.keep*0.3;return g;}
+function labelFs(l){const ty=l.type;return (ty==='capital'?9:(ty==='city'||ty==='hill')?8:ty==='keep'?7.5:ty==='town'?6.2:5.2)*labelScale();}
 function drawLocLabel(g,l){
- const ty=l.type;
- const fs=ty==='capital'?9:(ty==='city'||ty==='hill')?8:ty==='keep'?7.5:ty==='town'?6.5:5.5;
- let gap=ty==='capital'?11:(ty==='city'||ty==='hill')?9:ty==='keep'?9:ty==='town'?6.5:4.5;
- if(ty!=='keep'&&l.keep>0)gap+=4+l.keep*0.4;   // clear the keep mark below the dot
+ const ty=l.type,fs=labelFs(l),gap=markerGap(l),L=labelScale();
  g.font=(ty==='capital'?'700 ':'600 ')+fs+'px Georgia';
- g.textAlign='center';g.textBaseline='top';g.letterSpacing='0.3px';
- g.lineJoin='round';g.strokeStyle='rgba(238,228,196,.92)';g.lineWidth=2.2;
+ g.textAlign='center';g.textBaseline='top';
+ g.lineJoin='round';g.strokeStyle='rgba(238,228,196,.92)';g.lineWidth=2.0*L;
  g.strokeText(l.name,l.x,l.y+gap);
  g.fillStyle=ty==='capital'?'#2d2010':ty==='village'?'#6b5540':'#4a3a22';
  g.fillText(l.name,l.x,l.y+gap);
- g.letterSpacing='0px';g.textBaseline='middle';
+ g.textBaseline='middle';
 }
 
 /* dynamic layer */
@@ -1533,13 +1576,17 @@ function draw(){
 
  if(staticMap)ctx.drawImage(staticMap,0,0,W,H);
 
- // zoom-aware labels: the great places are baked in; towns reveal as you zoom, then villages
- if(cam.s>1.12){
-  const vx0=cam.x,vy0=cam.y,vx1=cam.x+innerWidth/cam.s,vy1=cam.y+innerHeight/cam.s;
+ // place labels — drawn live so they counter-scale (shrink on zoom-in), never baked.
+ // great places always show; towns reveal as you zoom, then villages.
+ {
+  const vx0=cam.x-40,vy0=cam.y-20,vx1=cam.x+innerWidth/cam.s+40,vy1=cam.y+innerHeight/cam.s+30;
   for(const l of LOCS){
-   if(l.type==='capital'||l.type==='city'||l.type==='hill')continue;
-   if(l.type==='village'&&cam.s<1.75)continue;
-   if(l.x<vx0-40||l.x>vx1+40||l.y<vy0-14||l.y>vy1+30)continue;
+   const major=l.type==='capital'||l.type==='city'||l.type==='hill'||l.type==='keep';
+   if(!major){
+    if(cam.s<1.12)continue;
+    if(l.type==='village'&&cam.s<1.75)continue;
+   }
+   if(l.x<vx0||l.x>vx1||l.y<vy0||l.y>vy1)continue;
    drawLocLabel(ctx,l);
   }
  }
@@ -2066,6 +2113,7 @@ function bindShopRows(sec){
 
 /* ================= character creation ================= */
 let selHouse=null,forge={sigil:SIGIL_SET[5],color:COLOR_SET[5]};
+function pickForge(){updateBegin();}   // sigil/color chosen — refresh the begin button
 function buildCreate(){
  selHouse='FORGE';           // you always found your own house
  const sg=$('#f-sigils');
@@ -3088,8 +3136,9 @@ function shade(hex,amt){ // amt in -1..1: negative darkens toward black, positiv
  return 'rgb('+r+','+g+','+b+')';
 }
 function drawCaption(x,y,name,color){
- ctx.font='600 3.1px Georgia';ctx.textAlign='center';ctx.textBaseline='top';
- ctx.lineWidth=1.1;ctx.strokeStyle='rgba(238,228,196,.85)';ctx.lineJoin='round';
+ const L=labelScale();
+ ctx.font='600 '+(3.9*L)+'px Georgia';ctx.textAlign='center';ctx.textBaseline='top';
+ ctx.lineWidth=1.3*L;ctx.strokeStyle='rgba(238,228,196,.85)';ctx.lineJoin='round';
  ctx.strokeText(name,x,y);
  ctx.fillStyle=color;ctx.fillText(name,x,y);
 }
@@ -3105,10 +3154,9 @@ function drawRealmLayer(){
     if(t.type==='town'&&cam.s<1.4)continue;
     if(t.type==='village'&&cam.s<1.75)continue;
    }
-   let gap=t.type==='capital'?11:(t.type==='city'||t.type==='hill'||t.type==='keep')?9:t.type==='town'?6.5:4.5;
-   if(t.type!=='keep'&&t.keep>0)gap+=4+t.keep*0.4;
-   const fs=t.type==='capital'?9:(t.type==='city'||t.type==='hill')?8:t.type==='keep'?7.5:t.type==='town'?6.5:5.5;
-   drawHouseCaption(t.x,t.y+gap+fs+0.8,t.owner);
+   // sit the house name just under the (counter-scaled) town label
+   const gap=markerGap(t)+labelFs(t)+1.2*labelScale();
+   drawHouseCaption(t.x,t.y+gap,t.owner);
   }
  }
  for(const s of ships)drawShipToken(ctx,s);
