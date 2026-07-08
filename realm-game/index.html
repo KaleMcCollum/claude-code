@@ -2866,9 +2866,9 @@ function battleMath(aTr,aDr,dTr,dDr,defMult){
 function applyLoss(tr,frac,perk){if(perk==='hardy')frac*=0.9;for(const u in tr)tr[u]=Math.max(0,Math.floor((tr[u]||0)*(1-frac)));}
 function resolveField(a,b){
  const rep=battleMath(a.troops,a.dragons,b.troops,b.dragons,1);
- applyLoss(a.troops,rep.attLoss,a.player?R.perk:null);applyLoss(b.troops,rep.defLoss,b.player?R.perk:null);
- if(rep.attLoss>0.6)a.dragons=a.dragons.filter(()=>Math.random()>0.3);
- if(rep.defLoss>0.6)b.dragons=b.dragons.filter(()=>Math.random()>0.3);
+ // the losing host is destroyed to a man; the victor keeps his survivors
+ if(rep.attackerWins){applyLoss(a.troops,rep.attLoss,a.player?R.perk:null);b.troops={};b.dragons=[];}
+ else{applyLoss(b.troops,rep.defLoss,b.player?R.perk:null);a.troops={};a.dragons=[];}
  a.attackTarget=null;b.attackTarget=null;   // one clash per order — don't auto-re-engage friends
  if(a.player||b.player)showBattleReport(rep,a,{name:bannerName(b.owner)+'’s host',owner:b.owner,player:b.player},null);
 }
@@ -2881,20 +2881,24 @@ function resolveSiege(att,town){
   const lev=splitTroops(Math.round(troopsTotal(at.garrison||{})*0.4),null);
   for(const u in lev)defTr[u]=(defTr[u]||0)+lev[u];}}
  const rep=battleMath(att.troops,att.dragons,defTr,defDr,defenseMult(town));
- applyLoss(att.troops,rep.attLoss,att.player?R.perk:null);
- // spread the defenders' losses across garrison and stationed hosts
- for(const s of stationed){applyLoss(s.troops,rep.defLoss,s.player?R.perk:null);}
- const garTot=Math.max(0,Math.round(troopsTotal(town.garrison||{})*(1-rep.defLoss)));
- town.garrison=clampTroops(splitTroops(garTot,null),garrisonCap(town));
  att.dest=null;
  if(rep.attackerWins){
+  // the defence is annihilated and the town changes hands; the victor keeps his survivors
+  town.garrison={};
+  for(const s of stationed){s.troops={};s.dragons=[];s.merged=true;}   // defenders put to the sword
+  applyLoss(att.troops,rep.attLoss,att.player?R.perk:null);
   const old=town.owner;town.owner=att.owner;
-  for(const s of stationed)s.merged=true;         // routed
   if(att.player){if(town.foodStore==null)town.foodStore=townEats(town);if(!town.dem)initDem(town);}
   if(att.player)log2('You have taken '+town.name+' from '+bannerName(old)+'!','gold');
   else if(old==='player')log2(bannerName(att.owner)+' has taken '+town.name+' from you!','bad');
   rebuildStatic();
   if(!att.player)mergeIntoGarrison(att,town);
+ }else{
+  // the assault is broken — the attacking host is destroyed to a man
+  att.troops={};att.dragons=[];
+  for(const s of stationed){applyLoss(s.troops,rep.defLoss,s.player?R.perk:null);}
+  const garTot=Math.max(0,Math.round(troopsTotal(town.garrison||{})*(1-rep.defLoss)));
+  town.garrison=clampTroops(splitTroops(garTot,null),garrisonCap(town));
  }
  if(att.player||town.owner==='player'||LOC[R.seat]===town)showBattleReport(rep,att,{name:town.name,owner:town.owner},town);
 }
