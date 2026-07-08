@@ -1731,14 +1731,29 @@ function endPointer(e){
    else if(selA&&selA.player){          // commanding the selected host
     if(armyCmd==='attack'){            // ATTACK: pick an enemy host or town
      if(a&&a.owner!==selA.owner){
-      orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;
-      log2('Your host charges '+bannerName(a.owner)+'’s host!','bad');refreshRealmView();needsDraw=true;
+      if(areAllied(selA.owner,a.owner)){log2('You are allied with '+bannerName(a.owner)+'.','bad');}
+      else{orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;
+       log2('Your host charges '+bannerName(a.owner)+'’s host!','bad');refreshRealmView();needsDraw=true;}
      }else if(t&&t.owner!==selA.owner){
-      orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;
-      log2('Your host marches to attack '+t.name+'.','bad');refreshRealmView();needsDraw=true;
+      if(areAllied(selA.owner,t.owner)){log2(t.name+' belongs to your ally.','bad');}
+      else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;
+       log2('Your host marches to attack '+t.name+'.','bad');refreshRealmView();needsDraw=true;}
      }else if(a&&a.owner===selA.owner){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else{log2('Tap an enemy host or town to attack it.','bad');}
+    }else if(armyCmd==='merge'){       // MERGE: join two of your own hosts
+     if(a&&a.owner===selA.owner&&a.id!==selA.id){
+      mergeHosts(a,selA);selArmy=a.id;armyCmd='move';
+      log2('Your hosts join into one — '+fmt(troopsTotal(a.troops))+' strong.','gold');
+      showArmyPanel();window.revealPanel&&revealPanel();refreshRealmView();needsDraw=true;
+     }else if(a&&a.owner!==selA.owner){log2('You can only merge your own hosts — use Ally instead.','bad');}
+     else{log2('Tap another of your hosts to merge with.','bad');}
+    }else if(armyCmd==='ally'){        // ALLY: swear peace with another house
+     const oth=(a&&a.owner!==selA.owner&&a.owner)||(t&&t.owner!==selA.owner&&t.owner)||null;
+     if(oth){addAlliance(selA.owner,oth);
+      log2(R.meName+' and '+bannerName(oth)+' are now allied — their hosts will fight side by side.','gold');
+      refreshRealmView();needsDraw=true;}
+     else{log2('Tap another house’s host or town to ally with them.','bad');}
     }else{                             // MOVE: just march to the spot
      if(a&&a.id!==selA.id){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
@@ -2328,8 +2343,18 @@ const HOUSE_A=['Ash','Black','Cold','Grey','Stone','Thorn','Oak','Fen','Wren','D
 const HOUSE_B=['brook','field','gate','mere','moor','wick','ford','holt','shaw','burn','combe','dale','worth','stead','fall','march','grave','helm','wood','water'];
 
 let R=null, F={};                 // realm state, faction table
-let armies=[], armySeq=1, selArmy=null, selTown=null, armyCmd='move'; // 'move' | 'attack'
+let armies=[], armySeq=1, selArmy=null, selTown=null, armyCmd='move'; // 'move' | 'attack' | 'merge' | 'ally'
 let ships=[], shipSeq=1, selShip=null;
+let alliances=new Set();   // "ownerA|ownerB" pairs of houses sworn not to fight
+function allyKey(a,b){return a<b?a+'|'+b:b+'|'+a;}
+function areAllied(a,b){return !!(a&&b&&a!==b&&alliances.has(allyKey(a,b)));}
+function addAlliance(a,b){if(a&&b&&a!==b)alliances.add(allyKey(a,b));}
+function breakAlliances(){alliances.clear();}
+function mergeHosts(into,from){   // fold `from` into `into`, then drop `from`
+ into.troops=into.troops||{};for(const u in (from.troops||{}))into.troops[u]=(into.troops[u]||0)+(from.troops[u]||0);
+ into.dragons=(into.dragons||[]).concat(from.dragons||[]);
+ const i=armies.indexOf(from);if(i>=0)armies.splice(i,1);
+}
 let RLOG=[];
 function log2(t,cls){RLOG.unshift({t,cls:cls||''});if(RLOG.length>40)RLOG.pop();}
 // troops are just a count, carried as {n: soldiers} so existing call-sites keep working
@@ -2806,7 +2831,7 @@ function moveArmies(){
  // battles: armies that meet
  for(let i=0;i<armies.length;i++)for(let j=i+1;j<armies.length;j++){
   const a=armies[i],b=armies[j];
-  if(a.owner===b.owner)continue;
+  if(a.owner===b.owner||areAllied(a.owner,b.owner))continue;
   if(dist2(a,b)<10*10&&troopsTotal(a.troops)&&troopsTotal(b.troops))resolveField(a,b);
  }
  // sieges: army adjacent to enemy town it targeted
@@ -2814,6 +2839,7 @@ function moveArmies(){
   if(!a.dest||!a.dest.townId)continue;
   const t=LOC[a.dest.townId];if(!t)continue;
   if(t.owner===a.owner){ if(Math.hypot(t.x-a.x,t.y-a.y)<6){mergeIntoGarrison(a,t);} continue; }
+  if(areAllied(t.owner,a.owner))continue;
   if(Math.hypot(t.x-a.x,t.y-a.y)<7)resolveSiege(a,t);
  }
  armies=armies.filter(a=>(troopsTotal(a.troops)>0||a.dragons.length)&&!a.merged);
@@ -3208,6 +3234,15 @@ function showRealmPanel(){
   '<div class="kv"><span>\u{1F465} People</span><b>'+fmt(p)+'</b></div>'+
   '<div class="kv"><span>⚔ Hosts afield</span><b>'+armies.filter(a=>a.owner==='player').length+'</b></div>'+
   '<div class="kv"><span>⚓ Boats</span><b>'+ships.filter(x=>x.owner==='player').length+'</b></div>');
+ if(alliances.size){
+  const al=addSec(b,'Alliances · '+alliances.size);
+  const names=[...alliances].map(k=>{const pr=k.split('|'),other=pr[0]==='player'?pr[1]:(pr[1]==='player'?pr[0]:null);
+   return other?bannerName(other):bannerName(pr[0])+' & '+bannerName(pr[1]);});
+  al.insertAdjacentHTML('beforeend','<p class="hint">Sworn with: '+names.join(', ')+'. Allied hosts won’t fight and stand together in battle.</p>');
+  const ab=document.createElement('button');ab.className='act';ab.textContent='Disband all alliances';
+  ab.onclick=()=>{breakAlliances();log2('All alliances are dissolved.','bad');showRealmPanel();needsDraw=true;};
+  al.appendChild(ab);
+ }
  const tw=myTowns().slice().sort((a,c)=>TIER_ORDER[c.type]-TIER_ORDER[a.type]||(c.population||0)-(a.population||0));
  const ts=addSec(b,'Your Cities · '+tw.length);
  if(tw.length){for(const t of tw){
@@ -3228,16 +3263,19 @@ function showArmyPanel(){
  if(a.dragons.length){const d=addSec(b,'Dragons');d.insertAdjacentHTML('beforeend',a.dragons.map(x=>'<div class="kv"><span>'+(x.ft?x.ft+'-foot dragon':'Dragon')+'</span><b>power '+fmt(dragonPower(x))+'</b></div>').join(''));}
  if(a.player){
   const o=addSec(b,'Orders');
-  // Move / Attack command toggle
-  const seg=document.createElement('div');seg.style.cssText='display:flex;gap:6px;margin-bottom:6px';
-  const mkCmd=(label,mode)=>{const btn=document.createElement('button');btn.className='act';btn.textContent=label;btn.style.flex='1';
+  // Move / Attack / Merge / Ally command toggle
+  const seg=document.createElement('div');seg.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px';
+  const mkCmd=(label,mode)=>{const btn=document.createElement('button');btn.className='act';btn.textContent=label;btn.style.cssText='flex:1 1 40%';
    if(armyCmd!==mode){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
    btn.onclick=()=>{armyCmd=mode;showArmyPanel();};return btn;};
   seg.appendChild(mkCmd('➤ Move','move'));seg.appendChild(mkCmd('⚔ Attack','attack'));
+  seg.appendChild(mkCmd('⛊ Merge','merge'));seg.appendChild(mkCmd('🤝 Ally','ally'));
   o.appendChild(seg);
-  o.insertAdjacentHTML('beforeend','<p class="hint">'+(armyCmd==='attack'
-   ?'<b>Attack:</b> tap an enemy host or town to march on and fight it.'
-   :'<b>Move:</b> tap anywhere to march there — no attack.')+' Then press Sim. Smaller hosts move faster.</p>');
+  const hints={move:'<b>Move:</b> tap anywhere to march there — no attack.',
+   attack:'<b>Attack:</b> tap an enemy host or town to march on and fight it.',
+   merge:'<b>Merge:</b> tap another of your hosts to fold this one into it.',
+   ally:'<b>Ally:</b> tap another house’s host or town to swear an alliance — allied hosts won’t fight and stand together.'};
+  o.insertAdjacentHTML('beforeend','<p class="hint">'+(hints[armyCmd]||hints.move)+' Then press Sim. Smaller hosts move faster.</p>');
   if(isDragon){
    const lk=document.createElement('button');lk.className='act';lk.style.marginTop='4px';
    lk.textContent=a.linkedTo?'Unlink from host (fly free)':'Link to nearest host';
