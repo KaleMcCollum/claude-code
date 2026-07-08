@@ -3117,51 +3117,40 @@ function drawArmyToken(ctx,a){
  }
  a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*8,a.y+Math.sin(ang)*8-2,d);});
 }
-// a carved chess-knight piece, turned from the holding house's colour —
-// a horse's head on a tiered base, lit from the upper-left for a 3-D look.
+// a carved chess-pawn — the foot-soldier piece — turned from the holding
+// house's colour: a ball head over an ogee body on a tiered base, lit upper-left.
 function drawWarriorToken(ctx,a,col){
  const cx=a.x,cy=a.y;
- const MID=shade(col,0.16),LT=shade(col,0.52),DK=shade(col,-0.44),EDGE='#160f08';
+ const MID=shade(col,0.16),LT=shade(col,0.54),DK=shade(col,-0.44),EDGE='#160f08';
  ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
  // cast shadow
- ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(cx+0.3,cy+5.0,3.0,0.6,0,0,7);ctx.fill();
- const grad=ctx.createLinearGradient(cx-2.8,cy-3.4,cx+3.0,cy+3.4);
- grad.addColorStop(0,LT);grad.addColorStop(0.42,MID);grad.addColorStop(1,DK);
+ ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(cx+0.25,cy+5.0,3.0,0.6,0,0,7);ctx.fill();
+ const grad=ctx.createLinearGradient(cx-2.6,cy-4.4,cx+2.8,cy+4.0);
+ grad.addColorStop(0,LT);grad.addColorStop(0.44,MID);grad.addColorStop(1,DK);
  ctx.fillStyle=grad;ctx.strokeStyle=EDGE;ctx.lineWidth=0.22;
- // ---- tiered base: foot + collar ----
+ // ---- flared foot ----
  ctx.beginPath();
- ctx.moveTo(cx-3.05,cy+4.75);ctx.quadraticCurveTo(cx-3.25,cy+3.95,cx-2.45,cy+3.75);
- ctx.lineTo(cx+2.45,cy+3.75);ctx.quadraticCurveTo(cx+3.25,cy+3.95,cx+3.05,cy+4.75);
- ctx.quadraticCurveTo(cx,cy+5.25,cx-3.05,cy+4.75);ctx.closePath();ctx.fill();ctx.stroke();
- ctx.beginPath();ctx.ellipse(cx,cy+3.5,2.4,0.74,0,0,7);ctx.fill();ctx.stroke();
- // ---- knight head + neck (muzzle facing right) ----
+ ctx.moveTo(cx-3.0,cy+4.85);ctx.quadraticCurveTo(cx-3.25,cy+4.0,cx-2.35,cy+3.8);
+ ctx.lineTo(cx+2.35,cy+3.8);ctx.quadraticCurveTo(cx+3.25,cy+4.0,cx+3.0,cy+4.85);
+ ctx.quadraticCurveTo(cx,cy+5.35,cx-3.0,cy+4.85);ctx.closePath();ctx.fill();ctx.stroke();
+ // ---- ogee body: narrow neck flaring to the base ----
  ctx.beginPath();
- ctx.moveTo(cx-1.75,cy+3.1);                           // back of neck at collar
- ctx.quadraticCurveTo(cx-2.2,cy+1.2,cx-1.5,cy-0.7);    // back of neck rising
- ctx.quadraticCurveTo(cx-1.2,cy-1.9,cx-1.4,cy-2.75);   // toward back of head
- ctx.lineTo(cx-0.55,cy-4.0);                            // back ear
- ctx.lineTo(cx-0.12,cy-3.05);                           // notch between ears
- ctx.lineTo(cx+0.55,cy-4.05);                           // front ear
- ctx.quadraticCurveTo(cx+0.82,cy-3.15,cx+1.2,cy-2.75); // forehead sloping down
- ctx.lineTo(cx+2.75,cy-2.15);                           // bridge to muzzle tip
- ctx.quadraticCurveTo(cx+3.2,cy-1.9,cx+2.9,cy-1.45);   // rounded nose
- ctx.lineTo(cx+1.5,cy-1.1);                             // underside of muzzle
- ctx.quadraticCurveTo(cx+0.5,cy-0.9,cx+0.32,cy-0.25);  // jaw / throat
- ctx.quadraticCurveTo(cx+0.2,cy+1.05,cx+1.15,cy+2.05); // front of chest
- ctx.quadraticCurveTo(cx+1.5,cy+2.75,cx+1.2,cy+3.05);  // to collar front
- ctx.quadraticCurveTo(cx-0.35,cy+3.4,cx-1.75,cy+3.1);  // across collar
+ ctx.moveTo(cx-2.2,cy+3.75);
+ ctx.quadraticCurveTo(cx-1.55,cy+2.1,cx-1.05,cy+0.5);
+ ctx.quadraticCurveTo(cx-0.72,cy-0.7,cx-0.98,cy-1.55);
+ ctx.lineTo(cx+0.98,cy-1.55);
+ ctx.quadraticCurveTo(cx+0.72,cy-0.7,cx+1.05,cy+0.5);
+ ctx.quadraticCurveTo(cx+1.55,cy+2.1,cx+2.2,cy+3.75);
  ctx.closePath();ctx.fill();ctx.stroke();
- // ---- carved detail: mane notches down the back ----
- ctx.strokeStyle=DK;ctx.lineWidth=0.17;
- for(let i=0;i<4;i++){const yy=cy-2.5+i*0.92;ctx.beginPath();ctx.moveTo(cx-1.42+(i%2)*0.18,yy);ctx.lineTo(cx-0.65,yy+0.34);ctx.stroke();}
- // eye
- ctx.fillStyle=EDGE;ctx.beginPath();ctx.arc(cx+0.98,cy-2.3,0.2,0,7);ctx.fill();
- // nostril
- ctx.beginPath();ctx.arc(cx+2.5,cy-1.62,0.13,0,7);ctx.fill();
- // lit-edge highlight
- ctx.strokeStyle=shade(col,0.62);ctx.lineWidth=0.16;ctx.globalAlpha=0.55;
- ctx.beginPath();ctx.moveTo(cx-1.5,cy+1.2);ctx.quadraticCurveTo(cx-1.05,cy-1.3,cx-0.5,cy-2.85);ctx.stroke();
- ctx.globalAlpha=1;
+ // ---- base collar torus ----
+ ctx.beginPath();ctx.ellipse(cx,cy+3.65,2.3,0.72,0,0,7);ctx.fill();ctx.stroke();
+ // ---- neck ring under the head ----
+ ctx.beginPath();ctx.ellipse(cx,cy-1.5,1.35,0.5,0,0,7);ctx.fill();ctx.stroke();
+ // ---- ball head ----
+ ctx.beginPath();ctx.arc(cx,cy-3.05,1.5,0,7);ctx.fill();ctx.stroke();
+ // ---- highlight on the head (lit upper-left) ----
+ ctx.fillStyle=shade(col,0.6);ctx.globalAlpha=0.5;
+ ctx.beginPath();ctx.arc(cx-0.5,cy-3.55,0.52,0,7);ctx.fill();ctx.globalAlpha=1;
  ctx.restore();
 }
 function fmt(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':''+n;}
