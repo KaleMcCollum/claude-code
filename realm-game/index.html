@@ -2361,7 +2361,7 @@ function log2(t,cls){RLOG.unshift({t,cls:cls||''});if(RLOG.length>40)RLOG.pop();
 // troops are just a count, carried as {n: soldiers} so existing call-sites keep working
 function troopsTotal(tr){return typeof tr==='number'?tr:((tr&&tr.n)||0);}
 function splitTroops(n,rng){return {n:Math.max(0,Math.round(n||0))};}
-function armyPower(tr,drs){let p=troopsTotal(tr);for(const d of (drs||[]))p+=(DRAGONS[d.size]||DRAGONS.hatchling).power;return p;}
+function armyPower(tr,drs){let p=troopsTotal(tr);for(const d of (drs||[]))p+=dragonPower(d);return p;}
 function bannerColor(id){if(id==='player')return R?R.meColor:'#8a2f2b';return (F[id]&&F[id].color)||'#8a7a58';}
 function bannerName(id){if(id==='player')return R?R.meName:'your house';return (F[id]&&F[id].name)||'the free folk';}
 const POP_CAP={village:2500,town:12000,city:45000,capital:130000,hill:400,keep:600};
@@ -2373,8 +2373,8 @@ function garrisonCap(t){return Math.min(GARR_CAP[t.type]||400, Math.round((t.pop
 function clampTroops(tr,cap){const tot=troopsTotal(tr);if(tot<=cap||tot<=0)return tr;const f=cap/tot;for(const u in tr)tr[u]=Math.floor(tr[u]*f);return tr;}
 // defenders in a holdfast fight far above their number: tier, then the strength of its keep
 function defenseMult(t){
- const tier={village:1,town:1.4,city:2.0,capital:2.8,hill:1.3,keep:2.2}[t.type]||1;
- return tier + 0.5*(t.keep||0);
+ const tier={village:1,town:1.3,city:1.6,capital:2.2,hill:1.2,keep:1.8}[t.type]||1;
+ return tier + 0.4*(t.keep||0);
 }
 const USED_NAMES=new Set();
 function autoName(t){
@@ -2746,9 +2746,12 @@ function drawUnitPiece(g,k,DK,LT){
  }
 }
 // bake the placed pieces onto the map, in the order they were added
-function drawKeepPlaced(g,x,y,d){
- const LT='#d8c791';
- for(const p of (d.pieces||[])){g.save();g.translate(x+p.x,y+p.y);drawUnitPiece(g,p.k,pieceColor(p),LT);g.restore();}
+const KEEP_MAP_SCALE=0.34;   // designed keeps sit ~1/3 size on the map
+function drawKeepPlaced(g,x,y,d,scale){
+ const LT='#d8c791',s=scale||KEEP_MAP_SCALE;
+ g.save();g.translate(x,y);g.scale(s,s);
+ for(const p of (d.pieces||[])){g.save();g.translate(p.x,p.y);drawUnitPiece(g,p.k,pieceColor(p),LT);g.restore();}
+ g.restore();
 }
 function openKeepDesigner(id){
  const t=LOC[id];if(!t)return;
@@ -2857,19 +2860,21 @@ function mergeIntoGarrison(a,t){
 
 /* ---- battles ---- */
 function battleMath(aTr,aDr,dTr,dDr,defMult){
- let aP=armyPower(aTr,aDr,dTr),dP=armyPower(dTr,dDr,aTr)*(defMult||1);
- aP*=0.9+Math.random()*0.2;dP*=0.9+Math.random()*0.2;
- const attackerWins=aP>=dP,ratio=attackerWins?dP/(aP||1):aP/(dP||1);
- return {attackerWins,aP:Math.round(aP),dP:Math.round(dP),
-  attLoss:attackerWins?clamp(0.12+ratio*0.35,0.05,0.6):clamp(0.55+(1-ratio)*0.4,0.5,0.98),
-  defLoss:attackerWins?clamp(0.55+(1-ratio)*0.4,0.5,0.98):clamp(0.12+ratio*0.35,0.05,0.6)};
+ let aP=armyPower(aTr,aDr),dP=armyPower(dTr,dDr)*(defMult||1);
+ aP*=0.95+Math.random()*0.1;dP*=0.95+Math.random()*0.1;   // small luck; troop counts decide
+ const attackerWins=aP>=dP,win=attackerWins?aP:dP,lose=attackerWins?dP:aP;
+ const ratio=win>0?lose/win:0;                             // how close the fight was, 0..1
+ // the beaten side is destroyed; the victor's losses scale with how outnumbered the loser was
+ // (10k vs 5k -> victor loses ~25%; an even fight -> ~half; a rout -> a handful)
+ const winnerLoss=clamp(0.5*ratio,0.03,0.6);
+ return {attackerWins,aP:Math.round(aP),dP:Math.round(dP),winnerLoss};
 }
 function applyLoss(tr,frac,perk){if(perk==='hardy')frac*=0.9;for(const u in tr)tr[u]=Math.max(0,Math.floor((tr[u]||0)*(1-frac)));}
 function resolveField(a,b){
  const rep=battleMath(a.troops,a.dragons,b.troops,b.dragons,1);
- // the losing host is destroyed to a man; the victor keeps his survivors
- if(rep.attackerWins){applyLoss(a.troops,rep.attLoss,a.player?R.perk:null);b.troops={};b.dragons=[];}
- else{applyLoss(b.troops,rep.defLoss,b.player?R.perk:null);a.troops={};a.dragons=[];}
+ // the beaten host is destroyed; the victor loses a share scaled to how hard the fight was
+ if(rep.attackerWins){applyLoss(a.troops,rep.winnerLoss,a.player?R.perk:null);b.troops={};b.dragons=[];}
+ else{applyLoss(b.troops,rep.winnerLoss,b.player?R.perk:null);a.troops={};a.dragons=[];}
  a.attackTarget=null;b.attackTarget=null;   // one clash per order — don't auto-re-engage friends
  if(a.player||b.player)showBattleReport(rep,a,{name:bannerName(b.owner)+'’s host',owner:b.owner,player:b.player},null);
 }
@@ -2884,10 +2889,10 @@ function resolveSiege(att,town){
  const rep=battleMath(att.troops,att.dragons,defTr,defDr,defenseMult(town));
  att.dest=null;
  if(rep.attackerWins){
-  // the defence is annihilated and the town changes hands; the victor keeps his survivors
+  // the defence is broken and the town falls; the attacker keeps his survivors
   town.garrison={};
-  for(const s of stationed){s.troops={};s.dragons=[];s.merged=true;}   // defenders put to the sword
-  applyLoss(att.troops,rep.attLoss,att.player?R.perk:null);
+  for(const s of stationed){s.troops={};s.dragons=[];s.merged=true;}
+  applyLoss(att.troops,rep.winnerLoss,att.player?R.perk:null);
   const old=town.owner;town.owner=att.owner;
   if(att.player){if(town.foodStore==null)town.foodStore=townEats(town);if(!town.dem)initDem(town);}
   if(att.player)log2('You have taken '+town.name+' from '+bannerName(old)+'!','gold');
@@ -2895,10 +2900,10 @@ function resolveSiege(att,town){
   rebuildStatic();
   if(!att.player)mergeIntoGarrison(att,town);
  }else{
-  // the assault is broken — the attacking host is destroyed to a man
+  // the assault is thrown back — the attacking host is destroyed; the defenders lose their share
   att.troops={};att.dragons=[];
-  for(const s of stationed){applyLoss(s.troops,rep.defLoss,s.player?R.perk:null);}
-  const garTot=Math.max(0,Math.round(troopsTotal(town.garrison||{})*(1-rep.defLoss)));
+  for(const s of stationed)applyLoss(s.troops,rep.winnerLoss,s.player?R.perk:null);
+  const garTot=Math.max(0,Math.round(troopsTotal(town.garrison||{})*(1-rep.winnerLoss)));
   town.garrison=clampTroops(splitTroops(garTot,null),garrisonCap(town));
  }
  if(att.player||town.owner==='player'||LOC[R.seat]===town)showBattleReport(rep,att,{name:town.name,owner:town.owner},town);
