@@ -2669,26 +2669,8 @@ function stepArmy(a){
  }
  if(Math.hypot(a.dest.x-a.x,a.dest.y-a.y)<2&&!a.roadPath)a.arrived=true;
 }
-function armySupplyTick(){
- for(const a of armies){
-  if(a.owner!=='player')continue;
-  a.supply=a.supply||0;
-  const tot=troopsTotal(a.troops),need=Math.ceil(tot*0.05),capS=Math.ceil(tot*1.4);
-  const home=nearestTownWithin(a.x,a.y,9);
-  if(home&&home.owner==='player'){          // provision from the granary of the holdfast it passes
-   const take=Math.min(capS-a.supply,Math.max(0,Math.floor(home.foodStore||0)));
-   if(take>0){home.foodStore-=take;a.supply+=take;}
-  }
-  if(a.dest||!(home&&home.owner==='player')){ // marching or in the wild: eat from the wagons
-   if(a.supply>=need)a.supply-=need;
-   else{const short=(need-a.supply)/need;a.supply=0;
-    for(const u in a.troops)a.troops[u]=Math.floor(a.troops[u]*(1-0.05*short));
-    if(a.player)log2('Your host’s wagons run empty — hungry men slip away.','bad');}
-  }
- }
-}
 function moveArmies(){
- armySupplyTick();
+ // hosts never go hungry in the sandbox — they march as long as you command
  for(const a of armies)stepArmy(a);
  for(const s of ships)stepShip(s);
  // battles: armies that meet
