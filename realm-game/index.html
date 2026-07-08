@@ -1322,8 +1322,8 @@ function drawStatic(){
  }
  g.letterSpacing='0px';
 
- // location glyphs + labels
- for(const l of LOCS)drawLocGlyph(g,l);
+ // location glyphs + keeps are NOT baked here — they're drawn live (vector) in draw()
+ // so they stay crisp at any zoom instead of pixelating with the baked bitmap.
 
  // sea serpent (eastern sea)
  (function(x,y){
@@ -1536,6 +1536,15 @@ function draw(){
  ctx.scale(cam.s,cam.s);ctx.translate(-cam.x,-cam.y);
 
  if(staticMap)ctx.drawImage(staticMap,0,0,W,H);
+
+ // settlement glyphs + keeps — drawn live (vector) so they stay sharp at any zoom
+ {
+  const gx0=cam.x-40,gy0=cam.y-40,gx1=cam.x+innerWidth/cam.s+40,gy1=cam.y+innerHeight/cam.s+40;
+  for(const l of LOCS){
+   if(l.x<gx0||l.x>gx1||l.y<gy0||l.y>gy1)continue;
+   drawLocGlyph(ctx,l);
+  }
+ }
 
  // place labels — drawn live so they counter-scale (shrink on zoom-in), never baked.
  // great places always show; towns reveal as you zoom, then villages.
