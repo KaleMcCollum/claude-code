@@ -635,32 +635,32 @@ const RNOUN=['reach','march','vale','wold','fen','moor','hold','wilds','downs','
 function genName(used){for(let i=0;i<500;i++){const n=pick(GPRE)+pick(GSUF);if(!used.has(n)){used.add(n);return n;}}return 'Holdfast '+used.size;}
 function generateWorld(){
  buildLandMask();
- const used=new Set(),pts=[],MIND=19,rnd=Math.random;
- // 1) scatter a handful of "settled regions" — water-side centres, well apart, leaving wild gaps between
+ const used=new Set(),pts=[],MIND=13,rnd=Math.random,TARGET=200;
+ // 1) scatter many "settled regions" — water-side centres, spread across the realm, wild gaps between
  const centers=[];let ctries=0;
- while(centers.length<13&&ctries<40000){ctries++;
+ while(centers.length<26&&ctries<60000){ctries++;
   const x=70+rnd()*(W-140),y=210+rnd()*(H-270);
   if(!isLandFirm(x,y)||!nearWaterR(x,y,34))continue;
-  if(centers.some(c=>(c.x-x)**2+(c.y-y)**2<150*150))continue;
-  centers.push({x,y,weight:3+Math.floor(rnd()*9)});   // some regions far busier than others
+  if(centers.some(c=>(c.x-x)**2+(c.y-y)**2<110*110))continue;
+  centers.push({x,y,weight:3+Math.floor(rnd()*10)});   // some regions far busier than others
  }
  const wsum=centers.reduce((s,c)=>s+c.weight,0)||1;
  const pickCenter=()=>{let r=rnd()*wsum;for(const c of centers){r-=c.weight;if(r<=0)return c;}return centers[0];};
  // 2) grow clusters of holdfasts around those centres — dense near the water, sparse away from it
  let tries=0;
- while(pts.length<95&&tries<90000){tries++;
+ while(pts.length<TARGET&&tries<220000){tries++;
   const c=pickCenter();if(!c)break;
-  const ang=rnd()*Math.PI*2, g=Math.abs(rnd()+rnd()+rnd()-1.5), dist=g*50+5;   // gaussian-ish falloff
+  const ang=rnd()*Math.PI*2, g=Math.abs(rnd()+rnd()+rnd()-1.5), dist=g*52+4;   // gaussian-ish falloff
   const x=c.x+Math.cos(ang)*dist, y=c.y+Math.sin(ang)*dist;
   if(x<40||y<160||x>W-40||y>H-40)continue;
   if(!isLandFirm(x,y))continue;
   if(pts.some(p=>(p.x-x)**2+(p.y-y)**2<MIND*MIND))continue;
-  if(!nearWater(x,y)&&rnd()<0.8)continue;             // still hug the coast, river and lake
+  if(!nearWater(x,y)&&rnd()<0.78)continue;            // still hug the coast, river and lake
   pts.push({x:Math.round(x),y:Math.round(y)});
  }
  // 3) top up if a water-poor map left us short (kept water-side)
  let ft=0;
- while(pts.length<64&&ft<40000){ft++;
+ while(pts.length<TARGET&&ft<120000){ft++;
   const x=60+rnd()*(W-120),y=200+rnd()*(H-240);
   if(!isLandFirm(x,y)||!nearWaterR(x,y,26))continue;
   if(pts.some(p=>(p.x-x)**2+(p.y-y)**2<MIND*MIND))continue;
@@ -680,7 +680,7 @@ function generateWorld(){
   const si=seats.indexOf(p);
   let type,name,id;
   if(si>=0){type=si===0?'capital':'city';id=SEAT_IDS[si];name=SEAT_NAMES[si];}
-  else{const r=Math.random();type=r<0.18?'town':'village';id='g'+i;name=genName(used);}
+  else{const r=Math.random();type=r<0.05?'city':r<0.24?'town':'village';id='g'+i;name=genName(used);}
   const keep=DEFAULT_KEEP[type]||0;
   towns.push({id,name,type,x:p.x,y:p.y,region:'',shops:(DEFAULT_SHOPS[type]||['market']).slice(),
     population:DEFAULT_POP[type]||300,keep,families:[],desc:''});
