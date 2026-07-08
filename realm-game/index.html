@@ -1741,13 +1741,13 @@ function endPointer(e){
     if(armyCmd==='attack'){            // ATTACK: pick a host (even your own) or town
      if(a&&a.id!==selA.id){
       if(a.owner!==selA.owner&&areAllied(selA.owner,a.owner)){log2('You are allied with '+bannerName(a.owner)+'. Break the alliance first.','bad');}
-      else{orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;selA.attackTarget=a.id;
+      else{orderMove(selA,{x:a.x,y:a.y});selA.attacking=true;selA.attackTarget=a.id;selA.burning=false;
        const who=a.owner===selA.owner?'your own host':bannerName(a.owner)+'’s host';
        const atk=armyStrength(selA),def=armyStrength(a);
        log2('Your host ('+fmt(atk)+') charges '+who+' ('+fmt(def)+') — '+oddsVerdict(atk,def)+'.','bad');endOrder();}
      }else if(t&&t.owner!==selA.owner){
       if(areAllied(selA.owner,t.owner)){log2(t.name+' belongs to your ally.','bad');}
-      else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;selA.attackTarget=null;
+      else{orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.attacking=true;selA.attackTarget=null;selA.burning=false;
        const atk=armyStrength(selA),def=townDefStrength(t);
        log2('Your host ('+fmt(atk)+') marches on '+t.name+' ('+fmt(def)+' behind its walls) — '+oddsVerdict(atk,def)+'.','bad');endOrder();}
      }else if(t&&t.owner===selA.owner){log2('That’s your own town — march there in Move mode to garrison it.','bad');}
@@ -1769,12 +1769,20 @@ function endPointer(e){
      if(a&&canEscort(selA,a)){linkDragonTo(selA,a);}
      else if(a){log2('A dragon can only guard your own or an allied host.','bad');}
      else{log2('Tap one of your or an ally’s hosts for the dragon to guard.','bad');}
+    }else if(armyCmd==='burn'){        // BURN: dragonfire over a target and everything near it
+     const foeHost=a&&a.owner!==selA.owner&&!areAllied(selA.owner,a.owner);
+     const foeTown=t&&t.owner!==selA.owner&&!areAllied(selA.owner,t.owner);
+     if(foeHost){orderMove(selA,{x:a.x,y:a.y});selA.burning=true;selA.attacking=false;selA.attackTarget=null;
+      log2('The dragon wheels to burn '+bannerName(a.owner)+'’s host.','bad');endOrder();}
+     else if(foeTown){orderMove(selA,{x:t.x,y:t.y,townId:t.id});selA.burning=true;selA.attacking=false;selA.attackTarget=null;
+      log2('The dragon wheels to burn '+t.name+'.','bad');endOrder();}
+     else{log2('Tap an enemy town or host for the dragon to burn.','bad');}
     }else{                             // MOVE: just march to the spot
      if(a&&a.id!==selA.id){selArmy=a.id;armyCmd='move';showArmyPanel();window.revealPanel&&revealPanel();needsDraw=true;}
      else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
-     else if(t){orderMove(selA,{x:t.x,y:t.y,townId:t.owner===selA.owner?t.id:null});selA.attacking=false;selA.attackTarget=null;
+     else if(t){orderMove(selA,{x:t.x,y:t.y,townId:t.owner===selA.owner?t.id:null});selA.attacking=false;selA.attackTarget=null;selA.burning=false;
       log2('Your host marches to '+t.name+'.');endOrder();}
-     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});selA.attacking=false;selA.attackTarget=null;endOrder();}
+     else if(isLand(w.x,w.y)){orderMove(selA,{x:Math.round(w.x),y:Math.round(w.y)});selA.attacking=false;selA.attackTarget=null;selA.burning=false;endOrder();}
     }
    }
    else if(sh){selShip=sh.id;selArmy=null;selTown=null;showShipPanel();window.revealPanel&&revealPanel();needsDraw=true;}
@@ -2878,15 +2886,32 @@ function moveArmies(){
  }
  // sieges: army adjacent to enemy town it targeted
  for(const a of armies){
-  if(a.linkedTo)continue;   // escorts besiege as part of their host
+  if(a.linkedTo||a.burning)continue;   // escorts besiege with their host; dragons on a burn raze instead
   if(!a.dest||!a.dest.townId)continue;
   const t=LOC[a.dest.townId];if(!t)continue;
   if(t.owner===a.owner){ if(Math.hypot(t.x-a.x,t.y-a.y)<6){mergeIntoGarrison(a,t);} continue; }
   if(areAllied(t.owner,a.owner))continue;
   if(Math.hypot(t.x-a.x,t.y-a.y)<7)resolveSiege(a,t);
  }
+ processBurns();
  armies=armies.filter(a=>(troopsTotal(a.troops)>0||a.dragons.length)&&!a.merged);
  if(R&&R.host&&!armies.includes(R.host))R.host=armies.find(x=>x.player)||null;
+}
+// dragonfire: a dragon on a burn order rains fire over its target and everything near it,
+// ignoring walls — it razes (softens defences) but does not capture.
+function processBurns(){
+ for(const a of armies){
+  if(!a.burning||!(a.dragons&&a.dragons.length)||!a.dest)continue;
+  if(Math.hypot(a.dest.x-a.x,a.dest.y-a.y)>10)continue;  // not over the target yet
+  const P=(a.dragons||[]).reduce((s,d)=>s+dragonPower(d),0),cx=a.dest.x,cy=a.dest.y,RAD=14;let burned=0;
+  for(const x of armies){if(x===a||x.owner===a.owner||areAllied(a.owner,x.owner))continue;
+   const T=troopsTotal(x.troops);if(T<=0||Math.hypot(x.x-cx,x.y-cy)>RAD)continue;
+   const kill=Math.round(T*clamp(P/(P+T*0.6),0.12,0.92));x.troops={n:T-kill};burned+=kill;}
+  if(a.dest.townId){const tw=LOC[a.dest.townId];if(tw&&tw.owner!==a.owner&&!areAllied(a.owner,tw.owner)){
+   const T=troopsTotal(tw.garrison||{});if(T>0){const kill=Math.round(T*clamp(P/(P+T*0.6),0.12,0.92));tw.garrison={n:T-kill};burned+=kill;}}}
+  log2('🔥 Dragonfire scours '+(a.dest.townId?LOC[a.dest.townId].name:'the field')+' — '+fmt(burned)+' put to the torch.',a.player?'gold':'bad');
+  a.burning=false;a.dest=null;
+ }
 }
 function mergeIntoGarrison(a,t){
  if(a.player){a.dest=null;return;}  // player host stays a host
@@ -3383,13 +3408,14 @@ function showArmyPanel(){
    btn.onclick=()=>{armyCmd=mode;showArmyPanel();};return btn;};
   seg.appendChild(mkCmd('➤ Move','move'));seg.appendChild(mkCmd('⚔ Attack','attack'));
   seg.appendChild(mkCmd('⛊ Merge','merge'));seg.appendChild(mkCmd('🤝 Ally','ally'));
-  if(isDragon)seg.appendChild(mkCmd('🔗 Link','link'));
+  if(isDragon){seg.appendChild(mkCmd('🔗 Link','link'));seg.appendChild(mkCmd('🔥 Burn','burn'));}
   o.appendChild(seg);
   const hints={move:'<b>Move:</b> tap anywhere to march there — no attack.',
    attack:'<b>Attack:</b> tap an enemy host, town or dragon to march on and fight it.',
    merge:'<b>Merge:</b> tap another of your hosts to fold this one into it.',
    ally:'<b>Ally:</b> tap another house’s host or town to swear an alliance — allied hosts won’t fight and stand together.',
-   link:'<b>Link:</b> tap one of your or an ally’s hosts for the dragon to fly with and guard it in battle.'};
+   link:'<b>Link:</b> tap one of your or an ally’s hosts for the dragon to fly with and guard it in battle.',
+   burn:'<b>Burn:</b> tap an enemy town or host — the dragon rains fire over it and everything nearby, ignoring walls. It razes; it doesn’t capture.'};
   o.insertAdjacentHTML('beforeend','<p class="hint">'+(hints[armyCmd]||hints.move)+' Then press Sim. Smaller hosts move faster.</p>');
   if(isDragon&&a.linkedTo){
    const lk=document.createElement('button');lk.className='act';lk.style.marginTop='4px';
