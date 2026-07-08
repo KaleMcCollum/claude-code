@@ -3428,10 +3428,10 @@ function showRankingsPanel(){
  const vseg=document.createElement('div');vseg.style.cssText='display:flex;gap:6px;margin-bottom:6px';
  for(const v of [['houses','🛡 Houses'],['towns','🏰 Settlements']]){const btn=document.createElement('button');btn.className='act';btn.textContent=v[1];btn.style.cssText='flex:1';
   if(rankView!==v[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
-  btn.onclick=()=>{rankView=v[0];const ok=houses?['pop','gold','food','garrison']:['pop','gold','cities','food','soldiers'];if(ok.indexOf(rankSort)<0)rankSort='pop';showRankingsPanel();};vseg.appendChild(btn);}
+  btn.onclick=()=>{rankView=v[0];const ok=houses?['pop','gold','food','garrison']:['pop','gold','holdings','cities','food','soldiers'];if(ok.indexOf(rankSort)<0)rankSort='pop';showRankingsPanel();};vseg.appendChild(btn);}
  b.appendChild(vseg);
  // sort options (differ per view)
- const opts=houses?[['pop','People'],['gold','Gold'],['cities','Cities'],['food','Food'],['soldiers','Soldiers']]
+ const opts=houses?[['pop','People'],['gold','Gold'],['holdings','Lands'],['cities','Cities'],['food','Food'],['soldiers','Soldiers']]
                   :[['pop','People'],['gold','Gold'],['food','Food'],['garrison','Garrison']];
  if(!opts.some(o=>o[0]===rankSort))rankSort='pop';
  const seg=document.createElement('div');seg.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px';
@@ -3439,7 +3439,7 @@ function showRankingsPanel(){
   if(rankSort!==o[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
   btn.onclick=()=>{rankSort=o[0];showRankingsPanel();};seg.appendChild(btn);}
  addSec(b,'Sort by').appendChild(seg);
- const mval=(r,k)=>k==='gold'?fmt(r.gold)+'\u{1F7E8}':k==='food'?fmt(r.food)+'\u{1F35E}':k==='cities'?r.cities+' cities':k==='soldiers'?fmt(r.soldiers)+'⚔':k==='garrison'?fmt(r.garrison)+'⚔':fmt(r.pop)+'\u{1F465}';
+ const mval=(r,k)=>k==='gold'?fmt(r.gold)+'\u{1F7E8}':k==='food'?fmt(r.food)+'\u{1F35E}':k==='holdings'?r.holdings+' \u{1F3F0}':k==='cities'?r.cities+' cities':k==='soldiers'?fmt(r.soldiers)+'⚔':k==='garrison'?fmt(r.garrison)+'⚔':fmt(r.pop)+'\u{1F465}';
  if(houses){
   const rows=allHouseStats().sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
   const list=addSec(b,rows.length+' houses');
