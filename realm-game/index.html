@@ -3328,6 +3328,19 @@ function showRealmPanel(){
  const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='▶ Sim';btn.onclick=endTurn;e.appendChild(btn);
  const tools=addSec(b,'Tools');
  const ex=document.createElement('button');ex.className='act';ex.textContent='📷 Save map image';ex.onclick=exportMap;tools.appendChild(ex);
+ const sv=document.createElement('button');sv.className='act';sv.style.marginTop='6px';sv.textContent='💾 Save chapter';sv.onclick=saveChapter;tools.appendChild(sv);
+ const chs=listChapters();
+ if(chs.length){
+  const ct=addSec(b,'Chapters · '+chs.length);
+  for(const nm of chs){
+   const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:6px';
+   row.innerHTML='<b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</b>';
+   const btw=document.createElement('div');btw.style.cssText='display:flex;gap:5px;flex:none';
+   const lb=document.createElement('button');lb.className='act';lb.textContent='Load';lb.onclick=()=>loadChapter(nm);
+   const db=document.createElement('button');db.className='act';db.textContent='✕';db.onclick=()=>deleteChapter(nm);
+   btw.appendChild(lb);btw.appendChild(db);row.appendChild(btw);ct.appendChild(row);
+  }
+ }
  const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,14).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm awaits your hand.</p>');
 }
 function exportMap(){        // save the current view as a PNG the player can share
@@ -3409,6 +3422,29 @@ function numRow(sec,label,icon,val,onset){
  const inp=wrap.querySelector('input');wrap.querySelector('button').onclick=()=>onset(Math.max(0,Math.floor(+inp.value||0)));
  sec.appendChild(wrap);
 }
+function textRow(sec,label,val,onset){
+ const wrap=document.createElement('div');wrap.className='shoprow';
+ wrap.innerHTML='<div><div class="sn">'+label+'</div></div><div style="display:flex;gap:5px;align-items:center"><input type="text" maxlength="24" style="width:130px" class="txin"><button class="act gd">Set</button></div>';
+ const inp=wrap.querySelector('input');inp.value=val;wrap.querySelector('button').onclick=()=>{const v=inp.value.trim();if(v)onset(v);};
+ sec.appendChild(wrap);
+}
+/* ---- save / load named chapters of the saga ---- */
+function serializeState(){return JSON.stringify({v:1,world,F,armies,ships,armySeq,shipSeq,alliances:[...alliances],
+ R:R?Object.assign({},R,{host:R.host?R.host.id:null}):null});}
+function applyState(d){
+ world=d.world;F=d.F||{};armies=d.armies||[];ships=d.ships||[];
+ armySeq=d.armySeq||armies.length+1;shipSeq=d.shipSeq||ships.length+1;
+ alliances=new Set(d.alliances||[]);
+ if(d.R){R=d.R;if(typeof R.host==='string')R.host=armies.find(x=>x.id===R.host)||null;}
+ selArmy=selTown=selShip=null;
+ rebuildWorld();realmHUD();fitView();showRealmPanel();needsDraw=true;
+}
+function listChapters(){return Object.keys(localStorage).filter(k=>k.indexOf('scChapter:')===0).map(k=>k.slice(10)).sort();}
+function saveChapter(){const name=(prompt('Name this chapter of your saga:','Chapter '+(R?R.turn:1))||'').trim();if(!name)return;
+ try{localStorage.setItem('scChapter:'+name,serializeState());log2('Chapter “'+name+'” saved.','gold');showRealmPanel();}
+ catch(e){log2('Could not save — storage may be full.','bad');}}
+function loadChapter(name){try{const s=localStorage.getItem('scChapter:'+name);if(s){applyState(JSON.parse(s));log2('Chapter “'+name+'” restored.','gold');}}catch(e){log2('That chapter could not be read.','bad');}}
+function deleteChapter(name){localStorage.removeItem('scChapter:'+name);showRealmPanel();}
 function showTownPanel(){
  const t=LOC[selTown];if(!t){showRealmPanel();return;}
  selArmy=null;selShip=null;
@@ -3418,6 +3454,13 @@ function showTownPanel(){
  const st=document.createElement('div');st.className='chips';
  st.innerHTML='<span class="chip2">\u{1F465} '+fmt(t.population||0)+'</span><span class="chip2">\u{1F7E8} '+fmt(t.gold||0)+'</span><span class="chip2">\u{1F35E} '+fmt(t.food||0)+'</span><span class="chip2">⚔ '+fmt(troopsTotal(t.garrison||{}))+' garrison</span>'+(t.keep?'<span class="chip2">\u{1F3F0} keep '+(t.keepCap?fmt(t.keepCap):'')+'</span>':'');
  b.appendChild(st);
+ // ---- name this place & its house ----
+ const nm=addSec(b,'Name');
+ textRow(nm,'Town',t.name,v=>{t.name=v;log2('The town is renamed '+v+'.');needsDraw=true;refreshRealmView();});
+ textRow(nm,'House',(mine?R.meName:bannerName(t.owner)).replace(/^House\s+/i,''),v=>{
+  const full=/^house\s/i.test(v)?v:'House '+v;
+  if(mine)R.meName=full; else if(F[t.owner])F[t.owner].name=full;
+  log2('The house is now '+full+'.','gold');needsDraw=true;refreshRealmView();});
  // ---- edit the city ----
  const ed=addSec(b,'Set this city');
  numRow(ed,'People','\u{1F465}',t.population||0,v=>setCity(t.id,'population',v));
