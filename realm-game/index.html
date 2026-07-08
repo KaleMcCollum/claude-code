@@ -3237,6 +3237,12 @@ function drawRealmLayer(){
  for(const s of ships)drawShipToken(ctx,s);
  for(const a of armies)drawArmyToken(ctx,a);
  const sa=selArmy&&armies.find(x=>x.id===selArmy);
+ if(sa&&!sa.linkedTo){
+  // reach ring: how far this host can march in one Sim (roads let it go ~1.6x farther)
+  const reach=armySpeed(sa)*ROADMULT;
+  ctx.beginPath();ctx.arc(sa.x,sa.y,reach,0,7);ctx.fillStyle='rgba(238,228,196,.07)';ctx.fill();
+  ctx.strokeStyle='rgba(238,228,196,.5)';ctx.lineWidth=0.6/Math.sqrt(cam.s);ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+ }
  if(sa){ctx.beginPath();ctx.arc(sa.x,sa.y,6,0,7);ctx.strokeStyle='#f2e4c2';ctx.lineWidth=1/Math.sqrt(cam.s);ctx.setLineDash([2.5,2.5]);ctx.stroke();ctx.setLineDash([]);
   if(sa.dest){ctx.setLineDash(sa.attacking?[3,2]:[2,3]);ctx.strokeStyle=sa.attacking?'rgba(176,40,40,.85)':'rgba(90,74,45,.6)';ctx.lineWidth=(sa.attacking?1.1:0.8)/Math.sqrt(cam.s);
    ctx.beginPath();ctx.moveTo(sa.x,sa.y);ctx.lineTo(sa.dest.x,sa.dest.y);ctx.stroke();ctx.setLineDash([]);}}
@@ -3359,6 +3365,21 @@ function showArmyPanel(){
    const lk=document.createElement('button');lk.className='act';lk.style.marginTop='4px';
    lk.textContent='Unlink (fly free)';
    lk.onclick=()=>{a.linkedTo=null;log2('The dragon flies free.');refreshRealmView();};o.appendChild(lk);
+  }
+  // move soldiers between this host and the garrison of a town it stands on
+  const near=world.towns.find(t=>t.owner===a.owner&&Math.hypot(t.x-a.x,t.y-a.y)<8);
+  if(near&&!isDragon){
+   const gs=addSec(b,'Garrison at '+near.name+' · '+fmt(troopsTotal(near.garrison||{})));
+   const row=document.createElement('div');row.style.cssText='display:flex;gap:5px;align-items:center;flex-wrap:wrap';
+   row.innerHTML='<input type="number" min="0" step="100" value="500" style="width:88px" id="gtx"><button class="act" id="gtake" style="flex:1">◂ Take</button><button class="act" id="gadd" style="flex:1">Add ▸</button>';
+   gs.appendChild(row);
+   const amt=()=>Math.max(0,Math.floor(+(document.getElementById('gtx')||{}).value||0));
+   document.getElementById('gtake').onclick=()=>{const take=Math.min(amt(),troopsTotal(near.garrison||{}));if(take<=0)return;
+    near.garrison={n:troopsTotal(near.garrison||{})-take};a.troops={n:troopsTotal(a.troops)+take};
+    log2(fmt(take)+' march out of '+near.name+' to join the host.','gold');realmHUD();refreshRealmView();};
+   document.getElementById('gadd').onclick=()=>{const give=Math.min(amt(),troopsTotal(a.troops));if(give<=0)return;
+    a.troops={n:troopsTotal(a.troops)-give};near.garrison={n:troopsTotal(near.garrison||{})+give};
+    log2(fmt(give)+' peel off to hold '+near.name+'.','gold');realmHUD();refreshRealmView();};
   }
   const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband';db.onclick=()=>{const i=armies.indexOf(a);if(i>=0)armies.splice(i,1);selArmy=null;showRealmPanel();needsDraw=true;};dz.appendChild(db);
  }
