@@ -1244,7 +1244,7 @@ const cv=$('#map'),ctx=cv.getContext('2d');
 let cam={s:1,x:0,y:0},fitScale=1;
 let hoverLoc=null,anim=null; // anim = travel animation state
 let staticMap=null;
-const SS=2; // static supersample
+const SS=3; // static supersample — higher = sharper map when zoomed in (kept under iOS's ~16.7MP canvas cap)
 
 function smoothPath(c,pts,close){
  c.beginPath();
@@ -1283,7 +1283,7 @@ function strokeRoad(c,r){
 }
 function drawStatic(){
  const c=document.createElement('canvas');c.width=W*SS;c.height=H*SS;
- const g=c.getContext('2d');g.scale(SS,SS);
+ const g=c.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.scale(SS,SS);
  const rng=mulberry32(41);
 
  // the charted realm of Vaelmore, given the parchment treatment
@@ -1531,6 +1531,7 @@ function roadPoint(r,t,rev){
 function draw(){
  if(!needsDraw&&!S&&!R){requestAnimationFrame(draw);return;}
  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
  ctx.fillStyle='#a8b499';ctx.fillRect(0,0,innerWidth,innerHeight);
  ctx.save();
  ctx.scale(cam.s,cam.s);ctx.translate(-cam.x,-cam.y);
