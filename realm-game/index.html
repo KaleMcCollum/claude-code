@@ -398,6 +398,14 @@
         <div class="fcol"><label for="f-seed">Seed <span style="opacity:.6">(optional — same seed, same realm)</span></label><input type="text" id="f-seed" maxlength="24" placeholder="leave blank for a fresh realm"></div>
         <div class="fcol"><label for="f-density">Realm size</label><select id="f-density"><option value="180">Sparse (~180)</option><option value="300" selected>Standard (~300)</option><option value="450">Crowded (~450)</option></select></div>
       </div>
+      <div class="frow">
+        <div class="fcol"><label for="f-orient">Map orientation <span id="f-orient-deg" style="opacity:.6">0°</span></label>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span id="f-orient-dial" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--leather-edge);border-radius:50%;flex:none;font-size:16px;transition:transform .12s ease">↑</span>
+            <input type="range" id="f-orient" min="0" max="345" step="15" value="0" style="flex:1">
+          </div>
+        </div>
+      </div>
       <select id="f-seat" style="display:none"></select>
     </div>
     <div id="beginrow">
@@ -1284,7 +1292,7 @@ function boardFor(id){
 
 /* ================= map rendering ================= */
 const cv=$('#map'),ctx=cv.getContext('2d');
-let cam={s:1,x:0,y:0},fitScale=1;
+let cam={s:1,x:0,y:0,rot:0},fitScale=1;   // rot = whole-map view rotation (radians), chosen before you spawn
 let hoverLoc=null,anim=null; // anim = travel animation state
 let staticMap=null;
 const SS=3; // static supersample — higher = sharper map when zoomed in (kept under iOS's ~16.7MP canvas cap)
@@ -1535,8 +1543,11 @@ function drawLocLabel(g,l){
 
 /* dynamic layer */
 let needsDraw=true,rafOn=true,pulseT=0;
-function w2s(x,y){return[(x-cam.x)*cam.s,(y-cam.y)*cam.s];}
-function s2w(x,y){return{x:x/cam.s+cam.x,y:y/cam.s+cam.y};}
+// screen<->world, rotating about the viewport centre (rot=0 reduces to the plain scale+translate)
+function w2s(x,y){const C0=innerWidth/2,C1=innerHeight/2,Wx=C0/cam.s+cam.x,Wy=C1/cam.s+cam.y,
+ dx=(x-Wx)*cam.s,dy=(y-Wy)*cam.s,c=Math.cos(cam.rot),s=Math.sin(cam.rot);return[C0+dx*c-dy*s,C1+dx*s+dy*c];}
+function s2w(x,y){const C0=innerWidth/2,C1=innerHeight/2,Wx=C0/cam.s+cam.x,Wy=C1/cam.s+cam.y,
+ dx=x-C0,dy=y-C1,c=Math.cos(-cam.rot),s=Math.sin(-cam.rot);return{x:(dx*c-dy*s)/cam.s+Wx,y:(dx*s+dy*c)/cam.s+Wy};}
 function resize(){
  cv.width=innerWidth*devicePixelRatio;cv.height=innerHeight*devicePixelRatio;
  cv.style.width=innerWidth+'px';cv.style.height=innerHeight+'px';
@@ -1577,7 +1588,9 @@ function draw(){
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
  ctx.fillStyle='#a8b499';ctx.fillRect(0,0,innerWidth,innerHeight);
  ctx.save();
- ctx.scale(cam.s,cam.s);ctx.translate(-cam.x,-cam.y);
+ // rotate the whole realm about the viewport centre (rot=0 → plain scale+translate)
+ {const C0=innerWidth/2,C1=innerHeight/2,Wx=C0/cam.s+cam.x,Wy=C1/cam.s+cam.y;
+  ctx.translate(C0,C1);ctx.rotate(cam.rot);ctx.scale(cam.s,cam.s);ctx.translate(-Wx,-Wy);}
 
  if(staticMap)ctx.drawImage(staticMap,0,0,W,H);
 
@@ -1720,7 +1733,8 @@ cv.addEventListener('pointermove',e=>{
    needsDraw=true;drag.x=e.clientX;drag.y=e.clientY;return;
   }
   const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
-  if(drag.moved){cam.x-=dx/cam.s;cam.y-=dy/cam.s;clampCam();cv.classList.add('dragging');needsDraw=true;}
+  if(drag.moved){const c=Math.cos(cam.rot),s=Math.sin(cam.rot);   // move along the rotated axes so drag follows the finger
+   cam.x-=(dx*c+dy*s)/cam.s;cam.y-=(-dx*s+dy*c)/cam.s;clampCam();cv.classList.add('dragging');needsDraw=true;}
   drag.x=e.clientX;drag.y=e.clientY;
   if(devDraft)needsDraw=true;
  }else{
@@ -2192,6 +2206,7 @@ function buildCreate(){
  COLOR_SET.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='sw'+(c===forge.color?' sel':'');b.style.background=c;b.setAttribute('aria-label','banner color '+c);
   b.onclick=()=>{forge.color=c;sw.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');pickForge();};sw.appendChild(b);});
  $('#f-house').addEventListener('input',updateBegin);
+ {const or=$('#f-orient');if(or)or.oninput=()=>{const v=+or.value||0,d=$('#f-orient-deg'),dl=$('#f-orient-dial');if(d)d.textContent=v+'°';if(dl)dl.style.transform='rotate('+v+'deg)';};}
  $('#begin').onclick=beginGame;
 }
 function updateBegin(){
@@ -2199,6 +2214,7 @@ function updateBegin(){
 }
 function beginGame(){
  const hn=$('#f-house').value.trim()||'Ashgrove';
+ cam.rot=((($('#f-orient')&&+$('#f-orient').value)||0)*Math.PI/180);   // lock in the orientation chosen before spawn
  if(($('#f-realm')&&$('#f-realm').value)==='random'){
   const seed=($('#f-seed')&&$('#f-seed').value.trim())||'';
   const dens=($('#f-density')&&+$('#f-density').value)||300;
@@ -3906,13 +3922,14 @@ function textRow(sec,label,val,onset){
  sec.appendChild(wrap);
 }
 /* ---- save / load named chapters of the saga ---- */
-function serializeState(){return JSON.stringify({v:1,world,F,armies,ships,armySeq,shipSeq,alliances:[...alliances],leagues,leagueSeq,
+function serializeState(){return JSON.stringify({v:1,world,F,armies,ships,armySeq,shipSeq,alliances:[...alliances],leagues,leagueSeq,mapRot:cam.rot,
  R:R?Object.assign({},R,{host:R.host?R.host.id:null}):null});}
 function applyState(d){
  world=d.world;F=d.F||{};armies=d.armies||[];ships=d.ships||[];
  armySeq=d.armySeq||armies.length+1;shipSeq=d.shipSeq||ships.length+1;
  alliances=new Set(d.alliances||[]);
  leagues=d.leagues||[];leagueSeq=d.leagueSeq||leagues.length+1;
+ cam.rot=d.mapRot||0;
  if(d.R){R=d.R;if(typeof R.host==='string')R.host=armies.find(x=>x.id===R.host)||null;}
  selArmy=selTown=selShip=null;
  capCitiesTo(10);
