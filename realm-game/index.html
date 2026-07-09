@@ -235,9 +235,10 @@
     #topbar .chip{font-size:12px;padding:0}
     #c-day{display:none}
     .tbtn{padding:7px 8px;font-size:12px}
-    /* the map editor is a desktop tool — keep it out of the way on phones */
-    #btn-dev,#btn-help{display:none}
-    #devbar{display:none!important}
+    /* Help stays a desktop tool; the map editor is reachable via the Dev button */
+    #btn-help{display:none}
+    /* editor panel becomes a scrollable sheet under the top bar on phones */
+    #devbar{left:8px;right:8px;width:auto;top:50px;bottom:auto;max-height:58vh;overflow-y:auto}
     /* keep the Sim button clear of the bottom sheet */
     #simFab{bottom:calc(66vh + 8px);transition:bottom .22s ease;padding:9px 15px}
     body.sheetdown #simFab{bottom:70px}
