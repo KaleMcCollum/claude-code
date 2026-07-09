@@ -2604,12 +2604,13 @@ function endTurn(){
 function realmShare(){const total=world.towns.length;let held=0;for(const t of world.towns)if(t.owner==='player')held++;return {held,total,pct:total?Math.round(held/total*100):0};}
 // realm-wide totals for a house across all its holdings
 function houseStats(owner){
- let pop=0,gold=0,food=0,cities=0,towns=0,villages=0,caps=0,holdings=0,soldiers=0;
+ let pop=0,gold=0,food=0,cities=0,towns=0,villages=0,caps=0,holdings=0,soldiers=0,navy=0;
  for(const t of world.towns){if(t.owner!==owner)continue;holdings++;
-  pop+=t.population||0;gold+=t.gold||0;food+=t.food||0;soldiers+=troopsTotal(t.garrison||{});
+  pop+=(t.population||0)+troopsTotal(t.garrison||{});gold+=t.gold||0;food+=t.food||0;soldiers+=troopsTotal(t.garrison||{});  // a city's people = its civilians + its garrisoned troops
   if(t.type==='capital')caps++;else if(t.type==='city')cities++;else if(t.type==='town')towns++;else villages++;}
- for(const a of armies)if(a.owner===owner)soldiers+=troopsTotal(a.troops);
- return {owner,name:bannerName(owner),color:bannerColor(owner),holdings,pop,gold,food,cities,towns,villages,caps,soldiers};
+ for(const a of armies)if(a.owner===owner){const n=troopsTotal(a.troops);soldiers+=n;pop+=n;}   // deployed hosts count for the house as a whole, not for any one city
+ for(const s of ships)if(s.owner===owner)navy++;
+ return {owner,name:bannerName(owner),color:bannerColor(owner),holdings,pop,gold,food,cities,towns,villages,caps,soldiers,navy};
 }
 function allHouseStats(){const owners=[...new Set(world.towns.map(t=>t.owner))];return owners.map(houseStats).filter(h=>h.holdings>0);}
 
@@ -3427,8 +3428,9 @@ function showRealmPanel(){
  const b=panelShell('Vaelmore','The Realm','Direct the whole story — click any city to set its people, gold and food, or raise hosts, boats and dragons from any house.');
  // realm-wide overview (not tied to any one house)
  let pop=0,gold=0,food=0,cities=0,towns=0,vills=0,caps=0;
- for(const t of world.towns){pop+=t.population||0;gold+=t.gold||0;food+=t.food||0;
+ for(const t of world.towns){pop+=(t.population||0)+troopsTotal(t.garrison||{});gold+=t.gold||0;food+=t.food||0;
   if(t.type==='capital')caps++;else if(t.type==='city')cities++;else if(t.type==='town')towns++;else vills++;}
+ for(const a of armies)pop+=troopsTotal(a.troops);   // people = civilians + garrisons + hosts afield
  const houses=new Set(world.towns.map(t=>t.owner)).size;
  const ov=addSec(b,'The Realm at a glance');
  ov.insertAdjacentHTML('beforeend',
@@ -3436,7 +3438,8 @@ function showRealmPanel(){
   '<div class="kv"><span>\u{1F6E1} Great houses</span><b>'+houses+'</b></div>'+
   '<div class="kv"><span>\u{1F465} People</span><b>'+fmt(pop)+'</b></div>'+
   '<div class="kv"><span>\u{1F7E8} Gold</span><b>'+fmt(gold)+'</b></div>'+
-  '<div class="kv"><span>⚔ Hosts afield</span><b>'+armies.length+'</b></div>');
+  '<div class="kv"><span>⚔ Hosts afield</span><b>'+armies.length+'</b></div>'+
+  '<div class="kv"><span>⛵ Boats</span><b>'+ships.length+'</b></div>');
  // the leading houses, straight to the rankings
  const top=allHouseStats().sort((a,c)=>c.pop-a.pop).slice(0,3);
  if(top.length){const ts=addSec(b,'Leading houses');
@@ -3488,10 +3491,10 @@ function showRankingsPanel(){
  const vseg=document.createElement('div');vseg.style.cssText='display:flex;gap:6px;margin-bottom:6px';
  for(const v of [['houses','🛡 Houses'],['towns','🏰 Settlements']]){const btn=document.createElement('button');btn.className='act';btn.textContent=v[1];btn.style.cssText='flex:1';
   if(rankView!==v[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
-  btn.onclick=()=>{rankView=v[0];const ok=houses?['pop','gold','food','garrison']:['pop','gold','holdings','cities','food','soldiers'];if(ok.indexOf(rankSort)<0)rankSort='pop';showRankingsPanel();};vseg.appendChild(btn);}
+  btn.onclick=()=>{rankView=v[0];const ok=houses?['pop','gold','food','garrison']:['pop','gold','holdings','cities','soldiers','navy','food'];if(ok.indexOf(rankSort)<0)rankSort='pop';showRankingsPanel();};vseg.appendChild(btn);}
  b.appendChild(vseg);
  // sort options (differ per view)
- const opts=houses?[['pop','People'],['gold','Gold'],['holdings','Lands'],['cities','Cities'],['food','Food'],['soldiers','Soldiers']]
+ const opts=houses?[['pop','People'],['gold','Gold'],['holdings','Lands'],['cities','Cities'],['soldiers','Soldiers'],['navy','Navy'],['food','Food']]
                   :[['pop','People'],['gold','Gold'],['food','Food'],['garrison','Garrison']];
  if(!opts.some(o=>o[0]===rankSort))rankSort='pop';
  const seg=document.createElement('div');seg.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px';
@@ -3499,7 +3502,7 @@ function showRankingsPanel(){
   if(rankSort!==o[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
   btn.onclick=()=>{rankSort=o[0];showRankingsPanel();};seg.appendChild(btn);}
  addSec(b,'Sort by').appendChild(seg);
- const mval=(r,k)=>k==='gold'?fmt(r.gold)+'\u{1F7E8}':k==='food'?fmt(r.food)+'\u{1F35E}':k==='holdings'?r.holdings+' \u{1F3F0}':k==='cities'?r.cities+' cities':k==='soldiers'?fmt(r.soldiers)+'⚔':k==='garrison'?fmt(r.garrison)+'⚔':fmt(r.pop)+'\u{1F465}';
+ const mval=(r,k)=>k==='gold'?fmt(r.gold)+'\u{1F7E8}':k==='food'?fmt(r.food)+'\u{1F35E}':k==='holdings'?r.holdings+' \u{1F3F0}':k==='cities'?r.cities+' cities':k==='soldiers'?fmt(r.soldiers)+'⚔':k==='navy'?r.navy+' ⛵':k==='garrison'?fmt(r.garrison)+'⚔':fmt(r.pop)+'\u{1F465}';
  if(houses){
   const rows=allHouseStats().sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
   const list=addSec(b,rows.length+' houses');
@@ -3510,7 +3513,7 @@ function showRankingsPanel(){
    list.appendChild(row);
   });
  }else{
-  const rows=world.towns.map(t=>({t,name:t.name,type:t.type,owner:t.owner,pop:t.population||0,gold:t.gold||0,food:t.food||0,garrison:troopsTotal(t.garrison||{})})).sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
+  const rows=world.towns.map(t=>({t,name:t.name,type:t.type,owner:t.owner,pop:(t.population||0)+troopsTotal(t.garrison||{}),gold:t.gold||0,food:t.food||0,garrison:troopsTotal(t.garrison||{})})).sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
   const list=addSec(b,rows.length+' settlements');
   rows.slice(0,60).forEach((r,i)=>{
    const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer';
@@ -3669,7 +3672,7 @@ function showTownPanel(){
  const b=panelShell(mine?R.meName+' · yours':bannerName(t.owner),t.name,'');
  $('#p-name').insertAdjacentHTML('beforeend','<span class="tierbadge">'+t.type+'</span>');
  const st=document.createElement('div');st.className='chips';
- st.innerHTML='<span class="chip2">\u{1F465} '+fmt(t.population||0)+'</span><span class="chip2">\u{1F7E8} '+fmt(t.gold||0)+'</span><span class="chip2">\u{1F35E} '+fmt(t.food||0)+'</span><span class="chip2">⚔ '+fmt(troopsTotal(t.garrison||{}))+' garrison</span>'+(t.keep?'<span class="chip2">\u{1F3F0} keep '+(t.keepCap?fmt(t.keepCap):'')+'</span>':'');
+ st.innerHTML='<span class="chip2">\u{1F465} '+fmt((t.population||0)+troopsTotal(t.garrison||{}))+'</span><span class="chip2">\u{1F7E8} '+fmt(t.gold||0)+'</span><span class="chip2">\u{1F35E} '+fmt(t.food||0)+'</span><span class="chip2">⚔ '+fmt(troopsTotal(t.garrison||{}))+' garrison</span>'+(t.keep?'<span class="chip2">\u{1F3F0} keep '+(t.keepCap?fmt(t.keepCap):'')+'</span>':'');
  b.appendChild(st);
  // ---- the house that holds this city, realm-wide ----
  const hs=houseStats(t.owner),hn=bannerName(t.owner),ranks=allHouseStats();
@@ -3692,7 +3695,7 @@ function showTownPanel(){
   log2('The house is now '+full+'.','gold');needsDraw=true;refreshRealmView();});
  // ---- edit the city ----
  const ed=addSec(b,'Set this city');
- numRow(ed,'People','\u{1F465}',t.population||0,v=>setCity(t.id,'population',v));
+ numRow(ed,'Civilians','\u{1F465}',t.population||0,v=>setCity(t.id,'population',v));
  numRow(ed,'Gold','\u{1F7E8}',t.gold||0,v=>setCity(t.id,'gold',v));
  numRow(ed,'Food','\u{1F35E}',t.food||0,v=>setCity(t.id,'food',v));
  // ---- garrison: civilians take up arms here, then deploy out or stay to hold the walls ----
