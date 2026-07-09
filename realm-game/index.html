@@ -2523,6 +2523,14 @@ function spawnArmy(id,n){const t=LOC[id];if(!t)return;n=Math.max(1,Math.round(n|
  a.home=id; a.homeName=t.name; armies.push(a);
  log2('A host of '+take+' rises from '+t.name+' under '+bannerName(t.owner)+'.','gold');
  selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;}
+function deployFromGarrison(id,n){       // send troops OUT of a city's garrison as a marching host
+ const t=LOC[id];if(!t||t.owner!=='player')return;
+ const have=troopsTotal(t.garrison||{}),take=Math.min(Math.max(1,Math.round(n||0)),have);
+ if(take<=0){log2('The garrison of '+t.name+' is empty — muster some smallfolk first.','bad');refreshRealmView();return;}
+ t.garrison={n:have-take};
+ const a=mkArmy('player',t.x,t.y,{n:take});a.home=id;a.homeName=t.name;armies.push(a);
+ log2(fmt(take)+' march out of '+t.name+'’s garrison as a new host.','gold');
+ selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;}
 function mkArmy(owner,x,y,troops){const a={id:'a'+(armySeq++),owner,x,y,troops,dragons:[],dest:null,roadPath:null,player:owner==='player'};armies.push?0:0;return a;}
 function myTowns(){return world.towns.filter(t=>t.owner==='player');}
 function factionTowns(fid){return world.towns.filter(t=>t.owner===fid);}
@@ -3687,17 +3695,21 @@ function showTownPanel(){
  numRow(ed,'People','\u{1F465}',t.population||0,v=>setCity(t.id,'population',v));
  numRow(ed,'Gold','\u{1F7E8}',t.gold||0,v=>setCity(t.id,'gold',v));
  numRow(ed,'Food','\u{1F35E}',t.food||0,v=>setCity(t.id,'food',v));
- // ---- raise a host ----
- const ar=addSec(b,'Raise a host');
- const arow=document.createElement('div');arow.className='shoprow';
- arow.innerHTML='<div><div class="sn">Soldiers</div><div class="sd">drawn from this city’s people</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="1" step="1" value="1000" style="width:110px" id="spawn-n"><button class="act gd" id="spawn-army">Spawn</button></div>';
- ar.appendChild(arow);
- ar.querySelector('#spawn-army').onclick=()=>spawnArmy(t.id,Math.max(1,Math.floor(+ar.querySelector('#spawn-n').value||0)));
- // add straight to the city garrison too
- const gr=document.createElement('div');gr.className='shoprow';
- gr.innerHTML='<div><div class="sn">Add to garrison</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="1" step="1" value="500" style="width:110px" id="garr-n"><button class="act gd" id="garr-add">Add</button></div>';
- ar.appendChild(gr);
- gr.querySelector('#garr-add').onclick=()=>{const n=Math.max(1,Math.floor(+gr.querySelector('#garr-n').value||0));const take=Math.min(n,t.population||0);t.population-=take;t.garrison={n:(troopsTotal(t.garrison||{})+take)};log2(fmt(take)+' join the garrison of '+t.name+'.');realmHUD();refreshRealmView();};
+ // ---- garrison: civilians take up arms here, then deploy out or stay to hold the walls ----
+ if(mine){
+  const ar=addSec(b,'Garrison · '+fmt(troopsTotal(t.garrison||{}))+' troops');
+  // 1) muster civilians INTO the garrison — smallfolk become soldiers
+  const gr=document.createElement('div');gr.className='shoprow';
+  gr.innerHTML='<div><div class="sn">Muster smallfolk</div><div class="sd">civilians take up arms — join the garrison</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="1" step="1" value="500" style="width:100px" id="garr-n"><button class="act gd" id="garr-add">Muster</button></div>';
+  ar.appendChild(gr);
+  gr.querySelector('#garr-add').onclick=()=>{const n=Math.max(1,Math.floor(+gr.querySelector('#garr-n').value||0));const take=Math.min(n,t.population||0);if(take<=0){log2('No smallfolk left in '+t.name+' to muster.','bad');return;}t.population-=take;t.garrison={n:(troopsTotal(t.garrison||{})+take)};log2(fmt(take)+' smallfolk take up arms in '+t.name+'.','gold');realmHUD();refreshRealmView();};
+  // 2) deploy troops OUT of the garrison as a marching host
+  const dp=document.createElement('div');dp.className='shoprow';
+  dp.innerHTML='<div><div class="sn">Deploy a host</div><div class="sd">troops march out of the garrison</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="1" step="1" value="1000" style="width:100px" id="deploy-n"><button class="act gd" id="deploy-go">Deploy</button></div>';
+  ar.appendChild(dp);
+  dp.querySelector('#deploy-go').onclick=()=>deployFromGarrison(t.id,Math.max(1,Math.floor(+dp.querySelector('#deploy-n').value||0)));
+  ar.insertAdjacentHTML('beforeend','<p class="hint" style="margin-top:4px">A host standing on this city can store its soldiers back into the garrison from its own panel.</p>');
+ }
  // ---- boats ----
  if(t.terrain&&t.terrain.water){
   const bo=addSec(b,'Boats');
