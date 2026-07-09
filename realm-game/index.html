@@ -2395,11 +2395,26 @@ let R=null, F={};                 // realm state, faction table
 let armies=[], armySeq=1, selArmy=null, selTown=null, armyCmd='move'; // 'move' | 'attack' | 'merge' | 'ally'
 let ships=[], shipSeq=1, selShip=null;
 let paintMode=false,paintOwner='player',paintSample=false,labelPlace=null;   // map-authoring tools
-let alliances=new Set();   // "ownerA|ownerB" pairs of houses sworn not to fight
+let alliances=new Set();   // "ownerA|ownerB" pairs of houses sworn not to fight (quick Ally truces)
 function allyKey(a,b){return a<b?a+'|'+b:b+'|'+a;}
-function areAllied(a,b){return !!(a&&b&&a!==b&&alliances.has(allyKey(a,b)));}
+function areAllied(a,b){return !!(a&&b&&a!==b&&(alliances.has(allyKey(a,b))||shareLeague(a,b)));}
 function addAlliance(a,b){if(a&&b&&a!==b)alliances.add(allyKey(a,b));}
 function breakAlliances(){alliances.clear();}
+// ---- named alliances (leagues): many houses, a lead + up to two co-leads, banners, summonable levies ----
+let leagues=[], leagueSeq=1;
+function leagueById(id){return leagues.find(L=>L.id===id)||null;}
+function higherUps(L){return L?[L.lead].concat(L.coleads||[]).filter(Boolean):[];}
+function isHigherUp(L,owner){return !!L&&higherUps(L).indexOf(owner)>=0;}
+function leaguesForOwner(owner){return leagues.filter(L=>isHigherUp(L,owner));}
+function shareLeague(a,b){return leagues.some(L=>L.members.indexOf(a)>=0&&L.members.indexOf(b)>=0);}
+function newLeague(){const id='lg'+(leagueSeq++);
+ const nm='The '+pick(['Iron','Golden','Free','Grand','Storm','Dawn','Silver','High'])+' '+pick(['Pact','League','Accord','Concord','Banner','Compact']);
+ const L={id,name:nm,color:pick(['#7a4bb0','#3a8a52','#c9a13b','#2f7d9a','#c8622a','#b83a55']),members:[],lead:null,coleads:[]};
+ leagues.push(L);return L;}
+function leagueAddHouse(L,o){if(L.members.indexOf(o)<0)L.members.push(o);if(!L.lead)L.lead=o;}
+function leagueRemoveHouse(L,o){L.members=L.members.filter(x=>x!==o);L.coleads=(L.coleads||[]).filter(x=>x!==o);if(L.lead===o)L.lead=L.members[0]||null;}
+function setLeagueLead(L,o){if(L.members.indexOf(o)<0)return;L.lead=o;L.coleads=(L.coleads||[]).filter(x=>x!==o);}
+function toggleColead(L,o){if(L.members.indexOf(o)<0||o===L.lead)return;L.coleads=L.coleads||[];const i=L.coleads.indexOf(o);if(i>=0)L.coleads.splice(i,1);else if(L.coleads.length<2)L.coleads.push(o);}
 // ---- coalitions: many houses under one banner, each house's contingent tracked so it can be pulled back out ----
 function contingentsOf(a){return (a.contingents&&a.contingents.length)?a.contingents:[{owner:a.owner,n:troopsTotal(a.troops)}];}
 function isCoalition(a){return !!(a&&a.contingents&&a.contingents.length>1);}
@@ -2434,6 +2449,30 @@ function detachContingent(a,owner){        // pull one house out of the coalitio
  a.contingents=a.contingents.filter(x=>x!==c);syncCoalition(a);
  log2(bannerName(owner)+' peels away from the coalition — '+fmt(c.n)+' strong.','gold');
  realmHUD();showArmyPanel();needsDraw=true;
+}
+function summonLevies(a,leagueId,pct){      // rally a % of every member house's garrisons into this host
+ const L=leagueById(leagueId);if(!L)return;
+ if(!isHigherUp(L,a.owner)){log2('Only the alliance’s lead or a co-lead can summon its levies.','bad');return;}
+ pct=Math.max(0,Math.min(100,Math.round(pct||0)))/100;if(pct<=0)return;
+ reconcileContingents(a);
+ const byOwner={};for(const c of contingentsOf(a))byOwner[c.owner]=(byOwner[c.owner]||0)+c.n;
+ let summoned=0;
+ for(const m of L.members){let got=0;
+  for(const t of world.towns){if(t.owner!==m)continue;const g=troopsTotal(t.garrison||{});if(g<=0)continue;
+   const take=Math.min(g,Math.floor(g*pct));if(take>0){t.garrison={n:g-take};got+=take;}}
+  if(got>0){byOwner[m]=(byOwner[m]||0)+got;summoned+=got;}}
+ if(summoned<=0){log2('No garrisons answered the call.','bad');refreshRealmView();return;}
+ const owners=Object.keys(byOwner).filter(o=>byOwner[o]>0);
+ if(owners.length>1)a.contingents=owners.map(o=>({owner:o,n:byOwner[o]}));else delete a.contingents;
+ a.troops={n:owners.reduce((s,o)=>s+byOwner[o],0)};a.league=leagueId;syncCoalition(a);
+ log2('The '+L.name+' answers the call — '+fmt(summoned)+' levies rally to the banner.','gold');
+ realmHUD();showArmyPanel();needsDraw=true;
+}
+function setArmyLeague(a,leagueId){          // fly (or lower) an alliance banner over this host
+ if(leagueId){const L=leagueById(leagueId);if(!L||!isHigherUp(L,a.owner)){log2('You must lead or co-lead an alliance to fly its banner.','bad');return;}}
+ a.league=leagueId||null;
+ log2(leagueId?('The host raises the banner of '+leagueById(leagueId).name+'.'):'The host lowers the alliance banner.','gold');
+ showArmyPanel();needsDraw=true;
 }
 let RLOG=[];
 function log2(t,cls){RLOG.unshift({t,cls:cls||''});if(RLOG.length>40)RLOG.pop();}
@@ -2534,7 +2573,7 @@ function enterRealm(o){
  start.owner='player';
  R={me:'player',meColor:o.color||'#8a2f2b',meName:o.house||'House Ashgrove',name:o.name||'Wren',
     seat:start.id,turn:1,gold:0,food:0,wood:0,stone:0,eggs:[],trades:[],supply:[]};
- armies=[];armySeq=1;ships=[];shipSeq=1;selShip=null;R.host=null;
+ armies=[];armySeq=1;ships=[];shipSeq=1;selShip=null;R.host=null;leagues=[];leagueSeq=1;alliances.clear();
  $('#create').classList.add('hidden');$('#topbar').style.display='flex';$('#ledger').style.display='none';
  toggleDev(false);          // the map editor stays out of the way while you play
  {const sf=document.getElementById('simFab');if(sf)sf.style.display='flex';}
@@ -3304,7 +3343,8 @@ function drawDragonToken(ctx,x,y,d){
 // original house) — so your hosts always fly your colours, and each faction its own.
 function entHouse(e){return{name:bannerName(e.owner),color:bannerColor(e.owner)};}
 function drawArmyToken(ctx,a){
- const house=entHouse(a),col=house.color,tot=troopsTotal(a.troops);
+ const house=entHouse(a),lg=a.league&&leagueById(a.league),tot=troopsTotal(a.troops);
+ const col=lg?lg.color:house.color, capName=lg?lg.name:house.name, capCol=lg?lg.color:house.color;
  const dragonOnly=tot<=0&&a.dragons&&a.dragons.length;
  if(dragonOnly){
   a.dragons.forEach((d,i)=>drawDragonToken(ctx,a.x+i*2,a.y-1,d));
@@ -3319,7 +3359,7 @@ function drawArmyToken(ctx,a){
   ctx.font='700 4.6px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineWidth=1.7;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText(fmt(tot),a.x,a.y+6.6);
   ctx.fillStyle='#2d2010';ctx.fillText(fmt(tot),a.x,a.y+6.6);
-  drawCaption(a.x,a.y+9,house.name,house.color);
+  drawCaption(a.x,a.y+9,capName,capCol);
  }
  a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*8,a.y+Math.sin(ang)*8-2,d);});
 }
@@ -3524,15 +3564,16 @@ function showRealmPanel(){
    row.onclick=()=>{const big=world.towns.filter(t=>t.owner===r.owner).sort((a,c)=>(c.population||0)-(a.population||0))[0];if(big){cam.s=Math.max(cam.s,2);centerOn(big.x,big.y);showTownFor(big.id);}};ts.appendChild(row);}
  }
  if(alliances.size){
-  const al=addSec(b,'Alliances · '+alliances.size);
+  const al=addSec(b,'Truces · '+alliances.size);
   const names=[...alliances].map(k=>{const pr=k.split('|');return bannerName(pr[0])+' & '+bannerName(pr[1]);});
-  al.insertAdjacentHTML('beforeend','<p class="hint">'+names.join('; ')+'. Allied hosts won’t fight and stand together in battle.</p>');
-  const ab=document.createElement('button');ab.className='act';ab.textContent='Disband all alliances';
-  ab.onclick=()=>{breakAlliances();log2('All alliances are dissolved.','bad');showRealmPanel();needsDraw=true;};
+  al.insertAdjacentHTML('beforeend','<p class="hint">'+names.join('; ')+'. Sworn hosts won’t fight and stand together in battle.</p>');
+  const ab=document.createElement('button');ab.className='act';ab.textContent='Break all truces';
+  ab.onclick=()=>{breakAlliances();log2('All truces are broken.','bad');showRealmPanel();needsDraw=true;};
   al.appendChild(ab);
  }
  const e=addSec(b,'');const btn=document.createElement('button');btn.className='act';btn.textContent='▶ Sim';btn.onclick=endTurn;e.appendChild(btn);
  const rk=document.createElement('button');rk.className='act';rk.style.marginTop='6px';rk.textContent='🏆 House rankings';rk.onclick=()=>showRankingsPanel();e.appendChild(rk);
+ const alb=document.createElement('button');alb.className='act';alb.style.marginTop='6px';alb.textContent='🤝 Alliances'+(leagues.length?' · '+leagues.length:'');alb.onclick=()=>showAlliancesPanel();e.appendChild(alb);
  if(paintMode){
   const ps=addSec(b,'🖌 Painting realms');
   ps.insertAdjacentHTML('beforeend','<p class="hint">Tap towns to hand them to <b style="color:'+bannerColor(paintOwner)+'">'+bannerName(paintOwner)+'</b>.'+(paintSample?' <b>Now tap a town to pick its house as the brush.</b>':'')+'</p>');
@@ -3557,6 +3598,49 @@ function showRealmPanel(){
   }
  }
  const lg=addSec(b,'Chronicle');lg.insertAdjacentHTML('beforeend',RLOG.length?RLOG.slice(0,14).map(x=>'<p class="'+x.cls+'" style="font-size:11.5px;margin:2px 0">'+x.t+'</p>').join(''):'<p class="hint">The realm awaits your hand.</p>');
+}
+function showAlliancesPanel(){
+ selArmy=selTown=selShip=null;
+ const b=panelShell('Alliances','The Great Alliances','Bind many houses under one banner — elect a lead and up to two co-leads, then summon their levies to war.');
+ const list=addSec(b,leagues.length?leagues.length+' alliance'+(leagues.length>1?'s':''):'No alliances yet');
+ if(!leagues.length)list.insertAdjacentHTML('beforeend','<p class="hint">Forge one below, then add houses and elect its leaders.</p>');
+ leagues.forEach(L=>{
+  const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer';
+  row.innerHTML='<div class="dl" style="min-width:0"><b style="color:'+L.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+L.name+'</b><span>'+L.members.length+' houses · lead '+(L.lead?bannerName(L.lead).replace(/^House\s+/i,''):'—')+'</span></div><b style="flex:none">▸</b>';
+  row.onclick=()=>showAllianceEditor(L.id);list.appendChild(row);
+ });
+ const mk=addSec(b,'');const nb=document.createElement('button');nb.className='act gd';nb.textContent='✚ Forge a new alliance';nb.onclick=()=>{const L=newLeague();showAllianceEditor(L.id);};mk.appendChild(nb);
+ const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>showRealmPanel();back.appendChild(bb);
+ if(window.revealPanel)revealPanel();needsDraw=true;
+}
+function showAllianceEditor(id){
+ const L=leagueById(id);if(!L){showAlliancesPanel();return;}
+ selArmy=selTown=selShip=null;
+ const b=panelShell('Alliance',L.name,'Name it, choose its houses, and elect a lead 👑 and up to two co-leads ⭑.');
+ const nm=addSec(b,'Banner');
+ textRow(nm,'Name',L.name,v=>{L.name=v;log2('The alliance is now “'+v+'”.','gold');needsDraw=true;showAllianceEditor(id);});
+ const cr=document.createElement('div');cr.className='shoprow';
+ cr.innerHTML='<div><div class="sn">Colour</div><div class="sd">the banner your hosts fly</div></div><input type="color" value="'+L.color+'" style="width:52px;height:34px;padding:0;border:none;background:none">';
+ cr.querySelector('input').oninput=e=>{L.color=e.target.value;needsDraw=true;};nm.appendChild(cr);
+ const owners=[...new Set(world.towns.map(t=>t.owner))].sort((a,c)=>bannerName(a).localeCompare(bannerName(c)));
+ const ms=addSec(b,'Houses · '+L.members.length);
+ owners.forEach(o=>{
+  const inL=L.members.indexOf(o)>=0, lead=L.lead===o, co=(L.coleads||[]).indexOf(o)>=0;
+  const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap';
+  row.innerHTML='<div class="dl" style="min-width:64px"><b style="color:'+bannerColor(o)+'">'+bannerName(o).replace(/^House\s+/i,'')+'</b><span>'+(lead?'👑 lead':co?'⭑ co-lead':inL?'member':'—')+'</span></div>';
+  const btns=document.createElement('div');btns.style.cssText='display:flex;gap:4px;flex-wrap:wrap';
+  const mk=(txt,on,active)=>{const x=document.createElement('button');x.className='act';x.textContent=txt;x.style.cssText='padding:3px 8px;font-size:11px';if(!active){x.style.background='transparent';x.style.color='var(--wax)';x.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}x.onclick=on;return x;};
+  btns.appendChild(mk(inL?'Remove':'Add',()=>{if(inL)leagueRemoveHouse(L,o);else leagueAddHouse(L,o);showAllianceEditor(id);needsDraw=true;},inL));
+  if(inL){
+   btns.appendChild(mk('Lead',()=>{setLeagueLead(L,o);showAllianceEditor(id);needsDraw=true;},lead));
+   if(!lead)btns.appendChild(mk('Co-lead',()=>{toggleColead(L,o);showAllianceEditor(id);needsDraw=true;},co));
+  }
+  row.appendChild(btns);ms.appendChild(row);
+ });
+ ms.insertAdjacentHTML('beforeend','<p class="hint">The lead 👑 and up to two co-leads ⭑ may fly the banner and summon the alliance’s levies. Member houses won’t fight one another.</p>');
+ const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband this alliance';db.onclick=()=>{leagues=leagues.filter(x=>x!==L);for(const a of armies)if(a.league===id)a.league=null;log2('The '+L.name+' is dissolved.','bad');showAlliancesPanel();needsDraw=true;};dz.appendChild(db);
+ const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Alliances';bb.onclick=()=>showAlliancesPanel();back.appendChild(bb);
+ if(window.revealPanel)revealPanel();needsDraw=true;
 }
 let rankSort='pop', rankView='houses';
 function showRankingsPanel(){
@@ -3702,6 +3786,25 @@ function showArmyPanel(){
     realmHUD();showArmyPanel();needsDraw=true;};
    sp.appendChild(spb);
   }
+  // ---- alliance banner + summon (only if this host's house leads or co-leads an alliance) ----
+  const myLeagues=leaguesForOwner(a.owner);
+  if(!isDragon&&myLeagues.length){
+   const asec=addSec(b,'Alliance');
+   const bseg=document.createElement('div');bseg.style.cssText='display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px';
+   const chip=(txt,color,active,on)=>{const x=document.createElement('button');x.className='act';x.textContent=txt;x.style.cssText='flex:1 1 40%';if(!active){x.style.background='transparent';x.style.color=color||'var(--wax)';x.style.boxShadow='inset 0 0 0 1.5px '+(color||'var(--wax)');}x.onclick=on;return x;};
+   bseg.appendChild(chip('None',null,!a.league,()=>setArmyLeague(a,null)));
+   myLeagues.forEach(L=>bseg.appendChild(chip(L.name,L.color,a.league===L.id,()=>setArmyLeague(a,L.id))));
+   asec.insertAdjacentHTML('beforeend','<p class="hint" style="margin:0 0 4px">Fly an alliance’s banner, then summon its levies.</p>');
+   asec.appendChild(bseg);
+   const cur=a.league&&leagueById(a.league);
+   if(cur&&isHigherUp(cur,a.owner)){
+    asec.insertAdjacentHTML('beforeend','<label style="display:block;font-size:12px;margin:4px 0 2px">Summon <b id="smpct">50</b>% of every member’s garrison</label><input type="range" min="0" max="100" step="5" value="50" id="smr" style="width:100%">');
+    asec.querySelector('#smr').oninput=()=>{const el=document.getElementById('smpct');if(el)el.textContent=document.getElementById('smr').value;};
+    const sb=document.createElement('button');sb.className='act gd';sb.style.marginTop='4px';sb.textContent='⚑ Summon the alliance’s levies';
+    sb.onclick=()=>{const pct=+(document.getElementById('smr')||{}).value||0;summonLevies(a,cur.id,pct);};asec.appendChild(sb);
+    asec.insertAdjacentHTML('beforeend','<p class="hint">Levies march from every member house’s cities to join this host as their own contingent. Troops already afield don’t answer.</p>');
+   }
+  }
   const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband';db.onclick=()=>{const i=armies.indexOf(a);if(i>=0)armies.splice(i,1);selArmy=null;showRealmPanel();needsDraw=true;};dz.appendChild(db);
  }
  const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selArmy=null;showRealmPanel();};back.appendChild(bb);
@@ -3745,12 +3848,13 @@ function textRow(sec,label,val,onset){
  sec.appendChild(wrap);
 }
 /* ---- save / load named chapters of the saga ---- */
-function serializeState(){return JSON.stringify({v:1,world,F,armies,ships,armySeq,shipSeq,alliances:[...alliances],
+function serializeState(){return JSON.stringify({v:1,world,F,armies,ships,armySeq,shipSeq,alliances:[...alliances],leagues,leagueSeq,
  R:R?Object.assign({},R,{host:R.host?R.host.id:null}):null});}
 function applyState(d){
  world=d.world;F=d.F||{};armies=d.armies||[];ships=d.ships||[];
  armySeq=d.armySeq||armies.length+1;shipSeq=d.shipSeq||ships.length+1;
  alliances=new Set(d.alliances||[]);
+ leagues=d.leagues||[];leagueSeq=d.leagueSeq||leagues.length+1;
  if(d.R){R=d.R;if(typeof R.host==='string')R.host=armies.find(x=>x.id===R.host)||null;}
  selArmy=selTown=selShip=null;
  capCitiesTo(10);
