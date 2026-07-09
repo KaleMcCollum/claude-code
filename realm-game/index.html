@@ -631,11 +631,38 @@ function isLand(x,y){if(!LANDMASK)return false;const gx=Math.floor(x/W*LANDMASK.
 function isLandFirm(x,y){return isLand(x,y)&&isLand(x-6,y)&&isLand(x+6,y)&&isLand(x,y-6)&&isLand(x,y+6);}
 function nearWater(x,y){for(const[dx,dy]of[[16,0],[-16,0],[0,16],[0,-16],[12,12],[-12,-12]])if(!isLand(x+dx,y+dy))return true;return false;}
 function nearWaterR(x,y,r){for(let a=0;a<12;a++){const t=a/12*Math.PI*2;if(!isLand(x+Math.cos(t)*r,y+Math.sin(t)*r))return true;}return false;}
-const GPRE=['Ash','Black','Cold','Grey','Green','Red','Stone','Thorn','Oak','Elm','Fen','Mill','Wren','Dun','Har','Wester','Salt','Wind','Crow','Fox','Hart','Rye','Barrow','Withy','Nor','Deep','High','Bram','Moss','Reed','Hazel','Raven','Sparrow','Weir','Fell','Peat','Sled','Tarn','Birch','Alder'];
-const GSUF=['brook','bury','ford','ton','ham','wick','hollow','mere','moor','gate','beck','dale','cross','marsh','field','stead','worth','by','den','mill','bridge','hill','combe','stone','fen','vale','burn','ridge','row','hurst','well'];
+const ROOT=['Ash','Black','Cold','Grey','Green','Red','Stone','Thorn','Oak','Elm','Fen','Mill','Wren','Dun','Har','Wester','Salt','Wind','Crow','Fox','Hart','Rye','Barrow','Withy','Nor','Deep','High','Bram','Moss','Reed','Hazel','Raven','Sparrow','Weir','Fell','Peat','Birch','Alder','Marsh','Brier','Gorse','Elder','Holly','Yew','Beech','Rook','Heron','Otter','Amber','Frost','Wolf','Boar','Stag','Bell','Grim','Storm','Ember','Dusk','Ivy','Slate','Flint','Bracken','Hawk','Thistle','Rush','Bog','Cinder'];
+const SUF=['brook','bury','ford','ton','ham','wick','hollow','mere','moor','gate','beck','dale','cross','marsh','field','stead','worth','by','den','mill','bridge','hill','combe','stone','fen','vale','burn','ridge','row','hurst','well','thorpe','wold','garth','holm','cote','leigh','ness','haven','mouth','ferry','watch','church','minster'];
+const FEAT=['Hollow','Barrow','Cross','Gate','Bridge','Ferry','Watch','Reach','Rest','Nest','Oak','Fen','Mill','Ford','Moor','Wood','Rock','Bay','Cove','Landing','Crossing','Hall','Keep','End','Fields','Wells','Marsh','Row','Bluff','Vale','Copse'];
+const POSS=['Crow','Widow','Hangman','Raven','Fox','Wolf','Monk','King','Miser','Beggar','Sailor','Piper','Tinker','Shepherd','Drover','Smith','Friar','Maiden','Sparrow','Heron','Otter','Boar','Stag','Weaver','Fisher','Reeve'];
+const SIZE=['Upper','Lower','Little','Great','Old','New','Nether','Far','East','West','North','South'];
 const RADJ=['Frost','Sunset','Storm','Amber','Green','Iron','Shadow','Golden','Wolf','Bramble','Misty','Broken','Silver','Weeping','Thunder'];
 const RNOUN=['reach','march','vale','wold','fen','moor','hold','wilds','downs','coast','marches','expanse'];
-function genName(used){for(let i=0;i<500;i++){const n=pick(GPRE)+pick(GSUF);if(!used.has(n)){used.add(n);return n;}}return 'Holdfast '+used.size;}
+function genName(used){                       // settlement names — many structures, not just root+suffix
+ const build=()=>{const r=Math.random();
+  if(r<0.50){const a=pick(ROOT),s=pick(SUF);if(a.toLowerCase()===s||a.toLowerCase().endsWith(s))return null;return a+s;}   // Ashbrook
+  if(r<0.66)return pick(ROOT)+' '+pick(FEAT);                                                                              // Grey Barrow
+  if(r<0.80)return pick(POSS)+'’s '+pick(FEAT);                                                                       // Crow's Nest
+  if(r<0.90){const a=pick(ROOT),s=pick(SUF);if(a.toLowerCase()===s)return null;return pick(SIZE)+' '+a+s;}                 // Little Ashford
+  const a=pick(ROOT);return Math.random()<0.5?('Saint '+a):(a+pick(['minster','church','abbey','sept']));                  // Saint Bram / Bramminster
+ };
+ for(let i=0;i<800;i++){const n=build();if(n&&!used.has(n)){used.add(n);return n;}}
+ return 'Holdfast '+used.size;
+}
+function genHouse(used){                      // invented noble surnames — Vharen, Corwyn, Ravenmoor…
+ const ON=['B','Br','Bl','C','Cor','D','Dor','Dr','F','Fr','G','Gr','H','Hal','Har','K','Kar','Kor','L','Mal','Mar','Mer','Mor','N','R','Rey','S','St','Str','T','Tor','Th','V','Vh','Vel','W','Wy','Wyn','Cael','Dun','Fen','Gald','Rav'];
+ const VO=['a','e','i','o','ae','ei','y','au','ar','or','en','el','al'];
+ const EN=['ren','rin','ron','wyn','wen','dell','dale','ric','rick','mont','mar','mere','ford','wick','thorn','well','ael','iel','eth','oth','an','on','ath','gar','wald','vane','strom','burne','holt','rane','sar','lyn'];
+ const PSUF=['field','ford','grove','moor','wood','mere','hall','crest','vale','marsh','stone','wick','barrow','helm','holt'];
+ const cap=s=>s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+ const build=()=>{const r=Math.random();
+  if(r<0.55){let n=pick(ON)+pick(VO)+pick(EN);if(Math.random()<0.12)n=pick(ON)+pick(VO)+pick(['l','r','n','th'])+pick(VO)+pick(EN);return cap(n);}   // invented
+  if(r<0.85)return cap(pick(ROOT))+pick(PSUF);                                                                            // Ashgrove, Ravenmoor
+  return cap(pick(ON)+pick(VO)+pick(['ric','win','ver','ley','mar','den','wyn','ton','wick','rane']));                    // short & punchy
+ };
+ for(let i=0;i<800;i++){const s=build();const hn='House '+s;if(s.length>=4&&s.length<=12&&!used.has(hn)){used.add(hn);return hn;}}
+ return 'House Free'+used.size;
+}
 function generateWorld(seed,target){
  buildLandMask();
  // a seed makes the whole realm reproducible (same layout + names); blank = fresh each time
@@ -2563,7 +2590,7 @@ function enterRealm(o){
   t.food=Math.round(st.food*vary);
   t.b={}; t.owner=t.id; t.allies=[]; autoName(t);
   t.garrison=splitTroops(Math.round(t.population*0.01)+5, r);   // a standing garrison, ~1% of the city
-  let hn;do{hn='House '+pick(HOUSE_A)+pick(HOUSE_B);}while(used.has(hn));used.add(hn);
+  const hn=genHouse(used);
   F[t.id]={name:hn,color:FREE_COLORS[Math.abs(hashStr(t.id))%FREE_COLORS.length],ambition:0.3,towns:1};
  }
  capCitiesTo(10);   // a realm holds ~10 cities — trim any excess from older saved maps
