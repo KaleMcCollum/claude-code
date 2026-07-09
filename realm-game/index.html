@@ -3622,12 +3622,13 @@ function showAllianceEditor(id){
  const cr=document.createElement('div');cr.className='shoprow';
  cr.innerHTML='<div><div class="sn">Colour</div><div class="sd">the banner your hosts fly</div></div><input type="color" value="'+L.color+'" style="width:52px;height:34px;padding:0;border:none;background:none">';
  cr.querySelector('input').oninput=e=>{L.color=e.target.value;needsDraw=true;};nm.appendChild(cr);
- const owners=[...new Set(world.towns.map(t=>t.owner))].sort((a,c)=>bannerName(a).localeCompare(bannerName(c)));
+ const rankPop={};for(const h of allHouseStats())rankPop[h.owner]=h.pop;
+ const owners=[...new Set(world.towns.map(t=>t.owner))].sort((a,c)=>(rankPop[c]||0)-(rankPop[a]||0));   // strongest houses first, by rank
  const ms=addSec(b,'Houses · '+L.members.length);
- owners.forEach(o=>{
+ owners.forEach((o,i)=>{
   const inL=L.members.indexOf(o)>=0, lead=L.lead===o, co=(L.coleads||[]).indexOf(o)>=0;
   const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap';
-  row.innerHTML='<div class="dl" style="min-width:64px"><b style="color:'+bannerColor(o)+'">'+bannerName(o).replace(/^House\s+/i,'')+'</b><span>'+(lead?'👑 lead':co?'⭑ co-lead':inL?'member':'—')+'</span></div>';
+  row.innerHTML='<div class="dl" style="min-width:64px"><b style="color:'+bannerColor(o)+'"><span style="opacity:.55">#'+(i+1)+'</span> '+bannerName(o).replace(/^House\s+/i,'')+'</b><span>'+(lead?'👑 lead':co?'⭑ co-lead':inL?'member':'—')+' · \u{1F465} '+fmt(rankPop[o]||0)+'</span></div>';
   const btns=document.createElement('div');btns.style.cssText='display:flex;gap:4px;flex-wrap:wrap';
   const mk=(txt,on,active)=>{const x=document.createElement('button');x.className='act';x.textContent=txt;x.style.cssText='padding:3px 8px;font-size:11px';if(!active){x.style.background='transparent';x.style.color='var(--wax)';x.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}x.onclick=on;return x;};
   btns.appendChild(mk(inL?'Remove':'Add',()=>{if(inL)leagueRemoveHouse(L,o);else leagueAddHouse(L,o);showAllianceEditor(id);needsDraw=true;},inL));
