@@ -724,7 +724,7 @@ function generateWorld(seed,target){
   const si=seats.indexOf(p);
   let type,name,id;
   if(si>=0){type=si===0?'capital':'city';id=SEAT_IDS[si];name=SEAT_NAMES[si];}
-  else{type=citySet.has(p)?'city':(Math.random()<0.32?'town':'village');
+  else{type=citySet.has(p)?'city':(Math.random()<0.17?'town':'village');   // ~1 in 6 non-city holds is a town (~50 on a Standard realm), the rest villages
    id='g'+i;name=genName(used);}
   const keep=DEFAULT_KEEP[type]||0;
   towns.push({id,name,type,x:p.x,y:p.y,region:'',shops:(DEFAULT_SHOPS[type]||['market']).slice(),
