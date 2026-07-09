@@ -3493,7 +3493,7 @@ function drawRealmLayer(){
 function drawShipToken(ctx,s){
  const house=entHouse(s),col=house.color;
  const HULL='#c07f3e',HULLL='#d7a05f',CASTLE='#7c4a22',SAIL='#dcdcdc',OUT='#181008',RIG='#2a1c0e';
- const S=0.24;                                  // small galleon — sized off the reference carrack
+ const S=0.30;                                  // galleon — sized off the reference carrack
  ctx.save();ctx.translate(s.x,s.y);ctx.scale(S,S);ctx.lineJoin='round';ctx.lineCap='round';
  // ---- wake ----
  ctx.strokeStyle='rgba(96,126,146,.5)';ctx.lineWidth=0.45;
@@ -3555,9 +3555,9 @@ function drawShipToken(ctx,s){
  ctx.lineWidth=0.24;ctx.strokeStyle=OUT;ctx.stroke();
  ctx.restore();
  if(cam.s>1.5||selShip===s.id){ctx.font='700 4px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.lineWidth=1.5;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText('⚓ '+shipTroops(s),s.x,s.y+2.2);
-  ctx.fillStyle='#22405a';ctx.fillText('⚓ '+shipTroops(s),s.x,s.y+2.2);
-  drawCaption(s.x,s.y+3.9,house.name,house.color);}
+  ctx.lineWidth=1.5;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText(''+shipTroops(s),s.x,s.y+2.7);
+  ctx.fillStyle='#22405a';ctx.fillText(''+shipTroops(s),s.x,s.y+2.7);
+  drawCaption(s.x,s.y+4.5,house.name,house.color);}
 }
 function armyAt(w){let best=null,bd=6*6;for(const a of armies){const d=(a.x-w.x)**2+(a.y-w.y)**2;if(d<bd){bd=d;best=a;}}return best;}
 function shipAt(w){let best=null,bd=7*7;for(const s of ships){const d=(s.x-w.x)**2+(s.y-w.y)**2;if(d<bd){bd=d;best=s;}}return best;}
