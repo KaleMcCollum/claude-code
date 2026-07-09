@@ -1770,13 +1770,13 @@ function endPointer(e){
        log2('Your host ('+fmt(atk)+') marches on '+t.name+' ('+fmt(def)+' behind its walls) — '+oddsVerdict(atk,def)+'.','bad');endOrder();}
      }else if(t&&t.owner===selA.owner){log2('That’s your own town — march there in Move mode to garrison it.','bad');}
      else{log2('Tap a host or town to attack it.','bad');}
-    }else if(armyCmd==='merge'){       // MERGE: join two of your own hosts
-     if(a&&a.owner===selA.owner&&a.id!==selA.id){
+    }else if(armyCmd==='merge'){       // MERGE: fold hosts into one army — allied houses keep a detachable contingent
+     if(a&&a.id!==selA.id&&(a.owner===selA.owner||areAllied(a.owner,selA.owner))){
       mergeHosts(a,selA);armyCmd='move';
-      log2('Your hosts join into one — '+fmt(troopsTotal(a.troops))+' strong.','gold');
-      endOrder();
-     }else if(a&&a.owner!==selA.owner){log2('You can only merge your own hosts — use Ally instead.','bad');}
-     else{log2('Tap another of your hosts to merge with.','bad');}
+      log2((isCoalition(a)?'The houses march as one coalition — ':'Your hosts join into one — ')+fmt(troopsTotal(a.troops))+' strong.','gold');
+      selArmy=a.id;selShip=null;selTown=null;showArmyPanel();if(window.revealPanel)revealPanel();needsDraw=true;
+     }else if(a&&a.owner!==selA.owner){log2('Ally with '+bannerName(a.owner)+' first (Ally mode), then merge to form a coalition.','bad');}
+     else{log2('Tap another host to merge with.','bad');}
     }else if(armyCmd==='ally'){        // ALLY: swear peace with another house
      const oth=(a&&a.owner!==selA.owner&&a.owner)||(t&&t.owner!==selA.owner&&t.owner)||null;
      if(oth){addAlliance(selA.owner,oth);
@@ -2400,10 +2400,40 @@ function allyKey(a,b){return a<b?a+'|'+b:b+'|'+a;}
 function areAllied(a,b){return !!(a&&b&&a!==b&&alliances.has(allyKey(a,b)));}
 function addAlliance(a,b){if(a&&b&&a!==b)alliances.add(allyKey(a,b));}
 function breakAlliances(){alliances.clear();}
-function mergeHosts(into,from){   // fold `from` into `into`, then drop `from`
- into.troops=into.troops||{};for(const u in (from.troops||{}))into.troops[u]=(into.troops[u]||0)+(from.troops[u]||0);
+// ---- coalitions: many houses under one banner, each house's contingent tracked so it can be pulled back out ----
+function contingentsOf(a){return (a.contingents&&a.contingents.length)?a.contingents:[{owner:a.owner,n:troopsTotal(a.troops)}];}
+function isCoalition(a){return !!(a&&a.contingents&&a.contingents.length>1);}
+function syncCoalition(a){                 // keep total + leader consistent with the contingents
+ if(!a.contingents)return;
+ a.contingents=a.contingents.filter(c=>c.n>0);
+ a.troops={n:a.contingents.reduce((s,c)=>s+c.n,0)};
+ if(a.contingents.length<=1){a.owner=(a.contingents[0]||{owner:a.owner}).owner;delete a.contingents;return;}
+ if(!a.contingents.some(c=>c.owner===a.owner))a.owner=a.contingents.slice().sort((x,y)=>y.n-x.n)[0].owner; // leader left — biggest takes command
+}
+function reconcileContingents(a){          // after battle losses, scale each house's share to the surviving total
+ if(!a.contingents)return;
+ const cur=troopsTotal(a.troops),sum=a.contingents.reduce((s,c)=>s+c.n,0);
+ if(sum<=0){delete a.contingents;return;}
+ if(cur!==sum){const k=cur/sum;a.contingents.forEach(c=>c.n=Math.round(c.n*k));syncCoalition(a);}
+}
+function mergeHosts(into,from){   // fold `from` into `into` — allied houses keep a detachable contingent
+ reconcileContingents(into);reconcileContingents(from);
+ const byOwner={};for(const c of contingentsOf(into).concat(contingentsOf(from)))byOwner[c.owner]=(byOwner[c.owner]||0)+c.n;
+ const owners=Object.keys(byOwner);
+ if(owners.length>1)into.contingents=owners.map(o=>({owner:o,n:byOwner[o]}));else delete into.contingents;
+ into.troops={n:Object.values(byOwner).reduce((s,n)=>s+n,0)};
  into.dragons=(into.dragons||[]).concat(from.dragons||[]);
  const i=armies.indexOf(from);if(i>=0)armies.splice(i,1);
+ syncCoalition(into);
+}
+function detachContingent(a,owner){        // pull one house out of the coalition as its own host
+ if(!a.contingents)return;
+ reconcileContingents(a);
+ const c=a.contingents.find(x=>x.owner===owner);if(!c||c.n<=0)return;
+ const nb=mkArmy(owner,a.x+4,a.y,{n:c.n});nb.homeName=bannerName(owner).replace(/^House\s+/i,'');armies.push(nb);
+ a.contingents=a.contingents.filter(x=>x!==c);syncCoalition(a);
+ log2(bannerName(owner)+' peels away from the coalition — '+fmt(c.n)+' strong.','gold');
+ realmHUD();showArmyPanel();needsDraw=true;
 }
 let RLOG=[];
 function log2(t,cls){RLOG.unshift({t,cls:cls||''});if(RLOG.length>40)RLOG.pop();}
@@ -3600,10 +3630,23 @@ function dragonFt(a){return a.dragons&&a.dragons[0]&&a.dragons[0].ft;}
 function showArmyPanel(){
  const a=armies.find(x=>x.id===selArmy);if(!a){showRealmPanel();return;}
  selTown=null;selShip=null;
+ reconcileContingents(a);
  const isDragon=dragonFt(a)&&troopsTotal(a.troops)<=0;
- const b=panelShell(a.player?R.meName:bannerName(a.owner),isDragon?(a.player?'Your Dragon':bannerName(a.owner)+'’s dragon'):(a.player?'Your Host':bannerName(a.owner)+'’s host'),
+ const b=panelShell(a.player?R.meName:bannerName(a.owner),isDragon?(a.player?'Your Dragon':bannerName(a.owner)+'’s dragon'):isCoalition(a)?(a.player?'Your Coalition':bannerName(a.owner)+'’s coalition'):(a.player?'Your Host':bannerName(a.owner)+'’s host'),
   (isDragon?dragonFt(a)+'-foot dragon':fmt(troopsTotal(a.troops))+' soldiers'+(a.dragons.length?' · '+a.dragons.length+' dragon(s)':''))+' · ⚔ '+fmt(armyStrength(a))+' strength'+(a.dest?' · marching':' · encamped')+(a.homeName?' · from '+a.homeName:''));
  if(a.dragons.length){const d=addSec(b,'Dragons');d.insertAdjacentHTML('beforeend',a.dragons.map(x=>'<div class="kv"><span>'+(x.ft?x.ft+'-foot dragon':'Dragon')+'</span><b>power '+fmt(dragonPower(x))+'</b></div>').join(''));}
+ if(isCoalition(a)){                    // each house's contingent — tap Detach to pull one back out
+  const cs=addSec(b,'Coalition · '+a.contingents.length+' houses');
+  a.contingents.slice().sort((x,y)=>y.n-x.n).forEach(c=>{
+   const row=document.createElement('div');row.className='deal';row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px';
+   const lead=c.owner===a.owner;
+   row.innerHTML='<div class="dl" style="min-width:0"><b style="color:'+bannerColor(c.owner)+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+bannerName(c.owner)+(lead?' \u{1F451}':'')+'</b><span>'+fmt(c.n)+' soldiers</span></div>';
+   const rm=document.createElement('button');rm.className='act';rm.style.cssText='flex:none';rm.textContent='Detach';
+   rm.onclick=()=>detachContingent(a,c.owner);row.appendChild(rm);
+   cs.appendChild(row);
+  });
+  cs.insertAdjacentHTML('beforeend','<p class="hint">Every house marches under '+bannerName(a.owner)+'’s command (\u{1F451}). Detach a house to send its soldiers off on their own.</p>');
+ }
  {                                    // you direct every house — any host takes orders
   const o=addSec(b,'Orders'+(a.player?'':' · '+bannerName(a.owner)));
   // Move / Attack / Merge / Ally command toggle
@@ -3617,7 +3660,7 @@ function showArmyPanel(){
   o.appendChild(seg);
   const hints={move:'<b>Move:</b> tap anywhere to march there — no attack.',
    attack:'<b>Attack:</b> tap an enemy host, town or dragon to march on and fight it.',
-   merge:'<b>Merge:</b> tap another of your hosts to fold this one into it.',
+   merge:'<b>Merge:</b> tap another of your hosts — or an allied house’s host — to combine into one army. Allied houses keep their own contingent you can detach later.',
    ally:'<b>Ally:</b> tap another house’s host or town to swear an alliance — allied hosts won’t fight and stand together.',
    link:'<b>Link:</b> tap one of your or an ally’s hosts for the dragon to fly with and guard it in battle.',
    burn:'<b>Burn:</b> tap an enemy town or host — the dragon rains fire over it and everything nearby, ignoring walls. It razes; it doesn’t capture.'};
