@@ -2628,6 +2628,19 @@ function deployFromGarrison(id,n){       // send troops OUT of a city's garrison
  const a=mkArmy('player',t.x,t.y,{n:take});a.home=id;a.homeName=t.name;armies.push(a);
  log2(fmt(take)+' march out of '+t.name+'’s garrison as a new host.','gold');
  selArmy=a.id;selTown=null;selShip=null;armyCmd='move';showArmyPanel();realmHUD();needsDraw=true;}
+function disbandHome(a){                 // break camp and march home to the nearest big city of the host's house(s)
+ const owners=a.contingents?[...new Set(a.contingents.map(c=>c.owner))]:[a.owner];
+ const rank=t=>t.type==='capital'?3:t.type==='city'?2:t.type==='town'?1:0, dist=t=>Math.hypot(t.x-a.x,t.y-a.y);
+ let best=null;
+ for(const tiers of [[3,2],[1],[0]]){    // nearest city/capital, else nearest town, else nearest village
+  const cands=world.towns.filter(t=>owners.indexOf(t.owner)>=0&&tiers.indexOf(rank(t))>=0);
+  if(cands.length){best=cands.reduce((p,c)=>dist(c)<dist(p)?c:p);break;}
+ }
+ if(!best){const i=armies.indexOf(a);if(i>=0)armies.splice(i,1);selArmy=null;log2('With no city to return to, the host scatters to the winds.','bad');showRealmPanel();realmHUD();needsDraw=true;return;}
+ a.dest={x:best.x,y:best.y,townId:best.id};a.roadPath=null;a.attacking=false;a.attackTarget=null;a.burning=false;a.disbanding=true;
+ log2('The host breaks camp and marches home to '+best.name+'.','gold');
+ selArmy=null;showRealmPanel();needsDraw=true;
+}
 function mkArmy(owner,x,y,troops){const a={id:'a'+(armySeq++),owner,x,y,troops,dragons:[],dest:null,roadPath:null,player:owner==='player'};armies.push?0:0;return a;}
 function myTowns(){return world.towns.filter(t=>t.owner==='player');}
 function factionTowns(fid){return world.towns.filter(t=>t.owner===fid);}
@@ -3077,6 +3090,15 @@ function moveArmies(){
  // sieges: army adjacent to enemy town it targeted
  for(const a of armies){
   if(a.linkedTo||a.burning)continue;   // escorts besiege with their host; dragons on a burn raze instead
+  if(a.disbanding&&a.dest&&a.dest.townId){          // marching home to disband into the city garrison
+   const ht=LOC[a.dest.townId];
+   if(ht&&Math.hypot(ht.x-a.x,ht.y-a.y)<6){
+    ht.garrison={n:troopsTotal(ht.garrison||{})+troopsTotal(a.troops)};
+    log2(fmt(troopsTotal(a.troops))+' lay down their banners and join the garrison of '+ht.name+'.','gold');
+    a.troops={n:0};a.disbanding=false;a.dest=null;if(!(a.dragons&&a.dragons.length))a.merged=true;
+   }
+   continue;
+  }
   if(!a.dest||!a.dest.townId)continue;
   const t=LOC[a.dest.townId];if(!t)continue;
   if(t.owner===a.owner){ if(Math.hypot(t.x-a.x,t.y-a.y)<6){mergeIntoGarrison(a,t);} continue; }
@@ -3808,10 +3830,16 @@ function showArmyPanel(){
    sp.querySelector('#splr').oninput=()=>{const g=rng(),kv=document.getElementById('splv'),kk=document.getElementById('splk');if(kv)kv.textContent=fmt(g);if(kk)kk.textContent=fmt(tot-g);};
    const spb=document.createElement('button');spb.className='act';spb.style.marginTop='4px';spb.textContent='⚔ Split into two hosts';
    spb.onclick=()=>{const give=rng();if(give<1||give>=tot)return;
-    a.troops={n:tot-give};
-    const nb=mkArmy(a.owner,a.x+3,a.y,{n:give});nb.home=a.home;nb.homeName=a.homeName;armies.push(nb);
-    selArmy=nb.id;armyCmd='move';
-    log2(a.player?'You divide your host — '+fmt(give)+' march off as a new column.':bannerName(a.owner)+'’s host divides in two.','gold');
+    reconcileContingents(a);
+    const nb=mkArmy(a.owner,a.x+3,a.y,{n:0});nb.home=a.home;nb.homeName=a.homeName;
+    if(a.league)nb.league=a.league;                       // the split-off host keeps the alliance banner
+    if(a.contingents){                                    // divide EACH house's contingent proportionally
+     const frac=give/tot, nc=[];
+     for(const c of a.contingents){const take=Math.min(c.n,Math.round(c.n*frac));if(take>0)nc.push({owner:c.owner,n:take});c.n-=take;}
+     nb.contingents=nc;syncCoalition(nb);syncCoalition(a);
+    }else{a.troops={n:tot-give};nb.troops={n:give};}
+    armies.push(nb);selArmy=nb.id;armyCmd='move';
+    log2(a.player?'You divide your host — '+fmt(troopsTotal(nb.troops))+' march off as a new column.':bannerName(a.owner)+'’s host divides in two.','gold');
     realmHUD();showArmyPanel();needsDraw=true;};
    sp.appendChild(spb);
   }
@@ -3834,7 +3862,8 @@ function showArmyPanel(){
     asec.insertAdjacentHTML('beforeend','<p class="hint">Levies march from every member house’s cities to join this host as their own contingent. Troops already afield don’t answer.</p>');
    }
   }
-  const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband';db.onclick=()=>{const i=armies.indexOf(a);if(i>=0)armies.splice(i,1);selArmy=null;showRealmPanel();needsDraw=true;};dz.appendChild(db);
+  const dz=addSec(b,'');const db=document.createElement('button');db.className='act';db.textContent='Disband — march home';db.onclick=()=>disbandHome(a);dz.appendChild(db);
+  dz.insertAdjacentHTML('beforeend','<p class="hint" style="margin-top:4px">The host marches back to the nearest large city of its house and its soldiers rejoin that garrison.</p>');
  }
  const back=addSec(b,'');const bb=document.createElement('button');bb.className='act';bb.textContent='◂ Realm';bb.onclick=()=>{selArmy=null;showRealmPanel();};back.appendChild(bb);
 }
