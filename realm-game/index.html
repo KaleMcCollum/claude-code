@@ -3293,40 +3293,52 @@ function drawArmyToken(ctx,a){
  }
  a.dragons.forEach((d,i)=>{const ang=-0.7-i*0.55;drawDragonToken(ctx,a.x+Math.cos(ang)*8,a.y+Math.sin(ang)*8-2,d);});
 }
-// a carved chess-pawn — the foot-soldier piece — turned from the holding
-// house's colour: a ball head over an ogee body on a tiered base, lit upper-left.
+// a shield-wall of three armoured spearmen — grey plate, house-coloured
+// quartered shields (two shades of the banner) so the faction reads at a glance.
 function drawWarriorToken(ctx,a,col){
  const cx=a.x,cy=a.y;
- const MID=shade(col,0.16),LT=shade(col,0.54),DK=shade(col,-0.44),EDGE='#160f08';
+ const ARM='#9aa0a6',ARML='#c7ccd0',ARMD='#5f656b',OUT='#151515',SKIN='#f2c193',STEEL='#c9ced2',SPEAR='#3a2c1a';
+ const q1=shade(col,0.22), q2=shade(col,-0.30);   // two banner shades for the quartered shield
  ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
- // cast shadow
- ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(cx+0.25,cy+5.0,3.0,0.6,0,0,7);ctx.fill();
- const grad=ctx.createLinearGradient(cx-2.6,cy-4.4,cx+2.8,cy+4.0);
- grad.addColorStop(0,LT);grad.addColorStop(0.44,MID);grad.addColorStop(1,DK);
- ctx.fillStyle=grad;ctx.strokeStyle=EDGE;ctx.lineWidth=0.22;
- // ---- flared foot ----
- ctx.beginPath();
- ctx.moveTo(cx-3.0,cy+4.85);ctx.quadraticCurveTo(cx-3.25,cy+4.0,cx-2.35,cy+3.8);
- ctx.lineTo(cx+2.35,cy+3.8);ctx.quadraticCurveTo(cx+3.25,cy+4.0,cx+3.0,cy+4.85);
- ctx.quadraticCurveTo(cx,cy+5.35,cx-3.0,cy+4.85);ctx.closePath();ctx.fill();ctx.stroke();
- // ---- ogee body: narrow neck flaring to the base ----
- ctx.beginPath();
- ctx.moveTo(cx-2.2,cy+3.75);
- ctx.quadraticCurveTo(cx-1.55,cy+2.1,cx-1.05,cy+0.5);
- ctx.quadraticCurveTo(cx-0.72,cy-0.7,cx-0.98,cy-1.55);
- ctx.lineTo(cx+0.98,cy-1.55);
- ctx.quadraticCurveTo(cx+0.72,cy-0.7,cx+1.05,cy+0.5);
- ctx.quadraticCurveTo(cx+1.55,cy+2.1,cx+2.2,cy+3.75);
- ctx.closePath();ctx.fill();ctx.stroke();
- // ---- base collar torus ----
- ctx.beginPath();ctx.ellipse(cx,cy+3.65,2.3,0.72,0,0,7);ctx.fill();ctx.stroke();
- // ---- neck ring under the head ----
- ctx.beginPath();ctx.ellipse(cx,cy-1.5,1.35,0.5,0,0,7);ctx.fill();ctx.stroke();
- // ---- ball head ----
- ctx.beginPath();ctx.arc(cx,cy-3.05,1.5,0,7);ctx.fill();ctx.stroke();
- // ---- highlight on the head (lit upper-left) ----
- ctx.fillStyle=shade(col,0.6);ctx.globalAlpha=0.5;
- ctx.beginPath();ctx.arc(cx-0.5,cy-3.55,0.52,0,7);ctx.fill();ctx.globalAlpha=1;
+ // ground shadow
+ ctx.fillStyle='rgba(0,0,0,.16)';ctx.beginPath();ctx.ellipse(cx,cy+4.6,4.6,0.72,0,0,7);ctx.fill();
+ const soldier=(ox,dy)=>{
+  const X=cx+ox, Y=cy+dy;
+  // spear behind the man
+  ctx.strokeStyle=SPEAR;ctx.lineWidth=0.32;ctx.beginPath();ctx.moveTo(X+1.55,Y-7.6);ctx.lineTo(X+1.55,Y+3.1);ctx.stroke();
+  ctx.fillStyle=STEEL;ctx.beginPath();ctx.moveTo(X+1.55,Y-8.5);ctx.lineTo(X+1.2,Y-7.5);ctx.lineTo(X+1.9,Y-7.5);ctx.closePath();ctx.fill();
+  // torso + legs in plate
+  const g=ctx.createLinearGradient(X-1.9,Y-3.4,X+1.9,Y+3.4);g.addColorStop(0,ARML);g.addColorStop(.5,ARM);g.addColorStop(1,ARMD);
+  ctx.fillStyle=g;ctx.strokeStyle=OUT;ctx.lineWidth=0.3;
+  ctx.beginPath();
+  ctx.moveTo(X-1.9,Y-2.9);ctx.quadraticCurveTo(X-2.25,Y-1.3,X-1.7,Y+0.3);
+  ctx.lineTo(X-1.5,Y+3.5);ctx.lineTo(X-0.35,Y+3.5);ctx.lineTo(X-0.35,Y+1.1);
+  ctx.lineTo(X+0.35,Y+1.1);ctx.lineTo(X+0.35,Y+3.5);ctx.lineTo(X+1.5,Y+3.5);
+  ctx.lineTo(X+1.7,Y+0.3);ctx.quadraticCurveTo(X+2.25,Y-1.3,X+1.9,Y-2.9);
+  ctx.quadraticCurveTo(X,Y-3.7,X-1.9,Y-2.9);ctx.closePath();ctx.fill();ctx.stroke();
+  // knee rivets + feet
+  ctx.fillStyle=ARMD;ctx.beginPath();ctx.arc(X-0.9,Y+2.5,0.4,0,7);ctx.fill();ctx.beginPath();ctx.arc(X+0.9,Y+2.5,0.4,0,7);ctx.fill();
+  // helmet dome
+  ctx.fillStyle=ARM;ctx.strokeStyle=OUT;ctx.lineWidth=0.3;
+  ctx.beginPath();ctx.arc(X,Y-4.7,1.5,Math.PI,0);ctx.lineTo(X+1.5,Y-4.2);ctx.lineTo(X-1.5,Y-4.2);ctx.closePath();ctx.fill();ctx.stroke();
+  // face under the brim
+  ctx.fillStyle=SKIN;ctx.beginPath();ctx.ellipse(X,Y-3.85,0.92,0.62,0,Math.PI,0,true);ctx.fill();ctx.strokeStyle=OUT;ctx.lineWidth=0.2;ctx.stroke();
+  // helmet knob
+  ctx.fillStyle=ARMD;ctx.strokeStyle=OUT;ctx.lineWidth=0.2;ctx.beginPath();ctx.arc(X,Y-6.25,0.42,0,7);ctx.fill();ctx.stroke();
+  // heater shield, quartered in the house colours
+  const sx=X-0.1, sy=Y-0.3, cyc=sy-0.1;
+  const shieldPath=()=>{ctx.beginPath();ctx.moveTo(sx-2.0,sy-2.3);ctx.lineTo(sx+2.0,sy-2.3);ctx.lineTo(sx+2.0,sy-0.2);ctx.quadraticCurveTo(sx+2.0,sy+2.1,sx,sy+2.9);ctx.quadraticCurveTo(sx-2.0,sy+2.1,sx-2.0,sy-0.2);ctx.closePath();};
+  ctx.save();shieldPath();ctx.clip();
+  ctx.fillStyle=q1;ctx.fillRect(sx-2.3,sy-2.6,4.8,6.2);            // whole
+  ctx.fillStyle=q2;ctx.fillRect(sx,cyc-3.0,2.5,3.0);              // top-right
+  ctx.fillStyle=q2;ctx.fillRect(sx-2.4,cyc,2.4,3.6);             // bottom-left
+  ctx.restore();
+  ctx.strokeStyle=OUT;ctx.lineWidth=0.4;shieldPath();ctx.stroke();
+  ctx.lineWidth=0.3;ctx.beginPath();ctx.moveTo(sx,sy-2.3);ctx.lineTo(sx,sy+2.85);ctx.moveTo(sx-2.0,cyc);ctx.lineTo(sx+2.0,cyc);ctx.stroke();
+ };
+ soldier(-3.0,0.5);          // left
+ soldier(3.0,0.5);           // right
+ soldier(0,-0.2);            // middle, in front
  ctx.restore();
 }
 function fmt(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':''+n;}
@@ -3381,41 +3393,73 @@ function drawRealmLayer(){
    ctx.beginPath();ctx.moveTo(ss.x,ss.y);ctx.lineTo(ss.dest.x,ss.dest.y);ctx.stroke();ctx.setLineDash([]);}}
 }
 function drawShipToken(ctx,s){
- const house=entHouse(s),col=house.color,x=s.x,y=s.y,WOOD='#6a4726',WOODL='#8a6234',WD='#3a2614',ED='#140a05',lt=shade(col,0.32),dk=shade(col,-0.42),CANVAS='#e7dbbd',STEEL='#b9bfc7';
- ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
- ctx.translate(x,y);ctx.scale(0.5,0.5);ctx.translate(-x,-y);   // half-size boat icon
- // wake
- ctx.strokeStyle='rgba(96,126,146,.55)';ctx.lineWidth=0.24;
- ctx.beginPath();ctx.moveTo(x-4.2,y+1.9);ctx.quadraticCurveTo(x,y+3.1,x+4.2,y+1.9);ctx.stroke();
- ctx.beginPath();ctx.moveTo(x-3.2,y+2.5);ctx.quadraticCurveTo(x,y+3.4,x+3.2,y+2.5);ctx.stroke();
- // oars
- ctx.strokeStyle=WD;ctx.lineWidth=0.16;for(let i=-2;i<=2;i++){const ox=x+i*1.1;ctx.beginPath();ctx.moveTo(ox,y-0.2);ctx.lineTo(ox+0.5,y+1.9);ctx.stroke();}
- // hull with sheer + planks
- const hg=ctx.createLinearGradient(0,y-0.9,0,y+2.2);hg.addColorStop(0,WOODL);hg.addColorStop(1,WOOD);
- ctx.fillStyle=hg;ctx.strokeStyle=ED;ctx.lineWidth=0.24;ctx.beginPath();
- ctx.moveTo(x-4.0,y-0.7);ctx.quadraticCurveTo(x-4.6,y-1.4,x-3.7,y-1.5);ctx.lineTo(x+3.7,y-1.5);
- ctx.quadraticCurveTo(x+4.6,y-1.4,x+4.0,y-0.7);ctx.quadraticCurveTo(x+3.4,y+2.2,x,y+2.2);ctx.quadraticCurveTo(x-3.4,y+2.2,x-4.0,y-0.7);ctx.closePath();ctx.fill();ctx.stroke();
- // plank line + shield rack on the gunwale
- ctx.strokeStyle='rgba(40,26,12,.7)';ctx.lineWidth=0.12;ctx.beginPath();ctx.moveTo(x-3.8,y-0.5);ctx.lineTo(x+3.8,y-0.5);ctx.stroke();
- for(let i=-3;i<=3;i++){ctx.fillStyle=(i%2)?col:lt;ctx.strokeStyle=ED;ctx.lineWidth=0.08;ctx.beginPath();ctx.arc(x+i*1.05,y-1.0,0.42,0,7);ctx.fill();ctx.stroke();}
- // mast + rigging
- ctx.strokeStyle=WD;ctx.lineWidth=0.26;ctx.beginPath();ctx.moveTo(x,y-1.2);ctx.lineTo(x,y-6.0);ctx.stroke();
- ctx.strokeStyle='rgba(30,20,10,.55)';ctx.lineWidth=0.08;ctx.beginPath();ctx.moveTo(x,y-5.6);ctx.lineTo(x-3.4,y-0.9);ctx.moveTo(x,y-5.6);ctx.lineTo(x+3.4,y-0.9);ctx.stroke();
- // yardarm
- ctx.strokeStyle=WD;ctx.lineWidth=0.2;ctx.beginPath();ctx.moveTo(x-2.7,y-5.2);ctx.lineTo(x+2.7,y-5.2);ctx.stroke();
- // billowing square sail with a charge stripe
- const sg=ctx.createLinearGradient(x-2.6,0,x+2.6,0);sg.addColorStop(0,shade(CANVAS,-0.1));sg.addColorStop(0.5,CANVAS);sg.addColorStop(1,shade(CANVAS,-0.14));
- ctx.fillStyle=sg;ctx.strokeStyle=ED;ctx.lineWidth=0.18;ctx.beginPath();
- ctx.moveTo(x-2.5,y-5.1);ctx.quadraticCurveTo(x-3.1,y-3.2,x-2.2,y-1.4);ctx.quadraticCurveTo(x,y-1.0,x+2.2,y-1.4);ctx.quadraticCurveTo(x+3.1,y-3.2,x+2.5,y-5.1);ctx.quadraticCurveTo(x,y-4.7,x-2.5,y-5.1);ctx.closePath();ctx.fill();ctx.stroke();
- ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x-0.7,y-5.0);ctx.quadraticCurveTo(x-0.85,y-3.2,x-0.6,y-1.35);ctx.lineTo(x+0.6,y-1.35);ctx.quadraticCurveTo(x+0.85,y-3.2,x+0.7,y-5.0);ctx.quadraticCurveTo(x,y-4.7,x-0.7,y-5.0);ctx.closePath();ctx.fill();
- ctx.strokeStyle='rgba(40,26,12,.4)';ctx.lineWidth=0.08;ctx.beginPath();ctx.moveTo(x-2.3,y-3.4);ctx.quadraticCurveTo(x,y-3.0,x+2.3,y-3.4);ctx.stroke();
- // masthead pennant
- ctx.strokeStyle=ED;ctx.lineWidth=0.12;ctx.beginPath();ctx.moveTo(x,y-6.0);ctx.lineTo(x+1.7,y-5.7);ctx.lineTo(x,y-5.4);ctx.stroke();ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x,y-6.0);ctx.lineTo(x+1.7,y-5.7);ctx.lineTo(x,y-5.4);ctx.closePath();ctx.fill();
+ const house=entHouse(s),col=house.color;
+ const HULL='#c07f3e',HULLL='#d7a05f',CASTLE='#7c4a22',SAIL='#dcdcdc',OUT='#181008',RIG='#2a1c0e';
+ const S=0.24;                                  // small galleon — sized off the reference carrack
+ ctx.save();ctx.translate(s.x,s.y);ctx.scale(S,S);ctx.lineJoin='round';ctx.lineCap='round';
+ // ---- wake ----
+ ctx.strokeStyle='rgba(96,126,146,.5)';ctx.lineWidth=0.45;
+ ctx.beginPath();ctx.moveTo(-6.3,4.4);ctx.quadraticCurveTo(0,5.7,7.0,4.2);ctx.stroke();
+ // ---- bowsprit + forked pennant (up-left) ----
+ ctx.strokeStyle=OUT;ctx.lineWidth=0.5;
+ ctx.beginPath();ctx.moveTo(-4.6,-0.3);ctx.lineTo(-8.7,-2.2);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(-7.7,-1.4);ctx.lineTo(-7.7,-4.3);ctx.stroke();
+ ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-7.7,-4.2);ctx.lineTo(-5.9,-3.75);ctx.lineTo(-6.7,-3.4);ctx.lineTo(-5.9,-3.05);ctx.lineTo(-7.7,-2.7);ctx.closePath();ctx.fill();ctx.lineWidth=0.26;ctx.stroke();
+ // ---- masts ----
+ ctx.strokeStyle=RIG;ctx.lineWidth=0.5;
+ ctx.beginPath();ctx.moveTo(-3.4,-0.4);ctx.lineTo(-3.4,-5.4);ctx.stroke();      // fore
+ ctx.beginPath();ctx.moveTo(0.5,-0.4);ctx.lineTo(0.5,-9.4);ctx.stroke();        // main
+ ctx.beginPath();ctx.moveTo(3.4,-2.6);ctx.lineTo(3.4,-6.0);ctx.stroke();        // mizzen
+ // ---- yards (spars) ----
+ ctx.lineWidth=0.34;
+ ctx.beginPath();ctx.moveTo(-5.4,-5.0);ctx.lineTo(-1.4,-5.0);ctx.stroke();      // foresail yard
+ ctx.beginPath();ctx.moveTo(-2.0,-5.1);ctx.lineTo(3.0,-5.1);ctx.stroke();       // main course yard
+ ctx.beginPath();ctx.moveTo(-1.3,-8.4);ctx.lineTo(2.3,-8.4);ctx.stroke();       // main topsail yard
+ ctx.beginPath();ctx.moveTo(3.4,-4.4);ctx.lineTo(6.7,-5.0);ctx.stroke();        // mizzen yard (tilted up-right)
+ // ---- hull with a raised stern castle ----
+ const hg=ctx.createLinearGradient(0,-2.9,0,4.3);hg.addColorStop(0,HULLL);hg.addColorStop(1,HULL);
+ ctx.fillStyle=hg;ctx.strokeStyle=OUT;ctx.lineWidth=0.62;
+ ctx.beginPath();
+ ctx.moveTo(-6.9,0.5);ctx.lineTo(-4.7,-0.6);ctx.lineTo(3.0,-0.6);ctx.lineTo(3.0,-2.8);ctx.lineTo(6.8,-2.8);ctx.lineTo(7.0,1.4);
+ ctx.quadraticCurveTo(6.5,3.1,5.0,3.6);ctx.quadraticCurveTo(1.0,4.7,-2.7,3.8);ctx.quadraticCurveTo(-5.5,3.0,-6.9,0.5);ctx.closePath();
+ ctx.fill();ctx.stroke();
+ // stern castle (darker) + its front edge
+ ctx.fillStyle=CASTLE;ctx.beginPath();
+ ctx.moveTo(3.0,-0.6);ctx.lineTo(3.0,-2.8);ctx.lineTo(6.8,-2.8);ctx.lineTo(7.0,1.4);
+ ctx.quadraticCurveTo(6.5,3.1,5.0,3.6);ctx.quadraticCurveTo(3.9,3.2,3.4,1.7);ctx.closePath();ctx.fill();
+ ctx.strokeStyle=OUT;ctx.lineWidth=0.42;ctx.beginPath();ctx.moveTo(3.0,-0.6);ctx.lineTo(3.0,2.1);ctx.stroke();
+ // gunwale rail + gun ports
+ ctx.strokeStyle='rgba(24,16,8,.55)';ctx.lineWidth=0.16;ctx.beginPath();ctx.moveTo(-6.2,0.05);ctx.lineTo(2.9,0.05);ctx.stroke();
+ ctx.fillStyle=OUT;for(let i=0;i<6;i++)ctx.fillRect(-4.1+i*1.12,0.75,0.5,0.5);
+ for(let i=0;i<3;i++)ctx.fillRect(3.95+i*0.92,-1.55,0.45,0.45);
+ // house-colour band on the forecastle rail (faction tell)
+ ctx.strokeStyle=col;ctx.lineWidth=0.32;ctx.beginPath();ctx.moveTo(-6.0,-0.32);ctx.lineTo(-4.8,-0.32);ctx.stroke();
+ // ---- sails (grey, big and round like the reference carrack) ----
+ const roundSail=(cx,cy,rx,ry)=>{ctx.beginPath();
+  ctx.moveTo(cx-rx,cy-ry*0.55);
+  ctx.quadraticCurveTo(cx-rx*1.18,cy+ry*0.16,cx-rx*0.76,cy+ry);
+  ctx.quadraticCurveTo(cx,cy+ry*1.3,cx+rx*0.76,cy+ry);
+  ctx.quadraticCurveTo(cx+rx*1.18,cy+ry*0.16,cx+rx,cy-ry*0.55);
+  ctx.quadraticCurveTo(cx,cy-ry*0.92,cx-rx,cy-ry*0.55);ctx.closePath();};
+ ctx.strokeStyle=OUT;ctx.lineWidth=0.5;ctx.fillStyle=SAIL;
+ roundSail(-3.4,-3.0,1.85,2.0);ctx.fill();ctx.stroke();     // foresail
+ roundSail(0.5,-2.9,2.25,2.15);ctx.fill();ctx.stroke();     // main course (big)
+ roundSail(0.5,-6.5,1.75,1.85);ctx.fill();ctx.stroke();     // main topsail
+ // faint centre seam on the big sails
+ ctx.strokeStyle='rgba(40,32,20,.28)';ctx.lineWidth=0.14;
+ ctx.beginPath();ctx.moveTo(-3.4,-4.6);ctx.lineTo(-3.4,-1.2);ctx.moveTo(0.5,-4.7);ctx.lineTo(0.5,-1.0);ctx.stroke();
+ // ---- mizzen: a square sail on the tilted yard, up to the right ----
+ ctx.strokeStyle=OUT;ctx.lineWidth=0.5;ctx.fillStyle=SAIL;
+ ctx.beginPath();ctx.moveTo(3.4,-4.3);ctx.quadraticCurveTo(5.1,-4.9,6.6,-4.9);
+ ctx.quadraticCurveTo(6.5,-3.4,6.3,-2.4);ctx.quadraticCurveTo(4.7,-2.2,3.4,-2.2);ctx.closePath();ctx.fill();ctx.stroke();
+ // ---- main masthead swallowtail flag (house colour) ----
+ ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(0.5,-9.4);ctx.lineTo(2.9,-9.0);ctx.lineTo(2.15,-8.6);ctx.lineTo(2.9,-8.2);ctx.lineTo(0.5,-7.8);ctx.closePath();ctx.fill();
+ ctx.lineWidth=0.24;ctx.strokeStyle=OUT;ctx.stroke();
  ctx.restore();
  if(cam.s>1.5||selShip===s.id){ctx.font='700 4px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.lineWidth=1.5;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText('⚓ '+shipTroops(s),x,y+2.8);
-  ctx.fillStyle='#22405a';ctx.fillText('⚓ '+shipTroops(s),x,y+2.8);
-  drawCaption(x,y+4.8,house.name,house.color);}
+  ctx.lineWidth=1.5;ctx.strokeStyle='rgba(238,228,196,.92)';ctx.strokeText('⚓ '+shipTroops(s),s.x,s.y+2.2);
+  ctx.fillStyle='#22405a';ctx.fillText('⚓ '+shipTroops(s),s.x,s.y+2.2);
+  drawCaption(s.x,s.y+3.9,house.name,house.color);}
 }
 function armyAt(w){let best=null,bd=6*6;for(const a of armies){const d=(a.x-w.x)**2+(a.y-w.y)**2;if(d<bd){bd=d;best=a;}}return best;}
 function shipAt(w){let best=null,bd=7*7;for(const s of ships){const d=(s.x-w.x)**2+(s.y-w.y)**2;if(d<bd){bd=d;best=s;}}return best;}
@@ -3493,10 +3537,10 @@ function showRankingsPanel(){
  const vseg=document.createElement('div');vseg.style.cssText='display:flex;gap:6px;margin-bottom:6px';
  for(const v of [['houses','🛡 Houses'],['towns','🏰 Settlements']]){const btn=document.createElement('button');btn.className='act';btn.textContent=v[1];btn.style.cssText='flex:1';
   if(rankView!==v[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
-  btn.onclick=()=>{rankView=v[0];const ok=houses?['pop','gold','food','garrison']:['pop','gold','holdings','cities','soldiers','navy','food'];if(ok.indexOf(rankSort)<0)rankSort='pop';showRankingsPanel();};vseg.appendChild(btn);}
+  btn.onclick=()=>{rankView=v[0];const ok=houses?['pop','gold','food','garrison']:['pop','gold','holdings','soldiers','navy','food'];if(ok.indexOf(rankSort)<0)rankSort='pop';showRankingsPanel();};vseg.appendChild(btn);}
  b.appendChild(vseg);
  // sort options (differ per view)
- const opts=houses?[['pop','People'],['gold','Gold'],['holdings','Lands'],['cities','Cities'],['soldiers','Soldiers'],['navy','Navy'],['food','Food']]
+ const opts=houses?[['pop','People'],['gold','Gold'],['holdings','Settlements'],['soldiers','Soldiers'],['navy','Navy'],['food','Food']]
                   :[['pop','People'],['gold','Gold'],['food','Food'],['garrison','Garrison']];
  if(!opts.some(o=>o[0]===rankSort))rankSort='pop';
  const seg=document.createElement('div');seg.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px';
@@ -3504,7 +3548,7 @@ function showRankingsPanel(){
   if(rankSort!==o[0]){btn.style.background='transparent';btn.style.color='var(--wax)';btn.style.boxShadow='inset 0 0 0 1.5px var(--wax)';}
   btn.onclick=()=>{rankSort=o[0];showRankingsPanel();};seg.appendChild(btn);}
  addSec(b,'Sort by').appendChild(seg);
- const mval=(r,k)=>k==='gold'?fmt(r.gold)+'\u{1F7E8}':k==='food'?fmt(r.food)+'\u{1F35E}':k==='holdings'?r.holdings+' \u{1F3F0}':k==='cities'?r.cities+' cities':k==='soldiers'?fmt(r.soldiers)+'⚔':k==='navy'?r.navy+' ⛵':k==='garrison'?fmt(r.garrison)+'⚔':fmt(r.pop)+'\u{1F465}';
+ const mval=(r,k)=>k==='gold'?fmt(r.gold)+'\u{1F7E8}':k==='food'?fmt(r.food)+'\u{1F35E}':k==='holdings'?r.holdings+' \u{1F3F0}':k==='soldiers'?fmt(r.soldiers)+'⚔':k==='navy'?r.navy+' ⛵':k==='garrison'?fmt(r.garrison)+'⚔':fmt(r.pop)+'\u{1F465}';
  if(houses){
   const rows=allHouseStats().sort((a,c)=>(c[rankSort]||0)-(a[rankSort]||0));
   const list=addSec(b,rows.length+' houses');
@@ -3643,6 +3687,14 @@ function numRow(sec,label,icon,val,onset){
  const inp=wrap.querySelector('input');wrap.querySelector('button').onclick=()=>onset(Math.max(0,Math.floor(+inp.value||0)));
  sec.appendChild(wrap);
 }
+function adjRow(sec,label,icon,cur,onset){   // add / remove a chosen amount instead of setting an absolute
+ const wrap=document.createElement('div');wrap.className='shoprow';
+ wrap.innerHTML='<div><div class="sn">'+icon+' '+label+'</div><div class="sd">now '+fmt(cur)+'</div></div><div style="display:flex;gap:5px;align-items:center"><input type="number" min="0" step="1" value="100" style="width:74px" class="numin"><button class="act" title="remove" style="min-width:32px">– Remove</button><button class="act gd" title="add" style="min-width:32px">+ Add</button></div>';
+ const inp=wrap.querySelector('input'),btns=wrap.querySelectorAll('button'),amt=()=>Math.max(0,Math.floor(+inp.value||0));
+ btns[0].onclick=()=>onset(Math.max(0,cur-amt()));
+ btns[1].onclick=()=>onset(cur+amt());
+ sec.appendChild(wrap);
+}
 function textRow(sec,label,val,onset){
  const wrap=document.createElement('div');wrap.className='shoprow';
  wrap.innerHTML='<div><div class="sn">'+label+'</div></div><div style="display:flex;gap:5px;align-items:center"><input type="text" maxlength="24" style="width:130px" class="txin"><button class="act gd">Set</button></div>';
@@ -3696,10 +3748,10 @@ function showTownPanel(){
   if(mine)R.meName=full; else if(F[t.owner])F[t.owner].name=full;
   log2('The house is now '+full+'.','gold');needsDraw=true;refreshRealmView();});
  // ---- edit the city ----
- const ed=addSec(b,'Set this city');
- numRow(ed,'Civilians','\u{1F465}',t.population||0,v=>setCity(t.id,'population',v));
- numRow(ed,'Gold','\u{1F7E8}',t.gold||0,v=>setCity(t.id,'gold',v));
- numRow(ed,'Food','\u{1F35E}',t.food||0,v=>setCity(t.id,'food',v));
+ const ed=addSec(b,'Add or remove');
+ adjRow(ed,'Civilians','\u{1F465}',t.population||0,v=>setCity(t.id,'population',v));
+ adjRow(ed,'Gold','\u{1F7E8}',t.gold||0,v=>setCity(t.id,'gold',v));
+ adjRow(ed,'Food','\u{1F35E}',t.food||0,v=>setCity(t.id,'food',v));
  // ---- garrison: civilians take up arms here, then deploy out or stay to hold the walls ----
  if(mine){
   const ar=addSec(b,'Garrison · '+fmt(troopsTotal(t.garrison||{}))+' troops');
