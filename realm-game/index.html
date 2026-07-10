@@ -632,7 +632,7 @@ function buildLandMask(){
    while(st.length){const c=st.pop();sz++;const cx=c%gw,cy=(c/gw)|0;
     for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=gw||ny>=gh)continue;const ni=ny*gw+nx;if(mask[ni]>=1&&comp[ni]===0){comp[ni]=cid;st.push(ni);}}}
    sizes[cid]=sz;if(sz>bestsz)bestsz=sz;}}
- const keep=new Uint8Array(cid+1);for(let c2=1;c2<=cid;c2++)keep[c2]=sizes[c2]>=Math.max(60,bestsz*0.12)?1:0;
+ const keep=new Uint8Array(cid+1);for(let c2=1;c2<=cid;c2++)keep[c2]=sizes[c2]>=25?1:0;   // real isles count as land; only specks are dropped
  for(let i=0;i<gw*gh;i++)if(mask[i]>=1&&!keep[comp[i]])mask[i]=0;
  LANDMASK={gw,gh,mask};
 }
@@ -683,7 +683,7 @@ function generateWorld(seed,target){
  const centers=[];let ctries=0;
  const CTARGET=Math.round(34*W/1000);   // spread settled regions across every continent
  while(centers.length<CTARGET&&ctries<80000){ctries++;
-  const x=70+rnd()*(W-140),y=210+rnd()*(H-270);
+  const x=70+rnd()*(W-140),y=60+rnd()*(H-120);   // the whole chart, northern isles included
   if(!isLandFirm(x,y)||!nearWaterR(x,y,34))continue;
   if(centers.some(c=>(c.x-x)**2+(c.y-y)**2<110*110))continue;
   centers.push({x,y,weight:3+Math.floor(rnd()*10)});   // some regions far busier than others
@@ -696,7 +696,7 @@ function generateWorld(seed,target){
   const c=pickCenter();if(!c)break;
   const ang=rnd()*Math.PI*2, g=Math.abs(rnd()+rnd()+rnd()-1.5), dist=g*52+4;   // gaussian-ish falloff
   const x=c.x+Math.cos(ang)*dist, y=c.y+Math.sin(ang)*dist;
-  if(x<40||y<160||x>W-40||y>H-40)continue;
+  if(x<40||y<50||x>W-40||y>H-40)continue;
   if(!isLandFirm(x,y))continue;
   if(pts.some(p=>(p.x-x)**2+(p.y-y)**2<MIND*MIND))continue;
   if(!nearWater(x,y)&&rnd()<0.78)continue;            // still hug the coast, river and lake
@@ -705,11 +705,19 @@ function generateWorld(seed,target){
  // 3) top up if a water-poor map left us short (kept water-side)
  let ft=0;
  while(pts.length<TARGET&&ft<120000){ft++;
-  const x=60+rnd()*(W-120),y=200+rnd()*(H-240);
+  const x=60+rnd()*(W-120),y=60+rnd()*(H-100);
   if(!isLandFirm(x,y)||!nearWaterR(x,y,26))continue;
   if(pts.some(p=>(p.x-x)**2+(p.y-y)**2<MIND*MIND))continue;
   pts.push({x:Math.round(x),y:Math.round(y)});
  }
+ // 3b) the northern isles must not stand empty — top them up if the scatter passed them by
+ const ISLE_Y=620;
+ {let it=0;while(pts.filter(p=>p.y<ISLE_Y).length<8&&it<60000){it++;
+  const x=60+rnd()*(W-120),y=55+rnd()*(ISLE_Y-60);
+  if(!isLandFirm(x,y)||!nearWaterR(x,y,26))continue;
+  if(pts.some(p=>(p.x-x)**2+(p.y-y)**2<MIND*MIND))continue;
+  pts.push({x:Math.round(x),y:Math.round(y)});
+ }}
  // tiers: spread 5 seats, some cities, towns, rest villages
  pts.sort((a,b)=>a.x-b.x); // deterministic-ish spread handling
  const N=pts.length, seats=[];
@@ -728,6 +736,12 @@ function generateWorld(seed,target){
  for(const p of coastFirst){if(cityPicks.length>=wantMore)break;
   if(cityPicks.every(c=>(c.x-p.x)**2+(c.y-p.y)**2>130*130))cityPicks.push(p);}
  for(const p of coastFirst){if(cityPicks.length>=wantMore)break;if(cityPicks.indexOf(p)<0)cityPicks.push(p);}
+ // the isles deserve a proper city: if none of the picks (or seats) landed north, promote the densest isle point
+ if(!cityPicks.some(p=>p.y<ISLE_Y)&&!seats.some(p=>p.y<ISLE_Y)){
+  const isle=pts.filter(p=>p.y<ISLE_Y);
+  if(isle.length){const dens=p=>isle.filter(q=>(q.x-p.x)**2+(q.y-p.y)**2<45*45).length;
+   cityPicks.push(isle.reduce((a,b)=>dens(b)>dens(a)?b:a));}
+ }
  const citySet=new Set(cityPicks);
  const towns=[];
  pts.forEach((p,i)=>{
