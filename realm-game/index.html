@@ -1355,6 +1355,26 @@ function strokeRoad(c,r){
   c.strokeStyle='rgba(105,78,45,.62)';c.lineWidth=0.6;pathThrough(c,r.pts);c.stroke();
  }
 }
+// draw a thing at (x,y) that stays upright however the world is rotated
+function upright(c,x,y,fn){if(!cam.rot){fn();return;}c.save();c.translate(x,y);c.rotate(-cam.rot);c.translate(-x,-y);fn();c.restore();}
+// geography labels (editable — world.labels); counter = view rotation to cancel so names read upright
+function drawGeoLabels(g,counter){
+ g.textAlign='center';g.textBaseline='middle';
+ for(const L of (world.labels||[])){
+  const sz=L.size||14,rot=(L.rot||0)-(counter||0);
+  g.save();g.translate(L.x,L.y);if(rot)g.rotate(rot);
+  if(L.kind==='sea'){
+   g.font='italic 600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.5)+'px';
+   g.fillStyle='rgba(85,100,80,.75)';g.fillText(L.text,0,0);
+  }else{
+   g.font='600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.55)+'px';
+   g.strokeStyle='rgba(238,224,182,.75)';g.lineWidth=4;g.strokeText(L.text,0,0);
+   g.fillStyle='rgba(90,70,40,.62)';g.fillText(L.text,0,0);
+  }
+  g.restore();
+ }
+ g.letterSpacing='0px';
+}
 function drawStatic(){
  const c=document.createElement('canvas');c.width=W*SS;c.height=H*SS;
  const g=c.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.scale(SS,SS);
@@ -1379,22 +1399,7 @@ function drawStatic(){
  for(const r of ROADPATHS)strokeRoad(g,r);
  g.setLineDash([]);
 
- // geography labels (editable — world.labels)
- g.textAlign='center';g.textBaseline='middle';
- for(const L of (world.labels||[])){
-  const sz=L.size||14,rot=L.rot||0;
-  g.save();g.translate(L.x,L.y);if(rot)g.rotate(rot);
-  if(L.kind==='sea'){
-   g.font='italic 600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.5)+'px';
-   g.fillStyle='rgba(85,100,80,.75)';g.fillText(L.text,0,0);
-  }else{
-   g.font='600 '+sz+'px Georgia';g.letterSpacing=Math.round(sz*0.55)+'px';
-   g.strokeStyle='rgba(238,224,182,.75)';g.lineWidth=4;g.strokeText(L.text,0,0);
-   g.fillStyle='rgba(90,70,40,.62)';g.fillText(L.text,0,0);
-  }
-  g.restore();
- }
- g.letterSpacing='0px';
+ // geography labels are NOT baked — drawn live (drawGeoLabels) so they stay upright when the world is rotated
 
  // location glyphs + keeps are NOT baked here — they're drawn live (vector) in draw()
  // so they stay crisp at any zoom instead of pixelating with the baked bitmap.
@@ -1426,25 +1431,7 @@ function drawStatic(){
   g.fillText('N',x,y-r-10);
  })(140,640,30);
 
- // cartouche (south-eastern sea)
- (function(x,y,w,h){
-  g.fillStyle='rgba(238,224,182,.92)';g.strokeStyle='#4a3a22';g.lineWidth=1.6;
-  g.fillRect(x,y,w,h);g.strokeRect(x,y,w,h);
-  g.strokeStyle='rgba(74,58,34,.5)';g.strokeRect(x+4,y+4,w-8,h-8);
-  g.fillStyle='#4a3a22';g.textAlign='center';
-  g.font='700 15px Georgia';g.letterSpacing='4px';
-  g.fillText('VAELMORE',x+w/2,y+22);
-  g.font='italic 10.5px Georgia';g.letterSpacing='1px';
-  g.fillText('being a true chart of the riven realm',x+w/2,y+39);
-  g.letterSpacing='0px';
-  // scale bar
-  const bx=x+22,by=y+56,bw=w-44;
-  g.strokeStyle='#4a3a22';g.lineWidth=1;
-  g.strokeRect(bx,by,bw,5);
-  g.fillRect(bx,by,bw/4,5);g.fillRect(bx+bw/2,by,bw/4,5);
-  g.font='9px Georgia';g.textAlign='left';g.fillText('0',bx-2,by+15);
-  g.textAlign='right';g.fillText(Math.round(bw/8)+' leagues',bx+bw+2,by+15);
- })(696,1372,240,78);
+ // (the VAELMORE cartouche is gone — the chart speaks for itself)
 
  // frame
  g.strokeStyle='#3a2c1a';g.lineWidth=5;g.strokeRect(10,10,W-20,H-20);
@@ -1616,20 +1603,23 @@ function draw(){
   ctx.translate(C0,C1);ctx.rotate(cam.rot);ctx.scale(cam.s,cam.s);ctx.translate(-Wx,-Wy);}
 
  if(staticMap)ctx.drawImage(staticMap,0,0,W,H);
+ drawGeoLabels(ctx,cam.rot);   // region + sea names stay upright however the world is turned
 
  // settlement glyphs + keeps — drawn live (vector) so they stay sharp at any zoom
  {
-  const gx0=cam.x-40,gy0=cam.y-40,gx1=cam.x+innerWidth/cam.s+40,gy1=cam.y+innerHeight/cam.s+40;
+  const pad=cam.rot?Math.max(innerWidth,innerHeight)/cam.s:0;   // rotated view sweeps a wider world rect
+  const gx0=cam.x-40-pad,gy0=cam.y-40-pad,gx1=cam.x+innerWidth/cam.s+40+pad,gy1=cam.y+innerHeight/cam.s+40+pad;
   for(const l of LOCS){
    if(l.x<gx0||l.x>gx1||l.y<gy0||l.y>gy1)continue;
-   drawLocGlyph(ctx,l);
+   upright(ctx,l.x,l.y,()=>drawLocGlyph(ctx,l));
   }
  }
 
  // place labels — drawn live so they counter-scale (shrink on zoom-in), never baked.
  // great places always show; towns reveal as you zoom, then villages.
  {
-  const vx0=cam.x-40,vy0=cam.y-20,vx1=cam.x+innerWidth/cam.s+40,vy1=cam.y+innerHeight/cam.s+30;
+  const pad=cam.rot?Math.max(innerWidth,innerHeight)/cam.s:0;   // rotated view sweeps a wider world rect
+  const vx0=cam.x-40-pad,vy0=cam.y-20-pad,vx1=cam.x+innerWidth/cam.s+40+pad,vy1=cam.y+innerHeight/cam.s+30+pad;
   for(const l of LOCS){
    const major=l.type==='capital'||l.type==='city'||l.type==='hill'||l.type==='keep';
    if(!major){
@@ -1637,12 +1627,12 @@ function draw(){
     if(l.type==='village'&&cam.s<1.75)continue;
    }
    if(l.x<vx0||l.x>vx1||l.y<vy0||l.y>vy1)continue;
-   drawLocLabel(ctx,l);
+   upright(ctx,l.x,l.y,()=>drawLocLabel(ctx,l));
   }
  }
  // hovered settlement always shows its name
  if(hoverLoc&&LOC[hoverLoc]){const l=LOC[hoverLoc];
-  if(l.type==='town'||l.type==='village')drawLocLabel(ctx,l);}
+  if(l.type==='town'||l.type==='village')upright(ctx,l.x,l.y,()=>drawLocLabel(ctx,l));}
 
  if(S){
   const reach=anim?[]:neighborsOf(S.loc);
@@ -3519,7 +3509,8 @@ function drawHouseCaption(x,y,owner){drawCaption(x,y,bannerName(owner),bannerCol
 function drawRealmLayer(){
  // who holds each holdfast — tiny caption beneath the name, revealed on zoom
  if(cam.s>1.2){
-  const vx0=cam.x-20,vy0=cam.y-20,vx1=cam.x+innerWidth/cam.s+20,vy1=cam.y+innerHeight/cam.s+20;
+  const pad=cam.rot?Math.max(innerWidth,innerHeight)/cam.s:0;
+  const vx0=cam.x-20-pad,vy0=cam.y-20-pad,vx1=cam.x+innerWidth/cam.s+20+pad,vy1=cam.y+innerHeight/cam.s+20+pad;
   for(const t of world.towns){
    if(t.x<vx0||t.x>vx1||t.y<vy0||t.y>vy1)continue;
    const major=(t.type==='capital'||t.type==='city'||t.type==='hill'||t.type==='keep');
@@ -3529,11 +3520,11 @@ function drawRealmLayer(){
    }
    // sit the house name just under the (counter-scaled) town label
    const gap=markerGap(t)+labelFs(t)+1.2*labelScale();
-   drawHouseCaption(t.x,t.y+gap,t.owner);
+   upright(ctx,t.x,t.y,()=>drawHouseCaption(t.x,t.y+gap,t.owner));
   }
  }
- for(const s of ships)drawShipToken(ctx,s);
- for(const a of armies)drawArmyToken(ctx,a);
+ for(const s of ships)upright(ctx,s.x,s.y,()=>drawShipToken(ctx,s));
+ for(const a of armies)upright(ctx,a.x,a.y,()=>drawArmyToken(ctx,a));
  const sa=selArmy&&armies.find(x=>x.id===selArmy);
  if(sa&&!sa.linkedTo){
   // reach ring: how far this host can march in one Sim (roads let it go ~1.6x farther)
@@ -3784,6 +3775,7 @@ function exportMap(){        // render the WHOLE realm to a PNG, with every sett
   const L=labelScale();
   g.fillStyle='#a8b499';g.fillRect(0,0,W,H);
   if(staticMap)g.drawImage(staticMap,0,0,W,H);
+  drawGeoLabels(g,0);
   for(const l of LOCS)drawLocGlyph(g,l);
   // settlement names (skip the smallest villages to keep it legible)
   for(const l of LOCS)if(l.type!=='village')drawLocLabel(g,l);
