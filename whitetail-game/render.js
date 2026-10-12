@@ -191,7 +191,7 @@
       }
     }
     const headTop = at([0, 3 * hsz, 1.5 * hsz]);
-    return { prims, face: { eyes: [-1, 1].map((sg) => at([sg * 2.7 * hsz, 1.65 * hsz, 3.3 * hsz])), fwd: hf, side: hs }, anchors: { head: at([0, 2, 3]), headTop, chest: [0, yc, torsoLen * 0.3], body: [0, yc, 0], ground: [0, 0, 0], nose: at([0, 0, 9 * hsz]) }, dims: D, torsoLen };
+    return { prims, face: { eyes: [-1, 1].map((sg) => at([sg * 2.7 * hsz, 1.65 * hsz, 3.3 * hsz])), fwd: hf, side: hs }, anchors: { head: at([0, 2, 3]), headTop, bino: [0, (at([0, 2, 3])[1] + yc + dv * 0.2) / 2, (at([0, 2, 3])[2] + torsoLen * 0.3) / 2], chest: [0, yc, torsoLen * 0.3], body: [0, yc, 0], ground: [0, 0, 0], nose: at([0, 0, 9 * hsz]) }, dims: D, torsoLen };
   };
 
   /* ---------------------------------------------------------------- ray caster */
@@ -345,8 +345,8 @@
         l = m === M.EYE ? 255 : isAnt(m) || m === M.WHITE || m === M.THROAT || m === M.EARIN ? l * 1.15 + 20 : l * 0.9 + 8;
         out[o] = l; out[o + 1] = l; out[o + 2] = l;
       } else if (mode === 'low') {
-        const l = (c[0] + c[1] + c[2]) / 3;
-        out[o] = (c[0] * 0.45 + l * 0.35) * 0.8; out[o + 1] = (c[1] * 0.45 + l * 0.35) * 0.82; out[o + 2] = (c[2] * 0.5 + l * 0.4) * 0.95;
+        const l = (c[0] + c[1] + c[2]) / 3; // dusk: darker and a little grayer
+        out[o] = (c[0] * 0.6 + l * 0.4) * 0.62; out[o + 1] = (c[1] * 0.6 + l * 0.4) * 0.62; out[o + 2] = (c[2] * 0.6 + l * 0.4) * 0.66;
       } else { out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; }
       out[o + 3] = 255;
     }
@@ -418,6 +418,6 @@
     const model = WT.deerModel(deer, { head: 'up' }, day ?? 40);
     const top = viewId === 'top';
     const center = top ? add(model.anchors.headTop, [0, 0, 4]) : [0, 36, 5];
-    return WT.renderModel(model, { W, H, scale: ppi, yaw: top ? 180 : v.yaw, elev: v.elev, center, skip: top ? new Set(['body', 'chest', 'belly', 'hips', 'thigh', 'tail', 'neck']) : null });
+    return WT.renderModel(model, { W, H, scale: ppi, yaw: top ? 180 : v.yaw, elev: v.elev, center, skip: top ? new Set(['body', 'chest', 'belly', 'hips', 'thigh', 'tail', 'neck', 'leg']) : null });
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

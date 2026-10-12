@@ -867,12 +867,12 @@
     const quick = rng.chance(mature ? 0.4 : 0.2);
     const g = {
       gid: H.groupSeq++, members: sg.members.map((deer, k) => ({ deer, dx: (k ? rng.range(-0.18, 0.18) : 0), dd: (k ? rng.range(-6, 10) : 0), lag: k * 0.06 })),
-      x0: left ? -1.15 : 1.15, x1: (left ? 1 : -1) * rng.range(0.6, 1.2), d0, d1, dmin, p: 0,
-      stay: quick ? rng.int(1, 2) : feeding ? rng.int(5, 10) : rng.int(2, 5), feeding, alert: 0, gone: false, fromCall,
+      x0: left ? -0.95 : 0.95, x1: (left ? 1 : -1) * rng.range(0.5, 1.1), d0, d1, dmin, p: 0,
+      stay: quick ? rng.int(2, 3) : feeding ? rng.int(5, 10) : rng.int(3, 6), feeding, alert: 0, gone: false, fromCall,
       offersShot: rng.chance(clamp((mature ? 0.32 : 0.55) + H.sType.accuracy / 400 + (fromCall ? 0.15 : 0))), clear: false, pose: 'walk', step: 0,
     };
     g.lead = g.members[0].deer;
-    g.dist = pathPos(g, 0).dist;
+    const p0 = pathPos(g, 0); g.dist = p0.dist; g.x = p0.x;
     H.visible.push(g);
     const n = g.members.length;
     const fromWhere = FROM[H.cover] || rng.pick(['the timber', 'the cattails', 'the shelterbelt', 'the CRP']);
@@ -962,12 +962,12 @@
     const before = H.log.length;
     H.raised = false;
     H.now += TICK;
+    moveGroups(H); // deer already in view move first, so new arrivals get at least one look
     for (const sg of H.sched) {
       if (sg.done || sg.cancel || sg.t > H.now) continue;
       sg.done = true;
       spawnGroup(H, sg);
     }
-    moveGroups(H);
     if (!H.visible.length && rng.chance(0.07)) H.log.push({ t: H.now, kind: 'flavor', text: rng.pick(FLAVOR) });
     const sun = H.plan.sun;
     if (H.now - TICK < H.plan.legalStart && H.now >= H.plan.legalStart) H.log.push({ t: H.now, kind: 'info', text: 'Legal shooting light.' });

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Whitetail Country</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<style>
+  /* Layout: a lodge-wall dark wood frame; one pixel "stage" (16:9 canvas) on top, a text panel under it. */
+  :root {
+    color-scheme: dark;
+    --wood-0: #1c1410; --wood-1: #2a1d16; --wood-2: #3a281e; --wood-3: #5a4030;
+    --hide: #A38A73; --hide-lt: #BFA58C; --cream: #EFE3D3; --bone: #C4A688; --antler: #8C6E55;
+    --crown: #4E1E14; --ink: #EFE3D3; --ink-dim: #b9a893; --ink-faint: #8a7a68;
+    --blaze: #ff6a1a; --blaze-dk: #c44a0c; --good: #9cc46a; --bad: #e0705a; --warn: #e8c15a; --sky: #B8B4C8;
+    --pub: #6f9a52; --own: #5b84c4; --perm: #d6a84a;
+    --display: 'Press Start 2P', ui-monospace, 'Courier New', monospace;
+    --body: 'VT323', ui-monospace, 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--wood-0); color: var(--ink); font-family: var(--body); font-size: 20px; line-height: 1.15; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--blaze); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  #app { max-width: 1080px; margin: 0 auto; padding-block: 10px 28px; padding-inline: 16px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* top bar */
+  #top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px; background: var(--wood-1); border: 3px solid var(--wood-3); box-shadow: inset 0 0 0 2px var(--wood-0); }
+  #top .brand { font-family: var(--display); font-size: 11px; color: var(--bone); letter-spacing: 1px; white-space: nowrap; }
+  #top .chips { display: flex; flex-wrap: wrap; gap: 4px 14px; flex: 1; justify-content: center; min-width: 0; }
+  .chip { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+  .chip b { color: var(--ink); font-weight: normal; }
+  .chip.money b { color: var(--good); }
+  .xpbar { display: inline-block; width: 60px; height: 8px; background: var(--wood-0); border: 1px solid var(--wood-3); vertical-align: middle; }
+  .xpbar i { display: block; height: 100%; background: var(--bone); }
+
+  /* the stage: pixel canvas with overlay controls */
+  .stage { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; background: #000; border: 3px solid var(--wood-3); box-shadow: inset 0 0 0 2px var(--wood-0); overflow: hidden; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; }
+  .ov { position: absolute; display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* pixel buttons */
+  .btn { font-family: var(--display); font-size: 10px; line-height: 1.3; padding: 9px 11px; background: var(--wood-2); color: var(--cream); border: 0; box-shadow: inset -3px -3px 0 var(--wood-0), inset 3px 3px 0 var(--wood-3), 0 0 0 2px var(--wood-0); text-transform: uppercase; letter-spacing: .5px; }
+  .btn:hover { background: var(--wood-3); }
+  .btn:active { box-shadow: inset 3px 3px 0 var(--wood-0), 0 0 0 2px var(--wood-0); }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .btn.blaze { background: var(--blaze); color: #2a1206; box-shadow: inset -3px -3px 0 var(--blaze-dk), inset 3px 3px 0 #ffa36b, 0 0 0 2px var(--wood-0); }
+  .btn.blaze:hover { background: #ff7f3a; }
+  .btn.big { font-size: 16px; padding: 14px 26px; }
+  .btn.small { font-size: 8px; padding: 6px 8px; }
+  .btn.on { background: var(--antler); }
+  .btn.ghost { background: rgba(28, 20, 16, .82); }
+
+  /* panel */
+  .panel { background: var(--wood-1); border: 3px solid var(--wood-3); box-shadow: inset 0 0 0 2px var(--wood-0); padding: 12px 14px; min-width: 0; }
+  .panel h2 { font-family: var(--display); font-size: 12px; color: var(--bone); margin: 0 0 10px; text-wrap: balance; line-height: 1.4; }
+  .panel h3 { font-family: var(--display); font-size: 9px; color: var(--ink-dim); margin: 14px 0 6px; letter-spacing: 1px; text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .cols > * { min-width: 0; }
+  .dim { color: var(--ink-dim); } .faint { color: var(--ink-faint); }
+  .good { color: var(--good); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .item { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 7px 9px; background: var(--wood-2); border-left: 4px solid var(--wood-3); }
+  .item.locked { opacity: .55; }
+  .item .nm { color: var(--cream); }
+  .item .st { grid-column: 1 / -1; color: var(--ink-dim); font-size: 17px; }
+  .item.sel { border-left-color: var(--blaze); }
+  .tag { display: inline-block; font-family: var(--display); font-size: 7px; padding: 3px 5px; background: var(--wood-0); color: var(--bone); vertical-align: middle; margin-left: 4px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+  .kv dt { color: var(--ink-dim); } .kv dd { margin: 0; }
+  select, input[type=text], input[type=number], textarea { background: var(--wood-0); border: 2px solid var(--wood-3); padding: 3px 6px; max-width: 100%; }
+  textarea { width: 100%; min-height: 60px; }
+  .slotgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 12px; }
+  .slotgrid label { display: grid; grid-template-columns: 70px 1fr; gap: 6px; align-items: center; }
+  .slotgrid label > span { color: var(--ink-dim); text-transform: capitalize; }
+  .slotgrid select { width: 100%; }
+
+  /* hunt log */
+  .log { height: 210px; overflow-y: auto; background: var(--wood-0); padding: 8px 10px; border: 2px solid var(--wood-2); font-size: 19px; }
+  .log p { margin: 0 0 4px; }
+  .log .t { color: var(--ink-faint); margin-right: 6px; }
+  .log .head { color: var(--bone); } .log .deer { color: var(--cream); } .log .good { color: var(--good); } .log .bad { color: var(--bad); }
+  .log .warn { color: var(--warn); } .log .flavor { color: var(--ink-faint); } .log .shot { color: var(--blaze); } .log .info { color: var(--ink-dim); }
+
+  .news p { margin: 0 0 5px; } .news .good { color: var(--good); } .news .bad { color: var(--bad); }
+  .stars { color: var(--bone); letter-spacing: 2px; }
+
+  /* image tiles (mounts, photos, trophy views) */
+  .pix { image-rendering: pixelated; image-rendering: crisp-edges; display: block; max-width: 100%; height: auto; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .tile { background: var(--wood-2); padding: 6px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; border: 0; text-align: left; }
+  .tile:hover { background: var(--wood-3); }
+  .tile canvas { width: 100%; background: #e9e4dc; }
+  .tile .cap { font-size: 17px; }
+  .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+  .views figure { margin: 0; background: #ece7df; }
+  .views figcaption { background: var(--wood-2); padding: 2px 6px; font-size: 16px; color: var(--ink-dim); }
+  .views canvas { width: 100%; }
+  .photo { position: relative; background: #111; }
+  .photo canvas { width: 100%; }
+  .sheet { overflow-x: auto; }
+  .sheet table { border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 380px; width: 100%; }
+  .sheet th, .sheet td { padding: 2px 8px; text-align: right; border-bottom: 1px solid var(--wood-2); }
+  .sheet th:first-child, .sheet td:first-child { text-align: left; color: var(--ink-dim); }
+  .sheet tr.tot td { color: var(--cream); border-top: 2px solid var(--wood-3); }
+
+  /* modal */
+  #modal { position: fixed; inset: 0; background: rgba(10, 7, 5, .78); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  #modal .panel { max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--wood-2); border: 3px solid var(--wood-3); padding: 8px 14px; z-index: 60; max-width: calc(100% - 32px); }
+
+  .lodge-bar { display: none; }
+  @media (max-width: 640px) {
+    .lov { display: none; }
+    .lodge-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+    body { font-size: 18px; }
+    .btn { font-size: 8px; padding: 8px 9px; }
+    .btn.big { font-size: 12px; padding: 11px 18px; }
+    #top .brand { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <span class="brand">WHITETAIL COUNTRY</span>
+    <div class="chips" id="chips"></div>
+    <button class="btn small" id="waitBtn" type="button">Wait ▸</button>
+  </header>
+  <main id="screen"></main>
+</div>
+<div id="modal" hidden></div>
+
+<script src="config.js"></script>
+<script src="sim.js"></script>
+<script src="antlers.js"></script>
+<script src="render.js"></script>
+<script src="game.js"></script>
+<script src="ui-core.js"></script>
+<script src="ui-map.js"></script>
+<script src="ui-hunt.js"></script>
+<script src="ui-books.js"></script>
+<script>WTUI.boot();</script>
+</body>
+</html>
