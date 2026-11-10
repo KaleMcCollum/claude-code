@@ -1,89 +1,32 @@
 /**
- * Browser test for Phase 1 (Foundation). Drives the real app the way a person
- * would, on a computer-sized and a phone-sized screen, and saves screenshots.
- *
- * Start the app first, with a fresh development database, for example:
- *   SEED_OWNERS="Kale <kale@example.com>, Casey <casey@example.com>" \
- *   PGLITE_DIR=.data/e2e-db EMAIL_OUTBOX_DIR=.data/e2e-outbox npx next dev -p 3111
- * Then:
- *   BASE_URL=http://localhost:3111 OUTBOX=.data/e2e-outbox node e2e/phase1.cjs
- *
- * Needs Playwright with Chromium available to Node.
+ * Browser test for Phase 1 (Foundation): sign-in, users and roles, the
+ * sidebar, manual sections, official text, search.
+ * Run with scripts/run-e2e.sh (see e2e/helpers.cjs).
  */
-const fs = require("node:fs");
-const path = require("node:path");
-const { chromium, devices } = require("playwright");
-
-const BASE_URL = process.env.BASE_URL || "http://localhost:3111";
-const OUTBOX = path.resolve(process.env.OUTBOX || ".data/outbox");
-const OUT = path.resolve(process.env.SHOTS || "e2e/output");
-const SCALE = Number(process.env.SHOT_SCALE || 1);
-
-let passed = 0;
-const failures = [];
-
-function check(name, ok, detail = "") {
-  if (ok) {
-    passed += 1;
-    console.log(`  ok   ${name}`);
-  } else {
-    failures.push(name);
-    console.log(`  FAIL ${name}${detail ? ` (${detail})` : ""}`);
-  }
-}
-
-async function shot(page, name, options = {}) {
-  await page.screenshot({ path: path.join(OUT, `${name}.png`), ...options });
-}
-
-/** Newest email in the development outbox for one address. */
-async function latestEmail(to, afterMs = 0) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const files = fs.existsSync(OUTBOX) ? fs.readdirSync(OUTBOX).sort().reverse() : [];
-    for (const file of files) {
-      if (Number(file.split("-")[0]) < afterMs) break;
-      const email = JSON.parse(fs.readFileSync(path.join(OUTBOX, file), "utf8"));
-      if (email.to === to) return email;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  return null;
-}
-
-function linkIn(email) {
-  const match = email.text.match(/https?:\/\/\S+\/auth\/confirm\?token=\S+/);
-  return match ? match[0] : null;
-}
-
-async function signIn(page, address) {
-  const since = Date.now();
-  await page.goto(`${BASE_URL}/login`);
-  await page.getByLabel("Email").fill(address);
-  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await page.getByRole("heading", { name: "Check your email" }).waitFor();
-  const email = await latestEmail(address, since);
-  if (!email) throw new Error(`No sign-in email arrived for ${address}`);
-  const link = linkIn(email);
-  await page.goto(link);
-  await page.getByRole("heading", { name: "Today" }).waitFor();
-  return { email, link };
-}
+const {
+  BASE_URL,
+  chromium,
+  check,
+  section,
+  shot,
+  latestEmail,
+  emailsSince,
+  linkIn,
+  signIn,
+  desktopContext,
+  phoneContext,
+  trackErrors,
+  sidewaysOverflow,
+  run,
+} = require("./helpers.cjs");
 
 async function main() {
-  fs.mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch();
-  const desktop = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-    deviceScaleFactor: SCALE,
-  });
+  const desktop = await desktopContext(browser);
   const page = await desktop.newPage();
-  const pageErrors = [];
-  page.on("pageerror", (error) => pageErrors.push(String(error)));
-  page.on("console", (message) => {
-    if (message.type() === "error") pageErrors.push(message.text());
-  });
+  const pageErrors = trackErrors(page);
 
-  console.log("Sign-in");
+  section("Sign-in");
   await page.goto(`${BASE_URL}/`);
   check("a signed-out visitor is sent to the sign-in page", page.url().endsWith("/login"));
   await page.waitForLoadState("networkidle");
@@ -95,7 +38,7 @@ async function main() {
   await page.getByRole("heading", { name: "Check your email" }).waitFor();
   const strangerText = await page.locator("main").innerText();
   await new Promise((resolve) => setTimeout(resolve, 1200));
-  check("an unknown email gets no sign-in email", fs.existsSync(OUTBOX) ? !fs.readdirSync(OUTBOX).some((f) => Number(f.split("-")[0]) >= before) : true);
+  check("an unknown email gets no sign-in email", emailsSince(before).length === 0);
 
   const { link: kaleLink } = await signIn(page, "kale@example.com");
   check("an Owner can sign in with only an email link", page.url() === `${BASE_URL}/`);
@@ -118,7 +61,7 @@ async function main() {
   check("a sign-in link works only once", true);
   await reuse.close();
 
-  console.log("Phone home screen (installable app)");
+  section("Phone home screen (installable app)");
   const manifestResponse = await page.request.get(`${BASE_URL}/manifest.webmanifest`);
   const manifest = manifestResponse.ok() ? await manifestResponse.json() : {};
   check("the app can be added to a phone home screen and opens on Today", manifest.start_url === "/" && manifest.display === "standalone" && manifest.short_name === "Plant Perfect");
@@ -126,7 +69,7 @@ async function main() {
   check("the home screen icon loads", iconResponse.ok() && iconResponse.headers()["content-type"] === "image/png");
   check("the page points phones at the app icon and manifest", (await page.locator('link[rel="manifest"]').count()) >= 1 && (await page.locator('link[rel="apple-touch-icon"]').count()) >= 1);
 
-  console.log("Sidebar and sections");
+  section("Sidebar and sections");
   const nav = page.getByRole("navigation", { name: "Main" });
   for (const label of ["Today", "Daily Log", "Proposals", "To-do", "Documents", "Settings"]) {
     check(`sidebar shows ${label}`, await nav.getByRole("link", { name: label, exact: true }).isVisible());
@@ -141,7 +84,7 @@ async function main() {
   check("a subsection page has Official on top and Discussion below", (await page.getByRole("heading", { level: 2 }).allInnerTexts()).join("|") === "Official|Discussion");
   check("an empty section says there is no official text yet", await page.getByText("No official text yet.").isVisible());
 
-  console.log("Official text");
+  section("Official text");
   await page.getByRole("button", { name: "Edit official" }).click();
   const editor = page.getByRole("textbox", { name: "Official text" });
   await editor.waitFor();
@@ -176,7 +119,7 @@ async function main() {
   check("the page shows who last updated the section", /Last updated .* by Kale/.test(await page.locator(".meta").first().innerText()));
   await shot(page, "desktop-05-official-saved");
 
-  console.log("Search");
+  section("Search");
   await nav.getByRole("searchbox", { name: "Search" }).fill("coffee");
   await page.keyboard.press("Enter");
   await page.getByRole("heading", { level: 1, name: "Search" }).waitFor();
@@ -184,7 +127,7 @@ async function main() {
   check("search finds official text", await page.getByRole("link", { name: /2\.1 Wages/ }).isVisible());
   await shot(page, "desktop-06-search");
 
-  console.log("Edit sections");
+  section("Edit sections");
   await nav.getByRole("link", { name: "Edit", exact: true }).click();
   await page.getByRole("heading", { level: 1, name: "Edit sections" }).waitFor();
   await shot(page, "desktop-07-edit-sections");
@@ -221,7 +164,7 @@ async function main() {
   await page.getByRole("button", { name: "Archive section" }).click();
   await page.getByRole("heading", { name: "Archived sections" }).waitFor();
 
-  console.log("Settings and users");
+  section("Settings and users");
   await nav.getByRole("link", { name: "Settings" }).click();
   await page.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
   check("Settings opens as its own page with a Back button", (await page.getByRole("link", { name: "Back" }).isVisible()) && (await page.getByRole("navigation", { name: "Main" }).count()) === 0);
@@ -256,8 +199,8 @@ async function main() {
   await page.getByRole("heading", { level: 1, name: "Edit sections" }).waitFor();
   check("Back returns to the page you came from", true);
 
-  console.log("Advisor (Karen)");
-  const karenContext = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: SCALE });
+  section("Advisor (Karen)");
+  const karenContext = await desktopContext(browser);
   const karen = await karenContext.newPage();
   await karen.goto(linkIn(invite));
   await karen.getByRole("heading", { name: "Today" }).waitFor();
@@ -285,8 +228,8 @@ async function main() {
   check("a removed user is signed out at once", karen.url().endsWith("/login"));
   await karenContext.close();
 
-  console.log("Phone");
-  const phone = await browser.newContext({ ...devices["iPhone 13"], ...(SCALE === 1 ? { deviceScaleFactor: 1 } : {}) });
+  section("Phone");
+  const phone = await phoneContext(browser);
   const mobile = await phone.newPage();
   await mobile.goto(`${BASE_URL}/login`);
   await shot(mobile, "phone-01-sign-in");
@@ -304,7 +247,7 @@ async function main() {
   await mobile.getByRole("link", { name: "2.1 Wages" }).click();
   await mobile.getByRole("heading", { level: 1, name: "2.1 Wages" }).waitFor();
   await shot(mobile, "phone-04-section", { fullPage: true });
-  const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const overflow = await sidewaysOverflow(mobile);
   check("the section page fits a phone screen without sideways scrolling", overflow <= 0, `overflow ${overflow}px`);
   await mobile.getByRole("button", { name: "Edit official" }).click();
   const mobileEditor = mobile.getByRole("textbox", { name: "Official text" });
@@ -323,7 +266,7 @@ async function main() {
   await mobileNav.getByRole("link", { name: "Settings" }).click();
   await mobile.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
   await shot(mobile, "phone-07-settings", { fullPage: true });
-  const settingsOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const settingsOverflow = await sidewaysOverflow(mobile);
   check("Settings fits a phone screen without sideways scrolling", settingsOverflow <= 0, `overflow ${settingsOverflow}px`);
   await mobile.getByRole("link", { name: "Back" }).click();
   await mobile.getByRole("button", { name: "Open menu" }).click();
@@ -340,11 +283,6 @@ async function main() {
   check("no errors were reported by the browser", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 
   await browser.close();
-  console.log(`\n${passed} passed, ${failures.length} failed. Screenshots: ${OUT}`);
-  if (failures.length > 0) process.exit(1);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+run(main);

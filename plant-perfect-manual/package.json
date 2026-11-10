@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "node e2e/phase1.cjs",
+    "e2e": "scripts/run-e2e.sh",
     "db:generate": "drizzle-kit generate",
     "db:setup": "tsx scripts/db-setup.ts"
   },
