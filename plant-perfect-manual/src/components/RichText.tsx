@@ -6,7 +6,14 @@ import { type RichDoc, type RichNode, safeHref } from "@/lib/richtext";
  * (no raw HTML is ever inserted), and the words are shown exactly as stored.
  */
 export function RichText({ doc }: { doc: RichDoc }) {
-  return <div className="rich">{renderChildren(doc.content)}</div>;
+  // The editor always leaves an empty line after a table or list so the
+  // cursor has somewhere to go. Nobody typed it, so it is not shown.
+  // (The saved document itself is left untouched.)
+  let end = doc.content.length;
+  while (end > 0 && doc.content[end - 1].type === "paragraph" && !doc.content[end - 1].content?.length) {
+    end -= 1;
+  }
+  return <div className="rich">{renderChildren(doc.content.slice(0, end))}</div>;
 }
 
 function renderChildren(nodes: RichNode[] | undefined): ReactNode[] {
