@@ -1,0 +1,1170 @@
+/*
+  Visual rules from the build spec: white background, near-black text, light
+  gray lines, one quiet accent (dark teal) for links and the main button.
+  System font. No gradients, shadows, large rounded corners or animation.
+*/
+
+:root {
+  --bg: #ffffff;
+  --text: #111111;
+  --muted: #5c6166;
+  --line: #e2e2e2;
+  --line-strong: #c9c9c9;
+  --soft: #f6f6f5;
+  --selected: #ececeb;
+  --accent: #0f5c5c;
+  --danger: #a32020;
+  --sidebar-width: 272px;
+  --topbar-height: 52px;
+  --font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+a {
+  color: var(--accent);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+h1 {
+  font-size: 26px;
+}
+
+h2 {
+  font-size: 18px;
+}
+
+p {
+  margin: 0 0 12px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 14px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Buttons and inputs ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--soft);
+}
+
+.btn:disabled {
+  color: var(--muted);
+  cursor: default;
+  background: var(--soft);
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: #0c4b4b;
+}
+
+.btn-primary:disabled {
+  border-color: var(--line-strong);
+}
+
+.btn-danger {
+  color: var(--danger);
+}
+
+.btn-text {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.btn-text:hover {
+  background: var(--soft);
+}
+
+.btn-text.danger {
+  color: var(--danger);
+}
+
+.btn-text:disabled {
+  color: var(--line-strong);
+  cursor: default;
+  background: none;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--soft);
+}
+
+.icon-btn:disabled {
+  color: var(--line-strong);
+  cursor: default;
+  background: none;
+}
+
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.input,
+.select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  /* 16px stops phones from zooming in when a field is tapped. */
+  font-size: 16px;
+}
+
+.select {
+  width: auto;
+  max-width: 100%;
+}
+
+.notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--soft);
+  font-size: 15px;
+}
+
+.notice.error {
+  border-color: #e3bcbc;
+  background: #fbf3f3;
+  color: var(--danger);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- App shell: fixed sidebar + document area ---------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.topbar,
+.backdrop,
+.sidebar-close {
+  display: none;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding: 14px 10px 10px;
+  border-right: 1px solid var(--line);
+  background: #ffffff;
+}
+
+/* The page links and section tree scroll; the top and bottom stay put. */
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  margin: 0 -10px;
+  padding: 0 10px;
+  overflow-y: auto;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 8px;
+}
+
+.brand {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.brand span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.new-note {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.search-form {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.search-form svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.search-form .input {
+  min-height: 38px;
+  padding-left: 34px;
+}
+
+.nav {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  background: var(--soft);
+}
+
+.nav-link[aria-current="page"] {
+  background: var(--selected);
+  font-weight: 600;
+}
+
+.nav-link .num {
+  flex: none;
+  min-width: 17px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.nav-link .pending-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.nav-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 0 4px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nav-heading a {
+  font-weight: 400;
+}
+
+.tree,
+.tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree ul ul {
+  margin-left: 14px;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+}
+
+.tree-row .nav-link {
+  flex: 1;
+  min-width: 0;
+}
+
+.tree-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tree-toggle:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+
+.tree-spacer {
+  flex: none;
+  width: 24px;
+}
+
+.sidebar-foot {
+  flex: none;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.whoami {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 4px 8px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.whoami .btn-text {
+  min-height: 28px;
+  padding: 2px 4px;
+  font-size: 13px;
+}
+
+.main {
+  min-width: 0;
+}
+
+.page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 40px 96px;
+}
+
+.page-head {
+  margin-bottom: 24px;
+}
+
+.page-head h1 .num {
+  margin-right: 4px;
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.crumbs {
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.crumbs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  text-decoration: underline;
+}
+
+.meta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---------- Section page: Official on top, Discussion below ---------- */
+
+.block {
+  margin-top: 28px;
+}
+
+.block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  min-height: 40px;
+}
+
+.official-box {
+  padding: 18px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.official-box > .rich > :last-child {
+  margin-bottom: 0;
+}
+
+.approval {
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: #000000;
+  font-weight: 700;
+}
+
+.endorsements {
+  margin: 4px 0 0;
+  color: #8a8f94;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.discussion-box {
+  padding: 18px 20px;
+  border-radius: 4px;
+  background: var(--soft);
+}
+
+.discussion-box p:last-child {
+  margin-bottom: 0;
+}
+
+.sublist {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.sublist a {
+  display: flex;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sublist a:hover {
+  background: var(--soft);
+}
+
+.sublist .num {
+  flex: none;
+  min-width: 34px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Rich text (shown) and editor (while typing) ---------- */
+
+.rich,
+.ProseMirror {
+  overflow-wrap: anywhere;
+  /* Show spaces and line breaks exactly as they were typed. */
+  white-space: pre-wrap;
+}
+
+.rich p,
+.ProseMirror p {
+  margin: 0 0 12px;
+}
+
+.rich .rt-h1,
+.rich .rt-h2,
+.ProseMirror h1,
+.ProseMirror h2 {
+  margin: 20px 0 8px;
+  font-size: 18px;
+}
+
+.rich .rt-h3,
+.ProseMirror h3 {
+  margin: 16px 0 6px;
+  font-size: 16px;
+}
+
+.rich > :first-child,
+.ProseMirror > :first-child {
+  margin-top: 0;
+}
+
+.rich ul,
+.rich ol,
+.ProseMirror ul,
+.ProseMirror ol {
+  margin: 0 0 12px;
+  padding-left: 26px;
+}
+
+.rich li > p,
+.ProseMirror li > p {
+  margin-bottom: 4px;
+}
+
+.rich ul.tasks,
+.ProseMirror ul[data-type="taskList"] {
+  padding-left: 2px;
+  list-style: none;
+}
+
+.rich ul.tasks > li,
+.ProseMirror ul[data-type="taskList"] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.rich ul.tasks > li > input,
+.ProseMirror ul[data-type="taskList"] > li > label {
+  flex: none;
+  margin-top: 4px;
+}
+
+.rich ul.tasks > li > input,
+.ProseMirror ul[data-type="taskList"] > li > label > input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.rich ul.tasks > li > div,
+.ProseMirror ul[data-type="taskList"] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.table-wrap,
+.ProseMirror .tableWrapper {
+  margin: 0 0 12px;
+  overflow-x: auto;
+}
+
+.rich table,
+.ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.rich th,
+.rich td,
+.ProseMirror th,
+.ProseMirror td {
+  min-width: 80px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rich th,
+.ProseMirror th {
+  background: var(--soft);
+  font-weight: 600;
+}
+
+.rich th > p:last-child,
+.rich td > p:last-child,
+.ProseMirror th > p:last-child,
+.ProseMirror td > p:last-child {
+  margin-bottom: 0;
+}
+
+.ProseMirror .selectedCell {
+  background: #e6f0f0;
+}
+
+.editor {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.editor:focus-within {
+  border-color: var(--accent);
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 4px 4px 0 0;
+  background: #ffffff;
+}
+
+.editor .tool {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.editor .tool:hover {
+  background: var(--soft);
+}
+
+.editor .tool[aria-pressed="true"] {
+  border-color: var(--line-strong);
+  background: var(--selected);
+}
+
+.editor .tool:disabled {
+  color: var(--line-strong);
+  cursor: default;
+  background: none;
+}
+
+.toolbar .tool-group-end {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.toolbar-extra .tool {
+  border-color: var(--line-strong);
+  background: #ffffff;
+}
+
+.toolbar .sep {
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--line);
+}
+
+.toolbar-extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--soft);
+  font-size: 14px;
+}
+
+.toolbar-extra .input {
+  flex: 1;
+  min-width: 160px;
+  min-height: 36px;
+}
+
+.ProseMirror {
+  min-height: 180px;
+  padding: 14px 16px;
+  outline: none;
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---------- Manage sections ---------- */
+
+.manage-list,
+.manage-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.manage-list ul ul {
+  margin-left: 22px;
+}
+
+.manage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-height: 44px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.manage-row.dragging {
+  opacity: 0.4;
+}
+
+.manage-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.manage-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.manage-row .grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 36px;
+  color: var(--line-strong);
+  cursor: grab;
+}
+
+.manage-row .title {
+  flex: 1;
+  min-width: 140px;
+}
+
+.manage-row .title .num {
+  margin-right: 4px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.manage-row .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 2px;
+}
+
+.manage-row form.inline,
+.inline-form {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 8px;
+}
+
+.inline-form .input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.manage-add {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---------- Tables of records (Settings) ---------- */
+
+.records {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.records th,
+.records td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.records th {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.records .select {
+  min-height: 38px;
+}
+
+/* ---------- Pages without the sidebar (sign-in, Settings) ---------- */
+
+.plain-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 24px 96px;
+}
+
+.login {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 72px 20px 40px;
+}
+
+.login h1 {
+  margin-bottom: 4px;
+  font-size: 22px;
+}
+
+.login .btn {
+  width: 100%;
+  min-height: 46px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 20px;
+  min-height: 40px;
+  padding: 0 12px 0 6px;
+}
+
+.settings-section {
+  margin-top: 36px;
+}
+
+.settings-section > h2 {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0 12px;
+  align-items: start;
+  max-width: 720px;
+}
+
+.form-grid .field {
+  margin-bottom: 12px;
+}
+
+.form-grid .select {
+  width: 100%;
+}
+
+/* ---------- Search results ---------- */
+
+.results {
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+
+.results li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.results a {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.results a:hover {
+  text-decoration: underline;
+}
+
+.results .excerpt {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+mark {
+  padding: 0 1px;
+  background: #fff1a8;
+  color: inherit;
+}
+
+/* ---------- Phones and small tablets ---------- */
+
+@media (max-width: 820px) {
+  .shell {
+    display: block;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: var(--topbar-height);
+    padding: 0 6px;
+    border-bottom: 1px solid var(--line);
+    background: #ffffff;
+  }
+
+  .topbar-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 600;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: none;
+    width: min(88vw, 330px);
+    height: auto;
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .sidebar.open {
+    display: flex;
+  }
+
+  .sidebar.open + .backdrop,
+  .backdrop.open {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: block;
+    border: 0;
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .sidebar-close {
+    display: inline-flex;
+  }
+
+  .nav-link,
+  .tree-toggle {
+    min-height: 44px;
+  }
+
+  .tree-toggle {
+    width: 36px;
+    height: 44px;
+  }
+
+  .tree-spacer {
+    width: 36px;
+  }
+
+  .page {
+    padding: 20px 16px 80px;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .btn-text {
+    min-height: 40px;
+    padding: 6px 10px;
+  }
+
+  .official-box,
+  .discussion-box {
+    padding: 14px;
+  }
+
+  .toolbar {
+    top: var(--topbar-height);
+  }
+
+  .editor .tool {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  /* Dragging needs a mouse; on phones the arrows do the job. */
+  .manage-row .grip {
+    display: none;
+  }
+
+  .manage-row .title {
+    flex-basis: 100%;
+    padding-top: 8px;
+  }
+
+  .manage-row .icon-btn {
+    width: 38px;
+    height: 40px;
+  }
+
+  .manage-row .btn-text {
+    padding: 6px;
+  }
+
+  .plain-page {
+    padding: 16px 16px 80px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* The users table becomes a simple stacked list. */
+  .records thead {
+    display: none;
+  }
+
+  .records,
+  .records tbody,
+  .records tr,
+  .records td {
+    display: block;
+    width: 100%;
+  }
+
+  .records tr {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .records td {
+    padding: 2px 0;
+    border: 0;
+  }
+
+  .records td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .login {
+    padding-top: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: auto;
+  }
+}
