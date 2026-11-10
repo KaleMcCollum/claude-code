@@ -87,3 +87,9 @@ phone screenshots yourself before showing them to the owner.
   it uses `immediatelyRender: true`. Keep it out of server rendering.
 - JSON stored in Postgres can come back with its fields in a different
   order. Compare documents with `sameDoc`, not `JSON.stringify`.
+- Inside `asUser(...)` or any transaction, run every query on the `tx` you
+  were given. A query on another handle (`asSystem`, a second `asUser`) from
+  inside it waits forever on the embedded database, which has one connection.
+- The editor has auto-formatting switched off (`enableInputRules` and
+  `enablePasteRules` are false) so typed characters such as `*` and `_` are
+  never swallowed. Keep it that way: words are stored exactly as typed.

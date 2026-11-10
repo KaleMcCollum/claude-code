@@ -4,7 +4,9 @@ import { ArrowLeftIcon } from "@/components/icons";
 import { asUser } from "@/db/client";
 import { requirePermission } from "@/lib/auth/session";
 import { formatDate, formatDateTime } from "@/lib/time";
+import { loadSettings } from "@/lib/settings";
 import { listRoles, listUsers } from "@/lib/users";
+import { TodaySettingsPanel } from "./TodaySettingsPanel";
 import { UsersPanel } from "./UsersPanel";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -29,9 +31,9 @@ export default async function SettingsPage({
 }) {
   const user = await requirePermission("manage_users");
   const backTo = safeReturnPath((await searchParams).from);
-  const [users, roles] = await Promise.all([
+  const [users, { roles, settings }] = await Promise.all([
     listUsers(user),
-    asUser(user.id, (tx) => listRoles(tx)),
+    asUser(user.id, async (tx) => ({ roles: await listRoles(tx), settings: await loadSettings(tx) })),
   ]);
 
   return (
@@ -55,6 +57,11 @@ export default async function SettingsPage({
             isYou: row.id === user.id,
           }))}
         />
+      </section>
+
+      <section className="settings-section" aria-labelledby="today-heading">
+        <h2 id="today-heading">Today page</h2>
+        <TodaySettingsPanel openingDate={settings.openingDate} staleDays={settings.staleDays} />
       </section>
 
       <section className="settings-section" aria-labelledby="later-heading">

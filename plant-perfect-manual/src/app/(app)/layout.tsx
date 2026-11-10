@@ -24,6 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar
         tree={toItems(tree)}
         userName={user.name}
+        canWriteNotes={can(user, "write_notes")}
         canManageSections={can(user, "structure")}
         canOpenSettings={can(user, "manage_users") || can(user, "settings")}
       />

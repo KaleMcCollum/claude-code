@@ -991,6 +991,76 @@ mark {
   color: inherit;
 }
 
+.results-heading {
+  margin-top: 24px;
+}
+
+.search-page-form {
+  margin-bottom: 16px;
+}
+
+.search-page-form > .row > .input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.filters {
+  margin-top: 12px;
+}
+
+.filters > summary,
+.today-more > summary {
+  display: inline-block;
+  min-height: 32px;
+  padding: 4px 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0 12px;
+  margin-top: 8px;
+}
+
+.filter-grid .select {
+  width: 100%;
+}
+
+/* ---------- Today page ---------- */
+
+.today-count {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.today-list {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.today-list li {
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.today-list a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.today-list a:hover {
+  text-decoration: underline;
+}
+
+.today-more .today-list {
+  border-top: 0;
+}
+
 /* ---------- Phones and small tablets ---------- */
 
 @media (max-width: 820px) {

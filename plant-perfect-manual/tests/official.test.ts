@@ -168,6 +168,6 @@ describe("search", () => {
     expect((await run("%")).official).toEqual([]);
     expect((await run("100%_")).sections).toEqual([]);
     // Too short to search.
-    expect(await run("c")).toEqual({ sections: [], official: [] });
+    expect(await run("c")).toEqual({ sections: [], official: [], notes: [], comments: [] });
   });
 });

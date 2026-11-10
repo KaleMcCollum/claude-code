@@ -12,6 +12,7 @@ export type TreeItem = { id: string; number: string; title: string; children: Tr
 type Props = {
   tree: TreeItem[];
   userName: string;
+  canWriteNotes: boolean;
   canManageSections: boolean;
   canOpenSettings: boolean;
 };
@@ -62,7 +63,7 @@ function idsOnPath(tree: TreeItem[], id: string): string[] {
  * The one navigation for the whole app. It is the same on every page; only
  * the main area changes. On phones it slides in from the Menu button.
  */
-export function Sidebar({ tree, userName, canManageSections, canOpenSettings }: Props) {
+export function Sidebar({ tree, userName, canWriteNotes, canManageSections, canOpenSettings }: Props) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   // Sections the user opened or closed by hand. Others follow the current page.
@@ -129,9 +130,11 @@ export function Sidebar({ tree, userName, canManageSections, canOpenSettings }: 
         <Link href="/" className="topbar-title">
           Plant Perfect Fargo
         </Link>
-        <Link href="/daily-log" className="icon-btn" aria-label="New note">
-          <PlusIcon size={22} />
-        </Link>
+        {canWriteNotes && (
+          <Link href="/daily-log/today?new=1" className="icon-btn" aria-label="New note">
+            <PlusIcon size={22} />
+          </Link>
+        )}
       </header>
 
       <nav
@@ -151,9 +154,11 @@ export function Sidebar({ tree, userName, canManageSections, canOpenSettings }: 
           </button>
         </div>
 
-        <Link href="/daily-log" className="btn btn-primary new-note" onClick={closeMenu}>
-          <PlusIcon size={16} /> New note
-        </Link>
+        {canWriteNotes && (
+          <Link href="/daily-log/today?new=1" className="btn btn-primary new-note" onClick={closeMenu}>
+            <PlusIcon size={16} /> New note
+          </Link>
+        )}
 
         <Form action="/search" className="search-form" role="search" onSubmit={closeMenu}>
           <SearchIcon size={16} />
@@ -164,7 +169,11 @@ export function Sidebar({ tree, userName, canManageSections, canOpenSettings }: 
         <ul className="nav">
           {PAGES.map((page) => (
             <li key={page.href}>
-              <NavLink href={page.href} current={pathname === page.href} onClick={closeMenu}>
+              <NavLink
+                href={page.href}
+                current={page.href === "/" ? pathname === "/" : pathname.startsWith(page.href)}
+                onClick={closeMenu}
+              >
                 {page.label}
               </NavLink>
             </li>

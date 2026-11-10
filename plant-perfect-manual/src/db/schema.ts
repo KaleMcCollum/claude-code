@@ -2,9 +2,12 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigserial,
+  boolean,
+  date,
   index,
   integer,
   jsonb,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -170,3 +173,134 @@ export const activityLog = pgTable(
   },
   (t) => [index("activity_log_at_idx").on(t.at)],
 );
+
+/**
+ * The garden center and the coffee shop are partly separate businesses.
+ * Records that can differ between them carry this tag (it is optional).
+ */
+export const businessTag = pgEnum("business_tag", ["garden_center", "coffee_shop", "both"]);
+
+/**
+ * One row per calendar day (US Central time) that has notes. It is created
+ * with the first note of the day.
+ */
+export const dailyLogs = pgTable("daily_logs", {
+  /** "2026-11-10" */
+  logDate: date("log_date", { mode: "string" }).primaryKey(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+});
+
+/**
+ * A note in the Daily Log. `body` is exactly what the person typed. A note is
+ * never deleted, and when its author edits it the earlier wording is kept in
+ * note_revisions.
+ */
+export const notes = pgTable(
+  "notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    logDate: date("log_date", { mode: "string" })
+      .notNull()
+      .references(() => dailyLogs.logDate),
+    /** Rich text document (editor JSON), stored verbatim. */
+    body: jsonb("body").notNull(),
+    /** Plain-text copy of `body`, for search. */
+    bodyText: text("body_text").notNull(),
+    businessTag: businessTag("business_tag"),
+    /** Set when the note is marked Sorted; null means Unsorted. */
+    sortedAt: ts("sorted_at"),
+    sortedBy: uuid("sorted_by").references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    /** Set when the author changes the wording. */
+    editedAt: ts("edited_at"),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+    /** Soft delete: a removed note is hidden but kept, and can be restored. */
+    removedAt: ts("removed_at"),
+    removedBy: uuid("removed_by").references(() => users.id),
+  },
+  (t) => [index("notes_log_date_idx").on(t.logDate, t.createdAt)],
+);
+
+/** The wording a note had before an edit. Add-only. */
+export const noteRevisions = pgTable(
+  "note_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => notes.id),
+    body: jsonb("body").notNull(),
+    bodyText: text("body_text").notNull(),
+    /** When, and by whom, this wording was replaced. */
+    createdAt: ts("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+  },
+  (t) => [index("note_revisions_note_idx").on(t.noteId, t.createdAt)],
+);
+
+/**
+ * Which manual sections a note is filed under. The note then shows, word for
+ * word, in each of those sections' Discussion.
+ *
+ * Each row is one act of filing: who filed it, when, and whether it was the
+ * AI. Taking a note out of a section sets removed_at on that row; filing it
+ * there again adds a new row, so the history of who filed what is kept. A
+ * note can have only one live (not removed) row per section.
+ */
+export const noteSections = pgTable(
+  "note_sections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => notes.id),
+    sectionId: uuid("section_id")
+      .notNull()
+      .references(() => sections.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by").references(() => users.id),
+    /** True when the AI filed it (Phase 5). People see an "AI" marker. */
+    byAi: boolean("by_ai").notNull().default(false),
+    removedAt: ts("removed_at"),
+    removedBy: uuid("removed_by").references(() => users.id),
+  },
+  (t) => [
+    uniqueIndex("note_sections_live_unique")
+      .on(t.noteId, t.sectionId)
+      .where(sql`${t.removedAt} is null`),
+    index("note_sections_section_idx").on(t.sectionId),
+  ],
+);
+
+/** A comment on a note (Owners and Advisors). Stored verbatim, add-only. */
+export const comments = pgTable(
+  "comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => notes.id),
+    body: jsonb("body").notNull(),
+    bodyText: text("body_text").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+  },
+  (t) => [index("comments_note_idx").on(t.noteId, t.createdAt)],
+);
+
+/** App-wide settings Owners can change, one row per setting. */
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  updatedBy: uuid("updated_by").references(() => users.id),
+});

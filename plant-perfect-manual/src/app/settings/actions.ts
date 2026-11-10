@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/auth/session";
 import { sendEmail } from "@/lib/mailer";
 import { AppError } from "@/lib/permissions";
 import { isUuid } from "@/lib/sections";
+import { saveSettings } from "@/lib/settings";
 import { addUser, changeUserRole, removeUser } from "@/lib/users";
 
 function text(value: unknown): string {
@@ -44,4 +45,17 @@ export async function changeRoleAction(userId: string, roleKey: string): Promise
 
 export async function removeUserAction(userId: string): Promise<ActionResult> {
   return runAction((actor) => removeUser(actor, requireUserId(userId)));
+}
+
+export async function saveSettingsAction(input: {
+  openingDate: string;
+  staleDays: string;
+}): Promise<ActionResult> {
+  return runAction(async (actor) => {
+    const result = await saveSettings(actor, {
+      openingDate: text(input?.openingDate),
+      staleDays: text(input?.staleDays),
+    });
+    return result.changed ? "Saved." : "No changes to save.";
+  });
 }

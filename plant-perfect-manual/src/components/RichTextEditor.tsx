@@ -86,6 +86,12 @@ export default function RichTextEditor({
 
   const editor = useEditor({
     extensions,
+    // Never turn typed or pasted characters into formatting. Without this the
+    // editor would, for example, swallow the asterisks in "12 * 4 * 2" and make
+    // the 4 italic. Words must be stored exactly as typed; formatting comes
+    // only from the toolbar and its keyboard shortcuts.
+    enableInputRules: false,
+    enablePasteRules: false,
     content: draft?.doc ?? initialDoc,
     // Safe because this component never renders on the server (it is loaded
     // on demand, in the browser only).
