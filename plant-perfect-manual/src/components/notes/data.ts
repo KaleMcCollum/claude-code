@@ -1,5 +1,6 @@
 import type { BusinessTag } from "@/lib/business";
 import type { NoteSectionLink, NoteView } from "@/lib/notes";
+import { PROPOSAL_STATUS_LABELS, type ProposalStatus } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
 import { type SectionNode, flattenTree } from "@/lib/sections";
 import { formatDate, formatDateKey, formatDateTime, formatTime } from "@/lib/time";
@@ -29,9 +30,14 @@ export type NoteBlockData = {
   sorted: boolean;
   sections: NoteSectionLink[];
   comments: { id: string; body: RichDoc; authorName: string; when: string }[];
+  /** Proposals made from this note, each with where it stands ("waiting for approval"). */
+  proposals: { id: string; title: string; status: string }[];
   /** True when the person looking at it is the one who wrote it. */
   mine: boolean;
 };
+
+/** A proposal made from a note, as `proposalsForNotes` lists it. */
+export type NoteProposal = { id: string; title: string; status: ProposalStatus };
 
 /** A removed note, as Owners see it in the Daily Log (one line with Restore). */
 export type RemovedNoteData = {
@@ -49,7 +55,11 @@ export type RemovedNoteData = {
 /** A section that a note can be filed under. */
 export type SectionOption = { id: string; number: string; title: string; depth: number };
 
-export function toNoteBlockData(note: NoteView, viewerId: string): NoteBlockData {
+export function toNoteBlockData(
+  note: NoteView,
+  viewerId: string,
+  proposals: NoteProposal[] = [],
+): NoteBlockData {
   return {
     id: note.id,
     logDate: note.logDate,
@@ -71,6 +81,11 @@ export function toNoteBlockData(note: NoteView, viewerId: string): NoteBlockData
       body: comment.body,
       authorName: comment.authorName,
       when: formatDateTime(comment.createdAt),
+    })),
+    proposals: proposals.map((proposal) => ({
+      id: proposal.id,
+      title: proposal.title,
+      status: PROPOSAL_STATUS_LABELS[proposal.status].toLowerCase(),
     })),
     mine: note.authorId === viewerId,
   };

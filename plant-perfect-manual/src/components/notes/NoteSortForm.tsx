@@ -24,14 +24,16 @@ type Props = {
 /** How many matches the "Find a section" box shows at once. */
 const MATCHES_SHOWN = 8;
 
-const BUSINESS_CHOICES: { value: BusinessTag | ""; text: string }[] = [
+/** The Business choices, the same wherever a business is picked. */
+export const BUSINESS_CHOICES: { value: BusinessTag | ""; text: string }[] = [
   { value: "", text: "None" },
   { value: "garden_center", text: BUSINESS_LABELS.garden_center },
   { value: "coffee_shop", text: BUSINESS_LABELS.coffee_shop },
   { value: "both", text: BUSINESS_LABELS.both },
 ];
 
-function matches(option: SectionOption, query: string): boolean {
+/** True when what was typed (in lower case) fits this section's name or number. */
+export function matchesSection(option: SectionOption, query: string): boolean {
   const title = option.title.toLowerCase();
   return (
     title.includes(query) ||
@@ -63,7 +65,7 @@ export function NoteSortForm({ noteId, label, filed, businessTag, sorted, option
 
   const text = query.trim().toLowerCase();
   const found = text
-    ? options.filter((option) => !startIds.includes(option.id) && matches(option, text))
+    ? options.filter((option) => !startIds.includes(option.id) && matchesSection(option, text))
     : [];
   const shown = found.slice(0, MATCHES_SHOWN);
   // On top: where the note is filed already, then anything ticked here that

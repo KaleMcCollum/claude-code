@@ -63,31 +63,63 @@ const extensions = [
   HoldWhileSaving,
 ];
 
-type Props = {
+/**
+ * How a surrounding form reads the text when the editor sits inside it
+ * without buttons of its own (the proposal form).
+ */
+export type EditorControl = {
+  /** The text as it is right now. Also refreshes the safety copy on this device. */
+  getDoc: () => RichDoc;
+  /** Call once the form has been saved: the safety copy is no longer needed. */
+  saved: () => void;
+};
+
+type Shared = {
   initialDoc: RichDoc;
   /** Where the unsaved copy is kept on this device while typing. */
   draftKey: string;
   label: string;
-  saveLabel: string;
-  /** Shown next to the Save button, e.g. what saving will record. */
-  note?: string;
-  onSave: (doc: RichDoc) => Promise<ActionResult<unknown>>;
-  /** Called when the editor should close: after a save, or after Cancel. */
-  onDone: () => void;
   /** The small look for notes and comments. */
   compact?: boolean;
-  /**
-   * For writing one note after another: when given, a successful save empties
-   * the text, keeps the editor open with the cursor in it, and calls this
-   * instead of `onDone`.
-   */
-  onSaved?: () => void;
   /**
    * Put the cursor in the text and bring the editor into view. 0 (or left
    * out) does nothing; each new number does it again.
    */
   focusRequest?: number;
 };
+
+/** The usual way: the editor has its own Save and Cancel buttons. */
+type WithButtons = Shared & {
+  saveLabel: string;
+  /** Shown next to the Save button, e.g. what saving will record. */
+  note?: string;
+  onSave: (doc: RichDoc) => Promise<ActionResult<unknown>>;
+  /** Called when the editor should close: after a save, or after Cancel. */
+  onDone: () => void;
+  /**
+   * For writing one note after another: when given, a successful save empties
+   * the text, keeps the editor open with the cursor in it, and calls this
+   * instead of `onDone`.
+   */
+  onSaved?: () => void;
+  onReady?: undefined;
+};
+
+/**
+ * Inside a larger form that has one button of its own: no Save or Cancel
+ * here. The form is handed an `EditorControl` to read the text when its
+ * button is pressed (and null when the editor goes away).
+ */
+type InsideForm = Shared & {
+  onReady: (control: EditorControl | null) => void;
+  saveLabel?: undefined;
+  note?: undefined;
+  onSave?: undefined;
+  onDone?: undefined;
+  onSaved?: undefined;
+};
+
+type Props = WithButtons | InsideForm;
 
 function normalizeLink(input: string): string {
   const value = input.trim();
@@ -122,7 +154,10 @@ export default function RichTextEditor({
   compact = false,
   onSaved,
   focusRequest = 0,
+  onReady,
 }: Props) {
+  // Inside a form: the form has the button, this is only the text.
+  const insideForm = onReady !== undefined;
   // This component only ever runs in the browser (it is loaded on demand).
   const [draft] = useState(() => readDraft(draftKey));
   const [restoredAt, setRestoredAt] = useState<number | null>(draft?.at ?? null);
@@ -158,7 +193,8 @@ export default function RichTextEditor({
       handleKeyDown: (_view, event) => {
         if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
           event.preventDefault();
-          saveRef.current();
+          if (insideForm) rootRef.current?.closest("form")?.requestSubmit();
+          else saveRef.current();
           return true;
         }
         return false;
@@ -234,8 +270,28 @@ export default function RichTextEditor({
     timer.current = null;
   };
 
+  // Inside a form, hand the form a way to read the text and to say "saved".
+  useEffect(() => {
+    if (!onReady || !editor) return;
+    onReady({
+      getDoc: () => {
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+        const doc = editor.getJSON() as RichDoc;
+        keepCopy(draftKey, doc, startsEmpty);
+        return doc;
+      },
+      saved: () => {
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+        clearDraft(draftKey);
+      },
+    });
+    return () => onReady(null);
+  }, [onReady, editor, draftKey, startsEmpty]);
+
   const save = () => {
-    if (!editor || saving) return;
+    if (!editor || saving || !onSave) return;
     stopTimer();
     const doc = editor.getJSON() as RichDoc;
     keepCopy(draftKey, doc, startsEmpty);
@@ -260,7 +316,7 @@ export default function RichTextEditor({
       }
       clearDraft(draftKey);
       if (!onSaved) {
-        onDone();
+        onDone?.();
         return;
       }
       // Ready for the next one: a brand-new empty text (so Undo cannot bring
@@ -286,7 +342,7 @@ export default function RichTextEditor({
   const discard = () => {
     stopTimer();
     clearDraft(draftKey);
-    onDone();
+    onDone?.();
   };
 
   const startOver = () => {
@@ -454,7 +510,7 @@ export default function RichTextEditor({
         </p>
       )}
 
-      {confirmDiscard ? (
+      {insideForm ? null : confirmDiscard ? (
         <div className="editor-actions">
           <span>{startsEmpty ? "Throw away what you typed?" : "Throw away your changes?"}</span>
           <button type="button" className="btn btn-danger" onClick={discard}>

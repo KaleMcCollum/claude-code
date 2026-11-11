@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ActionButton } from "@/components/decisions/ActionButton";
+import { waitingLine } from "@/components/decisions/words";
 import { NoteBlock } from "@/components/notes/NoteBlock";
 import { toNoteBlockData, toSectionOptions } from "@/components/notes/data";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/permissions";
+import { SOLO_FLAG_DAYS, canApproveToo, displayTitle, proposalsForNotes } from "@/lib/proposals";
 import { loadTree } from "@/lib/sections";
 import { type StaleSection, loadToday } from "@/lib/today";
 import { formatDate, formatDateKey, formatDateKeyLong } from "@/lib/time";
+import { addApprovalAction } from "./proposals/actions";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -42,14 +46,19 @@ function StaleList({ sections }: { sections: StaleSection[] }) {
 export default async function TodayPage() {
   const user = await requireUser();
   const today = await loadToday(user);
-  const { unsorted, stale, opening } = today;
+  const { unsorted, stale, opening, awaiting, decidedAlone, approvers } = today;
   const canWrite = can(user, "write_notes");
   const canComment = can(user, "comment");
-  // The sorting form needs the list of sections, and only Owners can sort.
-  const sections =
-    canWrite && unsorted.notes.length > 0
-      ? toSectionOptions(await asUser(user.id, (tx) => loadTree(tx)))
-      : [];
+  // Titles of direct edits name their section, and the sorting form lists the sections.
+  const { tree, noteProposals } = await asUser(user.id, async (tx) => ({
+    tree: await loadTree(tx),
+    noteProposals: await proposalsForNotes(
+      tx,
+      unsorted.notes.map((note) => note.id),
+    ),
+  }));
+  // Only Owners can sort.
+  const sections = canWrite && unsorted.notes.length > 0 ? toSectionOptions(tree) : [];
 
   return (
     <>
@@ -70,6 +79,72 @@ export default async function TodayPage() {
         )}
       </p>
 
+      <section className="block" aria-labelledby="awaiting-heading">
+        <div className="block-head">
+          <h2 id="awaiting-heading">Awaiting approval ({awaiting.length})</h2>
+          <Link href="/proposals">Proposals</Link>
+        </div>
+        {awaiting.length === 0 ? (
+          <p className="muted">Nothing is waiting for approval.</p>
+        ) : (
+          <ul className="decision-list">
+            {awaiting.map((view) => (
+              <li key={view.id}>
+                <Link className="title" href={`/proposals/${view.id}`}>
+                  {displayTitle(view, tree)}
+                </Link>
+                <p className="muted small">
+                  Proposed{view.proposedByName ? ` by ${view.proposedByName}` : ""}, {formatDate(view.createdAt)}
+                </p>
+                <p className="small">{waitingLine(view, user, approvers)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="block" aria-labelledby="alone-heading">
+        <div className="block-head">
+          <h2 id="alone-heading">Decided by one person ({decidedAlone.length})</h2>
+        </div>
+        {decidedAlone.length === 0 ? (
+          <p className="muted">
+            Nothing was decided by one person in the last {SOLO_FLAG_DAYS} days.
+          </p>
+        ) : (
+          <>
+            <p className="muted small list-note">
+              Approved by one Owner in the last {SOLO_FLAG_DAYS} days.
+            </p>
+            <ul className="decision-list">
+              {decidedAlone.map((view) => {
+                const title = displayTitle(view, tree);
+                const by = view.approvals[0];
+                return (
+                  <li key={view.id}>
+                    <Link className="title" href={`/proposals/${view.id}`}>
+                      {title}
+                    </Link>
+                    <p className="flag">
+                      Decided by {by?.name ?? "one Owner"} alone, {formatDate(view.decidedAt ?? view.createdAt)}
+                    </p>
+                    {canApproveToo(view, user) && (
+                      <div className="actions">
+                        <ActionButton
+                          label="I approve too"
+                          ariaLabel={`I approve too: ${title}`}
+                          action={addApprovalAction.bind(null, view.id)}
+                        />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </section>
+
       <section className="block" aria-labelledby="unsorted-heading">
         <div className="block-head">
           <h2 id="unsorted-heading">Unsorted notes ({unsorted.total})</h2>
@@ -83,10 +158,11 @@ export default async function TodayPage() {
               {unsorted.notes.map((note) => (
                 <NoteBlock
                   key={note.id}
-                  note={toNoteBlockData(note, user.id)}
+                  note={toNoteBlockData(note, user.id, noteProposals.get(note.id))}
                   mode="today"
                   canWrite={canWrite}
                   canComment={canComment}
+                  canPropose={can(user, "propose")}
                   sections={sections}
                 />
               ))}
@@ -126,8 +202,7 @@ export default async function TodayPage() {
       </section>
 
       <p className="muted small" style={{ marginTop: 32 }}>
-        To-dos, deadlines and proposals waiting for approval will show here as those parts are
-        built (phases 3 and 4).
+        To-dos and deadlines will show here when that part is built (phase 4).
       </p>
     </>
   );

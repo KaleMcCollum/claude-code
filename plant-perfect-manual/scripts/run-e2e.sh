@@ -65,6 +65,9 @@ for name in "${TESTS[@]}"; do
   export EMAIL_OUTBOX_DIR="$DATA/outbox"
   export APP_URL="http://localhost:$PORT"
   export NEXT_TELEMETRY_DISABLED=1
+  # The activity log shows 50 rows a page. A smaller page lets the test turn
+  # the page without making 50 changes first.
+  export ACTIVITY_PAGE_SIZE="${ACTIVITY_PAGE_SIZE:-20}"
 
   # Test-only starting data, if this test has any (e2e/<name>.seed.ts). It is
   # written straight into the new database before the app opens it.

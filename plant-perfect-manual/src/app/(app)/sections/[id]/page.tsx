@@ -4,18 +4,27 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { OfficialBlock } from "@/components/OfficialBlock";
 import { RichText } from "@/components/RichText";
+import { ActionButton } from "@/components/decisions/ActionButton";
 import { NoteBlock } from "@/components/notes/NoteBlock";
 import { toNoteBlockData } from "@/components/notes/data";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { BUSINESS_LABELS } from "@/lib/business";
 import { loadDiscussion } from "@/lib/notes";
-import { approvalLine, loadOfficial } from "@/lib/official";
+import { approvalLine, endorsementLine, loadOfficial } from "@/lib/official";
 import { can } from "@/lib/permissions";
+import {
+  canApproveToo,
+  canEndorse,
+  listOpenProposalsForSection,
+  loadProposal,
+  proposalsForNotes,
+} from "@/lib/proposals";
 import { isEmptyDoc } from "@/lib/richtext";
 import { isUuid, loadTree, pathTo } from "@/lib/sections";
 import { formatDate } from "@/lib/time";
 import { loadUserNames } from "@/lib/users";
+import { addApprovalAction, endorseProposalAction } from "../../proposals/actions";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -56,12 +65,16 @@ const loadPage = cache(async (id: string) => {
     const path = pathTo(tree, id);
     const node = path.at(-1);
     if (!node) return null;
+    const official = await loadOfficial(tx, id);
     return {
       user,
       tree,
       path,
       node,
-      official: await loadOfficial(tx, id),
+      official,
+      // The approved change behind the text on screen: its approvals can still grow.
+      officialProposal: official ? await loadProposal(tx, official.proposalId) : null,
+      waiting: await listOpenProposalsForSection(tx, id),
       names: await loadUserNames(tx),
     };
   });
@@ -75,16 +88,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function SectionPage({ params, searchParams }: PageProps) {
   const data = await loadPage((await params).id);
   if (!data) notFound();
-  const { user, tree, path, node, official, names } = data;
+  const { user, tree, path, node, official, officialProposal, waiting, names } = data;
 
   // The Discussion's order and business filter live in the address.
   const query = await searchParams;
   const order: Order = query.order === "oldest" ? "oldest" : "newest";
   const business: BusinessFilter =
     query.business === "garden_center" || query.business === "coffee_shop" ? query.business : null;
-  const thread = await asUser(user.id, (tx) =>
-    loadDiscussion(tx, tree, node.id, { order, business }),
-  );
+  const { thread, noteProposals } = await asUser(user.id, async (tx) => {
+    const notes = await loadDiscussion(tx, tree, node.id, { order, business });
+    return {
+      thread: notes,
+      noteProposals: await proposalsForNotes(
+        tx,
+        notes.map((note) => note.id),
+      ),
+    };
+  });
   const canComment = can(user, "comment");
   const parents = path.slice(0, -1);
   const updatedBy = node.updatedBy ? names.get(node.updatedBy) : null;
@@ -140,8 +160,17 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
         doc={official?.content ?? null}
         versionId={official?.id ?? null}
         canEdit={can(user, "edit_official")}
-        userName={user.name}
+        canPropose={can(user, "propose")}
       >
+        {waiting.length > 0 && (
+          <div className="official-notices">
+            {waiting.map((proposal) => (
+              <p key={proposal.id} className="notice">
+                Waiting for approval: <Link href={`/proposals/${proposal.id}`}>{proposal.title}</Link>
+              </p>
+            ))}
+          </div>
+        )}
         <div className="official-box">
           {hasOfficialText && official ? (
             <RichText doc={official.content} />
@@ -155,6 +184,32 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
             <p className="meta">
               Official text removed. {approved}.
             </p>
+          )}
+          {official?.endorsements.map((endorsement) => (
+            <p key={endorsement.userId} className="endorsements">
+              {endorsementLine(endorsement)}
+            </p>
+          ))}
+          {official && (
+            <div className="official-actions">
+              {officialProposal && canApproveToo(officialProposal, user) && (
+                <ActionButton
+                  label="I approve too"
+                  look="quiet"
+                  action={addApprovalAction.bind(null, officialProposal.id)}
+                />
+              )}
+              {officialProposal && canEndorse(officialProposal, user) && (
+                <ActionButton
+                  label="Endorse"
+                  look="quiet"
+                  action={endorseProposalAction.bind(null, officialProposal.id, {
+                    revision: officialProposal.revision,
+                  })}
+                />
+              )}
+              <Link href={`/sections/${node.id}/history`}>Version history</Link>
+            </div>
           )}
         </div>
       </OfficialBlock>
@@ -201,7 +256,7 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
               {thread.map((note) => (
                 <NoteBlock
                   key={note.id}
-                  note={toNoteBlockData(note, user.id)}
+                  note={toNoteBlockData(note, user.id, noteProposals.get(note.id))}
                   mode="discussion"
                   canWrite={false}
                   canComment={canComment}

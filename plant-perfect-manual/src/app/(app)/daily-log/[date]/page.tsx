@@ -8,6 +8,7 @@ import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { adjacentLogDays, loadDay } from "@/lib/notes";
 import { can } from "@/lib/permissions";
+import { proposalsForNotes } from "@/lib/proposals";
 import { loadTree } from "@/lib/sections";
 import { centralDateKey, formatDateKey, formatDateKeyLong, isDateKey } from "@/lib/time";
 
@@ -39,12 +40,17 @@ export default async function DailyLogDayPage({ params }: PageProps) {
   const canComment = can(user, "comment");
   // Reading a day never creates anything: a day's log only comes into being
   // with its first note.
-  const { tree, notes, adjacent } = await asUser(user.id, async (tx) => {
+  const { tree, notes, noteProposals, adjacent } = await asUser(user.id, async (tx) => {
     const sectionTree = await loadTree(tx);
+    // Owners see a one-line reminder where a removed note was. Advisors do not.
+    const dayNotes = await loadDay(tx, sectionTree, day, { includeRemoved: canWrite });
     return {
       tree: sectionTree,
-      // Owners see a one-line reminder where a removed note was. Advisors do not.
-      notes: await loadDay(tx, sectionTree, day, { includeRemoved: canWrite }),
+      notes: dayNotes,
+      noteProposals: await proposalsForNotes(
+        tx,
+        dayNotes.map((note) => note.id),
+      ),
       adjacent: await adjacentLogDays(tx, day),
     };
   });
@@ -75,10 +81,11 @@ export default async function DailyLogDayPage({ params }: PageProps) {
             ) : (
               <NoteBlock
                 key={note.id}
-                note={toNoteBlockData(note, user.id)}
+                note={toNoteBlockData(note, user.id, noteProposals.get(note.id))}
                 mode="log"
                 canWrite={canWrite}
                 canComment={canComment}
+                canPropose={can(user, "propose")}
                 sections={sections}
               />
             ),

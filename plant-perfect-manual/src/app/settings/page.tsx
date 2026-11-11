@@ -64,6 +64,15 @@ export default async function SettingsPage({
         <TodaySettingsPanel openingDate={settings.openingDate} staleDays={settings.staleDays} />
       </section>
 
+      <section className="settings-section" aria-labelledby="activity-heading">
+        <h2 id="activity-heading">Activity log</h2>
+        <p>
+          <Link className="tap-link" href="/settings/activity">
+            See every change, who made it and when
+          </Link>
+        </p>
+      </section>
+
       <section className="settings-section" aria-labelledby="later-heading">
         <h2 id="later-heading">Coming in later phases</h2>
         <p className="muted">

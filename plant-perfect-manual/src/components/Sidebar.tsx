@@ -12,6 +12,8 @@ export type TreeItem = { id: string; number: string; title: string; children: Tr
 type Props = {
   tree: TreeItem[];
   userName: string;
+  /** Proposals waiting for approval, shown as a plain number after "Proposals". */
+  proposalsWaiting: number;
   canWriteNotes: boolean;
   canManageSections: boolean;
   canOpenSettings: boolean;
@@ -36,14 +38,23 @@ function NavLink({
   current,
   children,
   onClick,
+  ariaLabel,
 }: {
   href: string;
   current: boolean;
   children: React.ReactNode;
   onClick?: () => void;
+  /** A fuller name for screen readers, when the words on the link are not enough. */
+  ariaLabel?: string;
 }) {
   return (
-    <Link className="nav-link" href={href} aria-current={current ? "page" : undefined} onClick={onClick}>
+    <Link
+      className="nav-link"
+      href={href}
+      aria-current={current ? "page" : undefined}
+      aria-label={ariaLabel}
+      onClick={onClick}
+    >
       {children}
       <PendingDot />
     </Link>
@@ -63,7 +74,14 @@ function idsOnPath(tree: TreeItem[], id: string): string[] {
  * The one navigation for the whole app. It is the same on every page; only
  * the main area changes. On phones it slides in from the Menu button.
  */
-export function Sidebar({ tree, userName, canWriteNotes, canManageSections, canOpenSettings }: Props) {
+export function Sidebar({
+  tree,
+  userName,
+  proposalsWaiting,
+  canWriteNotes,
+  canManageSections,
+  canOpenSettings,
+}: Props) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   // Sections the user opened or closed by hand. Others follow the current page.
@@ -167,17 +185,22 @@ export function Sidebar({ tree, userName, canWriteNotes, canManageSections, canO
 
         <div className="sidebar-scroll">
         <ul className="nav">
-          {PAGES.map((page) => (
-            <li key={page.href}>
-              <NavLink
-                href={page.href}
-                current={page.href === "/" ? pathname === "/" : pathname.startsWith(page.href)}
-                onClick={closeMenu}
-              >
-                {page.label}
-              </NavLink>
-            </li>
-          ))}
+          {PAGES.map((page) => {
+            const waiting = page.href === "/proposals" ? proposalsWaiting : 0;
+            return (
+              <li key={page.href}>
+                <NavLink
+                  href={page.href}
+                  current={page.href === "/" ? pathname === "/" : pathname.startsWith(page.href)}
+                  onClick={closeMenu}
+                  ariaLabel={waiting > 0 ? `${page.label}, ${waiting} waiting` : undefined}
+                >
+                  {page.label}
+                  {waiting > 0 && <span className="nav-count">{waiting}</span>}
+                </NavLink>
+              </li>
+            );
+          })}
         </ul>
 
         <div className="nav-heading">

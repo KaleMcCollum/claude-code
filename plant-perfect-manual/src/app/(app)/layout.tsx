@@ -2,6 +2,7 @@ import { Sidebar, type TreeItem } from "@/components/Sidebar";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/permissions";
+import { countAwaiting } from "@/lib/proposals";
 import { type SectionNode, loadTree } from "@/lib/sections";
 
 function toItems(nodes: SectionNode[]): TreeItem[] {
@@ -18,12 +19,16 @@ function toItems(nodes: SectionNode[]): TreeItem[] {
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const tree = await asUser(user.id, (tx) => loadTree(tx));
+  const { tree, waiting } = await asUser(user.id, async (tx) => ({
+    tree: await loadTree(tx),
+    waiting: await countAwaiting(tx, user),
+  }));
   return (
     <div className="shell">
       <Sidebar
         tree={toItems(tree)}
         userName={user.name}
+        proposalsWaiting={waiting}
         canWriteNotes={can(user, "write_notes")}
         canManageSections={can(user, "structure")}
         canOpenSettings={can(user, "manage_users") || can(user, "settings")}

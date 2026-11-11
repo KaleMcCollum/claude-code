@@ -33,6 +33,8 @@ type Props = {
   canWrite: boolean;
   /** May the person comment (Owners and Advisors)? */
   canComment: boolean;
+  /** May the person make a proposal from this note (Owners)? Not offered in Discussion. */
+  canPropose?: boolean;
   /** Sections a note can be filed under. Not needed in Discussion. */
   sections?: SectionOption[];
 };
@@ -53,8 +55,16 @@ async function attempt(work: () => Promise<ActionResult>): Promise<ActionResult>
  * and its comments. The same block is used in the Daily Log, on Today and
  * in a section's Discussion.
  */
-export function NoteBlock({ note, mode, canWrite, canComment, sections = [] }: Props) {
+export function NoteBlock({
+  note,
+  mode,
+  canWrite,
+  canComment,
+  canPropose = false,
+  sections = [],
+}: Props) {
   const manage = canWrite && mode !== "discussion";
+  const propose = canPropose && mode !== "discussion";
   const canEdit = manage && note.mine;
   const when = mode === "log" ? note.time : note.dateTime;
   // Used in the names of this note's buttons, so each one says which note it is for.
@@ -136,6 +146,12 @@ export function NoteBlock({ note, mode, canWrite, canComment, sections = [] }: P
 
       <NoteFacts note={note} showDay={mode !== "log"} />
 
+      {note.proposals.map((proposal) => (
+        <p key={proposal.id} className="note-proposal muted small">
+          Proposal: <Link href={`/proposals/${proposal.id}`}>{proposal.title}</Link> ({proposal.status})
+        </p>
+      ))}
+
       {note.edited && (
         <details className="note-edited">
           <summary>Edited {note.edited}</summary>
@@ -188,7 +204,7 @@ export function NoteBlock({ note, mode, canWrite, canComment, sections = [] }: P
         </div>
       )}
 
-      {open === null && (manage || canComment) && (
+      {open === null && (manage || canComment || propose) && (
         <div className="note-actions">
           {manage && (
             <button type="button" className="btn-text" aria-label={`Sort ${label}`} onClick={() => show("sort")}>
@@ -204,6 +220,15 @@ export function NoteBlock({ note, mode, canWrite, canComment, sections = [] }: P
             >
               Add comment
             </button>
+          )}
+          {propose && (
+            <Link
+              className="btn-text"
+              href={`/proposals/new?note=${note.id}`}
+              aria-label={`Propose from ${label}`}
+            >
+              Propose
+            </Link>
           )}
           {canEdit && (
             <button type="button" className="btn-text" aria-label={`Edit ${label}`} onClick={() => show("edit")}>

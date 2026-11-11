@@ -4,9 +4,11 @@ import Link from "next/link";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { BUSINESS_LABELS, isBusinessTag } from "@/lib/business";
+import { PROPOSAL_STATUS_LABELS } from "@/lib/proposals";
 import {
   type CommentHit,
   type NoteHit,
+  type ProposalHit,
   type SearchFilters,
   type SearchHit,
   MAX_PER_TYPE,
@@ -14,7 +16,7 @@ import {
   searchWords,
 } from "@/lib/search";
 import { findNode, flattenTree, isUuid, loadTree } from "@/lib/sections";
-import { formatDateTime, isDateKey } from "@/lib/time";
+import { formatDate, formatDateTime, isDateKey } from "@/lib/time";
 import { loadUserNames } from "@/lib/users";
 
 export const metadata: Metadata = { title: "Search" };
@@ -143,6 +145,31 @@ function CommentHits({ hits, more, query }: { hits: CommentHit[]; more: boolean;
   );
 }
 
+function ProposalHits({ hits, query }: { hits: ProposalHit[]; query: string }) {
+  if (hits.length === 0) return null;
+  return (
+    <section aria-label="Proposals">
+      <h2 className="results-heading">Proposals ({hits.length})</h2>
+      <ul className="results">
+        {hits.map((hit) => (
+          <li key={hit.proposalId}>
+            <Link href={`/proposals/${hit.proposalId}`}>
+              <Highlight text={hit.title} query={query} />
+            </Link>
+            <p className="muted small" style={{ margin: "2px 0 0" }}>
+              {PROPOSAL_STATUS_LABELS[hit.status]} · proposed
+              {hit.proposedByName ? ` by ${hit.proposedByName}` : ""}, {formatDate(hit.createdAt)}
+            </p>
+            <p className="excerpt">
+              <Highlight text={hit.excerpt} query={query} />
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default async function SearchPage({ searchParams }: { searchParams: Promise<Params> }) {
   const user = await requireUser();
   const params = await searchParams;
@@ -169,7 +196,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const { tree, names, filters, results } = data;
   const filtering = Object.values(filters).some(Boolean);
   const total =
-    results.sections.length + results.official.length + results.notes.length + results.comments.length;
+    results.sections.length +
+    results.official.length +
+    results.proposals.length +
+    results.notes.length +
+    results.comments.length;
   const people = [...names.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 
   return (
@@ -194,7 +225,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         </div>
         <details className="filters" open={filtering}>
           <summary>Filters{filtering ? " (in use)" : ""}</summary>
-          <div className="filter-grid">
+          {/* A new set of filters (or Clear filters) starts the fields again from what is in use. */}
+          <div className="filter-grid" key={JSON.stringify(filters)}>
             <label className="field">
               <span>From date</span>
               <input className="input" type="date" name="from" defaultValue={filters.from ?? ""} />
@@ -257,11 +289,12 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       <SectionHits title="Sections" hits={results.sections} query={query} />
       <SectionHits title="Official text" hits={results.official} query={query} />
+      <ProposalHits hits={results.proposals} query={query} />
       <NoteHits hits={results.notes} more={results.moreNotes} query={query} />
       <CommentHits hits={results.comments} more={results.moreComments} query={query} />
 
       <p className="muted small" style={{ marginTop: 28 }}>
-        Search covers section names, official text, notes and comments. Proposals, to-dos, quotes
+        Search covers section names, official text, proposals, notes and comments. To-dos, quotes
         and documents are added as those parts are built.
       </p>
     </>
