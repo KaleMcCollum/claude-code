@@ -307,19 +307,25 @@ function NoteFacts({ note, showDay }: { note: NoteBlockData; showDay: boolean })
   );
 }
 
-/** What Owners see in the Daily Log where a removed note used to be. */
-export function RemovedNote({ note }: { note: RemovedNoteData }) {
+/**
+ * What Owners see in place of a removed note: one line and a Restore button.
+ * In a day's log it sits where the note was; the list of all removed notes
+ * (on the Daily Log page) also says which day each one belongs to.
+ */
+export function RemovedNote({ note, showDay = false }: { note: RemovedNoteData; showDay?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, startWork] = useTransition();
+  const from = showDay ? `${note.day}, ${note.time}` : note.time;
   return (
     <div className="note note-removed" id={`note-${note.id}`}>
       <p className="muted small">
-        A note by {note.authorName} was removed
+        A note by {note.authorName}
+        {showDay ? ` from ${from}` : ""} was removed
         {note.removedByName ? ` by ${note.removedByName}` : ""} on {note.removedOn}.{" "}
         <button
           type="button"
           className="btn-text"
-          aria-label={`Restore the note by ${note.authorName} from ${note.time}`}
+          aria-label={`Restore the note by ${note.authorName} from ${from}`}
           disabled={busy}
           onClick={() =>
             startWork(async () => {

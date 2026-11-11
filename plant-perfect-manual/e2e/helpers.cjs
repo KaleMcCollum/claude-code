@@ -36,6 +36,9 @@ function section(title) {
 
 async function shot(page, name, options = {}) {
   fs.mkdirSync(OUT, { recursive: true });
+  // A whole-page picture is taken from the top, so the bar that stays at the
+  // top of the screen is drawn where a person would see it.
+  if (options.fullPage) await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: path.join(OUT, `${name}.png`), ...options });
 }
 

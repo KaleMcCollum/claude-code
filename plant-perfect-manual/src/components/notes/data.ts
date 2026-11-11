@@ -39,6 +39,8 @@ export type RemovedNoteData = {
   authorName: string;
   /** "3:42 PM": when the note was written. */
   time: string;
+  /** "Nov 10, 2026": the Daily Log day the note belongs to. */
+  day: string;
   removedByName: string | null;
   /** "Nov 10, 2026" */
   removedOn: string;
@@ -79,6 +81,7 @@ export function toRemovedNoteData(note: NoteView): RemovedNoteData {
     id: note.id,
     authorName: note.authorName,
     time: formatTime(note.createdAt),
+    day: formatDateKey(note.logDate),
     removedByName: note.removedByName,
     removedOn: formatDate(note.removedAt ?? note.createdAt),
   };

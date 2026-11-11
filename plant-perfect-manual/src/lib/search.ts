@@ -55,12 +55,23 @@ export type SearchFilters = {
 export type SearchResults = {
   sections: SearchHit[];
   official: SearchHit[];
+  /** The newest matching notes, at most MAX_PER_TYPE. */
   notes: NoteHit[];
   comments: CommentHit[];
+  /** True when there were more matches than the list shows. */
+  moreNotes: boolean;
+  moreComments: boolean;
 };
 
-const EMPTY: SearchResults = { sections: [], official: [], notes: [], comments: [] };
-const MAX_PER_TYPE = 50;
+export const MAX_PER_TYPE = 50;
+const EMPTY: SearchResults = {
+  sections: [],
+  official: [],
+  notes: [],
+  comments: [],
+  moreNotes: false,
+  moreComments: false,
+};
 
 const MAX_WORDS = 6;
 
@@ -214,7 +225,10 @@ export async function search(
       ),
     )
     .orderBy(desc(notes.createdAt), desc(notes.id))
-    .limit(MAX_PER_TYPE);
+    .limit(MAX_PER_TYPE + 1);
+  // One extra row was asked for, only to know whether there are more.
+  const moreNotes = noteRows.length > MAX_PER_TYPE;
+  noteRows.length = Math.min(noteRows.length, MAX_PER_TYPE);
   const links = await loadNoteSectionLinks(
     q,
     tree,
@@ -256,7 +270,9 @@ export async function search(
       ),
     )
     .orderBy(desc(comments.createdAt), desc(comments.id))
-    .limit(MAX_PER_TYPE);
+    .limit(MAX_PER_TYPE + 1);
+  const moreComments = commentRows.length > MAX_PER_TYPE;
+  commentRows.length = Math.min(commentRows.length, MAX_PER_TYPE);
   const commentHits: CommentHit[] = commentRows.map((row) => ({
     commentId: row.commentId,
     noteId: row.noteId,
@@ -266,5 +282,12 @@ export async function search(
     excerpt: excerptAround(row.text, words),
   }));
 
-  return { sections: sectionHits, official: officialHits, notes: noteHits, comments: commentHits };
+  return {
+    sections: sectionHits,
+    official: officialHits,
+    notes: noteHits,
+    comments: commentHits,
+    moreNotes,
+    moreComments,
+  };
 }

@@ -35,6 +35,9 @@ const BLOCK_TYPES = new Set([
 ]);
 const MARK_TYPES = new Set(["bold", "italic", "underline", "link"]);
 
+/** A NUL character or half of a two-part character: the database refuses these. */
+const UNSTORABLE = /\u0000|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
 /** Only ordinary web, email and phone links are kept. */
 export function safeHref(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -95,6 +98,12 @@ function cleanNode(input: unknown, depth: number): RichNode | null {
 
   if (input.type === "text") {
     if (typeof input.text !== "string" || input.text.length === 0) return null;
+    if (UNSTORABLE.test(input.text)) {
+      // Never drop it silently: the words must stay exactly as typed.
+      throw new AppError(
+        "That text contains a character that can't be saved (it may have come from a paste, or half of an emoji). Retype that part and try again.",
+      );
+    }
     const node: RichNode = { type: "text", text: input.text };
     const marks = cleanMarks(input.marks);
     if (marks) node.marks = marks;

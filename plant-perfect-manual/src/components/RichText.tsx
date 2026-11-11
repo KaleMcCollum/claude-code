@@ -9,11 +9,13 @@ export function RichText({ doc }: { doc: RichDoc }) {
   // The editor always leaves an empty line after a table or list so the
   // cursor has somewhere to go. Nobody typed it, so it is not shown.
   // (The saved document itself is left untouched.)
-  let end = doc.content.length;
-  while (end > 0 && doc.content[end - 1].type === "paragraph" && !doc.content[end - 1].content?.length) {
+  // (Anything that is not a document is shown as empty rather than breaking the page.)
+  const blocks = Array.isArray(doc?.content) ? doc.content.filter((node) => node && typeof node === "object") : [];
+  let end = blocks.length;
+  while (end > 0 && blocks[end - 1].type === "paragraph" && !blocks[end - 1].content?.length) {
     end -= 1;
   }
-  return <div className="rich">{renderChildren(doc.content.slice(0, end))}</div>;
+  return <div className="rich">{renderChildren(blocks.slice(0, end))}</div>;
 }
 
 function renderChildren(nodes: RichNode[] | undefined): ReactNode[] {

@@ -56,6 +56,9 @@ beforeAll(async () => {
   await addComment(karen, wagesNote.id, doc("Matches what the registers pay. Scanners can wait."));
 
   await addNote(casey, { body: doc("100% sure about the pylon_sign"), now: new Date("2026-11-15T16:00:00Z") });
+  // Decoys: these must NOT be found when searching for the literal text above.
+  await addNote(casey, { body: doc("ordered the pylonXsign bracket and 1000 screws"), now: new Date("2026-11-15T17:00:00Z") });
+  await addNote(casey, { body: doc("plant list is in C:\\plants\\2027"), now: new Date("2026-11-15T18:00:00Z") });
 });
 
 describe("search", () => {
@@ -95,11 +98,18 @@ describe("search", () => {
 
   it("is not case sensitive and treats symbols as plain text", async () => {
     expect((await run("SCANNERS")).notes).toHaveLength(2);
-    expect((await run("100%")).notes).toHaveLength(1);
-    expect((await run("pylon_sign")).notes).toHaveLength(1);
-    expect((await run("pylonXsign")).notes).toHaveLength(0);
+    // "%" and "_" mean themselves, not "anything": the decoy notes with
+    // "1000" and "pylonXsign" must not match.
+    expect((await run("100%")).notes.map((n) => n.excerpt)).toEqual(["100% sure about the pylon_sign"]);
+    expect((await run("pylon_sign")).notes.map((n) => n.excerpt)).toEqual(["100% sure about the pylon_sign"]);
+    expect((await run("pylonXsign")).notes).toHaveLength(1);
     expect((await run("%%")).notes).toHaveLength(0);
-    expect(await run("s")).toEqual({ sections: [], official: [], notes: [], comments: [] });
+    expect((await run("__")).notes).toHaveLength(0);
+    // A backslash is found as typed and does not break the search.
+    expect((await run("C:\\plants")).notes.map((n) => n.excerpt)).toEqual(["plant list is in C:\\plants\\2027"]);
+    expect((await run("plants\\")).notes).toHaveLength(1);
+    expect((await run("\\screws")).notes).toHaveLength(0);
+    expect(await run("s")).toEqual({ sections: [], official: [], notes: [], comments: [], moreNotes: false, moreComments: false });
   });
 
   it("filters by date range (Central days)", async () => {
@@ -129,6 +139,8 @@ describe("search", () => {
       official: [],
       notes: [],
       comments: [],
+      moreNotes: false,
+      moreComments: false,
     });
   });
 
@@ -154,6 +166,19 @@ describe("search", () => {
     expect((await run("coffee", { authorId: casey.id })).official).toEqual([]);
   });
 
+  it("under a section filter, leaves out a note that was taken out of that section", async () => {
+    const casey = await actorFor("casey@example.com");
+    const coffee = await sectionId("Coffee Shop");
+    const wages = await sectionId("Wages");
+    const [espresso] = (await run("espresso", { sectionId: coffee })).notes;
+    expect(espresso).toBeDefined();
+    await sortNote(casey, espresso.noteId, await tree(), { sectionIds: [wages], businessTag: "coffee_shop", sorted: true });
+    expect((await run("espresso", { sectionId: coffee })).notes).toEqual([]);
+    expect((await run("espresso", { sectionId: wages })).notes).toHaveLength(1);
+    await sortNote(casey, espresso.noteId, await tree(), { sectionIds: [coffee], businessTag: "coffee_shop", sorted: true });
+    expect((await run("espresso", { sectionId: coffee })).notes).toHaveLength(1);
+  });
+
   it("does not find removed notes, or comments on them", async () => {
     const kale = await actorFor("kale@example.com");
     const [hit] = (await run("coffee staff")).notes;
@@ -174,5 +199,19 @@ describe("search", () => {
     const found = (await run("line busters")).notes;
     expect(found).toHaveLength(1);
     expect(found[0].sections).toEqual([{ id: pos, number: null, title: "Point of Sale", byAi: false }]);
+  });
+});
+
+describe("search with very many matches", () => {
+  it("shows the newest 50 notes and says there are more", async () => {
+    const kale = await actorFor("kale@example.com");
+    for (let i = 0; i < 52; i += 1) {
+      await addNote(kale, { body: doc(`zebragrass order line ${i}`), now: new Date(Date.UTC(2026, 10, 16, 15, 0, i)) });
+    }
+    const results = await run("zebragrass");
+    expect(results.notes).toHaveLength(50);
+    expect(results.moreNotes).toBe(true);
+    expect(results.notes[0].excerpt).toBe("zebragrass order line 51");
+    expect((await run("zebragrass line 7")).moreNotes).toBe(false);
   });
 });

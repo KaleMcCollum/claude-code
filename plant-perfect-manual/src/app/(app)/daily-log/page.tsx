@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
-import { listLogDays } from "@/lib/notes";
+import { RemovedNote } from "@/components/notes/NoteBlock";
+import { toRemovedNoteData } from "@/components/notes/data";
+import { listLogDays, listRemovedNotes } from "@/lib/notes";
+import { can } from "@/lib/permissions";
+import { loadTree } from "@/lib/sections";
 import { addDays, centralDateKey, formatDateKeyLong } from "@/lib/time";
 import { DateJump } from "./DateJump";
 
@@ -18,7 +22,12 @@ function countLine(noteCount: number, unsortedCount: number): string {
 /** The Daily Log: jump to a day, or pick one from the days that have notes. */
 export default async function DailyLogPage() {
   const user = await requireUser();
-  const days = await asUser(user.id, (tx) => listLogDays(tx));
+  const canWrite = can(user, "write_notes");
+  const { days, removed } = await asUser(user.id, async (tx) => ({
+    days: await listLogDays(tx),
+    // Only Owners can remove and restore notes, so only they see this list.
+    removed: canWrite ? await listRemovedNotes(tx, await loadTree(tx)) : [],
+  }));
   const today = centralDateKey();
 
   return (
@@ -54,6 +63,21 @@ export default async function DailyLogPage() {
           </ul>
         )}
       </section>
+
+      {removed.length > 0 && (
+        <details className="removed-notes">
+          <summary>Removed notes ({removed.length})</summary>
+          <p className="muted small">
+            Removed notes are hidden, not deleted. Restore puts a note back on its day with
+            everything it had.
+          </p>
+          <div className="notes">
+            {removed.map((note) => (
+              <RemovedNote key={note.id} note={toRemovedNoteData(note)} showDay />
+            ))}
+          </div>
+        </details>
+      )}
     </>
   );
 }

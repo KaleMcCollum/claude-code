@@ -425,3 +425,17 @@
     margin-bottom: 36vh;
   }
 }
+
+/* ---------- Removed notes (Daily Log list, Owners only) ---------- */
+
+.removed-notes {
+  margin-top: 28px;
+}
+
+.removed-notes > summary {
+  display: inline-block;
+  min-height: 32px;
+  padding: 4px 0;
+  color: var(--accent);
+  cursor: pointer;
+}

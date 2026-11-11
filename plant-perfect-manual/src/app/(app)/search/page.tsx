@@ -9,6 +9,7 @@ import {
   type NoteHit,
   type SearchFilters,
   type SearchHit,
+  MAX_PER_TYPE,
   search,
   searchWords,
 } from "@/lib/search";
@@ -75,11 +76,25 @@ function SectionHits({ title, hits, query }: { title: string; hits: SearchHit[];
   );
 }
 
-function NoteHits({ hits, query }: { hits: NoteHit[]; query: string }) {
+/** Said under a list that was cut short, so nobody takes it for the whole answer. */
+function CutShort({ what }: { what: string }) {
+  return (
+    <p className="muted small">
+      Showing the newest {MAX_PER_TYPE} {what}. There are more: add a word or use the filters to
+      narrow it down.
+    </p>
+  );
+}
+
+function NoteHits({ hits, more, query }: { hits: NoteHit[]; more: boolean; query: string }) {
   if (hits.length === 0) return null;
   return (
     <section aria-label="Notes">
-      <h2 className="results-heading">Notes ({hits.length})</h2>
+      <h2 className="results-heading">
+        Notes ({hits.length}
+        {more ? "+" : ""})
+      </h2>
+      {more && <CutShort what="notes" />}
       <ul className="results">
         {hits.map((hit) => (
           <li key={hit.noteId}>
@@ -103,11 +118,15 @@ function NoteHits({ hits, query }: { hits: NoteHit[]; query: string }) {
   );
 }
 
-function CommentHits({ hits, query }: { hits: CommentHit[]; query: string }) {
+function CommentHits({ hits, more, query }: { hits: CommentHit[]; more: boolean; query: string }) {
   if (hits.length === 0) return null;
   return (
     <section aria-label="Comments">
-      <h2 className="results-heading">Comments ({hits.length})</h2>
+      <h2 className="results-heading">
+        Comments ({hits.length}
+        {more ? "+" : ""})
+      </h2>
+      {more && <CutShort what="comments" />}
       <ul className="results">
         {hits.map((hit) => (
           <li key={hit.commentId}>
@@ -228,15 +247,18 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         <p className="muted">Type at least two letters to search.</p>
       ) : (
         <p className="meta" role="status">
-          {total === 0 ? "Nothing found" : `${total} ${total === 1 ? "result" : "results"}`} for
+          {total === 0
+            ? "Nothing found"
+            : `${total}${results.moreNotes || results.moreComments ? " or more" : ""} ${total === 1 ? "result" : "results"}`}{" "}
+          for
           &ldquo;{query}&rdquo;{filtering ? " with these filters" : ""}
         </p>
       )}
 
       <SectionHits title="Sections" hits={results.sections} query={query} />
       <SectionHits title="Official text" hits={results.official} query={query} />
-      <NoteHits hits={results.notes} query={query} />
-      <CommentHits hits={results.comments} query={query} />
+      <NoteHits hits={results.notes} more={results.moreNotes} query={query} />
+      <CommentHits hits={results.comments} more={results.moreComments} query={query} />
 
       <p className="muted small" style={{ marginTop: 28 }}>
         Search covers section names, official text, notes and comments. Proposals, to-dos, quotes

@@ -8,6 +8,7 @@ import {
   adjacentLogDays,
   editNote,
   listLogDays,
+  listRemovedNotes,
   listUnsortedNotes,
   loadDay,
   loadDiscussion,
@@ -112,6 +113,43 @@ describe("writing notes", () => {
     expect(await asSystem((db) => adjacentLogDays(db, "2026-01-01"))).toEqual({ previous: null, next: "2026-11-12" });
   });
 
+  it("checks the text before saving: unsafe links and unknown blocks never reach the database", async () => {
+    const kale = await actorFor("kale@example.com");
+    const karen = await insertUser("Kim", "kim@example.com", "advisor");
+    const risky = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "see this", marks: [{ type: "link", attrs: { href: "javascript:alert(1)" } }] }],
+        },
+        { type: "iframe", attrs: { src: "https://evil.example" }, content: [{ type: "text", text: "kept as words" }] },
+      ],
+    };
+    const { id } = await addNote(kale, { body: risky, now: new Date("2026-11-14T23:00:00Z") });
+    await addComment(karen, id, risky);
+    const [row] = await asSystem((db) => db.select().from(notes).where(eq(notes.id, id)));
+    const saved = await note(id);
+    for (const stored of [JSON.stringify(row.body), JSON.stringify(saved.comments[0].body)]) {
+      expect(stored).not.toContain("javascript:");
+      expect(stored).not.toContain("iframe");
+      expect(stored).toContain("see this");
+      expect(stored).toContain("kept as words");
+    }
+    // Put the day back to three notes for the tests below.
+    await removeNote(kale, id);
+  });
+
+  it("says so plainly when the text holds a character that cannot be stored", async () => {
+    const kale = await actorFor("kale@example.com");
+    await expect(addNote(kale, { body: doc("bad \u0000 character") })).rejects.toThrow("can't be saved");
+    await expect(addNote(kale, { body: doc("half an emoji \ud83c") })).rejects.toThrow(AppError);
+    // A whole emoji is fine.
+    const ok = await addNote(kale, { body: doc("whole emoji \ud83c\udf31"), now: new Date("2026-11-14T23:30:00Z") });
+    expect(docToText((await note(ok.id)).body)).toBe("whole emoji \ud83c\udf31");
+    await removeNote(kale, ok.id);
+  });
+
   it("refuses an empty note", async () => {
     const kale = await actorFor("kale@example.com");
     await expect(addNote(kale, { body: doc("   ") })).rejects.toThrow(AppError);
@@ -143,6 +181,10 @@ describe("editing a note", () => {
     // Saving the same words again changes nothing.
     expect(await editNote(kale, id, doc("Sign quote from Holly"))).toEqual({ changed: false });
     expect(await asSystem((db) => db.select().from(noteRevisions).where(eq(noteRevisions.noteId, id)))).toHaveLength(1);
+    // The edit is in the activity log, once.
+    const log = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)));
+    expect(log.map((e) => e.action)).toEqual(["note.added", "note.edited"]);
+    expect(log[1].summary).toBe("Edited their note from Nov 15, 2026");
   });
 
   it("does not let anyone else change the wording, not even the other Owner", async () => {
@@ -267,6 +309,14 @@ describe("sorting a note by hand", () => {
     expect((await note(id)).sorted).toBe(true);
     await setNoteSorted(kale, id, false);
     expect((await note(id)).sorted).toBe(false);
+    // Ticking the same way twice is not a change.
+    await setNoteSorted(kale, id, false);
+    const ticks = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)));
+    expect(ticks.map((e) => e.summary)).toEqual([
+      "Added a note to the Daily Log for Nov 17, 2026",
+      "Sorted a note from Nov 17, 2026: marked it Sorted",
+      "Sorted a note from Nov 17, 2026: marked it Unsorted",
+    ]);
     // Choosing sections does not force Sorted on: it is the user's call.
     await sortNote(kale, id, await tree(), { sectionIds: [await sectionId("Wages")], businessTag: null, sorted: false });
     const saved = await note(id);
@@ -343,7 +393,9 @@ describe("comments on notes", () => {
       "Karen:   I'd go $15 -- matches the registers  ",
       "Kale: Agreed.",
     ]);
-    const log = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.action, "comment.added")));
+    const log = (await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)))).filter(
+      (e) => e.action === "comment.added",
+    );
     expect(log.map((e) => e.userId).sort()).toEqual([kale.id, karen.id].sort());
   });
 
@@ -387,6 +439,15 @@ describe("removing a note", () => {
     await expect(editNote(kale, id, doc("changed"))).rejects.toThrow("was removed");
     await expect(addComment(karen, id, doc("still there?"))).rejects.toThrow("was removed");
     await expect(setNoteSorted(kale, id, true)).rejects.toThrow("was removed");
+    await expect(
+      sortNote(kale, id, await tree(), { sectionIds: [], businessTag: null, sorted: true }),
+    ).rejects.toThrow("was removed");
+
+    // It was the only note of its day, so the day drops out of the list and
+    // out of Earlier / Later. The list of removed notes is where it is found.
+    expect(await asSystem((db) => adjacentLogDays(db, "2026-11-21"))).toMatchObject({ previous: "2026-11-19" });
+    const removedList = await asSystem(async (db) => listRemovedNotes(db, await loadTree(db)));
+    expect(removedList[0]).toMatchObject({ id, logDate: "2026-11-20", removedByName: "Casey", authorName: "Kale" });
 
     await restoreNote(kale, id);
     const back = await day();

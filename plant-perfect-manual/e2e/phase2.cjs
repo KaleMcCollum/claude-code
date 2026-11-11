@@ -104,7 +104,7 @@ async function main() {
   const now = new Date();
   const today = { key: dateKey(now), long: longDate(now), short: shortDate(now) };
   const earlierDate = new Date(now.getTime() - 3 * DAY_MS);
-  const earlier = { key: dateKey(earlierDate), long: longDate(earlierDate) };
+  const earlier = { key: dateKey(earlierDate), long: longDate(earlierDate), short: shortDate(earlierDate) };
   const yesterday = { long: longDate(new Date(now.getTime() - DAY_MS)) };
 
   const desktop = await desktopContext(browser);
@@ -482,6 +482,26 @@ async function main() {
   check("a bad address goes back to the list", page.url() === `${BASE_URL}/daily-log`, page.url());
   await page.goto(`${BASE_URL}/daily-log/2026-02-30`);
   check("a date that does not exist goes back to the list", page.url() === `${BASE_URL}/daily-log`, page.url());
+
+  // A removed note that was the only note of its day can still be found.
+  await page.goto(`${BASE_URL}/daily-log/${earlier.key}`);
+  const earlierNote = noteWith(page, EARLIER_NOTE);
+  await earlierNote.getByRole("button", { name: /^Remove note/ }).click();
+  await earlierNote.getByRole("button", { name: "Remove note", exact: true }).click();
+  await page.getByText(/^A note by Kale was removed by Kale on/).waitFor();
+  await nav.getByRole("link", { name: "Daily Log", exact: true }).click();
+  await page.getByRole("heading", { level: 1, name: "Daily Log" }).waitFor();
+  check("a day whose only note was removed leaves the list of days", await eventually(async () => (await days.count()) === 1));
+  const removedList = page.locator("details.removed-notes");
+  await removedList.locator("summary").click();
+  const removedLine = removedList.getByText(new RegExp(`^A note by Kale from ${earlier.short}, .* was removed by Kale on`));
+  check("Owners find it under Removed notes, with the day it belongs to", await removedLine.isVisible());
+  await removedList.getByRole("button", { name: /^Restore the note by Kale from/ }).click();
+  check("restoring it there brings its day back", await eventually(async () => (await days.count()) === 2));
+  check("the Removed notes list goes away when it is empty", await eventually(async () => (await page.locator("details.removed-notes").count()) === 0));
+  await karenNav.getByRole("link", { name: "Daily Log", exact: true }).click();
+  await karen.getByRole("heading", { level: 1, name: "Daily Log" }).waitFor();
+  check("an Advisor never sees a Removed notes list", (await karen.locator("details.removed-notes").count()) === 0);
 
   section("Search");
   await nav.getByRole("searchbox", { name: "Search" }).fill("scanner buster");

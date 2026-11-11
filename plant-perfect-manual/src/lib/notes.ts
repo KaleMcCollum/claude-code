@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { type Queryable, type Tx, asUser } from "@/db/client";
 import { comments, dailyLogs, noteRevisions, noteSections, notes, sections, users } from "@/db/schema";
@@ -259,6 +259,19 @@ export async function loadDay(
   return withDetails(q, tree, rows);
 }
 
+/**
+ * Notes that have been removed, most recently removed first. This is where a
+ * removed note can always be found again to restore it, even when it was the
+ * only note of its day (that day then no longer shows in the list of days).
+ */
+export async function listRemovedNotes(q: Queryable, tree: SectionNode[], limit = 50): Promise<NoteView[]> {
+  const rows = await selectNotes(q)
+    .where(isNotNull(notes.removedAt))
+    .orderBy(desc(notes.removedAt), desc(notes.id))
+    .limit(limit);
+  return withDetails(q, tree, rows);
+}
+
 /** One note, whether or not it has been removed (check `removedAt`). */
 export async function loadNote(q: Queryable, tree: SectionNode[], noteId: string): Promise<NoteView | null> {
   if (!isUuid(noteId)) return null;
@@ -368,6 +381,15 @@ export async function addNote(
   });
 }
 
+/**
+ * The database has the last word on permissions. If it changed no row (for
+ * example the person's role changed a moment ago), say so instead of
+ * recording a change that did not happen.
+ */
+function requireChanged(rows: unknown[]): void {
+  if (rows.length === 0) throw new AppError("You don't have permission to do that.");
+}
+
 /** The note row, or a plain-English error if it is missing (or removed). */
 async function requireNote(tx: Tx, noteId: string, options: { allowRemoved?: boolean } = {}) {
   if (!isUuid(noteId)) throw new AppError(NOTE_GONE);
@@ -391,10 +413,11 @@ export async function editNote(actor: Actor, noteId: string, rawBody: unknown): 
       throw new AppError("Only the person who wrote a note can change its wording.");
     }
     if (sameDoc(note.body as RichDoc, body)) return { changed: false };
-    const now = new Date();
+    // The database keeps the earlier wording and stamps the "edited" time
+    // itself whenever the wording changes.
     await tx
       .update(notes)
-      .set({ body, bodyText, editedAt: now, updatedAt: now, updatedBy: actor.id })
+      .set({ body, bodyText, updatedAt: new Date(), updatedBy: actor.id })
       .where(eq(notes.id, noteId));
     await logActivity(tx, actor.id, {
       action: "note.edited",
@@ -525,15 +548,18 @@ export async function setNoteSorted(actor: Actor, noteId: string, sorted: boolea
     const note = await requireNote(tx, noteId);
     if ((note.sortedAt !== null) === sorted) return;
     const now = new Date();
-    await tx
-      .update(notes)
-      .set({
-        sortedAt: sorted ? now : null,
-        sortedBy: sorted ? actor.id : null,
-        updatedAt: now,
-        updatedBy: actor.id,
-      })
-      .where(eq(notes.id, noteId));
+    requireChanged(
+      await tx
+        .update(notes)
+        .set({
+          sortedAt: sorted ? now : null,
+          sortedBy: sorted ? actor.id : null,
+          updatedAt: now,
+          updatedBy: actor.id,
+        })
+        .where(eq(notes.id, noteId))
+        .returning({ id: notes.id }),
+    );
     await logActivity(tx, actor.id, {
       action: "note.sorted",
       entityType: "note",
@@ -555,10 +581,13 @@ export async function removeNote(actor: Actor, noteId: string): Promise<void> {
     const note = await requireNote(tx, noteId, { allowRemoved: true });
     if (note.removedAt) return;
     const now = new Date();
-    await tx
-      .update(notes)
-      .set({ removedAt: now, removedBy: actor.id, updatedAt: now, updatedBy: actor.id })
-      .where(eq(notes.id, noteId));
+    requireChanged(
+      await tx
+        .update(notes)
+        .set({ removedAt: now, removedBy: actor.id, updatedAt: now, updatedBy: actor.id })
+        .where(eq(notes.id, noteId))
+        .returning({ id: notes.id }),
+    );
     await logActivity(tx, actor.id, {
       action: "note.removed",
       entityType: "note",
@@ -574,10 +603,13 @@ export async function restoreNote(actor: Actor, noteId: string): Promise<void> {
   await asUser(actor.id, async (tx) => {
     const note = await requireNote(tx, noteId, { allowRemoved: true });
     if (!note.removedAt) return;
-    await tx
-      .update(notes)
-      .set({ removedAt: null, removedBy: null, updatedAt: new Date(), updatedBy: actor.id })
-      .where(eq(notes.id, noteId));
+    requireChanged(
+      await tx
+        .update(notes)
+        .set({ removedAt: null, removedBy: null, updatedAt: new Date(), updatedBy: actor.id })
+        .where(eq(notes.id, noteId))
+        .returning({ id: notes.id }),
+    );
     await logActivity(tx, actor.id, {
       action: "note.restored",
       entityType: "note",
