@@ -5,12 +5,12 @@ An 8-bit, mostly text-based whitetail hunting game set in North Dakota-style cou
 ## How to play
 
 1. **The lodge** is home. The hunter in the middle wears exactly what you have equipped and holds your rifle. Your best mounts hang on the wall.
-2. **Shop** for tags, clothes, optics, calls, stands, trail cameras and consumables. The only way to earn money is to kill deer, so every hunt costs a little and gear takes saving up for.
-3. **HUNT** opens the map. You can hunt:
+2. **Shop** (the only place you buy anything) for tags, clothes, optics, calls, stands, trail cameras and consumables. The only way to earn money is to kill deer, so every hunt costs a little and gear takes saving up for.
+3. **HUNT** opens the map. The simple view (default) uses four colors: green cover where deer bed, gold food where they feed, blue water, gray roads and farms. Your land has a blue outline, public land green, permission land gold; land you can't hunt is dimmed. The **?** button explains it all, and the **Best bets** list ranks your stands by what you've learned and today's wind. You can hunt:
    - stands on land you own (blue),
    - stands on a neighbor's land once you've paid for permission (gold),
    - spots you mark on public land (green; up to 3 per area and 10 total). Public land takes a mobile setup: a climber or hang-on in a tree, or a ground sit. Some public areas are bow-only and stay locked until bows arrive.
-4. **Gear up**: pick morning, evening or all day, your clothes, belt and pack. The game tells you how cold it will feel and how long you can sit.
+4. **Gear up**: pick morning, evening or all day and what to pack from what you own. Change clothes and equipment (and spend skill points) under **Gear**. The game tells you how cold it will feel and how long you can sit.
 5. **On stand**, time moves in 10-minute steps (fast-forward through quiet stretches). The game never tells you what a deer is. You judge it by eye: far deer are a few pixels, and binoculars or the scope show more detail depending on the tier, the light and the distance. The rangefinder is the only thing that gives you a yardage.
 6. Tap a deer to pick it, then **Shoot**. Shooting an antlered deer on a doe tag (or the other way around) costs you a $500 ticket and the deer.
 7. After a harvest, guess the score, then see the full Boone & Crockett score sheet and four trophy views. The real age, weight and score are revealed only here.

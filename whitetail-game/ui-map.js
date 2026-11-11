@@ -34,16 +34,26 @@
   const TINT = { player: [70, 120, 200, 0.42], public: [80, 150, 70, 0.36], bow: [40, 110, 60, 0.5], perm: [220, 170, 70, 0.38] };
   const STAND_LETTER = { ground: 'G', saddle: 'S', hangon: 'H', climber: 'C', popup: 'P', tripod: 'T', ladder: 'L', box: 'B', house: 'X' };
 
-  function buildBase() {
+  // Simple view: four colors that say what deer use the ground for.
+  const SIMPLE = { cover: ['#4f6b3a', '#56733f'], food: ['#c9ac5c', '#c2a555'], water: ['#4a78a8', '#4a78a8'], people: ['#8a8076', '#8a8076'] };
+  const CAT = {};
+  [T.TIMBER, T.BELT, T.BRUSH, T.PRAIRIE, T.SLOUGH, T.YOUNGTREES].forEach((t) => { CAT[t] = 'cover'; });
+  [T.CORN, T.SOY, T.WHEAT, T.SUNFLOWER, T.HAY, T.PASTURE, T.PLOT, T.PLOT_NEW].forEach((t) => { CAT[t] = 'food'; });
+  [T.WATER, T.CREEK, T.POND].forEach((t) => { CAT[t] = 'water'; });
+  [T.ROAD, T.YARD, T.TOWN].forEach((t) => { CAT[t] = 'people'; });
+  UI.MAP_SIMPLE = SIMPLE;
+  function huntable(d) { return d.owner === 'player' || d.owner === 'public' || d.permBought; }
+  function buildBase(huntMode) {
     const w = Wd(), st = S();
+    const simple = (st.settings.mapStyle || 'simple') === 'simple';
     const season = st.day < 31 ? 'oct' : st.day < 61 ? 'nov' : 'dec';
     const c = document.createElement('canvas'); c.width = w.W; c.height = w.H;
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(w.W, w.H);
     for (let i = 0; i < w.W * w.H; i++) {
       const x = i % w.W, y = (i / w.W) | 0;
-      const p = (PAL[w.cover[i]] || PAL[8])[season];
-      const rgb = hexRgb(p[(x + y) % 2 === 0 || WT.hash2(x, y, 3) < 0.5 ? 0 : 1]);
+      const p = simple ? SIMPLE[CAT[w.cover[i]] || 'food'] : (PAL[w.cover[i]] || PAL[8])[season];
+      const rgb = hexRgb(p[simple ? (WT.hash2(x >> 1, y >> 1, 3) < 0.5 ? 0 : 1) : (x + y) % 2 === 0 || WT.hash2(x, y, 3) < 0.5 ? 0 : 1]);
       img.data.set([...rgb, 255], i * 4);
     }
     ctx.putImageData(img, 0, 0);
@@ -53,6 +63,11 @@
     for (let i = 0; i < w.W * w.H; i++) {
       const pid = w.parcelOf[i]; if (pid < 0) continue;
       const d = st.parcels[pid];
+      if (simple) {
+        // simple view: no color wash; land you can't hunt is dimmed so your spots stand out
+        if (huntMode && !huntable(d)) timg.data.set([20, 14, 10, 120], i * 4);
+        continue;
+      }
       const k = d.owner === 'player' ? 'player' : d.owner === 'public' ? (d.bowOnly ? 'bow' : 'public') : d.permBought ? 'perm' : null;
       if (!k) continue;
       const [r, g, b, a] = TINT[k];
@@ -67,10 +82,15 @@
     const w = Wd();
     const ctx = canvas.getContext('2d');
     canvas.width = LW; canvas.height = LH;
-    let layers = buildBase();
+    let layers = buildBase(opts.huntMode);
     const fitZoom = Math.min(LW / w.W, LH / w.H);
     const v = { cx: w.W / 2, cy: w.H / 2, z: fitZoom, sel: opts.sel ?? null, hover: null, tool: null };
-    const clampView = () => { v.z = Math.max(fitZoom, Math.min(28, v.z)); v.cx = Math.max(0, Math.min(w.W, v.cx)); v.cy = Math.max(0, Math.min(w.H, v.cy)); };
+    const clampView = () => {
+      v.z = Math.max(fitZoom, Math.min(28, v.z));
+      const hw = LW / 2 / v.z, hh = LH / 2 / v.z; // keep the map filling the view (no black edges)
+      v.cx = w.W > 2 * hw ? Math.max(hw, Math.min(w.W - hw, v.cx)) : w.W / 2;
+      v.cy = w.H > 2 * hh ? Math.max(hh, Math.min(w.H - hh, v.cy)) : w.H / 2;
+    };
     v.focus = (pid, zoom) => { const p = w.parcels[pid]; v.cx = (p.minX + p.maxX + 1) / 2; v.cy = (p.minY + p.maxY + 1) / 2; v.z = zoom || Math.min(22, Math.min(LW / (p.maxX - p.minX + 12), LH / (p.maxY - p.minY + 12))); clampView(); draw(); };
     const toTile = (sx, sy) => [v.cx + (sx - LW / 2) / v.z, v.cy + (sy - LH / 2) / v.z];
     const toScreen = (tx, ty) => [(tx - v.cx) * v.z + LW / 2, (ty - v.cy) * v.z + LH / 2];
@@ -84,22 +104,32 @@
       // parcel borders (only the visible window)
       const x0 = Math.max(0, Math.floor(sx)), y0 = Math.max(0, Math.floor(sy)), x1 = Math.min(w.W - 1, Math.ceil(sx + LW / v.z)), y1 = Math.min(w.H - 1, Math.ceil(sy + LH / v.z));
       const st = S();
+      const simpleView = (st.settings.mapStyle || 'simple') === 'simple';
       const thick = v.z >= 6 ? 2 : 1;
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const i = y * w.W + x, p = w.parcelOf[i];
         const r = x < w.W - 1 ? w.parcelOf[i + 1] : p, b = y < w.H - 1 ? w.parcelOf[i + w.W] : p;
         if (p === r && p === b) continue;
         const [X, Y] = toScreen(x, y);
-        const col = (q) => (q === v.sel || p === v.sel ? '#ffe08a' : st.forSale.includes(q) || st.forSale.includes(p) ? '#ff8a3a' : 'rgba(28,20,16,.55)');
-        if (p !== r && p >= 0 | r >= 0) { ctx.fillStyle = col(r); ctx.fillRect(Math.round(X + v.z) - (thick >> 1), Math.round(Y), thick, Math.ceil(v.z)); }
-        if (p !== b && p >= 0 | b >= 0) { ctx.fillStyle = col(b); ctx.fillRect(Math.round(X), Math.round(Y + v.z) - (thick >> 1), Math.ceil(v.z), thick); }
+        const col = (q) => {
+          if (q === v.sel || p === v.sel) return '#ffe08a';
+          const own = (id) => (id >= 0 ? st.parcels[id] : null);
+          for (const id of [p, q]) { const d = own(id); if (d && d.owner === 'player') return '#7fb0ff'; }
+          for (const id of [p, q]) { const d = own(id); if (d && d.owner === 'public') return d.bowOnly ? '#2f6a3e' : '#b6e08a'; }
+          for (const id of [p, q]) { const d = own(id); if (d && d.permBought) return '#e2b04a'; }
+          if (!opts.huntMode && (st.forSale.includes(q) || st.forSale.includes(p))) return '#ff8a3a';
+          return simpleView ? null : 'rgba(28,20,16,.55)';
+        };
+        const bw = simpleView ? Math.max(2, thick) : thick;
+        if (p !== r && p >= 0 | r >= 0) { const c = col(r); if (c) { ctx.fillStyle = c; ctx.fillRect(Math.round(X + v.z) - (bw >> 1), Math.round(Y), bw, Math.ceil(v.z)); } }
+        if (p !== b && p >= 0 | b >= 0) { const c = col(b); if (c) { ctx.fillStyle = c; ctx.fillRect(Math.round(X), Math.round(Y + v.z) - (bw >> 1), Math.ceil(v.z), bw); } }
       }
       // labels
       ctx.font = '8px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
       for (const p of w.parcels) {
         const d = st.parcels[p.id];
-        const show = d.owner === 'player' || d.owner === 'public' || st.forSale.includes(p.id) || p.id === v.sel || d.permBought;
+        const show = d.owner === 'player' || d.owner === 'public' || p.id === v.sel || d.permBought || (!opts.huntMode && st.forSale.includes(p.id));
         if (!show || v.z < 3.2 && p.id !== v.sel && d.owner !== 'player') continue;
         const [X, Y] = toScreen(p.labelX + 0.5, p.labelY + 0.5);
         if (X < -40 || Y < -10 || X > LW + 40 || Y > LH + 10) continue;
@@ -134,7 +164,7 @@
       if (opts.overlay) opts.overlay(ctx, v);
     }
     v.draw = draw;
-    v.rebuild = () => { layers = buildBase(); draw(); };
+    v.rebuild = () => { layers = buildBase(opts.huntMode); draw(); };
     // input: drag to pan, wheel/pinch to zoom, tap to select
     const pts = new Map();
     let downAt = null, moved = 0, pinch0 = null;
@@ -201,6 +231,60 @@
     return bits.length ? bits.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.' : 'Open prairie.';
   }
 
+  /* ---------------------------------------------------------------- legend, best bets, tutorial */
+  UI.mapLegend = function (mode) {
+    const simple = (S().settings.mapStyle || 'simple') === 'simple';
+    const sw = (c, t, box) => `<span><span style="color:${c}">${box ? '▢' : '■'}</span> ${t}</span>`;
+    const land = [sw('#7fb0ff', 'yours', 1), sw('#b6e08a', 'public', 1), sw('#e2b04a', 'permission', 1)].concat(mode === 'hunt' ? [] : [sw('#ff8a3a', 'for sale', 1)]);
+    return (simple ? [sw(SIMPLE.cover[0], 'cover'), sw(SIMPLE.food[0], 'food'), sw(SIMPLE.water[0], 'water')] : []).concat(land).join('');
+  };
+  // Ranks a stand using only what the player has learned plus today's wind. Hidden values stay hidden.
+  UI.betScore = function (s) {
+    const st = S(), k = WT.standKnowledge(s);
+    const ses = st.slot === 'morning' ? k.morning : k.evening;
+    const rut = /Seek|Peak/.test(WT.rutPhase(Math.min(st.day, 91)).name);
+    let stars = ses.stars;
+    if (rut && k.rut.stars) stars = Math.max(stars || 0, k.rut.stars);
+    const notes = [];
+    let score = stars || 2.5;
+    if (k.winds) { if (k.winds.includes(st.weather.windDir)) { score += 1.5; notes.push('<span class="good">wind is right</span>'); } else { score -= 2; notes.push('<span class="bad">wrong wind today</span>'); } }
+    else notes.push('wind: hunt it to learn');
+    if ((s.pressure || 0) > 0.35) { score -= 2; notes.push('<span class="warn">pressured, rest it</span>'); }
+    if (!stars) notes.push('never sat here' + (s.sits ? ' this time of day' : ''));
+    return { stars, score, notes };
+  };
+  UI.mapTutorial = function (page = 0) {
+    const st = S();
+    const swatch = (c) => `<span style="display:inline-block;width:14px;height:14px;background:${c};vertical-align:middle;margin-right:6px;border:1px solid #1c1410"></span>`;
+    const box = (c) => `<span style="display:inline-block;width:14px;height:14px;border:3px solid ${c};vertical-align:middle;margin-right:6px"></span>`;
+    const pages = [
+      `<h2>Reading the map (1/3): the ground</h2>
+       <p>The map shows what deer use each piece of ground for.</p>
+       <p>${swatch(SIMPLE.cover[0])}<b>Cover</b>: timber, tree rows, brush, CRP grass and cattail sloughs. Deer bed here during the day.</p>
+       <p>${swatch(SIMPLE.food[0])}<b>Food</b>: crop fields, hay, pasture and your food plots. Deer feed here at dawn and dusk.</p>
+       <p>${swatch(SIMPLE.water[0])}<b>Water</b>: rivers, creeks and ponds.</p>
+       <p>${swatch(SIMPLE.people[0])}<b>Roads, farms and town</b>: people. Deer avoid them, and stands near roads get bumped walking in.</p>
+       <p class="dim">Tap Detail on the map to see every crop and tree row instead.</p>`,
+      `<h2>Reading the map (2/3): whose land</h2>
+       <p>${box('#7fb0ff')}<b>Blue outline</b>: your land. Hunt any stand you put up. Bow or rifle.</p>
+       <p>${box('#b6e08a')}<b>Green outline</b>: public land. Free, but crowded and pressured. Mark up to 3 spots per area and bring a climber or hang-on (or sit on the ground).</p>
+       <p>${box('#2f6a3e')}<b>Dark green</b>: bow-only public land. Locked until bows arrive.</p>
+       <p>${box('#e2b04a')}<b>Gold outline</b>: a neighbor gave you permission. Hunt only their stands.</p>
+       <p>${box('#ff8a3a')}<b>Orange outline</b> (Land screen): for sale.</p>
+       <p class="dim">When you're picking a hunt, land you can't hunt is darkened so your spots stand out.</p>`,
+      `<h2>Reading the map (3/3): where to sit</h2>
+       <p><b>Edges are best.</b> Deer travel between cover and food. A stand where green meets gold, or in a tree row or creek that connects them, sees the most deer.</p>
+       <p><b>Mornings:</b> sit near cover and catch deer going back to bed. <b>Evenings:</b> sit near food as they come out to feed. <b>The rut</b> (early to mid November): travel routes between cover are best all day.</p>
+       <p><b>Wind:</b> deer smell you downwind. Each spot has winds that work. Hunt it a couple of times to learn them, then the Best bets list warns you on a wrong-wind day.</p>
+       <p><b>Pressure:</b> hunting the same stand every day burns it. Rest it a few days.</p>
+       <p class="dim">You never see how good a spot is up front. Stars fill in as you hunt it. Markers: letters are stands (L ladder, B box blind, H hang-on...), ✚ is a public spot.</p>`,
+    ];
+    UI.modal(`${pages[page]}<div class="row" style="margin-top:10px">${page > 0 ? '<button class="btn ghost" data-tp="-1">Back</button>' : ''}${page < pages.length - 1 ? '<button class="btn blaze" data-tp="1">Next</button>' : '<button class="btn blaze" data-tdone>Got it</button>'}<button class="btn ghost small" data-tdone>Skip</button></div>`, (m) => {
+      m.querySelectorAll('[data-tp]').forEach((b) => b.addEventListener('click', () => UI.mapTutorial(page + +b.dataset.tp)));
+      m.querySelectorAll('[data-tdone]').forEach((b) => b.addEventListener('click', () => { st.settings.tutMap = true; WT.save(); UI.closeModal(); }));
+    });
+  };
+
   /* ================================================================ MAP SCREEN */
   // args: { mode: 'hunt' | 'land', pid, sid }
   UI.screens.map = function (el, args) {
@@ -210,11 +294,13 @@
     el.innerHTML = UI.stage(LW, LH, `
       <div class="ov" style="right:8px;top:8px;flex-direction:column"><button class="btn ghost small" data-z="in">+</button><button class="btn ghost small" data-z="out">−</button><button class="btn ghost small" data-z="home">Home</button></div>
       <div class="ov" style="left:8px;top:8px"><button class="btn ghost small" data-back>Lodge</button><span class="btn ghost small" style="cursor:default">${args.mode === 'hunt' ? 'Where to hunt?' : 'Land'}</span></div>
-      <div class="ov" style="left:8px;bottom:8px;font-size:15px;background:rgba(28,20,16,.8);padding:3px 6px;gap:10px"><span style="color:#a9c6ff">■ yours</span><span style="color:#b6e08a">■ public</span><span style="color:#5e9a6a">■ bow only</span><span style="color:#d6a84a">■ permission</span><span style="color:#ff8a3a">▢ for sale</span></div>`) +
+      <div class="ov" style="left:8px;bottom:8px;font-size:15px;background:rgba(28,20,16,.85);padding:3px 6px;gap:4px 10px;max-width:calc(100% - 16px)">${UI.mapLegend(args.mode)}</div>
+      <div class="ov" style="right:8px;bottom:8px;flex-direction:column"><button class="btn ghost small" data-style>${(st.settings.mapStyle || 'simple') === 'simple' ? 'Detail' : 'Simple'}</button><button class="btn ghost small" data-help aria-label="How to read the map">?</button></div>`) +
       `<section class="panel" id="card" style="margin-top:10px"></section>`;
     const card = $('#card', el);
     const view = UI.mapView($('canvas', el), {
       sel: state.pid,
+      huntMode: args.mode === 'hunt',
       onTap: (x, y, pid) => onTap(x, y, pid),
       overlay: (ctx, v) => {
         if (!state.tool || state.pid == null) return;
@@ -225,6 +311,9 @@
     const refreshMap = () => { view.sel = state.pid; view.draw(); };
     el.querySelectorAll('[data-z]').forEach((b) => b.addEventListener('click', () => { const z = b.dataset.z; if (z === 'in') view.zoomBy(1.4); else if (z === 'out') view.zoomBy(1 / 1.4); else view.focus(w.starterId); }));
     el.querySelector('[data-back]').addEventListener('click', () => UI.go('lodge'));
+    el.querySelector('[data-style]').addEventListener('click', () => { st.settings.mapStyle = (st.settings.mapStyle || 'simple') === 'simple' ? 'detail' : 'simple'; WT.save(); UI.go('map', Object.assign({}, args, { pid: state.pid, sid: state.sid })); });
+    el.querySelector('[data-help]').addEventListener('click', () => UI.mapTutorial());
+    if (!st.settings.tutMap) setTimeout(() => UI.mapTutorial(), 50);
     if (state.pid != null) view.focus(state.pid); else view.focus(w.starterId, 6);
 
     function onTap(x, y, pid) {
@@ -271,9 +360,11 @@
       const pid = state.pid;
       if (pid == null) {
         const spots = WT.huntSpots();
+        const ranked = spots.map((x) => Object.assign(x, UI.betScore(x.stand))).sort((a, b) => b.score - a.score);
         card.innerHTML = args.mode === 'hunt'
-          ? `<h2>Pick a stand or spot</h2><p class="dim">Tap a stand on your land (blue), a stand on land you have permission for (gold), or a spot you marked on public land (green). To mark a new public spot, tap a public area first.</p>
-             <div class="list">${spots.map((s) => `<button class="item" style="text-align:left;border:0" data-pick="${s.pid}:${s.stand.sid}"><span class="nm">${esc(s.stand.name || WT.standType(s.stand.type).name)}</span><span class="dim">${esc(w.parcels[s.pid].name)}</span></button>`).join('') || '<p class="faint">No stands or spots yet.</p>'}</div>`
+          ? `<h2>Best bets this ${st.slot}</h2><p class="dim">Ranked by what you've learned sitting each spot and today's ${st.weather.windDir} wind. Tap one, or tap a marker on the map.</p>
+             <div class="list">${ranked.map((x) => `<button class="item" style="text-align:left;border:0" data-pick="${x.pid}:${x.stand.sid}"><span><span class="nm">${esc(x.stand.name || WT.standType(x.stand.type).name)}</span> <span class="dim">${esc(w.parcels[x.pid].name)}</span></span><span class="stars">${x.stars ? '★'.repeat(x.stars) + '☆'.repeat(5 - x.stars) : '?????'}</span><span class="st">${x.notes.join(' · ')}</span></button>`).join('') || '<p class="faint">No stands or spots yet.</p>'}</div>
+             <p class="faint">Want somewhere new? Tap a green public area and mark a spot.</p>`
           : `<h2>Land</h2><p class="dim">Tap any parcel to see it. Orange borders are for sale. You can buy permission to hunt some neighbors' stands.</p>
              <div class="row">${w.parcels.filter((p) => st.parcels[p.id].owner === 'player').map((p) => `<button class="btn small" data-jump="${p.id}">${esc(p.name)}</button>`).join('')}
              ${st.forSale.map((id) => `<button class="btn small" data-jump="${id}">For sale: ${w.parcels[id].acres} ac</button>`).join('')}</div>`;

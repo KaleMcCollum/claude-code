@@ -26,6 +26,7 @@
     const isSpot = stand.kind === 'spot';
     const sessions = st.slot === 'morning' ? ['morning', 'allday'] : ['evening'];
     const sel = { session: sessions.includes(args.session) ? args.session : sessions[0], carry: args.carry || (isSpot ? (WT.mobileOptions(stand).filter((o) => o.ok).slice(-1)[0] || { id: 'ground' }).id : null) };
+    const state = { edit: false };
     const render = () => {
       const standType = sel.carry || stand.type;
       // keep the pack within what you own
@@ -39,23 +40,32 @@
       if (!st.tags.buck && !st.tags.doe) warns.push('<span class="bad">You have no tags. You can hunt and scout, but not shoot.</span>');
       if (!lo.equip.light && sel.session !== 'evening') warns.push('<span class="warn">No light: you\'ll stumble in late after first light.</span>');
       if (!lo.equip.light && sel.session !== 'morning') warns.push('<span class="warn">No light: you\'ll have to leave at sunset.</span>');
-      const consum = WT.CONFIG.consumables.filter((c) => !c.battery);
-      el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Gear up: ${esc(stand.name || WT.standType(stand.type).name)}, ${esc(p.name)}</h2><button class="btn small" id="back">Back to map</button></div>
-        <h3>When</h3><div class="row">${sessions.map((s) => `<button class="btn small ${sel.session === s ? 'on' : ''}" data-ses="${s}">${WT.CONFIG.sessions[s].name}</button>`).join('')}<span class="dim">${esc(WT.CONFIG.sessions[sel.session].note)}</span></div>
-        ${isSpot ? `<h3>Hunt from</h3><div class="row">${WT.mobileOptions(stand).map((o) => `<button class="btn small ${sel.carry === o.id ? 'on' : ''}" data-carry="${o.id}" ${o.ok ? '' : 'disabled'}>${esc(WT.standType(o.id).name)}${o.ok ? '' : ' (' + o.why + ')'}</button>`).join('')}</div>${stand.tree ? '' : '<p class="faint">No tree at this spot: ground sit or a pop-up blind.</p>'}` : ''}
-        <div id="outfit">${UI.outfitEditor(lo)}</div>
-        <h3>Pack</h3><div class="list">${consum.map((c) => { const have = c.fuel ? st.inv.propane : st.inv.consum[c.id] || 0; const n = lo.pack[c.id] || 0; return `<div class="item"><div><span class="nm">${esc(c.name.replace(/ \(1 use\)/, ''))}</span> <span class="dim">${have} at home</span></div>
-          <div class="row"><button class="btn small" data-pk="${c.id}" data-d="-1" ${n ? '' : 'disabled'}>−</button><span style="min-width:1.5em;text-align:center">${n}</span><button class="btn small" data-pk="${c.id}" data-d="1" ${n < have ? '' : 'disabled'}>+</button><button class="btn small" data-qb="${c.id}">Buy ${c.packOf ? c.packOf : 1} (${WT.money(c.packOf ? c.packPrice : c.price)})</button></div>
-          <div class="st">${esc(UI.consumDesc(c))}</div></div>`; }).join('')}</div>
-        <h3>How it'll go</h3>
-        <p>It'll feel like <b>${plan.effTemp}°F</b> on stand. You're dressed for <b>${plan.comfortable}°F</b>. You can sit about <b>${WT.fmtDur(plan.maxHrs)}</b> of a ${WT.fmtDur(plan.windowHrs)} ${sel.session === 'allday' ? 'day' : sel.session}.</p>
-        <p>${warns.join('<br>') || '<span class="good">Looking good.</span>'}</p>
-        <div class="row"><button class="btn blaze big" id="go">Start the hunt</button><span class="dim">${esc(WT.weatherLine(st.weather))}</span></div></section>`;
+      // only what you already own: buying happens in the Shop, not here
+      const owned = WT.CONFIG.consumables.filter((c) => !c.battery && (c.fuel ? st.inv.propane : st.inv.consum[c.id] || 0) > 0);
+      const outfitLine = Object.values(lo.clothing).filter(Boolean).map((id) => WT.cloth(id).name).join(', ');
+      const beltLine = Object.values(lo.equip).filter(Boolean).map((id) => WT.equip(id).name).join(', ');
+      const r = WT.rifle(lo.rifle);
+      el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>${esc(stand.name || WT.standType(stand.type).name)} · ${esc(p.name)}</h2><button class="btn small" id="back">Back to map</button></div>
+        <div class="row">${sessions.map((s) => `<button class="btn ${sel.session === s ? 'on' : ''}" data-ses="${s}">${WT.CONFIG.sessions[s].name}</button>`).join('')}
+          ${isSpot ? WT.mobileOptions(stand).filter((o) => o.ok).map((o) => `<button class="btn small ${sel.carry === o.id ? 'on' : ''}" data-carry="${o.id}">${esc(WT.standType(o.id).name.replace(/ \(.*\)/, ''))}</button>`).join('') : ''}</div>
+        <p class="dim">${esc(WT.CONFIG.sessions[sel.session].note)}</p>
+        <div class="item" style="margin-top:8px"><div><span class="nm">${esc(r.name)}</span> <span class="dim">${esc(r.cal)}</span></div><button class="btn small" id="chg">${state.edit ? 'Done' : 'Change gear'}</button>
+          <div class="st">${esc(outfitLine)}${beltLine ? '<br>' + esc(beltLine) : ''}</div></div>
+        ${state.edit ? `<div id="outfit">${UI.outfitEditor(lo)}</div>` : ''}
+        <h3>Pack</h3>
+        ${owned.length ? `<div class="row">${owned.map((c) => { const have = c.fuel ? st.inv.propane : st.inv.consum[c.id]; const n = lo.pack[c.id] || 0; return `<span class="item" style="grid-template-columns:auto auto auto auto;gap:6px" title="${esc(UI.consumDesc(c))}"><span class="nm">${esc(c.name.replace(/ \(.*\)/, ''))}</span>
+          <button class="btn small" data-pk="${c.id}" data-d="-1" ${n ? '' : 'disabled'}>−</button><span>${n}/${have}</span><button class="btn small" data-pk="${c.id}" data-d="1" ${n < have ? '' : 'disabled'}>+</button></span>`; }).join('')}</div>`
+          : '<p class="faint">Nothing in your pack. Hand warmers and snacks are in the Shop.</p>'}
+        <div class="item" style="margin-top:12px;display:block">
+          <p style="margin:0">Feels like <b>${plan.effTemp}°F</b>. Dressed for <b>${plan.comfortable}°F</b>. You can sit <b>${WT.fmtDur(plan.maxHrs)}</b> of ${WT.fmtDur(plan.windowHrs)}.</p>
+          ${warns.length ? `<p style="margin:4px 0 0">${warns.join('<br>')}</p>` : ''}
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn blaze big" id="go">Start the hunt</button></div></section>`;
       $('#back', el).addEventListener('click', () => UI.go('map', { mode: 'hunt', pid: args.pid, sid: args.sid }));
+      $('#chg', el).addEventListener('click', () => { state.edit = !state.edit; render(); });
       el.querySelectorAll('[data-ses]').forEach((b) => b.addEventListener('click', () => { sel.session = b.dataset.ses; render(); }));
       el.querySelectorAll('[data-carry]').forEach((b) => b.addEventListener('click', () => { sel.carry = b.dataset.carry; render(); }));
       el.querySelectorAll('[data-pk]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.pk; lo.pack[id] = Math.max(0, (lo.pack[id] || 0) + +b.dataset.d); render(); }));
-      el.querySelectorAll('[data-qb]').forEach((b) => b.addEventListener('click', () => { if (UI.err(WT.buy('consum', b.dataset.qb))) return; UI.topbar(); render(); }));
       UI.bindOutfit(el, lo, () => render());
       $('#go', el).addEventListener('click', () => {
         WT.save();

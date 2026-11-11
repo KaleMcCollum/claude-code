@@ -831,7 +831,7 @@
     return H;
   };
 
-  function fmtDur(h) { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return hh ? `${hh} hr${mm ? ' ' + mm + ' min' : ''}` : `${mm} min`; }
+  function fmtDur(h) { const t = Math.round(h * 60), hh = Math.floor(t / 60), mm = t % 60; return hh ? `${hh} hr${mm ? ' ' + mm + ' min' : ''}` : `${mm} min`; }
   WT.fmtDur = fmtDur;
 
   const FLAVOR = [

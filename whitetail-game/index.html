@@ -117,10 +117,10 @@
   #modal .panel { max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; }
   .toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--wood-2); border: 3px solid var(--wood-3); padding: 8px 14px; z-index: 60; max-width: calc(100% - 32px); }
 
-  .lodge-bar { display: none; }
+  .lodge-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 10px; }
+  .lodge-bar .btn.ghost { font-size: 14px; padding: 6px; }
   @media (max-width: 640px) {
-    .lov { display: none; }
-    .lodge-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+    .lodge-bar { grid-template-columns: repeat(3, 1fr); }
     body { font-size: 18px; }
     .btn { font-size: 8px; padding: 8px 9px; }
     .btn.big { font-size: 12px; padding: 11px 18px; }

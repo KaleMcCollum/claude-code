@@ -59,15 +59,12 @@
     const P = C().progression;
     const need = P.xpForLevel(st.level);
     const w = st.weather;
-    const rut = WT.rutPhase(Math.min(st.day, 91));
-    const tags = `Buck ${st.tags.buck}${st.tags.buckFilled ? ' (filled)' : ''} · Doe ${st.tags.doe}`;
     $('#chips').innerHTML = [
       `<span class="chip money"><b>${money(st.cash)}</b></span>`,
-      `<span class="chip"><b>${WT.dateLabel(Math.min(st.day, 91))}</b>, Yr ${st.year} · ${st.slot === 'morning' ? 'Morning' : 'Evening'}</span>`,
-      `<span class="chip">Rifle season · <b>${rut.name}</b></span>`,
-      w ? `<span class="chip"><b>${w.low}°/${w.high}°F</b> ${w.windDir} ${w.wind} mph${w.precip ? ' · ' + w.precip : ''}</span>` : '',
+      `<span class="chip"><b>${WT.dateLabel(Math.min(st.day, 91))}</b> · ${st.slot === 'morning' ? 'Morning' : 'Evening'}</span>`,
+      w ? `<span class="chip"><b>${w.low}°/${w.high}°</b> wind ${w.windDir}</span>` : '',
+      `<span class="chip">Tags <b>${st.tags.buck ? 'Buck' : st.tags.buckFilled ? 'Buck ✓' : '<span class="warn">no buck</span>'} · ${st.tags.doe} doe</b></span>`,
       `<span class="chip">Lv <b>${st.level}</b> <span class="xpbar" title="${st.xp} / ${need} XP"><i style="width:${Math.min(100, (100 * st.xp) / need)}%"></i></span></span>`,
-      `<span class="chip">Tags: <b>${tags}</b></span>`,
     ].join('');
   };
 
@@ -275,29 +272,17 @@
 
   UI.screens.lodge = function (el) {
     const st = S();
-    const nav = [['shop', 'Shop'], ['inventory', 'Inventory'], ['land', 'Land'], ['skills', 'Skills' + (st.skillPts ? ' (' + st.skillPts + ')' : '')], ['trophies', 'Trophies'], ['hitlist', 'Hit List']];
+    const nav = [['shop', 'Shop'], ['inventory', 'Gear' + (st.skillPts ? ' •' : '')], ['land', 'Land'], ['trophies', 'Trophies'], ['hitlist', 'Hit List']];
+    const sun = WT.sunTimes(st.day);
+    const needTag = !st.tags.buck && !st.tags.buckFilled;
     el.innerHTML = UI.stage(240, 135, `
-      <div class="ov lov" style="left:8px;top:8px"><button class="btn ghost" data-go="shop">Shop</button></div>
-      <div class="ov lov" style="right:8px;top:8px"><button class="btn ghost" data-go="inventory">Inventory</button></div>
-      <div class="ov lov" style="left:8px;top:50%;transform:translateY(-50%);flex-direction:column"><button class="btn ghost" data-go="land">Land</button><button class="btn ghost" data-go="skills">${nav[3][1]}</button></div>
-      <div class="ov lov" style="left:8px;bottom:8px"><button class="btn ghost" data-go="trophies">Trophies</button></div>
-      <div class="ov lov" style="right:8px;bottom:8px"><button class="btn ghost" data-go="hitlist">Hit List</button></div>
-      <div class="ov" style="left:50%;bottom:8px;transform:translateX(-50%)"><button class="btn blaze big" data-go="map">Hunt</button></div>
-      <div class="ov lov" style="right:8px;top:50%;transform:translateY(-50%)"><button class="btn ghost small" data-menu>Menu</button></div>`) + `
-      <nav class="lodge-bar">${nav.map(([k, n]) => `<button class="btn" data-go="${k}">${n}</button>`).join('')}<button class="btn" data-menu>Menu</button></nav>
-      <div class="cols" style="margin-top:10px">
-        <section class="panel news"><h2>Notice board</h2>${st.news.slice(0, 7).map((n) => `<p class="${n.kind}"><span class="faint">${WT.dateLabel(Math.min(n.d, 91))}:</span> ${esc(n.text)}</p>`).join('')}</section>
-        <section class="panel"><h2>Today</h2>
-          <dl class="kv">
-            <dt>Weather</dt><dd>${esc(WT.weatherLine(st.weather))}</dd>
-            <dt>Rut</dt><dd>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</dd>
-            <dt>Sunrise</dt><dd>${WT.fmtTime(WT.sunTimes(st.day).rise)}</dd>
-            <dt>Sunset</dt><dd>${WT.fmtTime(WT.sunTimes(st.day).set)}</dd>
-            <dt>Tags</dt><dd>${st.tags.buck ? 'Buck tag in your wallet' : st.tags.buckFilled ? 'Buck tag filled' : '<span class="warn">No buck tag yet</span>'}, ${st.tags.doe} doe</dd>
-          </dl>
-          <p class="dim">Tap a mount on the wall in Trophies to see its score sheet. Wear blaze orange: it's rifle season.</p>
-        </section>
-      </div>`;
+      <div class="ov" style="left:50%;bottom:8px;transform:translateX(-50%)"><button class="btn blaze big" data-go="map">Hunt</button></div>`) + `
+      <nav class="lodge-bar">${nav.map(([k, n]) => `<button class="btn" data-go="${k}">${n}</button>`).join('')}<button class="btn ghost" data-menu aria-label="Menu">⋯</button></nav>
+      <section class="panel news" style="margin-top:10px">
+        <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
+        ${needTag ? '<p class="warn">You need a buck tag before you can shoot a buck. Get one at the Shop.</p>' : ''}
+        ${st.news.slice(0, 3).map((n) => `<p class="${n.kind}"><span class="faint">${WT.dateLabel(Math.min(n.d, 91))}:</span> ${esc(n.text)}</p>`).join('')}
+      </section>`;
     el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => UI.go(b.dataset.go, b.dataset.go === 'map' ? { mode: 'hunt' } : undefined)));
     el.querySelectorAll('[data-menu]').forEach((b) => b.addEventListener('click', UI.menu));
     const canvas = $('canvas', el);
@@ -313,15 +298,17 @@
     UI.modal(`<h2>Menu</h2>
       <p class="dim">The game saves itself after every hunt and purchase on this device.</p>
       <dl class="kv"><dt>World seed</dt><dd>${st.seed}</dd><dt>Hunts</dt><dd>${st.stats.hunts}</dd><dt>Hours on stand</dt><dd>${Math.round(st.stats.hours)}</dd><dt>Deer seen</dt><dd>${st.stats.seen}</dd><dt>Shots / misses</dt><dd>${st.stats.shots} / ${st.stats.misses}</dd></dl>
+      <div class="row"><button class="btn" id="tut">How to read the map</button></div>
       <h3>Start over</h3>
       <div class="row"><button class="btn" id="newg">New world</button><span class="dim" id="newq"></span></div>
       <div class="row" style="margin-top:12px"><button class="btn ghost" id="cl">Close</button></div>`, (m) => {
       let armed = false;
       $('#newg', m).addEventListener('click', () => {
         if (!armed) { armed = true; $('#newq', m).innerHTML = '<span class="warn">This erases your save. Press again to confirm.</span>'; return; }
-        WT.wipeSave(); WT.newGame(); WT.save(); UI.go('lodge');
+        WT.wipeSave(); WT.newGame(); WT.save(); UI.go('lodge'); UI.mapTutorial();
       });
       $('#cl', m).addEventListener('click', UI.closeModal);
+      $('#tut', m).addEventListener('click', () => UI.mapTutorial());
     });
   };
 
@@ -422,7 +409,7 @@
     const lo = st.loadout;
     const plan = WT.sitPlan({ session: st.slot, standType: 'ladder', clothing: lo.clothing, equip: lo.equip, pack: {} });
     el.innerHTML = UI.stage(240, 135) + `
-      <section class="panel" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h2>Inventory</h2><button class="btn small" data-back>Back to lodge</button></div>
+      <section class="panel" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h2>Gear</h2><button class="btn small" data-back>Back to lodge</button></div>
         <p>Total warmth <b>${Math.round(plan.outfit.warmth)}</b>: comfortable down to about <b>${plan.comfortable}°F</b>. This ${st.slot} will feel like <b>${plan.effTemp}°F</b> on a ladder stand.
           ${plan.blazeOk ? '<span class="good">Blaze orange: OK.</span>' : '<span class="bad">No blaze orange showing. Required in rifle season.</span>'}</p>
         <div id="outfit">${UI.outfitEditor(lo)}</div>
@@ -431,7 +418,11 @@
           <div><h3>Pack (consumables)</h3>${C().consumables.filter((c) => (c.fuel ? inv.propane : inv.consum[c.id])).map((c) => `<p>${esc(c.name.replace(/ \(1 use\)/, ''))}: ${c.fuel ? inv.propane : inv.consum[c.id]}</p>`).join('') || '<p class="faint">Empty.</p>'}</div>
           <div><h3>In your truck</h3>${Object.entries(inv.stands).filter(([, n]) => n > 0).map(([id, n]) => `<p>${esc(WT.standType(id).name)} ×${n}</p>`).join('') || ''}${Object.entries(inv.cameras).filter(([, n]) => n > 0).map(([id, n]) => `<p>${esc(WT.camType(id).name)} ×${n}</p>`).join('')}${inv.equipment.some((e) => WT.equip(e).cat === 'light') ? `<p class="dim">Light battery: ${inv.lightCharge} hunts left</p>` : ''}</div>
         </div>
+        <h3>Skills${st.skillPts ? ` · <span class="good">${st.skillPts} point${st.skillPts === 1 ? '' : 's'} to spend</span>` : ''}</h3>
+        <div class="list">${Object.entries(C().skills).map(([k, sk]) => `<div class="item"><div><span class="nm">${esc(sk.name)}</span> <span class="dim">${st.skills[k]} / ${C().progression.skillMax}</span></div>
+          <button class="btn small" data-sk="${k}" ${st.skillPts && st.skills[k] < C().progression.skillMax ? '' : 'disabled'}>+1</button><div class="st">${esc(sk.desc)}</div></div>`).join('')}</div>
       </section>`;
+    el.querySelectorAll('[data-sk]').forEach((b) => b.addEventListener('click', () => { WT.spendSkill(b.dataset.sk); WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); }));
     const canvas = $('canvas', el);
     const draw = (t) => {
       const ctx = canvas.getContext('2d'); ctx.imageSmoothingEnabled = false;
@@ -465,7 +456,9 @@
     if (!ok) { WT.newGame(); WT.save(); }
     $('#waitBtn').addEventListener('click', UI.wait);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#modal').hidden) UI.closeModal(); });
+    S().settings = S().settings || { hand: 'right' };
     UI.go('lodge');
+    if (!S().settings.tutMap && UI.mapTutorial) UI.mapTutorial();
     if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(() => { WT.save(); return {}; }); } catch (e) { /* not in a viewer */ } }
   };
 })();
