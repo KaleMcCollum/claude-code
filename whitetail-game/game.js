@@ -141,7 +141,16 @@
     rotateListings();
     st.weather = rollWeather(0, null, rng);
     st.cropDay = rng.int(C().land.crops.offDay[0], C().land.crops.offDay[1]);
-    news(`Welcome to the Home Place: ${home.acres} acres of your own. Buy a buck tag at the shop, check your gear, then press HUNT.`);
+    // A new game opens in the off-season: sign is on the ground to scout, plots can be laid out and planted, and
+    // stands and cameras can be set up without losing days. It ends with your first hunt or the first day you wait.
+    {
+      const carried = [];
+      for (const p of world.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: Math.max(1.5, deer.age - 1), pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
+      st.sheds = []; layDownSign(carried);
+      st.scoutLeft = C().scouting.searches; st.plantingOpen = true;
+    }
+    news('It is the off-season. Before opening day you can scout for sign (5 searches), lay out and plant food plots, and put up stands and cameras without losing any days. It ends when you first hunt or wait.', 'good');
+    news(`Welcome to the Home Place: ${home.acres} acres of your own. Scout it, set it up, buy a buck tag at the Shop, then press HUNT.`);
     news('Rifle season runs Oct 1 to Dec 31 this year.');
     news('Tip: the first week of October is mild, so your starter clothes are fine for now. After the first cold front (around Oct 8) you will need a jacket, bibs, boots and a hat to sit more than a few minutes.');
     return st;

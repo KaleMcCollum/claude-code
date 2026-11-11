@@ -302,6 +302,7 @@
       <section class="panel news" style="margin-top:22px">
         <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
         ${st.day < 0 ? `<p class="good">Early archery season: bow only until Oct 1. ${WT.hasBow() ? 'Your bow is equipped.' : 'Equip your bow under Gear to hunt, or press Wait.'}</p>` : ''}
+        ${WT.offseason() ? `<p><b>Off-season.</b> <span class="dim">Scout, plant and set up for free. Opening day comes with your first hunt${st.year === 1 ? '' : ' or wait'}.</span></p>` : ''}
         ${WT.offseason() && st.scoutLeft > 0 ? `<p class="good">Off-season: ${st.scoutLeft} scouting search${st.scoutLeft === 1 ? '' : 'es'} left. <button class="btn small" data-scout>Scout the map</button></p>` : ''}
         ${WT.plantingOpen() && WT.plotSites().some((x) => !x.plot.planted) ? '<p class="good">Spring planting is open until your first hunt. <button class="btn small" data-planting>Choose your crops</button></p>' : ''}
         ${needTag ? '<p class="warn">You need a buck tag before you can shoot a buck. Get one at the Shop.</p>' : ''}
@@ -326,6 +327,7 @@
       <p>You hunt whitetails from October 1 to December 31, one morning or evening sit at a time. Then winter passes, every deer on the map gets a year older, and you do it again.</p>
       <p><b>Money</b> comes from deer you tag (bigger antlers pay more, a doe pays ${WT.money(WT.CONFIG.economy.doePayout)}), from leveling up, and ${WT.money(WT.CONFIG.economy.newDeerCash)} for each deer you add to your hit list. Nothing is charged when a year passes.</p>
       <p><b>You need a tag</b> for what you shoot: a buck tag for an antlered deer, a doe tag for anything without antlers. Shoot the wrong one and the DNR takes it (no pay, no mount, no fine).</p>
+      <p><b>A new game opens in the off-season.</b> Use it: scout your land for sign, lay out and plant a food plot if you can afford one, and put up stands and cameras while it costs no days. It ends the moment you hunt or wait.</p>
       <p><b>A turn:</b> Shop if you need something → Hunt → pick a stand → pack → sit. <b>Wait</b> (top right) skips a morning or evening.</p>`],
     ['deer', 'The deer', () => `
       <p>Every deer is its own animal with an age, a body and antlers that grow from its own genes. Nothing is rolled when you pull the trigger: the buck you see is the buck you get.</p>

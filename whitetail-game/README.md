@@ -4,6 +4,7 @@ An 8-bit, mostly text-based whitetail hunting game set in North Dakota-style cou
 
 ## How to play
 
+0. **A new game opens in the off-season**: five scouting searches, spring planting, and free setup of stands and cameras before opening day.
 1. **The lodge** is home. It's a big view of your hunter, wearing exactly what you have equipped and holding your rifle.
 2. **Shop** (the only place you buy anything) for tags, clothes, optics, calls, stands, trail cameras and consumables. The only way to earn money is to kill deer, so every hunt costs a little and gear takes saving up for.
 3. **HUNT** opens the map. The map colors the four kinds of ground: tan prairie, green timber, gold farm fields (pale once the crops are off), gray-green swamp, plus blue water, gray roads and bright green for your food plots. Your land has a blue outline, public land green, permission land gold; land you can't hunt is dimmed. The **?** button explains the map, the **Guide** button at the lodge explains how everything in the game works, and the **Best bets** list ranks your stands by what you've learned and today's wind. You can hunt:
