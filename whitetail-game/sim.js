@@ -1035,6 +1035,8 @@
     // stand placement: mature bucks care about the mature rating
     const place = d.sex === 'b' && d.age >= 3.5 ? (ctx.place * 0.4 + (ctx.matureRating ?? ctx.place) * 0.6) : ctx.place;
     p *= 0.4 + 1.2 * clamp(place ?? 0.5);
+    p *= ctx.spotMult ?? 1;                                              // how good the stand is, and how good today is for it
+    if (antlered && d.age >= 3.5) p *= ctx.matureMult ?? 1;               // old bucks show where the big-buck rating is high
     p *= d.tOP / 0.6;
     p *= ctx.viewShare ?? 1;
     const hrs = ctx.hours ?? 4;

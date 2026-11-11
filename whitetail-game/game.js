@@ -1244,6 +1244,12 @@
     const factor = windF * dayF * sesF * presF;
     return { factor, stars: Math.max(1, Math.min(5, Math.floor(factor / 0.18))), windOk, windNear, windF, dayF, sesF, presF };
   };
+  // Deer multipliers from the stand's rating and today's stars, and for old bucks from the big-buck rating.
+  WT.spotMult = function (s, today) {
+    const m = C().sightMult, r = WT.standTraits(s).rating / 100, f = today ? today.factor : 0.6;
+    return (m.ratingBase + m.ratingGain * Math.pow(r, m.ratingPow)) * (m.starBase + m.starGain * f) / m.norm;
+  };
+  WT.matureMult = function (s) { const m = C().sightMult; return (m.matureBase + m.matureGain * Math.pow(clamp(s.r.mature), m.maturePow)) * m.matureLift; };
   // How far out deer show from a stand: timber is 20 to 200 yards, open country 150 to 500.
   // The stand's setting in words: where it is and what it touches.
   WT.settingOf = function (x, y) {
@@ -1334,7 +1340,10 @@
 
     const ctx = {
       pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * WT.warmWater(stand) * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
-      tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1) * (/Pre|Seek|Peak/.test(rut.name) && WT.scrapeNear(setup.pid, stand.x, stand.y) ? C().scouting.scrapeRut : 1), // early archery: deer haven't been hunted yet place: rating, matureRating: stand.r.mature,
+      // early archery: deer haven't been hunted yet. A scrape touching the stand is worked in the rut.
+      tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1) * (/Pre|Seek|Peak/.test(rut.name) && WT.scrapeNear(setup.pid, stand.x, stand.y) ? C().scouting.scrapeRut : 1),
+      place: 0.5, matureRating: 0.5, // neutral: the stand's worth comes through the two multipliers below
+      spotMult: WT.spotMult(stand, today), matureMult: WT.matureMult(stand),
       hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
     const herd = d.herd;
