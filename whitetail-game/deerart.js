@@ -263,7 +263,7 @@
   WT.rackPointList = function (comp) {
     return comp.sides.map((S, si) => {
       const typical = S.names.filter((n) => (S.tines[n] || 0) >= 1);
-      const abn = comp.abn.filter((a) => a.side === si && a.len >= 1 && (!a.on || typical.includes(a.on)));
+      const abn = comp.abn.filter((a) => a.side === si && a.len >= 1 && (!a.on || a.on === 'beam' || typical.includes(a.on)));
       return { typical, abn, points: 1 + typical.length + abn.length };
     });
   };
@@ -331,7 +331,7 @@
     // the rest of the abnormal points
     list.abn.filter((a) => a.type !== 'extra').forEach((a, k) => {
       const flip = jit(k + 7) > 0 ? 1 : -1;
-      const el = { kind: 'abn', name: a.type, type: a.type, len: a.len, on: a.on, w0: clamp(0.5 + a.len * 0.045, 0.55, 0.95) * (a.type === 'drop' ? 1.25 : 1) };
+      const el = { kind: 'abn', name: a.type, type: a.type, len: a.len, on: a.on, w0: clamp(0.5 + a.len * 0.045, 0.55, 0.95) * (a.type === 'drop' ? 1.25 : a.type === 'split' ? 1.35 : 1) };
       if (a.on) {
         // off a tine: needs that tine's final line, so it is resolved at draw time
         el.candidates = (byName) => {
@@ -476,7 +476,7 @@
     // tines from the outside in, then brows, then abnormal points
     const rank = (e) => (e.kind === 'tine' || e.name === 'extra' ? 0 : e.kind === 'brow' ? 1 : 2);
     for (const pass of [0, 1, 2]) for (const s of sides) {
-      const byName = (nm) => s.els.find((e) => e.name === nm && e.pts && (e.kind === 'tine' || e.kind === 'brow'));
+      const byName = (nm) => s.els.find((e) => e.name === nm && e.pts && (e.kind === 'tine' || e.kind === 'brow' || (nm === 'beam' && e.kind === 'beam')));
       for (const e of s.els.slice(1)) {
         if (rank(e) !== pass || e.len < minLen) continue;
         e.id = nextId++; e.side = s.sgn;

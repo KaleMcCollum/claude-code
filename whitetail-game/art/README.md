@@ -12,4 +12,5 @@ the palette there was sampled from the reference.
 
 - `vs-reference.png`: the reference next to generated bucks at the same scale (only when the reference is present; also ignored by git)
 - `racks.png`: random bucks by age, labelled with points and gross score
+- `split-tines.png`: forked G2s and G3s, split brows, forked beam tips
 - `non-typicals.png`, `bodies.png`, `levels-of-detail.png`, `same-buck-by-age.png`

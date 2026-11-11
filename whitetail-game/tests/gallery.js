@@ -91,6 +91,23 @@ const refFile = path.join(__dirname, '..', 'art', 'style-reference.png');
   sheet.save(path.join(OUT, 'non-typicals.png'));
 }
 
+// 3b. split tines: forked G2s and G3s, split brows, forked beam tips
+{
+  const k = 4, cw = 88 * k, ch = 92 * k + 18;
+  const sheet = new Sheet(6 * cw, 2 * ch, BG);
+  const want = ['G2', 'G2', 'G3', 'G1', 'beam', 'G2', 'G3', 'G2', 'beam', 'G1', 'G3', 'G2'];
+  let n = 0;
+  for (let seed = 12000; n < 12 && seed < 16000; seed++) {
+    const d = makeBuck(seed, 5.5, 138 + (n % 6) * 8, { lw: 245 });
+    const sp = WT.unpackRack(d.rack).abn.filter((a) => a.type === 'split');
+    if (d.sheet.isNT || !sp.some((a) => a.on === want[n])) continue;
+    sheet.blit(WT.deerSprite(d, { lod: 0, frame: 'bust', day: 40 }), (n % 6) * cw, Math.floor(n / 6) * ch, k);
+    sheet.text(`${d.sheet.pointsL}x${d.sheet.pointsR} ${Math.round(d.sheet.gross)}" ${[...new Set(sp.map((a) => (a.on === 'beam' ? 'B' : a.on)))].join(' ')}`, (n % 6) * cw + 8, Math.floor(n / 6) * ch + 92 * k, [60, 40, 30], 2);
+    n++;
+  }
+  sheet.save(path.join(OUT, 'split-tines.png'));
+}
+
 // 4. bodies: the three buck bodies, doe and fawn (bust and full), and every level of detail
 {
   const k = 4;

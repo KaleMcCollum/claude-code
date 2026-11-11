@@ -698,6 +698,13 @@
     else if (sheet && sheet.spread < 13) extras.push('inside the ears');
     const g2 = sheet ? Math.max(sheet.sides[0].tines.G2 || 0, sheet.sides[1].tines.G2 || 0) : 0;
     if (g2 >= 9) extras.push('tall tines');
+    if (sheet) {
+      // forks and drops are the kind of thing you notice
+      const shown = WT.rackPointList(sheet).flatMap((x) => x.abn);
+      const splits = [...new Set(shown.filter((a) => a.type === 'split').map((a) => (a.on === 'G1' ? 'brow' : a.on === 'beam' ? 'beam tip' : a.on)))];
+      if (splits.length) extras.push(level >= 4 ? 'split ' + splits.join(' and ') : 'a split tine');
+      if (shown.some((a) => a.type === 'drop')) extras.push('a drop tine');
+    }
     if (deer.nt) extras.push('some junk points');
     if (level === 3) {
       // point range of 2-3 that always includes the truth

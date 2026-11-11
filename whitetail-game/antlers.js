@@ -163,6 +163,27 @@
       else if (q === 'sticker') addAbn('sticker', si, 1 + sz * 2.5, { u: 0.3 });
       else if (q === 'burr') addAbn('burr', si, 1 + sz * 1.6, { ang: 0.6 });
     }
+    // Split tines: a trait some bucks carry for life once they grow into it. Forked G2s are the most
+    // common, then G3s, split brows and forked ("crab claw") beam tips; some match on both sides.
+    {
+      const sp = WT.makeRng((style.seed | 0) + 61);
+      const roll = sp.next(), onset = sp.pick([2.5, 3.5, 3.5, 4.5]), both = sp.next() < 0.36, sidePick = sp.next() < 0.5 ? 0 : 1;
+      const frac = sp.range(0.26, 0.46), at = sp.range(0.64, 0.8), twoTines = sp.next() < 0.16;
+      const S = WT.CONFIG && WT.CONFIG.deer.splitTines ? WT.CONFIG.deer.splitTines : { G2: 0.09, G3: 0.05, G1: 0.025, beam: 0.025 };
+      const target = roll < S.G2 ? 'G2' : roll < S.G2 + S.G3 ? 'G3' : roll < S.G2 + S.G3 + S.G1 ? 'G1' : roll < S.G2 + S.G3 + S.G1 + S.beam ? 'beam' : null;
+      const fork = (on, si) => {
+        const sd = comp.sides[si];
+        if (on !== 'beam' && !sd.names.includes(on)) return;
+        const baseLen = on === 'beam' ? sd.beam * 0.24 : sd.tines[on];
+        if (baseLen < (on === 'G1' ? 2.6 : 3.5)) return; // too short to fork
+        if (abn.some((a) => a.type === 'split' && a.on === on && a.side === si)) return;
+        addAbn('split', si, clamp(baseLen * frac, 1.3, 5), { on, at: on === 'beam' ? 0.86 : at });
+      };
+      if (target && age >= onset) {
+        for (const si of both ? [0, 1] : [sidePick]) fork(target, si);
+        if (twoTines && target === 'G2') fork('G3', sidePick);
+      }
+    }
     if (isNT) {
       const kinds = age >= 5.5 ? ['drop', 'sticker', 'kicker', 'split', 'burr', 'extra', 'sticker', 'kicker'] : ['sticker', 'kicker', 'split', 'burr', 'extra', 'sticker'];
       let count = ar.int(2, 8);
@@ -325,10 +346,10 @@
       comp.abn.filter((ab) => ab.side === si).forEach((ab) => {
         let base, dir0, bend, r0;
         if (ab.on) {
-          const t = side.tines.find((x) => x.name === ab.on);
+          const t = ab.on === 'beam' ? side.beam : side.tines.find((x) => x.name === ab.on);
           if (!t) return;
           const a = along(t.pts, ab.at);
-          const tr = t.r[Math.min(10, Math.round(ab.at * 10))];
+          const tr = t.r[Math.min(t.r.length - 1, Math.round(ab.at * (t.r.length - 1)))];
           if (ab.type === 'split') { dir0 = norm(add(a.tan, mul([0, 0, 1], 0.9))); bend = mul([sgn, 0, 0], 0.2); }
           else if (ab.type === 'kicker') { dir0 = norm(add(add(mul([sgn, 0, 0], 1), mul([0, 0, -1], 0.7)), mul([0, 1, 0], 0.2))); bend = mul([0, 1, 0], 0.3); }
           else { dir0 = norm(add(mul([sgn, 0, 0], 1), mul([0, 0, 1], 0.4))); bend = mul([0, 1, 0], 0.4); }
