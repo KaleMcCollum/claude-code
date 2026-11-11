@@ -81,7 +81,7 @@
   /* ================================================================ HUNT SCENE */
   const SCENE = {
     corn: ['#b8a056', '#a48e4a'], soy: ['#a8884a', '#987a42'], stubble: ['#c6b06e', '#b8a262'], grass: ['#a88e50', '#9a8248'], plot: ['#5e9a3e', '#54903a'],
-    timber: ['#5e4a34', '#4e3e2c'], snow: ['#e8e4dc', '#d8d4cc'], slough: ['#8a7c48', '#7a6e40'],
+    timber: ['#96894e', '#887b45'], snow: ['#e8e4dc', '#d8d4cc'], slough: ['#8a7c48', '#7a6e40'],
   };
   function groundColors(H) {
     const day = S().day, c = H.cover;
