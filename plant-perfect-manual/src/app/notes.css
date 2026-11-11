@@ -391,8 +391,14 @@
     padding: 10px 0;
   }
 
+  /* On a phone the count always sits under the date, so every row reads the same. */
   .day-list li {
+    display: block;
     padding: 12px 2px;
+  }
+
+  .day-list li span {
+    display: block;
   }
 
   .day-nav {
