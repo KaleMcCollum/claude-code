@@ -581,7 +581,7 @@
   WT.DIRS = DIRS;
   function spotRatings(world, x, y) {
     const { W, H, cover, travel, distRoad } = world;
-    let fW = 0, bW = 0, wW = 0, tot = 0, open = 0, openN = 0, tv = 0, tvN = 0, vx = 0, vy = 0;
+    let fW = 0, bW = 0, wW = 0, tot = 0, open = 0, openN = 0, tv = 0, tvN = 0, vx = 0, vy = 0, plotN = 0;
     const R = 7;
     for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
       const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
@@ -589,7 +589,7 @@
       const i = yy * W + xx, c = COVER[cover[i]], wgt = 1 / (1 + d * 0.5);
       fW += c.f * wgt; bW += c.b * wgt; wW += c.w * wgt; tot += wgt;
       if (d <= 4) { open += 1 - c.c; openN++; }
-      if (d <= 2.5) { tv += travel[i]; tvN++; }
+      if (d <= 2.5) { tv += travel[i]; tvN++; if (cover[i] === T.PLOT) plotN++; }
       if (d > 0) { const pull = (c.f + c.b) * wgt; vx += (dx / d) * pull; vy += (dy / d) * pull; }
     }
     const food = clamp(fW / tot * 1.6), bed = clamp(bW / tot * 1.5), wat = clamp(wW / tot * 4);
@@ -599,7 +599,7 @@
     const jit = (k) => (hash2(x, y, world.seed + k) - 0.5) * 0.18;
     const r = {
       morning: clamp(0.38 * bed + 0.34 * trav + 0.18 * depth + 0.1 * wat - 0.12 * Math.max(0, food - 0.7) + 0.08 + jit(1)),
-      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2)),
+      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2) + 0.08 * Math.min(1, plotN / 4)), // a grown food plot right at the stand is a destination
       rut: clamp(0.5 * trav + 0.3 * bed + 0.15 * food + 0.08 + jit(3)),
       mature: clamp(0.45 * trav + 0.3 * depth + 0.2 * bed - 0.15 * Math.max(0, vis - 0.7) + jit(4)),
       water: wat,

@@ -46,7 +46,7 @@
     const hh = ph.hour % 12 || 12, ap = ph.hour >= 12 ? 'PM' : 'AM';
     const known = WT.hitEntry(ph.snap.k);
     const tag = known && ph.q >= 0.45 ? `<span class="good">Hit list: ${esc(known.name || 'unnamed deer')}</span> · ` : '';
-    return `<figure class="photo">${canvasHtml(id, 160, 90)}<figcaption class="faint" style="font-size:15px;padding:2px 4px">${tag}${ph.read ? `<span class="dim">${esc(ph.read)}</span><br>` : ''}${WT.dateLabel(ph.d)} Yr ${ph.y} · ${hh}:${String((ph.d * 7 + ph.hour * 13) % 60).padStart(2, '0')} ${ap} · ${esc(WT.camType(ph.camType).name)}</figcaption></figure>`;
+    return `<figure class="photo">${canvasHtml(id, 160, 90)}<figcaption class="faint" style="font-size:15px;padding:2px 4px">${tag}${ph.read ? `<span class="dim">${esc(ph.read)}</span><br>` : ''}${WT.dateLabel(ph.d)} Yr ${ph.y} · ${hh}:${String((ph.d * 7 + ph.hour * 13) % 60).padStart(2, '0')} ${ap} · ${esc(WT.camType(ph.camType).name)}${ph.at ? ` · at ${esc(ph.at)}` : ''}</figcaption></figure>`;
   }
 
   /* ================================================================ SCORE SHEET */

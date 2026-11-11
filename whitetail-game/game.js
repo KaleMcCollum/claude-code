@@ -226,6 +226,7 @@
     // reapply ownership + tile modifications
     for (const p of G.world.parcels) { const d = st.parcels[p.id]; if (d) p.owner = d.owner; }
     applyTileMods();
+    refreshStands();
     // repair saves from before the dispersal fix: antlered bucks that never grew a rack
     for (const p of G.world.parcels) {
       const d = st.parcels[p.id];
@@ -263,6 +264,18 @@
     for (const p of w.parcels) p.habitat = WT.tileHabitat(w, p.id, { sanctuary: new Set(S().parcels[p.id].sanctuary || []) });
   }
   function setTile(i, t) { G.world.cover[i] = t; S().tileMods[i] = t; }
+  // A stand's rating is read off the ground around it, so anything you plant, dig or grow nearby counts.
+  // Call after the ground changes (and on load, for saves where a plot went in after the stand).
+  function refreshStands() {
+    const w = G.world, st = S();
+    for (const p of w.parcels) {
+      const d = st.parcels[p.id];
+      for (const s of [...(d.stands || []), ...(d.spots || [])]) { s.r = WT.spotRatings(w, s.x, s.y); delete s._traits; }
+    }
+  }
+  WT.refreshStands = refreshStands;
+  const rememberCover = (d, i) => { d.prev = d.prev || {}; if (d.prev[i] === undefined) d.prev[i] = G.world.cover[i]; };
+  const restoreCover = (d, i) => { setTile(i, d.prev && d.prev[i] !== undefined ? d.prev[i] : T().PASTURE); if (d.prev) delete d.prev[i]; };
 
   /* ================================================================ news */
   function news(text, kind) {
@@ -445,6 +458,61 @@
     st.inv.stands[s.type] = (st.inv.stands[s.type] || 0) + 1;
     return null;
   };
+  // Move a stand you already have up. Costs the same $50 labor for a permanent stand; what you learned stays behind.
+  WT.moveStand = function (pid, sid, x, y) {
+    const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
+    const s = d.stands.find((z) => z.sid === sid); if (!s) return 'No stand.';
+    if (i < 0 || w.parcelOf[i] !== pid) return 'Pick a spot inside your property line.';
+    if (!standableTile(w.cover[i])) return "Can't put a stand there.";
+    if (d.stands.some((z) => z !== s && Math.abs(z.x - x) + Math.abs(z.y - y) < 3)) return 'Too close to another stand.';
+    if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
+    if (WT.standType(s.type).kind === 'permanent') { if (st.cash < 50) return 'Moving a permanent stand costs $50 in labor.'; st.cash -= 50; ledger('Land work', -50); }
+    const n = makeStand(s.type, x, y, s.name);
+    Object.assign(s, { x, y, r: n.r, sits: 0, seen: 0, pressure: 0, sessions: {}, recent: [], noise: n.noise, tree: undefined });
+    delete s._traits;
+    return null;
+  };
+  WT.moveCamera = function (pid, cid, x, y) {
+    const d = S().parcels[pid], w = G.world, i = tileAt(x, y);
+    const c = d.cams.find((z) => z.cid === cid); if (!c) return 'No camera.';
+    if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a spot inside your property.';
+    c.x = x; c.y = y;
+    return null;
+  };
+  // Take out an improvement on this tile and put the ground back the way it was. No refund.
+  WT.removeImprovement = function (pid, x, y) {
+    const d = S().parcels[pid], w = G.world, i = tileAt(x, y);
+    if (d.owner !== 'player') return 'Only on your land.';
+    const pl = d.plots.find((q) => q.tiles.includes(i)), tr = d.trees.find((q) => q.tiles.includes(i)), wh = d.waterholes.indexOf(i);
+    if (pl) { pl.tiles.forEach((k) => restoreCover(d, k)); d.plots = d.plots.filter((q) => q !== pl); }
+    else if (tr) { tr.tiles.forEach((k) => restoreCover(d, k)); d.trees = d.trees.filter((q) => q !== tr); }
+    else if (wh >= 0) { restoreCover(d, i); d.waterholes.splice(wh, 1); }
+    else return 'Nothing you built is on that spot.';
+    WT.computeDerivedLayers(w); refreshStands();
+    return null;
+  };
+  // Everything on (or right at) a spot: things within one tile of each other count as the same setup.
+  const NEAR = (a, x, y) => Math.abs(a.x - x) <= 1 && Math.abs(a.y - y) <= 1;
+  WT.camsAtStand = (pid, s) => (S().parcels[pid].cams || []).filter((c) => NEAR(c, s.x, s.y));
+  WT.tileInfo = function (pid, x, y) {
+    const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y), TT = T();
+    const pick = (list) => (list || []).find((a) => a.x === x && a.y === y) || (list || []).find((a) => NEAR(a, x, y));
+    const stand = d.owner === 'public' ? pick(d.spots) : pick(d.stands);
+    const cam = d.owner === 'player' ? pick(d.cams) : null;
+    const plotOf = (k) => (d.plots || []).find((q) => q.tiles.includes(k));
+    let nearPlot = null, nearWater = false;
+    for (let dy = -2; dy <= 2 && i >= 0; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const k = tileAt(x + dx, y + dy); if (k < 0) continue;
+      const c = w.cover[k];
+      if (c === TT.PLOT || c === TT.PLOT_NEW) nearPlot = nearPlot && nearPlot.ready ? nearPlot : { ready: c === TT.PLOT, plot: plotOf(k) };
+      if (c === TT.POND || c === TT.WATER || c === TT.CREEK) nearWater = true;
+    }
+    return {
+      i, cover: i >= 0 ? WT.COVER[w.cover[i]].name : '', stand, cam,
+      plot: plotOf(i), trees: (d.trees || []).find((q) => q.tiles.includes(i)), waterhole: (d.waterholes || []).includes(i),
+      sanctuary: (d.sanctuary || []).includes(i), nearPlot, nearWater, buildable: i >= 0 && w.parcelOf[i] === pid && standableTile(w.cover[i]),
+    };
+  };
   WT.placeCamera = function (pid, type, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'player') return 'Cameras go on your own land.';
@@ -481,9 +549,9 @@
     const cost = Math.round(pt.cost * acres);
     if (st.cash < cost) return `Seed, fertilizer and equipment rental run ${WT.money(cost)}.`;
     st.cash -= cost; ledger('Land work', -cost);
-    tiles.forEach((i) => setTile(i, TT.PLOT_NEW));
+    tiles.forEach((i) => { rememberCover(d, i); setTile(i, TT.PLOT_NEW); });
     d.plots.push({ type: typeId, acres, tiles, year: st.year, quality: null });
-    WT.computeDerivedLayers(w);
+    WT.computeDerivedLayers(w); refreshStands();
     news(`Planted ${acres} acre${acres > 1 ? 's' : ''} of ${pt.name.toLowerCase()}. It will be ready next season.`);
     return null;
   };
@@ -494,8 +562,8 @@
     if (d.waterholes.length >= WT.limits(pid).waterholes) return 'Water hole limit reached.';
     const cost = C().improvements.waterhole.cost;
     if (st.cash < cost) return `A dozer and liner cost ${WT.money(cost)}.`;
-    st.cash -= cost; ledger('Land work', -cost); setTile(i, TT.POND); d.waterholes.push(i);
-    WT.computeDerivedLayers(w);
+    st.cash -= cost; ledger('Land work', -cost); rememberCover(d, i); setTile(i, TT.POND); d.waterholes.push(i);
+    WT.computeDerivedLayers(w); refreshStands();
     return null;
   };
   WT.plantTrees = function (pid, x, y, vertical) {
@@ -513,9 +581,9 @@
     if (tiles.length < 3) return 'Not enough open ground in a row there.';
     if (st.cash < cost) return `Seedlings and fabric cost ${WT.money(cost)}.`;
     st.cash -= cost; ledger('Land work', -cost);
-    tiles.forEach((i) => setTile(i, TT.YOUNGTREES));
+    tiles.forEach((i) => { rememberCover(d, i); setTile(i, TT.YOUNGTREES); });
     d.trees.push({ tiles, year: st.year });
-    WT.computeDerivedLayers(w);
+    WT.computeDerivedLayers(w); refreshStands();
     return null;
   };
   WT.toggleSanctuary = function (pid, x, y) {
@@ -1469,7 +1537,9 @@
       for (const cam of d.cams) {
         const ct = WT.camType(cam.type);
         const i = cam.y * G.world.W + cam.x;
-        const traffic = 0.25 + G.world.travel[i] * 0.9;
+        const onFood = WT.COVER[G.world.cover[i]].f >= 0.6 ? 0.35 : 0; // a camera on a plot or crop edge gets more pictures
+        const traffic = 0.25 + G.world.travel[i] * 0.9 + onFood;
+        const at = d.stands.find((z) => Math.abs(z.x - cam.x) <= 1 && Math.abs(z.y - cam.y) <= 1);
         for (const deer of d.herd) {
           if (deer.age < 1 && rng.chance(0.6)) continue;
           const p0 = 0.09 * ct.detect * traffic * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6;
@@ -1477,7 +1547,7 @@
           const night = deer.sex === 'b' && deer.age >= 3.5 ? rng.chance(0.85) : rng.chance(0.45);
           const dist = Math.round(rng.range(6, 28));
           const photo = { y: st.year, d: st.day, hour: night ? rng.pick([22, 23, 1, 2, 3, 4, 5]) : rng.pick([7, 8, 17, 18]), night, dist, yaw: rng.pick([-90, -60, -30, 30, 60, 90, 150, -150]),
-            pose: rng.pick(['walk', 'down', 'up', 'alert']), cam: cam.cid, camType: cam.type, pid: p.id, snap: WT.snapshot(deer) };
+            pose: rng.pick(['walk', 'down', 'up', 'alert']), cam: cam.cid, camType: cam.type, pid: p.id, snap: WT.snapshot(deer), sid: at ? at.sid : null, at: at ? (at.name || WT.standType(at.type).name) : null };
           photo.q = clamp((night ? ct.night : 0.95) * (1 - dist / 45));
           if (ct.cell) deliverPhoto(photo, deer);
           else { (cam.queue = cam.queue || []).push(photo); cam.pending = cam.queue.length; }
@@ -1492,16 +1562,18 @@
     d0.gross = photo.snap.gross; d0.nt = photo.snap.nt; d0.pL = photo.snap.pL; d0.pR = photo.snap.pR;
     photo.read = WT.judgeDeer(d0, photo.q >= 0.75 && !photo.night ? 4 : photo.q >= 0.45 ? 3 : 2, 1).text;
     st.photos.unshift(photo);
+    const camRec = (st.parcels[photo.pid].cams || []).find((c) => c.cid === photo.cam);
+    if (camRec) { camRec.total = (camRec.total || 0) + 1; if (!photo.night) camRec.dayN = (camRec.dayN || 0) + 1; if (photo.snap.sex === 'b' && photo.snap.rack) camRec.bucks = (camRec.bucks || 0) + 1; }
     const known = WT.hitEntry(photo.snap.k);
     if (known && known.name && photo.q >= 0.45) news(`Trail camera on ${G.world.parcels[photo.pid].name}: looks like "${known.name}" is still around.`, 'good');
     // a decent photo of a buck puts him on the hit list (images only, never numbers)
     if (deer && photo.q >= 0.45) WT.noteDeer(deer, { level: 3, pid: photo.pid, time: photo.hour, where: 'Trail camera, ' + G.world.parcels[photo.pid].name, dist: null, doing: 'on camera', kind: 'photo', photo });
   }
-  WT.checkCameras = function (pid) {
+  WT.checkCameras = function (pid, cid) {
     const st = S(), d = st.parcels[pid];
     let n = 0;
     for (const cam of d.cams) {
-      if (!cam.queue) continue;
+      if (!cam.queue || (cid && cam.cid !== cid)) continue;
       for (const ph of cam.queue) { const deer = d.herd.find((x) => x.id === ph.snap.k); deliverPhoto(ph, deer); n++; }
       cam.queue = []; cam.pending = 0;
     }
@@ -1549,7 +1621,7 @@
         if (!tr.mature && st.year + 1 - tr.year >= cfg.improvements.trees.matureYears) { tr.mature = true; tr.tiles.forEach((i) => setTile(i, TT.BELT)); summary.events.push(`A shelterbelt row on ${p.name} has grown into real cover.`); }
       }
     }
-    WT.computeDerivedLayers(w);
+    WT.computeDerivedLayers(w); refreshStands();
     // deer: yearly cycle for every property
     const winter = clamp(rng.normal(0.4, 0.2));
     const yearFactor = 1 + rng.range(-cfg.deer.yearlyVariance, cfg.deer.yearlyVariance);

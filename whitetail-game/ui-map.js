@@ -86,10 +86,10 @@
     const fitZoom = Math.min(LW / w.W, LH / w.H);
     const v = { cx: w.W / 2, cy: w.H / 2, z: fitZoom, sel: opts.sel ?? null, hover: null, tool: null };
     const clampView = () => {
-      v.z = Math.max(fitZoom, Math.min(28, v.z));
-      const hw = LW / 2 / v.z, hh = LH / 2 / v.z; // keep the map filling the view (no black edges)
-      v.cx = w.W > 2 * hw ? Math.max(hw, Math.min(w.W - hw, v.cx)) : w.W / 2;
-      v.cy = w.H > 2 * hh ? Math.max(hh, Math.min(w.H - hh, v.cy)) : w.H / 2;
+      v.z = Math.max(fitZoom * 0.75, Math.min(28, v.z));
+      // you can slide past the edge of the map, far enough to put any corner of it in the middle of the screen
+      v.cx = Math.max(0, Math.min(w.W, v.cx));
+      v.cy = Math.max(0, Math.min(w.H, v.cy));
     };
     v.focus = (pid, zoom) => { const p = w.parcels[pid]; v.cx = (p.minX + p.maxX + 1) / 2; v.cy = (p.minY + p.maxY + 1) / 2; v.z = zoom || Math.min(22, Math.min(LW / (p.maxX - p.minX + 12), LH / (p.maxY - p.minY + 12))); clampView(); draw(); };
     const toTile = (sx, sy) => [v.cx + (sx - LW / 2) / v.z, v.cy + (sy - LH / 2) / v.z];
@@ -124,6 +124,12 @@
         if (p !== r && p >= 0 | r >= 0) { const c = col(r); if (c) { ctx.fillStyle = c; ctx.fillRect(Math.round(X + v.z) - (bw >> 1), Math.round(Y), bw, Math.ceil(v.z)); } }
         if (p !== b && p >= 0 | b >= 0) { const c = col(b); if (c) { ctx.fillStyle = c; ctx.fillRect(Math.round(X), Math.round(Y + v.z) - (bw >> 1), Math.ceil(v.z), bw); } }
       }
+      // sanctuary: hatched so you can see where you promised not to go
+      if (v.z >= 3) for (const p of w.parcels) {
+        const d = st.parcels[p.id]; if (d.owner !== 'player' || !d.sanctuary.length) continue;
+        ctx.fillStyle = 'rgba(255,224,138,.38)';
+        for (const i of d.sanctuary) { const [X, Y] = toScreen(i % w.W, (i / w.W) | 0); const n = Math.max(2, Math.round(v.z / 3)); for (let k = 0; k < v.z; k += n * 2) ctx.fillRect(Math.round(X + k), Math.round(Y), n, Math.ceil(v.z)); }
+      }
       // labels
       ctx.font = '8px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
@@ -153,12 +159,19 @@
       for (const p of w.parcels) {
         const d = st.parcels[p.id];
         if (d.owner === 'player') {
-          for (const c of d.cams) mark(c.x, c.y, c.queue && c.queue.length ? '!' : '▪', '#1c1410', '#B8B4C8');
-          for (const s of d.stands) mark(s.x, s.y, STAND_LETTER[s.type] || '?', '#1c1410', v.sel === p.id && opts.selStand === s.sid ? '#ffe08a' : '#C4A688');
+          for (const s of d.stands) mark(s.x, s.y, STAND_LETTER[s.type] || '?', '#1c1410', '#C4A688');
+          for (const c of d.cams) {
+            // a camera on a stand's own tile rides on the stand marker as a corner badge
+            if (d.stands.some((s) => s.x === c.x && s.y === c.y)) {
+              const [X, Y] = toScreen(c.x + 0.5, c.y + 0.5), s = v.z >= 8 ? 11 : 8;
+              ctx.fillStyle = '#1c1410'; ctx.fillRect(Math.round(X + s / 2) - 3, Math.round(Y - s / 2) - 4, 7, 7);
+              ctx.fillStyle = c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8'; ctx.fillRect(Math.round(X + s / 2) - 2, Math.round(Y - s / 2) - 3, 5, 5);
+            } else mark(c.x, c.y, c.queue && c.queue.length ? '!' : '▪', '#1c1410', c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8');
+          }
         } else if (d.owner === 'npc' && (d.permBought || (p.id === v.sel && d.permission))) {
-          for (const s of d.stands) mark(s.x, s.y, STAND_LETTER[s.type] || '?', '#1c1410', d.permBought ? (opts.selStand === s.sid ? '#ffe08a' : '#d6a84a') : '#6a5a4a');
+          for (const s of d.stands) mark(s.x, s.y, STAND_LETTER[s.type] || '?', '#1c1410', d.permBought ? '#d6a84a' : '#6a5a4a');
         } else if (d.owner === 'public') {
-          for (const s of d.spots || []) mark(s.x, s.y, '✚', '#1c1410', opts.selStand === s.sid ? '#ffe08a' : '#b6e08a');
+          for (const s of d.spots || []) mark(s.x, s.y, '✚', '#1c1410', '#b6e08a');
         }
       }
       if (opts.overlay) opts.overlay(ctx, v);
@@ -286,138 +299,181 @@
        <p><b>Pressure:</b> hunting the same stand every day fills its pressure meter. Rest it a few days.</p>
        <p class="dim">Markers: letters are stands (L ladder, B box blind, H hang-on...), ✚ is a public spot.</p>`,
     ];
-    UI.modal(`${pages[page]}<div class="row" style="margin-top:10px">${page > 0 ? '<button class="btn ghost" data-tp="-1">Back</button>' : ''}${page < pages.length - 1 ? '<button class="btn blaze" data-tp="1">Next</button>' : '<button class="btn blaze" data-tdone>Got it</button>'}<button class="btn ghost small" data-tdone>Skip</button></div>`, (m) => {
+    UI.modal(`${pages[page]}<div class="row" style="margin-top:10px">${page > 0 ? '<button class="btn ghost" data-tp="-1">Back</button>' : ''}${page < pages.length - 1 ? '<button class="btn blaze" data-tp="1">Next</button>' : '<button class="btn blaze" data-tdone>Got it</button><button class="btn" data-tguide>Full guide</button>'}<button class="btn ghost small" data-tdone>Skip</button></div>`, (m) => {
       m.querySelectorAll('[data-tp]').forEach((b) => b.addEventListener('click', () => UI.mapTutorial(page + +b.dataset.tp)));
+      m.querySelectorAll('[data-tguide]').forEach((b) => b.addEventListener('click', () => { st.settings.tutMap = true; WT.save(); UI.guide(); }));
       m.querySelectorAll('[data-tdone]').forEach((b) => b.addEventListener('click', () => { st.settings.tutMap = true; WT.save(); UI.closeModal(); }));
     });
   };
 
   /* ================================================================ MAP SCREEN */
+  // What is stacked with a stand: a camera on it, food or water close enough to count.
+  UI.stackHtml = function (pid, s) {
+    const d = S().parcels[pid], info = WT.tileInfo(pid, s.x, s.y), out = [];
+    if (d.owner === 'player') {
+      for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera on this stand</span>: ${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
+      if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera here. Hang one on this spot to learn what walks past this stand.</span>');
+    }
+    if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot at this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot at this stand</span>: it grows in next season and the rating goes up then');
+    if (info.nearWater) out.push('<span class="good">Water at this stand</span>: counted in its rating, most of all in early October');
+    if (info.sanctuary) out.push('<span class="warn">This tile is sanctuary.</span>');
+    return out.length ? `<h3>Stacked here</h3>${out.map((t) => `<p style="margin:2px 0">${t}</p>`).join('')}` : '';
+  };
+
   // args: { mode: 'hunt' | 'land', pid, sid }
   UI.screens.map = function (el, args) {
     args = Object.assign({ mode: 'hunt' }, args || {});
     const st = S(), w = Wd();
-    const state = { pid: args.pid ?? null, sid: args.sid ?? null, tool: null, toolArg: null };
+    const land = args.mode === 'land';
+    const state = { pid: args.pid ?? null, sid: args.sid ?? null, cid: null, tile: null, move: null, plot: { type: 'rye', acres: 1 }, standType: null, camType: null };
     el.innerHTML = UI.stage(LW, LH, `
       <div class="ov" style="right:8px;top:8px;flex-direction:column"><button class="btn ghost small" data-z="in">+</button><button class="btn ghost small" data-z="out">−</button><button class="btn ghost small" data-z="home">Home</button></div>
-      <div class="ov" style="left:8px;top:8px"><button class="btn ghost small" data-back>Lodge</button><span class="btn ghost small" style="cursor:default">${args.mode === 'hunt' ? 'Where to hunt?' : 'Land'}</span></div>
-      <div class="ov" style="left:8px;bottom:8px;font-size:15px;background:rgba(28,20,16,.85);padding:3px 6px;gap:4px 10px;max-width:calc(100% - 16px)">${UI.mapLegend(args.mode)}</div>
+      <div class="ov" style="left:8px;top:8px"><button class="btn ghost small" data-back>Lodge</button><button class="btn ghost small ${land ? '' : 'on'}" data-mode="hunt">Hunt</button><button class="btn ghost small ${land ? 'on' : ''}" data-mode="land">Land</button></div>
       <div class="ov" style="right:8px;bottom:8px;flex-direction:column"><button class="btn ghost small" data-style>${(st.settings.mapStyle || 'simple') === 'simple' ? 'Detail' : 'Simple'}</button><button class="btn ghost small" data-help aria-label="How to read the map">?</button></div>`) +
-      `<section class="panel" id="card" style="margin-top:10px"></section>`;
-    const card = $('#card', el);
+      `<div class="row" id="banner" style="margin-top:6px;padding:4px 8px;border:2px solid #ffe08a;align-items:center;justify-content:space-between" hidden></div>
+      <div class="row dim" style="font-size:15px;gap:4px 12px;margin-top:6px">${UI.mapLegend(args.mode)}<span class="faint">Drag to move, pinch or +/− to zoom</span></div>
+      <section class="panel" id="card" style="margin-top:8px"></section>`;
+    const card = $('#card', el), banner = $('#banner', el);
+    const plotDims = (acres) => { const side = Math.round(Math.sqrt(acres * 4)); return [Math.ceil(acres * 4 / side), side]; };
     const view = UI.mapView($('canvas', el), {
       sel: state.pid,
-      huntMode: args.mode === 'hunt',
+      huntMode: !land,
       onTap: (x, y, pid) => onTap(x, y, pid),
       overlay: (ctx, v) => {
-        if (!state.tool || state.pid == null) return;
-        ctx.fillStyle = '#ffe08a'; ctx.font = '8px "Press Start 2P", monospace'; ctx.textAlign = 'left';
-        ctx.fillText('TAP THE MAP TO PLACE', 8, LH - 26);
+        const t = state.tile; if (!t) return;
+        const box = (x, y, wd, hg, col) => { const [X, Y] = v.toScreen(x, y); const W2 = Math.round(wd * v.z), H2 = Math.round(hg * v.z), X0 = Math.round(X), Y0 = Math.round(Y); ctx.fillStyle = col; ctx.fillRect(X0 - 1, Y0 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 + H2 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 - 1, 2, H2 + 2); ctx.fillRect(X0 + W2 - 1, Y0 - 1, 2, H2 + 2); };
+        // where a plot would go if you planted it from this corner
+        if (land && state.showPlot && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player') { const [pw, ph] = plotDims(state.plot.acres); box(t.x, t.y, pw, ph, '#8fe06a'); }
+        const m = Math.max(0, (9 / v.z - 1) / 2); // never smaller than a marker
+        box(t.x - m, t.y - m, 1 + 2 * m, 1 + 2 * m, '#ffe08a');
       },
     });
     const refreshMap = () => { view.sel = state.pid; view.draw(); };
     el.querySelectorAll('[data-z]').forEach((b) => b.addEventListener('click', () => { const z = b.dataset.z; if (z === 'in') view.zoomBy(1.4); else if (z === 'out') view.zoomBy(1 / 1.4); else view.focus(w.starterId); }));
     el.querySelector('[data-back]').addEventListener('click', () => UI.go('lodge'));
+    el.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { if (b.dataset.mode !== args.mode) UI.go('map', { mode: b.dataset.mode, pid: state.pid, sid: state.sid }); }));
     el.querySelector('[data-style]').addEventListener('click', () => { st.settings.mapStyle = (st.settings.mapStyle || 'simple') === 'simple' ? 'detail' : 'simple'; WT.save(); UI.go('map', Object.assign({}, args, { pid: state.pid, sid: state.sid })); });
     el.querySelector('[data-help]').addEventListener('click', () => UI.mapTutorial());
     if (!st.settings.tutMap) setTimeout(() => UI.mapTutorial(), 50);
     if (state.pid != null) view.focus(state.pid); else view.focus(w.starterId, 6);
+    if (state.pid != null && state.sid) { const d0 = st.parcels[state.pid], s0 = [...(d0.stands || []), ...(d0.spots || [])].find((z) => z.sid === state.sid); if (s0) selectTile(state.pid, s0.x, s0.y); }
 
+    function setBanner() {
+      banner.hidden = !state.move;
+      if (!state.move) return;
+      el.querySelector('.stage').scrollIntoView({ block: 'nearest' }); // on a phone the map may have scrolled off the top
+      banner.innerHTML = `<span style="color:var(--cream)">Tap where the ${state.move.kind === 'stand' ? 'stand' : 'camera'} goes</span><button class="btn small" id="mcancel">Cancel</button>`;
+      $('#mcancel', banner).addEventListener('click', () => { state.move = null; setBanner(); });
+    }
+    // Pick a spot. A tap on or right beside a stand, spot or camera snaps to it, so what you add next lands on the same tile.
+    function selectTile(pid, x, y) {
+      const d = st.parcels[pid];
+      state.pid = pid; state.sid = null; state.cid = null; state.tile = null; state.showPlot = false;
+      if (d.owner === 'player' || d.owner === 'public' || d.permBought) {
+        const info = WT.tileInfo(pid, x, y);
+        const snap = info.stand || info.cam;
+        state.tile = snap ? { x: snap.x, y: snap.y } : d.owner !== 'npc' ? { x, y } : null;
+        if (state.tile) { const at = WT.tileInfo(pid, state.tile.x, state.tile.y); state.sid = at.stand ? at.stand.sid : null; state.cid = at.cam ? at.cam.cid : null; }
+      }
+      view.sel = pid;
+    }
     function onTap(x, y, pid) {
       if (pid < 0) return;
-      const d = st.parcels[pid];
-      // tools apply to the selected parcel
-      if (state.tool && pid === state.pid) return applyTool(x, y);
-      // tapping a stand / spot marker picks it
-      const near = (list) => (list || []).find((s) => Math.abs(s.x - x) <= 1 && Math.abs(s.y - y) <= 1);
-      const s = d.owner === 'player' || d.permBought ? near(d.stands) : d.owner === 'public' ? near(d.spots) : null;
-      state.pid = pid; state.sid = s ? s.sid : null; state.tool = null;
-      view.sel = pid;
+      if (state.move) {
+        if (pid !== state.pid) return UI.toast('Keep it on the same property.', 'bad');
+        const e = state.move.kind === 'stand' ? WT.moveStand(pid, state.move.id, x, y) : WT.moveCamera(pid, state.move.id, x, y);
+        if (UI.err(e)) return;
+        state.move = null; setBanner(); done('Moved.', false, x, y);
+        return;
+      }
+      selectTile(pid, x, y);
       refreshMap(); renderCard();
     }
-
-    function applyTool(x, y) {
-      const pid = state.pid, d = st.parcels[pid];
-      let e = null;
-      switch (state.tool) {
-        case 'mark': e = WT.markSpot(pid, x, y); break;
-        case 'stand': e = WT.placeStand(pid, state.toolArg, x, y); break;
-        case 'camera': e = WT.placeCamera(pid, state.toolArg, x, y); break;
-        case 'plot': e = WT.plantPlot(pid, state.toolArg.type, x, y, state.toolArg.acres); break;
-        case 'water': e = WT.digWaterhole(pid, x, y); break;
-        case 'trees': e = WT.plantTrees(pid, x, y, state.toolArg); break;
-        case 'sanct': e = WT.toggleSanctuary(pid, x, y); break;
-        case 'remove': {
-          const s = d.stands.find((z) => Math.abs(z.x - x) <= 1 && Math.abs(z.y - y) <= 1);
-          const c = d.cams.find((z) => Math.abs(z.x - x) <= 1 && Math.abs(z.y - y) <= 1);
-          const sp = (d.spots || []).find((z) => Math.abs(z.x - x) <= 1 && Math.abs(z.y - y) <= 1);
-          if (s) e = WT.removeStand(pid, s.sid); else if (c) e = WT.removeCamera(pid, c.cid); else if (sp) WT.removeSpot(pid, sp.sid); else e = 'Nothing there to pick up.';
-          break;
-        }
-      }
-      if (UI.err(e)) return;
+    // after any change: save, redraw, keep the same spot selected
+    function done(msg, terrain, x, y) {
       WT.save();
-      UI.toast('Done.', 'good');
-      if (['plot', 'water', 'trees', 'sanct'].includes(state.tool)) view.rebuild();
-      if (state.tool !== 'sanct' && state.tool !== 'remove') state.tool = null;
+      if (msg) UI.toast(msg, 'good');
+      const t = x != null ? { x, y } : state.tile;
+      if (t) selectTile(state.pid, t.x, t.y);
+      if (terrain) view.rebuild();
       refreshMap(); renderCard(); UI.topbar();
+    }
+
+    function playerCard(p, d, pid) {
+      const lim = WT.limits(pid), inv = st.inv, t = state.tile;
+      const truck = Object.entries(inv.stands).filter(([id, n]) => n > 0 && id !== 'ground');
+      const cams = Object.entries(inv.cameras).filter(([, n]) => n > 0);
+      const pending = d.cams.reduce((a, c) => a + (c.queue ? c.queue.length : 0), 0);
+      let html = `<p>${p.acres} acres${WT.contiguousAcres(pid) > p.acres ? ` (${WT.contiguousAcres(pid)} with your adjoining land)` : ''}. ${esc(flavor(p.habitat))}</p>
+        <p class="dim">Stands ${d.stands.length}/${lim.stands} · Cameras ${d.cams.length}/${lim.cams} · Food plots ${WT.plotAcresUsed(pid)}/${lim.plotAcres} ac · Water holes ${d.waterholes.length}/${lim.waterholes} · Sanctuary ${d.sanctuary.length} tiles</p>`;
+      if (!t) {
+        html += `<p><b>Tap any spot on this land</b> to see what's there, build on it, or move and pick up what you've placed.</p>
+          ${d.stands.length ? `<h3>Stands</h3><div class="row">${d.stands.map((s) => `<button class="btn small" data-goto="${s.x},${s.y}">${esc(s.name || WT.standType(s.type).name)}</button>`).join('')}</div>` : ''}
+          ${d.cams.length ? `<h3>Cameras</h3><div class="row">${d.cams.map((c) => `<button class="btn small" data-goto="${c.x},${c.y}">${esc(WT.camType(c.type).name)}${c.queue && c.queue.length ? ` (${c.queue.length} new)` : ''}</button>`).join('')}<button class="btn small" id="checkCams">Check all cameras${pending ? ` (${pending} new)` : ''}</button></div>` : ''}
+          <p class="faint">In your truck: ${[...truck.map(([id, n]) => `${n} × ${WT.standType(id).name}`), ...cams.map(([id, n]) => `${n} × ${WT.camType(id).name}`)].join(', ') || 'nothing. Stands and cameras are sold at the Shop'}.</p>
+          ${pid !== w.starterId ? `<div class="row" style="margin-top:8px"><button class="btn small" id="sell">Sell this land for ${WT.money(WT.landPrice(pid) * (1 - WT.CONFIG.economy.landSellFee))}</button><span id="sellq" class="dim"></span></div>` : ''}`;
+        return html;
+      }
+      const info = WT.tileInfo(pid, t.x, t.y), s = info.stand, c = info.cam;
+      html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${esc(info.cover)}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div>`;
+      if (s) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.standType(s.type).name)}</span><input type="text" id="sname" maxlength="28" value="${esc(s.name || '')}" placeholder="Name it" style="flex:1;min-width:90px"><button class="btn small" id="srename">Rename</button></div>
+          <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
+          ${UI.stackHtml(pid, s)}${UI.knowledgeHtml(s)}</div>`;
+      if (c) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.camType(c.type).name)}</span><span class="dim">${c.total || 0} photos${c.total ? `, ${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks` : ''}${WT.camType(c.type).cell ? ' · sends photos by itself' : c.queue && c.queue.length ? ` · <b>${c.queue.length} waiting</b>` : ' · nothing new'}</span></div>
+          <div class="row" style="margin-top:6px">${WT.camType(c.type).cell ? '' : '<button class="btn small" id="ccheck">Check card</button>'}<button class="btn small" id="cmove">Move</button><button class="btn small" id="cpick">Pick up</button><button class="btn small" id="cphotos">Photos</button></div></div>`;
+      if (info.plot) { const pt = WT.plotType(info.plot.type); html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">${esc(pt.name)} food plot</span> <span class="dim">${info.plot.acres} ac · ${info.plot.year === st.year ? 'planted this year, deer start using it next season' : 'growing: deer feed here'}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Plow it under</button></div></div>`; }
+      if (info.trees) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Tree row</span> <span class="dim">${info.trees.mature ? 'grown into cover' : `planted year ${info.trees.year}, becomes cover after ${WT.CONFIG.improvements.trees.matureYears} years`}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Pull the row</button></div></div>`;
+      if (info.waterhole) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Water hole</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Fill it in</button></div></div>`;
+      // add to this exact spot
+      const noStand = !s || !(s.x === t.x && s.y === t.y), noCam = !c || !(c.x === t.x && c.y === t.y);
+      html += `<h3>Add to this spot</h3>`;
+      if (!s) html += `<div class="row">${truck.length ? `<select id="standSel">${truck.map(([id, n]) => `<option value="${id}" ${state.standType === id ? 'selected' : ''}>${esc(WT.standType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addStand">Put up stand</button>` : '<span class="faint">No stands in your truck. Buy one at the Shop.</span>'}</div>`;
+      if (noCam) html += `<div class="row" style="margin-top:6px">${cams.length ? `<select id="camSel">${cams.map(([id, n]) => `<option value="${id}" ${state.camType === id ? 'selected' : ''}>${esc(WT.camType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addCam">Hang camera${s ? ' on this stand' : ''}</button>` : '<span class="faint">No cameras in your truck. Buy one at the Shop.</span>'}</div>`;
+      void noStand;
+      if (!info.plot && !info.waterhole) html += `<div class="row" style="margin-top:6px">
+          <select id="plotSel">${WT.CONFIG.improvements.foodplot.types.map((x) => `<option value="${x.id}" ${state.plot.type === x.id ? 'selected' : ''}>${esc(x.name)} (${WT.money(x.cost)}/ac)</option>`).join('')}</select>
+          <select id="plotAc">${[[0.5, '½ acre'], [1, '1 acre'], [2, '2 acres'], [4, '4 acres']].map(([v, n]) => `<option value="${v}" ${state.plot.acres === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <button class="btn small" id="addPlot">Plant food plot (${WT.money(Math.round(WT.plotType(state.plot.type).cost * state.plot.acres))})</button></div>
+        <p class="faint" style="margin:2px 0 0">The green box on the map is where the plot goes: this spot is its top-left corner. A stand or camera can sit right on it.</p>
+        <div class="row" style="margin-top:6px">
+          <button class="btn small" id="addWater">Dig water hole (${WT.money(WT.CONFIG.improvements.waterhole.cost)})</button>
+          <button class="btn small" id="addTreesH">Tree row → (${WT.money(WT.CONFIG.improvements.trees.cost)})</button>
+          <button class="btn small" id="addTreesV">Tree row ↓</button>
+        </div>`;
+      html += `<div class="row" style="margin-top:6px"><button class="btn small" id="sanct">${info.sanctuary ? 'Remove sanctuary here' : 'Make this sanctuary'}</button><button class="btn small ghost" data-guide="land">What does each of these do?</button></div>`;
+      return html;
     }
 
     function renderCard() {
       const pid = state.pid;
+      state.showPlot = false;
       if (pid == null) {
         const spots = WT.huntSpots();
         const ranked = spots.map((x) => Object.assign(x, UI.betScore(x.stand))).sort((a, b) => b.score - a.score);
-        card.innerHTML = args.mode === 'hunt'
+        card.innerHTML = !land
           ? `<h2>Best bets this ${st.slot}</h2><p class="dim">Each stand has a fixed rating out of 100. Stars are how close this sit comes to that stand's best with today's ${st.weather.windDir} wind. Tap one, or tap a marker on the map.</p>
              <div class="list">${ranked.map((x) => `<button class="item" style="text-align:left;border:0" data-pick="${x.pid}:${x.stand.sid}"><span><span class="nm">${esc(x.stand.name || WT.standType(x.stand.type).name)}</span> <span class="dim">${esc(w.parcels[x.pid].name)}</span></span><span class="stars">${x.stars ? '★'.repeat(x.stars) + '☆'.repeat(5 - x.stars) : '?????'}</span><span class="st">${x.rating ? `Rating ${x.rating} · ` : ''}${x.notes.join(' · ')}</span></button>`).join('') || '<p class="faint">No stands or spots yet.</p>'}</div>
-             <p class="faint">Want somewhere new? Tap a green public area and mark a spot.</p>`
-          : `<h2>Land</h2><p class="dim">Tap any parcel to see it. Orange borders are for sale. You can buy permission to hunt some neighbors' stands.</p>
+             <p class="faint">Want somewhere new? Tap a green public area, then tap the spot you want to mark.</p>`
+          : `<h2>Land</h2><p class="dim">Tap your land to build on it. Tap any other parcel to see it. Orange borders are for sale, and some neighbors sell permission to hunt their stands.</p>
              <div class="row">${w.parcels.filter((p) => st.parcels[p.id].owner === 'player').map((p) => `<button class="btn small" data-jump="${p.id}">${esc(p.name)}</button>`).join('')}
              ${st.forSale.map((id) => `<button class="btn small" data-jump="${id}">For sale: ${w.parcels[id].acres} ac</button>`).join('')}</div>`;
-        card.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => { const [p, s] = b.dataset.pick.split(':'); state.pid = +p; state.sid = s; view.focus(+p); renderCard(); }));
-        card.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => { state.pid = +b.dataset.jump; view.focus(state.pid); renderCard(); }));
+        card.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => { const [p, s] = b.dataset.pick.split(':'); const d = st.parcels[+p], so = [...(d.stands || []), ...(d.spots || [])].find((z) => z.sid === s); selectTile(+p, so.x, so.y); view.focus(+p); renderCard(); }));
+        card.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => { state.pid = +b.dataset.jump; state.tile = null; state.sid = null; view.focus(state.pid); renderCard(); }));
         return;
       }
       const p = w.parcels[pid], d = st.parcels[pid];
       const standObj = state.sid && ([...(d.stands || []), ...(d.spots || [])].find((s) => s.sid === state.sid));
+      const canHunt = d.owner === 'player' || d.permBought || d.owner === 'public';
       let html = `<div class="row" style="justify-content:space-between"><h2>${esc(p.name)}${d.bowOnly ? ' <span class="tag">Bow only</span>' : ''}</h2><button class="btn small" id="clr">All parcels</button></div>`;
-      if (standObj && (args.mode === 'hunt' || d.owner !== 'player' || true)) {
-        const huntable = d.owner === 'player' || d.permBought || d.owner === 'public';
-        html += `<div class="cols"><div><h3>${standObj.kind === 'spot' ? 'Marked spot' : esc(WT.standType(standObj.type).name)}</h3>
+      const standBlock = () => `<div class="cols"><div><h3>${standObj.kind === 'spot' ? 'Marked spot' : esc(WT.standType(standObj.type).name)}</h3>
           <div class="row"><input type="text" id="sname" maxlength="28" value="${esc(standObj.name || '')}" placeholder="Name it"><button class="btn small" id="srename">Rename</button></div>
-          ${UI.knowledgeHtml(standObj)}</div>
+          ${UI.stackHtml(pid, standObj)}${UI.knowledgeHtml(standObj)}</div>
           <div><h3>Today</h3><p>${esc(WT.weatherLine(st.weather))}</p><p class="dim">Rut: ${esc(WT.rutPhase(Math.min(st.day, 91)).name)}. Next: ${st.slot}.</p>
-          ${huntable ? `<button class="btn blaze big" id="huntHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Hunt here</button>` : ''}</div></div>`;
-      }
+          ${canHunt ? `<button class="btn blaze big" id="huntHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Hunt here</button>` : ''}
+          ${standObj.kind === 'spot' ? '<div class="row" style="margin-top:8px"><button class="btn small" id="rmSpot">Remove this spot</button></div>' : ''}</div></div>`;
       if (d.owner === 'player') {
-        const lim = WT.limits(pid), inv = st.inv;
-        const truck = Object.entries(inv.stands).filter(([id, n]) => n > 0 && id !== 'ground');
-        const cams = Object.entries(inv.cameras).filter(([, n]) => n > 0);
-        const pending = d.cams.reduce((a, c) => a + (c.queue ? c.queue.length : 0), 0);
-        html += `<p>${p.acres} acres${WT.contiguousAcres(pid) > p.acres ? ` (${WT.contiguousAcres(pid)} acres with your adjoining land)` : ''}. ${esc(flavor(p.habitat))}</p>
-          <p class="dim">Stands ${d.stands.length}/${lim.stands} · Cameras ${d.cams.length}/${lim.cams} · Food plots ${WT.plotAcresUsed(pid)}/${lim.plotAcres} ac · Water holes ${d.waterholes.length}/${lim.waterholes} · Sanctuary ${d.sanctuary.length} tiles</p>
-          <h3>Work on your land</h3>
-          <div class="row">
-            ${truck.length ? `<select id="standSel">${truck.map(([id, n]) => `<option value="${id}">${esc(WT.standType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" data-tool="stand">Put up stand</button>` : '<span class="faint">No stands in your truck.</span>'}
-          </div>
-          <div class="row" style="margin-top:6px">
-            ${cams.length ? `<select id="camSel">${cams.map(([id, n]) => `<option value="${id}">${esc(WT.camType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" data-tool="camera">Hang camera</button>` : '<span class="faint">No cameras in your truck.</span>'}
-            ${d.cams.length ? `<button class="btn small" id="checkCams">Check cameras${pending ? ` (${pending} new)` : ''}</button>` : ''}
-          </div>
-          <div class="row" style="margin-top:6px">
-            <select id="plotSel">${WT.CONFIG.improvements.foodplot.types.map((t) => `<option value="${t.id}">${esc(t.name)} (${WT.money(t.cost)}/ac)</option>`).join('')}</select>
-            <select id="plotAc"><option value="0.5">½ acre</option><option value="1" selected>1 acre</option><option value="2">2 acres</option><option value="4">4 acres</option></select>
-            <button class="btn small" data-tool="plot">Plant food plot</button>
-          </div>
-          <div class="row" style="margin-top:6px">
-            <button class="btn small" data-tool="water">Dig water hole (${WT.money(WT.CONFIG.improvements.waterhole.cost)})</button>
-            <button class="btn small" data-tool="trees">Plant tree row (${WT.money(WT.CONFIG.improvements.trees.cost)})</button>
-            <button class="btn small" data-tool="sanct">Sanctuary</button>
-            <button class="btn small" data-tool="remove">Pick up / remove</button>
-          </div>
-          <p class="faint">You won't know how good a spot is until you hunt it. Moving a stand resets what you've learned.</p>
-          ${pid !== w.starterId ? `<div class="row" style="margin-top:8px"><button class="btn small" id="sell">Sell for ${WT.money(WT.landPrice(pid) * (1 - WT.CONFIG.economy.landSellFee))}</button><span id="sellq" class="dim"></span></div>` : ''}`;
+        if (land) html += playerCard(p, d, pid);
+        else html += standObj ? standBlock() + `<div class="row" style="margin-top:8px"><button class="btn small" id="toLand">Work on this land</button></div>` : `<p class="dim">Tap one of your stands to hunt it.</p><div class="row">${d.stands.map((s) => `<button class="btn small" data-goto="${s.x},${s.y}">${esc(s.name || WT.standType(s.type).name)}</button>`).join('')}<button class="btn small" id="toLand">Work on this land</button></div>`;
       } else if (st.forSale.includes(pid)) {
         html += `<h3>For sale</h3>${listingHtml(p)}<div class="row"><button class="btn blaze" id="buyLand">Buy for ${WT.money(WT.landPrice(pid))}</button><span class="dim">You have ${WT.money(st.cash)}.</span></div>
           <p class="faint">The listing won't tell you how many deer are here or how good they are. Read the cover and take your chances.</p>`;
@@ -425,21 +481,30 @@
         const sc = d.scoutSits || 0;
         const q = WT.habitatQuality(p.habitat) * (1 - (d.pressure || 0.5) * 0.4);
         const scouted = sc >= 3 ? Math.max(1, Math.min(5, Math.round(1 + q * 5 + (WT.hash2(pid, 1, 2) - 0.5) * 2 / sc))) : 0;
+        if (standObj) html += standBlock();
         html += `<p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: bows are coming in a later update.</span>' : ''}</p>
           <dl class="kv"><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
-          <div class="row"><button class="btn small" data-tool="mark" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark a spot</button>${(d.spots || []).length ? '<button class="btn small" data-tool="remove">Remove a spot</button>' : ''}</div>
+          ${state.tile && !standObj ? `<div class="row"><button class="btn" id="markHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark the spot you tapped</button></div>` : !standObj ? '<p><b>Tap the map inside this area</b> where you want to sit, then mark it.</p>' : ''}
           <p class="faint">Mark a tree to hunt from a climber or hang-on, or any spot to sit on the ground. Only mobile stands are allowed on public land.</p>`;
       } else {
+        if (standObj && d.permBought) html += standBlock();
         html += `<p>${p.acres} acres owned by the ${esc(p.ownerName)} family.</p>`;
         if (d.permBought) html += `<p class="good">You have permission to hunt their ${d.stands.length} stand${d.stands.length === 1 ? '' : 's'}. Tap a gold stand.</p>`;
         else if (d.permission) html += `<p>The ${esc(p.ownerName)}s will let you hunt their stands for a one-time ${WT.money(d.permFee)}. You can only hunt from stands they've put up (${d.stands.length}).</p><button class="btn" id="perm">Buy permission (${WT.money(d.permFee)})</button>`;
         else html += '<p class="dim">Private. No hunting, not for sale right now.</p>';
       }
       card.innerHTML = html;
-      $('#clr', card).addEventListener('click', () => { state.pid = null; state.sid = null; state.tool = null; refreshMap(); renderCard(); });
+      state.showPlot = !!$('#addPlot', card);
+      view.draw();
       const on = (id, fn) => { const b = $('#' + id, card); if (b) b.addEventListener('click', fn); };
-      on('srename', () => { WT.renameStand(standObj, $('#sname', card).value); WT.save(); UI.toast('Renamed.'); });
+      const t = state.tile;
+      on('clr', () => { state.pid = null; state.sid = null; state.tile = null; state.move = null; setBanner(); refreshMap(); renderCard(); });
+      on('unsel', () => { state.tile = null; state.sid = null; state.cid = null; refreshMap(); renderCard(); });
+      on('toLand', () => UI.go('map', { mode: 'land', pid, sid: state.sid }));
+      card.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => { const [x, y] = b.dataset.goto.split(',').map(Number); selectTile(pid, x, y); refreshMap(); renderCard(); }));
+      card.querySelectorAll('[data-guide]').forEach((b) => b.addEventListener('click', () => UI.guide(b.dataset.guide)));
+      on('srename', () => { WT.renameStand(standObj, $('#sname', card).value); WT.save(); UI.toast('Renamed.'); renderCard(); });
       on('huntHere', () => {
         const comp = WT.publicCompetition(pid);
         const go = (competition) => UI.go('loadout', { pid, sid: standObj.sid, competition });
@@ -449,21 +514,32 @@
           $('#other', m).addEventListener('click', UI.closeModal);
         });
       });
-      on('buyLand', () => { if (UI.err(WT.buyLand(pid))) return; WT.save(); view.rebuild(); renderCard(); UI.topbar(); UI.toast('It\'s yours.', 'good'); });
-      on('perm', () => { if (UI.err(WT.buyPermission(pid))) return; WT.save(); view.rebuild(); renderCard(); UI.topbar(); });
-      on('checkCams', () => { const n = WT.checkCameras(pid); WT.save(); UI.toast(n ? `${n} new photo${n === 1 ? '' : 's'}. Walking in left some scent.` : 'No new photos. Walking in left some scent.'); renderCard(); refreshMap(); });
+      on('buyLand', () => { if (UI.err(WT.buyLand(pid))) return; done("It's yours.", true); });
+      on('perm', () => { if (UI.err(WT.buyPermission(pid))) return; done(null, true); });
+      on('markHere', () => { if (UI.err(WT.markSpot(pid, t.x, t.y))) return; done('Spot marked.'); });
+      on('rmSpot', () => { WT.removeSpot(pid, standObj.sid); done('Spot removed.'); });
+      const checkMsg = (n) => (n ? `${n} new photo${n === 1 ? '' : 's'}. Walking in left some scent.` : 'No new photos. Walking in left some scent.');
+      on('checkCams', () => { const n = WT.checkCameras(pid); WT.save(); UI.toast(checkMsg(n)); renderCard(); refreshMap(); });
+      on('ccheck', () => { const n = WT.checkCameras(pid, state.cid); WT.save(); UI.toast(checkMsg(n)); renderCard(); refreshMap(); });
+      on('cphotos', () => UI.go('hitlist', { photos: true }));
+      on('smove', () => { state.move = { kind: 'stand', id: state.sid }; setBanner(); UI.toast(WT.standType(standObj.type).kind === 'permanent' ? 'Tap the new spot. Moving a permanent stand costs $50, and you start learning the new spot from scratch.' : 'Tap the new spot. You start learning the new spot from scratch.'); });
+      on('cmove', () => { state.move = { kind: 'cam', id: state.cid }; setBanner(); UI.toast('Tap the new spot.'); });
+      on('spick', () => { if (UI.err(WT.removeStand(pid, state.sid))) return; done('Stand is back in your truck.'); });
+      on('cpick', () => { if (UI.err(WT.removeCamera(pid, state.cid))) return; done('Camera is back in your truck.'); });
+      let armed = false;
+      on('unbuild', () => { const b = $('#unbuild', card); if (!armed) { armed = true; b.textContent = 'Press again (no refund)'; return; } if (UI.err(WT.removeImprovement(pid, t.x, t.y))) return; done('Removed.', true); });
+      on('addStand', () => { state.standType = $('#standSel', card).value; if (UI.err(WT.placeStand(pid, state.standType, t.x, t.y))) return; done('Stand is up. Sit it once to learn the spot.'); });
+      on('addCam', () => { state.camType = $('#camSel', card).value; if (UI.err(WT.placeCamera(pid, state.camType, t.x, t.y))) return; done(standObj ? 'Camera is on the stand.' : 'Camera is up.'); });
+      on('addPlot', () => { if (UI.err(WT.plantPlot(pid, state.plot.type, t.x, t.y, state.plot.acres))) return; done('Planted. Deer start using it next season.', true); });
+      on('addWater', () => { if (UI.err(WT.digWaterhole(pid, t.x, t.y))) return; done('Water hole dug.', true); });
+      on('addTreesH', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, false))) return; done('Tree row planted.', true); });
+      on('addTreesV', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, true))) return; done('Tree row planted.', true); });
+      on('sanct', () => { if (UI.err(WT.toggleSanctuary(pid, t.x, t.y))) return; done(null); });
+      const ps = $('#plotSel', card), pa = $('#plotAc', card);
+      if (ps) ps.addEventListener('change', () => { state.plot.type = ps.value; renderCard(); });
+      if (pa) pa.addEventListener('change', () => { state.plot.acres = +pa.value; renderCard(); });
       let sellArmed = false;
-      on('sell', () => { if (!sellArmed) { sellArmed = true; $('#sellq', card).innerHTML = '<span class="warn">Press again to sell.</span>'; return; } if (UI.err(WT.sellLand(pid))) return; WT.save(); state.pid = null; view.rebuild(); renderCard(); UI.topbar(); });
-      card.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
-        state.tool = b.dataset.tool;
-        if (state.tool === 'stand') state.toolArg = $('#standSel', card).value;
-        if (state.tool === 'camera') state.toolArg = $('#camSel', card).value;
-        if (state.tool === 'plot') state.toolArg = { type: $('#plotSel', card).value, acres: +$('#plotAc', card).value };
-        if (state.tool === 'trees') state.toolArg = false;
-        card.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x === b));
-        UI.toast(state.tool === 'remove' ? 'Tap a stand, camera or spot to pick it up.' : state.tool === 'sanct' ? 'Tap to add or remove sanctuary (no hunting). Tap another tool when done.' : 'Tap the map inside the property.');
-        refreshMap();
-      }));
+      on('sell', () => { if (!sellArmed) { sellArmed = true; $('#sellq', card).innerHTML = '<span class="warn">Press again to sell.</span>'; return; } if (UI.err(WT.sellLand(pid))) return; WT.save(); state.pid = null; state.tile = null; view.rebuild(); renderCard(); UI.topbar(); });
     }
     renderCard();
   };

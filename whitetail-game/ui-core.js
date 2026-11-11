@@ -239,8 +239,8 @@
     const sun = WT.sunTimes(st.day);
     const needTag = !st.tags.buck && !st.tags.buckFilled;
     el.innerHTML = `<div class="lodge-stage">${UI.stage(72, 60)}</div>
-      <div class="row" style="margin-top:10px"><button class="btn blaze big" data-go="map" style="flex:1">Hunt</button></div>
-      <nav class="lodge-bar">${nav.map(([k, n]) => `<button class="btn" data-go="${k}">${n}</button>`).join('')}<button class="btn ghost" data-menu aria-label="Menu">⋯</button></nav>
+      <div class="row" style="margin-top:10px"><button class="btn blaze big" data-go="map" style="flex:1">Hunt</button><button class="btn ghost" data-menu aria-label="Menu">⋯</button></div>
+      <nav class="lodge-bar">${nav.map(([k, n]) => `<button class="btn" data-go="${k}">${n}</button>`).join('')}<button class="btn" data-guide>Guide</button></nav>
       <section class="panel news" style="margin-top:22px">
         <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
         ${needTag ? '<p class="warn">You need a buck tag before you can shoot a buck. Get one at the Shop.</p>' : ''}
@@ -248,6 +248,7 @@
       </section>`;
     el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => UI.go(b.dataset.go, b.dataset.go === 'map' ? { mode: 'hunt' } : undefined)));
     el.querySelectorAll('[data-menu]').forEach((b) => b.addEventListener('click', UI.menu));
+    el.querySelectorAll('[data-guide]').forEach((b) => b.addEventListener('click', () => UI.guide()));
     const canvas = $('canvas', el);
     let raf, last = 0;
     const loop = (t) => { if (t - last > 140) { drawLodge(canvas, t); last = t; } raf = requestAnimationFrame(loop); };
@@ -256,12 +257,79 @@
     return () => cancelAnimationFrame(raf);
   };
 
+  /* ================================================================ GUIDE: how everything works */
+  const GUIDE = [
+    ['start', 'The basics', () => `
+      <p>You hunt whitetails from October 1 to December 31, one morning or evening sit at a time. Then winter passes, every deer on the map gets a year older, and you do it again.</p>
+      <p><b>Money</b> comes from deer you tag (bigger antlers pay more, a doe pays ${WT.money(WT.CONFIG.economy.doePayout)}), from leveling up, and ${WT.money(WT.CONFIG.economy.newDeerCash)} for every new deer you get a clear look at. Nothing is charged when a year passes.</p>
+      <p><b>You need a tag</b> for what you shoot: a buck tag for an antlered deer, a doe tag for anything without antlers. Shoot the wrong one and the DNR takes it (no pay, no mount, no fine).</p>
+      <p><b>A turn:</b> Shop if you need something → Hunt → pick a stand → pack → sit. <b>Wait</b> (top right) skips a morning or evening.</p>`],
+    ['deer', 'The deer', () => `
+      <p>Every deer is its own animal with an age, a body and antlers that grow from its own genes. Nothing is rolled when you pull the trigger: the buck you see is the buck you get.</p>
+      <p><b>Age is everything.</b> A buck adds antler every year until about 5½ to 6½. A 1½ year old with a small rack may be a giant in four years if he lives. Passing young bucks is how you grow big ones.</p>
+      <p><b>They can die or leave.</b> Neighbors shoot deer, winters kill some, and young bucks move to other properties. Bigger, safer land keeps more of them.</p>
+      <p><b>What you see:</b> does and fawns move in daylight. Old bucks mostly move at night, except in the rut (early to mid November), when they chase does all day.</p>
+      <p><b>What your land does for them:</b> more food and water grows heavier, healthier deer. More cover and sanctuary means more deer live there, survive, and move in daylight.</p>`],
+    ['stands', 'Stands and ratings', () => `
+      <p><b>Rating (1 to 100)</b> is how good the spot is compared with every other spot on the map. An 80 beats 80% of them. It comes from the ground within about 250 yards: bedding cover, food, water, travel routes between them, and distance from roads. Great spots are rare. You learn the rating the first time you sit a stand, and it only changes if you change the ground around it.</p>
+      <p><b>Stars (1 to 5)</b> are today's sit compared with that stand's own best. Five stars means the stand is as good as it gets today. Wrong wind, the wrong time of day, pressure or an off day pull stars down. A sit can never be better than the stand's rating.</p>
+      <p><b>Consistency:</b> Steady stands work on five winds, Average on three, Fickle on only one. A fickle 90 is a great spot you can rarely hunt at its best.</p>
+      <p><b>Pressure</b> builds every time you sit a stand, miss, or get busted, and drains when you leave it alone. A full meter means rest it.</p>
+      <p><b>Timber or open:</b> in timber deer show at 20 to 200 yards. In open country you see more ground but deer are 150 to 500 yards out.</p>
+      <p><b>Stand types</b> add concealment, quiet, a steadier rest, comfort and height. Box blinds and hunting houses hide you best and let you sit all day in the cold.</p>`],
+    ['sit', 'On the stand', () => `
+      <p>Time moves 10 minutes a step. <b>Sit</b> waits one step, <b>Fast-forward</b> runs until something shows up.</p>
+      <p><b>Reading deer:</b> tap a deer to pick it. Far off you only get "has antlers". Binoculars and the scope sharpen the read to a point count, and up close to a rough score and weight. Raising glass is movement, so a close deer may catch you.</p>
+      <p><b>How deer catch you:</b> <b>scent</b> (wrong wind is the big one; scent-control clothes, sprays and rubber boots help), <b>sight</b> (concealment from camo and the stand; fidgeting when you're cold), and <b>sound</b> (quiet clothes; a noisy walk in can clear the place out before you sit down).</p>
+      <p><b>Comfort:</b> every degree colder than your clothes are rated for shortens the sit. Hand warmers, a heater and snacks stretch it. Overdress on a warm day and you sweat, which is scent.</p>
+      <p><b>Calls:</b> a grunt tube, rattling antlers and a snort-wheeze can pull bucks in, mostly around the rut. Calling too much makes deer wary.</p>
+      <p><b>Hit list:</b> a deer you've seen clearly before shows its name and the status you gave it (Hit list, Pass, Cull...) right above your read.</p>`],
+    ['shot', 'Taking the shot', () => `
+      <p><b>Distance decides it.</b> Inside 40 yards a clear rifle shot almost never misses. The bonus fades out by 100 yards, and past that it's your rifle, scope and Marksmanship skill.</p>
+      <p><b>Each rifle has a reach.</b> The starter .223 is good to about 100 yards and falls off fast after. Better rifles reach farther and hit harder, which means fewer wounded deer. A rangefinder removes the guesswork past 150 yards.</p>
+      <p><b>Wait for a clear shot.</b> "Brush in the way" costs a lot of accuracy and wounds deer. Standing deer are easier than walking deer.</p>
+      <p><b>Low light</b> hurts unless your scope gathers light well. Big antlers give you buck fever until your Marksmanship is up.</p>
+      <p><b>A bad hit</b> can still be recovered (Woodcraft skill and a light help). A deer you never find still uses your tag.</p>`],
+    ['land', 'Your land and stacking', () => `
+      <p>On the <b>Land</b> map, tap any spot on your ground. The card shows what's on that spot and what you can add to it. Tap a stand or camera to move it or pick it up.</p>
+      <p><b>Stacking works.</b> Things on the same spot count together, and the stand's card lists them under "Stacked here":</p>
+      <p>• <b>Stand</b>: where you hunt. Its rating reads the ground within about 250 yards, closest ground counting most.</p>
+      <p>• <b>Food plot</b>: deer start using it the season after you plant. It makes that ground food, which raises the rating of any stand near it (evenings most) and feeds the whole herd: heavier deer and better antlers. Clover lasts 4 years, the rest are replanted yearly. Corn and brassicas are best late in the season.</p>
+      <p>• <b>Trail camera</b>: photographs deer that walk past, more on travel routes and on food. Hung on a stand, its photos are tagged with that stand, so you know which deer use it and whether they come in daylight. Checking a card leaves scent on the property; cellular cameras send photos by themselves.</p>
+      <p>• <b>Water hole</b>: adds water to the spot. Raises nearby stand ratings (most in early October) and helps the herd.</p>
+      <p>• <b>Tree row</b>: grows into cover after ${WT.CONFIG.improvements.trees.matureYears} years. Cover is bedding and a travel route, which is what morning and rut stands want.</p>
+      <p>• <b>Sanctuary</b>: ground you promise never to walk. It makes deer feel safe: more of them stay, survive, and move in daylight. You can't put a stand in it.</p>
+      <p><b>A classic setup:</b> a food plot along a timber edge, a stand on the plot's corner, and a camera on the stand. The plot lifts the stand's rating, and the camera tells you who is eating there.</p>
+      <p><b>Limits</b> scale with acres (stands, cameras, plot acres, water holes). Picking things up puts them back in your truck; plots, tree rows and water holes can be removed but aren't refunded.</p>`],
+    ['gear', 'Gear, skills and levels', () => `
+      <p><b>Clothing</b> has warmth (how cold you can sit), concealment, quiet and scent control. October's first week is mild; after the first cold front you need real layers to sit long.</p>
+      <p><b>Optics:</b> binoculars and better scopes let you judge deer from farther away. A rangefinder gives exact yardage.</p>
+      <p><b>Levels</b> come from hunting: seeing deer, long sits, and deer you tag. Each level pays cash and gives skill points, and unlocks better rifles.</p>
+      <p><b>Skills:</b> Stealth (quieter, less noticed), Marksmanship (accuracy, less buck fever), Calling, Scent Discipline, Patience (longer sits) and Woodcraft (finding hit deer).</p>`],
+    ['books', 'Hit list and trophies', () => `
+      <p><b>Hit list:</b> bucks you see clearly or catch on camera are added by themselves. Name them, guess their age, and mark them Hit list, Pass, Cull or Watch. The game never tells you if a deer is still alive; cameras and sightings are how you know.</p>
+      <p><b>After a harvest</b> you guess the score, then see the real age, weight and the full score sheet.</p>
+      <p><b>Mounts</b> cost money: shoulder mount ${WT.money(WT.CONFIG.economy.mounts.shoulder.price)}, European ${WT.money(WT.CONFIG.economy.mounts.euro.price)}, felt cap ${WT.money(WT.CONFIG.economy.mounts.cap.price)}. Mounted deer hang in the Trophy Room.</p>`],
+  ];
+  UI.guide = function (topic) {
+    let k = Math.max(0, GUIDE.findIndex((g) => g[0] === topic));
+    const show = () => UI.modal(`<h2>How the game works</h2>
+      <div class="row" style="gap:4px">${GUIDE.map((g, i) => `<button class="btn small ${i === k ? 'on' : ''}" data-gi="${i}">${g[1]}</button>`).join('')}</div>
+      <div style="margin-top:8px;max-height:52vh;overflow:auto"><h3>${GUIDE[k][1]}</h3>${GUIDE[k][2]()}</div>
+      <div class="row" style="margin-top:10px">${k > 0 ? '<button class="btn ghost" data-gn="-1">Back</button>' : ''}${k < GUIDE.length - 1 ? '<button class="btn blaze" data-gn="1">Next</button>' : ''}<button class="btn ghost" id="gclose">Close</button></div>`, (m) => {
+      m.querySelectorAll('[data-gi]').forEach((b) => b.addEventListener('click', () => { k = +b.dataset.gi; show(); }));
+      m.querySelectorAll('[data-gn]').forEach((b) => b.addEventListener('click', () => { k += +b.dataset.gn; show(); }));
+      $('#gclose', m).addEventListener('click', UI.closeModal);
+    });
+    show();
+  };
+
   UI.menu = function () {
     const st = S();
     UI.modal(`<h2>Menu</h2>
       <p class="dim">The game saves itself after every hunt and purchase on this device.</p>
       <dl class="kv"><dt>World seed</dt><dd>${st.seed}</dd><dt>Hunts</dt><dd>${st.stats.hunts}</dd><dt>Hours on stand</dt><dd>${Math.round(st.stats.hours)}</dd><dt>Deer seen</dt><dd>${st.stats.seen}</dd><dt>Shots / misses</dt><dd>${st.stats.shots} / ${st.stats.misses}</dd></dl>
-      <div class="row"><button class="btn" id="tut">How to read the map</button></div>
+      <div class="row"><button class="btn" id="guide">How the game works</button><button class="btn" id="tut">How to read the map</button></div>
       <h3>Start over</h3>
       <div class="row"><button class="btn" id="newg">New world</button><span class="dim" id="newq"></span></div>
       <div class="row" style="margin-top:12px"><button class="btn ghost" id="cl">Close</button></div>`, (m) => {
@@ -272,6 +340,7 @@
       });
       $('#cl', m).addEventListener('click', UI.closeModal);
       $('#tut', m).addEventListener('click', () => UI.mapTutorial());
+      $('#guide', m).addEventListener('click', () => UI.guide());
     });
   };
 
