@@ -439,7 +439,9 @@
         if (pid !== state.pid) return UI.toast('Keep it on the same property.', 'bad');
         const e = state.move.kind === 'stand' ? WT.moveStand(pid, state.move.id, x, y) : WT.moveCamera(pid, state.move.id, x, y);
         if (UI.err(e)) return;
-        state.move = null; setBanner(); done('Moved.', false, x, y);
+        const wasStand = state.move.kind === 'stand', dayBefore = st.day;
+        state.move = null; setBanner(); done(wasStand && st.day !== dayBefore ? 'Moved. That took the day: it is now ' + WT.dateLabel(Math.min(st.day, 91)) + '.' : 'Moved.', false, x, y);
+        if (WT.game.seasonOver) UI.seasonOver(); // the move ran out the last day of the season
         return;
       }
       selectTile(pid, x, y);
@@ -642,7 +644,7 @@
       on('checkCams', () => { const n = WT.checkCameras(pid); WT.save(); UI.toast(checkMsg(n)); renderCard(); refreshMap(); });
       on('ccheck', () => { const n = WT.checkCameras(pid, state.cid); WT.save(); UI.toast(checkMsg(n)); renderCard(); refreshMap(); });
       on('cphotos', () => UI.go('hitlist', { photos: true }));
-      on('smove', () => { state.move = { kind: 'stand', id: state.sid }; setBanner(); UI.toast(WT.standType(standObj.type).kind === 'permanent' ? 'Tap the new spot. Moving a permanent stand costs $50, and you start learning the new spot from scratch.' : 'Tap the new spot. You start learning the new spot from scratch.'); });
+      on('smove', () => { state.move = { kind: 'stand', id: state.sid }; setBanner(); UI.toast(WT.offseason() ? 'Tap the new spot. It is the off-season, so it costs you nothing. You start learning the new spot from scratch.' : 'Tap the new spot. Moving a stand takes the rest of today: it will be tomorrow morning when you are done. You start learning the new spot from scratch.'); });
       on('cmove', () => { state.move = { kind: 'cam', id: state.cid }; setBanner(); UI.toast('Tap the new spot.'); });
       on('spick', () => { if (UI.err(WT.removeStand(pid, state.sid))) return; done('Stand is back in your truck.'); });
       on('cpick', () => { if (UI.err(WT.removeCamera(pid, state.cid))) return; done('Camera is back in your truck.'); });

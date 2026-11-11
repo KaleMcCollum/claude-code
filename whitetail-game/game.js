@@ -640,12 +640,13 @@
     const st = S(), d = st.parcels[pid];
     const s = d.stands.find((z) => z.sid === sid); if (!s) return 'No stand.';
     const kind = WT.standType(s.type).kind;
-    if (kind === 'permanent') { if (st.cash < 50) return 'Moving a permanent stand costs $50 in labor.'; st.cash -= 50; ledger('Land work', -50); }
+    void kind; // picking a stand up is free
     d.stands = d.stands.filter((z) => z.sid !== sid);
     st.inv.stands[s.type] = (st.inv.stands[s.type] || 0) + 1;
     return null;
   };
-  // Move a stand you already have up. Costs the same $50 labor for a permanent stand; what you learned stays behind.
+  // Move a stand you already have up. It costs no money: it costs the day. In the off-season it costs nothing.
+  // What you learned about the old spot stays behind.
   WT.moveStand = function (pid, sid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     const s = d.stands.find((z) => z.sid === sid); if (!s) return 'No stand.';
@@ -655,10 +656,11 @@
     if (w.cover[i] === T().PLOT || w.cover[i] === T().PLOT_NEW) return 'Stands go on the edge of a food plot, not in it. Pick a tile touching the plot.';
     { const lt = WT.landType(w.cover[i]); if (lt === 'farm') return "That's a crop field. Nothing can go up in it."; if (lt === 'swamp' && !C().land.swampStands.includes(s.type)) return 'Only a ladder stand can go up in the swamp.'; }
     if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
-    if (WT.standType(s.type).kind === 'permanent') { if (st.cash < 50) return 'Moving a permanent stand costs $50 in labor.'; st.cash -= 50; ledger('Land work', -50); }
+    const tookDay = !WT.offseason() && !G.seasonOver;
     const n = makeStand(s.type, x, y, s.name);
     Object.assign(s, { x, y, r: n.r, sits: 0, seen: 0, pressure: 0, sessions: {}, recent: [], noise: n.noise, tree: undefined });
     delete s._traits;
+    if (tookDay) { WT.skip('day'); news(`You spent the day moving ${s.name || 'a stand'}.`, 'info'); } // hauling a stand is a day's work
     return null;
   };
   WT.moveCamera = function (pid, cid, x, y) {
