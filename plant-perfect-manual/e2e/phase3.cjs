@@ -255,6 +255,8 @@ async function main() {
   check("the new wage is shown underlined", (await diff.locator("ins").innerText()) === "$15.00/hr." && (await lineOf(diff.locator("ins"))) === "underline");
   check("the unchanged words are shown plainly, in reading order", (await diff.innerText()) === "Starting wage, Coffee Shop: $13.00/hr.$15.00/hr.\nStarting wage, Garden Center Registers: $15.00/hr.", JSON.stringify(await diff.innerText()));
   check("the page says what it is compared with", await casey.getByText("Compared with the official text now.").isVisible());
+  // The text it is compared with was saved by Kale alone (the seeded version), so Casey is told.
+  check("Casey is told she never approved the text it is compared with", (await warningOf(casey).innerText().catch(() => "missing")) === `You have never approved the official text of this section. It was last changed by Kale on ${shortDate(daysAgo(25))}. ${WARNING_END}`, await warningOf(casey).innerText().catch(() => "missing"));
   await casey.getByText("Full proposed text").click();
   check("the full proposed text can be opened", (await casey.locator("details.full-text .rich p").first().innerText()) === WAGES_NEW[0]);
   check("the other Owner has Approve, Decline and Endorse, and no Edit or Withdraw", (await approveButton(casey).isVisible()) && (await casey.getByRole("button", { name: "Decline" }).isVisible()) && (await casey.getByRole("button", { name: "Endorse" }).isVisible()) && (await editLink(casey).count()) === 0 && (await casey.getByRole("button", { name: "Withdraw" }).count()) === 0 && (await casey.getByRole("button", { name: "Approve on my own" }).count()) === 0);
@@ -984,6 +986,8 @@ async function main() {
   await mobile.getByRole("heading", { name: "What changed from version 1" }).waitFor();
   check("on a phone Show keeps the version in view", await eventually(() => inView(mobile.getByRole("heading", { name: "Version 2", exact: true }))));
   check("an Owner can restore an earlier version from a phone too", await mobile.getByRole("button", { name: "Restore this version (version 2)" }).isVisible());
+  // As above: let the flash on the tapped link fade before the picture.
+  await mobile.waitForTimeout(700);
   await shot(mobile, "p3-phone-10-version-history", { fullPage: true });
   await fits("Version history with a version open");
 

@@ -34,6 +34,11 @@ a.btn-text {
   padding: 0 2px;
 }
 
+/* A few words that read badly when a narrow screen breaks them in two. */
+.keep-together {
+  white-space: nowrap;
+}
+
 .block > h2 {
   margin-bottom: 8px;
 }
