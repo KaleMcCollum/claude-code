@@ -117,6 +117,7 @@
     const f = (...ts) => ts.reduce((a, t) => a + (cnt[t] || 0), 0) / Math.max(1, n);
     return {
       woods: f(T.TIMBER, T.BRUSH), belt: f(T.BELT, T.YOUNGTREES), plot: (cnt[T.PLOT] || 0) > 0, newPlot: (cnt[T.PLOT_NEW] || 0) > 0,
+      cropKind: f(T.CORN, T.SUNFLOWER) > 0.1 ? 'corn' : f(T.SOY) > 0.1 ? 'soy' : f(T.WHEAT) > 0.15 ? 'wheat' : null,
       water: f(T.WATER, T.CREEK, T.POND) > 0.02, slough: f(T.SLOUGH) > 0.08, corn: f(T.CORN, T.SUNFLOWER) > 0.12, farm: f(T.YARD) > 0.02,
     };
   }
@@ -140,31 +141,62 @@
       const sun = H.plan.sun, dawn = Math.abs(H.now - sun.rise) < 0.8, dusk = Math.abs(H.now - sun.set) < 0.8;
       if (dawn || dusk) { const sx = dawn ? SW * 0.72 : SW * 0.28, sy = HORIZON - 8 - Math.round(((dawn ? H.now - sun.rise : sun.set - H.now) + 0.8) * 8); ctx.fillStyle = 'rgba(255,214,150,.35)'; ctx.fillRect(sx - 9, sy - 3, 18, 6); R('#ffe2a8', sx - 4, sy - 4, 8, 8); R('#ffe2a8', sx - 5, sy - 3, 10, 6); }
     }
-    // the tree line on the horizon: a wall of timber, a shelterbelt, or a thin far line in open country
-    const line = snow ? '#6a6660' : '#3e3428', trunk = snow ? '#4a443e' : '#2e241a';
     const leaf = [['#a8682e', '#8c5226'], ['#b88a30', '#96702a'], ['#8a4a2a', '#6e3a22']];
-    for (let x = 0; x < SW; x += 3) R(line, x, HORIZON - 3 - Math.floor(hs(x, 5) * 4), 3, 3 + Math.floor(hs(x, 5) * 4));
-    if (info.farm) { R('#7a2e22', 176, HORIZON - 13, 20, 13); R(snow ? '#e8e4dc' : '#4a3a34', 175, HORIZON - 16, 22, 4); R('#b0b0b4', 200, HORIZON - 15, 7, 15); R(snow ? '#e8e4dc' : '#7a7a80', 200, HORIZON - 17, 7, 2); }
-    const treeN = Math.round(Math.min(1, info.woods * 2.2) * 34), spruceN = Math.round(Math.min(1, info.belt * 5) * 14) + (info.woods < 0.1 && info.belt < 0.02 ? 0 : 2);
-    for (let k = 0; k < treeN; k++) {
-      const x = Math.round(hs(k, 1) * (SW - 6)) + 3, hgt = 16 + Math.floor(hs(k, 2) * 24), base = HORIZON + 1 + Math.floor(hs(k, 3) * 3);
-      R(trunk, x, base - hgt, 2, hgt);
-      if (bare) { R(trunk, x - 3, base - hgt + 5, 3, 1); R(trunk, x + 2, base - hgt + 3, 4, 1); R(trunk, x - 2, base - hgt + 10, 2, 1); R(trunk, x + 2, base - hgt + 9, 3, 1); if (snow) R('#e8e4dc', x - 3, base - hgt + 4, 3, 1); }
-      else { const lc = leaf[k % 3]; R(lc[1], x - 5, base - hgt - 2, 12, 9); R(lc[0], x - 3, base - hgt - 5, 8, 6); R(lc[1], x - 7, base - hgt + 3, 5, 4); }
-    }
-    for (let k = 0; k < spruceN; k++) {
-      const x = Math.round(hs(k, 7) * (SW - 10)) + 5, hgt = 12 + Math.floor(hs(k, 8) * 8);
-      for (let r = 0; r < hgt; r += 2) { const wd = 1 + Math.round(r * 0.55); R(snow ? '#3a4a3a' : '#2e4a30', x - wd / 2, HORIZON - hgt + r, wd, 2); if (snow && r % 4 === 0) R('#e8e4dc', x - wd / 2, HORIZON - hgt + r, Math.max(1, wd - 1), 1); }
+    const gc = groundColors(H);
+    const woodsy = info.woods + info.belt * 0.5 > 0.3 || H.maxView <= 230;
+    let base = HORIZON; // where the backdrop meets the ground
+    if (woodsy) {
+      /* ---- timber: a wall of woods pulled in close, right behind the farthest deer you could see ---- */
+      base = Math.max(HORIZON + 2, Math.min(78, Math.round(groundY(H.maxView)) - 2));
+      const farC = snow ? '#8a8682' : bare ? '#5a4c40' : '#7a5230', midT = snow ? '#5a544e' : '#3e3024', nearT = snow ? '#3e3832' : '#2a2018', nearS = snow ? '#2e2a26' : '#1c140e';
+      // far woods: a solid band with a ragged top, sky showing above it
+      for (let x = 0; x < SW; x += 2) { const top = 16 + Math.floor(hs(x, 21) * 9) + Math.round(3 * Math.sin(x / 17 + seed)); R(farC, x, top, 2, base - top); }
+      if (!bare) for (let n = 0; n < 60; n++) { const lc = leaf[n % 3]; R(lc[n % 2], Math.floor(hs(n, 22) * SW) - 3, 14 + Math.floor(hs(n, 23) * 26), 7 + (n % 4), 4 + (n % 3)); }
+      // middle trunks
+      for (let n = 0; n < 46; n++) { const x = Math.floor(hs(n, 24) * SW), top = 12 + Math.floor(hs(n, 25) * 14); R(midT, x, top, 1 + (n % 3 === 0 ? 1 : 0), base - top); if (bare) { R(midT, x - 2, top + 4 + (n % 5), 2, 1); R(midT, x + 1, top + 8 + (n % 4), 3, 1); } }
+      if (info.water) { R(snow ? '#b8c4cc' : '#5f7f9c', 0, base - 4, SW, 3); R(snow ? '#c8d2d8' : '#7a98b2', 0, base - 3, SW, 1); } // creek through the trees
+      // near trunks: big, dark, running off the top of the picture
+      for (let n = 0; n < 13; n++) {
+        const x = Math.round((n + hs(n, 26) * 0.8) * SW / 13), tw = 3 + Math.floor(hs(n, 27) * 4), by = base + Math.floor(hs(n, 28) * 2);
+        R(nearT, x, 0, tw, by); R(nearS, x + tw - 1, 0, 1, by);
+        if (bare) { for (let q = 0; q < 3; q++) { const yy = 6 + q * 9 + (n % 4), dir = (n + q) % 2 ? 1 : -1; for (let m = 0; m < 7; m++) R(nearT, x + (dir > 0 ? tw : 0) + dir * m, yy - Math.floor(m * 0.6), 1, 1); if (snow) R('#e8e4dc', x + (dir > 0 ? tw : -6), yy - 4, 6, 1); } }
+        if (snow) R('#e8e4dc', x, by - 1, tw, 1);
+      }
+      // the canopy overhead in October
+      if (!bare) for (let n = 0; n < 34; n++) { const lc = leaf[n % 3]; R(lc[1], Math.floor(hs(n, 29) * SW) - 6, Math.floor(hs(n, 30) * 12) - 2, 14 + (n % 5), 6); R(lc[0], Math.floor(hs(n, 29) * SW) - 3, Math.floor(hs(n, 30) * 12) - 3, 8, 4); }
+    } else {
+      /* ---- open country: rolling hills, a tree or two, grass ---- */
+      const hill = snow ? ['#c4c8d0', '#d4d6da', '#e2e0da'] : bare ? ['#8e8a74', '#9a8c60', '#a48e5e'] : ['#93966e', '#a39a5c', '#b49a5a'];
+      const crest = (x, k) => [38, 46, 53][k] + Math.round([5, 4, 3][k] * Math.sin(x / [47, 31, 23][k] + seed * (k + 1)) + [3, 2, 2][k] * Math.sin(x / [19, 13, 9][k] + seed));
+      for (let k = 0; k < 3; k++) {
+        for (let x = 0; x < SW; x += 2) { const c0 = crest(x, k); R(hill[k], x, c0, 2, HORIZON - c0); }
+        if (k === 1) { // a shelterbelt or a couple of lone trees on the middle ridge
+          const nT = info.belt > 0.02 ? 9 : 2;
+          for (let n = 0; n < nT; n++) {
+            const x = info.belt > 0.02 ? 30 + n * 7 + Math.floor(hs(n, 31) * 3) + (seed % 90) : Math.round(30 + hs(n, 32) * 60 + n * 110), by = crest(x, 1) + 1;
+            if (info.belt > 0.02) { for (let r = 0; r < 10; r += 2) { const wd = 1 + Math.round(r * 0.5); R(snow ? '#3a4a3a' : '#2e4a30', x - wd / 2, by - 10 + r, wd, 2); } }
+            else { R(snow ? '#4a443e' : '#3a2c20', x, by - 12, 2, 12); if (bare) { R('#3a2c20', x - 3, by - 9, 3, 1); R('#3a2c20', x + 2, by - 11, 4, 1); R('#3a2c20', x - 2, by - 13, 6, 1); } else { const lc = leaf[n % 3]; R(lc[1], x - 5, by - 17, 12, 8); R(lc[0], x - 3, by - 19, 8, 5); } }
+          }
+        }
+      }
+      // grass on the near hill
+      for (let n = 0; n < 40; n++) { const x = Math.floor(hs(n, 33) * SW), yy = crest(x, 2) + 2 + Math.floor(hs(n, 34) * Math.max(1, HORIZON - crest(x, 2) - 3)); R(snow ? '#c8bc98' : bare ? '#8a7a4c' : '#8c7a3e', x, yy - 2, 1, 3); }
+      if (info.farm) { const fx = 150 + (seed % 50), fy = crest(fx, 1) + 2; R('#7a2e22', fx, fy - 11, 18, 11); R(snow ? '#e8e4dc' : '#4a3a34', fx - 1, fy - 14, 20, 4); R('#b0b0b4', fx + 21, fy - 13, 6, 13); R(snow ? '#e8e4dc' : '#7a7a80', fx + 21, fy - 15, 6, 2); }
+      // water at the foot of the hills
+      if (info.water) { const wc = snow ? ['#b8c4cc', '#d0d8dd'] : ['#5f7f9c', '#86a4bc']; R(wc[0], 0, HORIZON - 5, SW, 6); for (let n = 0; n < 16; n++) R(wc[1], Math.floor(hs(n, 35) * SW), HORIZON - 4 + (n % 4), 6 + (n % 5), 1); R(snow ? '#e8e4dc' : '#7c7040', 0, HORIZON, SW, 1); }
+      if (info.slough && !info.water) { R(snow ? '#c8bc98' : '#8a8048', 0, HORIZON - 3, SW, 4); for (let x = 2; x < SW; x += 5) R(snow ? '#b8a878' : '#6e6238', x, HORIZON - 5 - Math.floor(hs(x, 36) * 2), 1, 3); }
     }
     // ground bands, nearer = taller bands
-    const gc = groundColors(H);
-    let y = HORIZON, k = 0;
-    while (y < SH) { const bh = Math.max(1, Math.floor((y - HORIZON) / 6) + 1); R(gc[k % 2], 0, y, SW, bh); y += bh; k++; }
-    // strips across the ground: water far out, the food plot in the middle distance
-    if (info.water) { R(snow ? '#b8c4cc' : '#5f7f9c', 0, 64, SW, 3); R(snow ? '#c8d2d8' : '#6f8faa', 0, 65, SW, 1); }
+    let y = base, k = 0;
+    while (y < SH) { const bh = Math.max(1, Math.floor((y - base) / 6) + 1); R(gc[k % 2], 0, y, SW, bh); y += bh; k++; }
+    // fields and plots are strips of ground colour: a crop field far out, your food plot in the middle distance
+    if (info.cropKind && gc !== SCENE.corn && gc !== SCENE.soy) {
+      const cc = snow ? ['#d8cfb4', '#cabfa2'] : info.cropKind === 'corn' ? ['#c4aa5c', '#a48c44'] : info.cropKind === 'soy' ? ['#a8884a', '#8e7240'] : ['#d0ba76', '#bca866'];
+      const y0 = base + 3; R(cc[0], 0, y0, SW, 5); R(cc[1], 0, y0 + 1, SW, 1); R(cc[1], 0, y0 + 3, SW, 1);
+    }
     if (info.plot || info.newPlot) {
       const grown = info.plot, c1 = snow ? (grown ? '#c2d0b0' : '#cfc8bc') : grown ? '#5e9a3e' : '#6e5038', c2 = snow ? (grown ? '#b0c09e' : '#bdb6aa') : grown ? '#4f8a34' : '#5e4430';
-      R(c1, 0, 74, SW, 12); R(c2, 0, 77, SW, 2); R(c2, 0, 82, SW, 2);
+      const y0 = Math.max(base + 9, 76); R(c1, 0, y0, SW, 12); R(c2, 0, y0 + 3, SW, 2); R(c2, 0, y0 + 8, SW, 2);
     }
     // nothing stands on the ground where deer walk: the scenery stays up on the horizon
     if (st.weather.precip === 'snow') { ctx.fillStyle = '#ffffff'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 90)) % SW, (n * 23 + Math.floor(t / 60)) % SH, 1, 1); }
