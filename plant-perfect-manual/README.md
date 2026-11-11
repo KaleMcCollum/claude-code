@@ -214,8 +214,10 @@ settings, never in files.
   day they were written. Filing a note under a section is a link, never a
   copy. Removing is a mark on the note, never a delete.
 - **Proposals** (`src/lib/proposals.ts`) are the single record of every
-  change to official text and to the section structure. A direct "Edit
-  official" save and a restore are proposals approved on the spot. An
+  change to official text, and of every change to the sections that was
+  proposed. A direct "Edit official" save and a restore are proposals
+  approved on the spot. (Sections changed directly on the Edit sections
+  page are recorded in the activity log, not as decisions.) An
   official version always points at the proposal that produced it, and
   approvals and endorsements hang off the proposal. The Decisions Log and
   the "decided by one person" list are views of these records, not copies.
@@ -236,6 +238,12 @@ e2e/                browser tests, one per phase
 
 The plan, to be confirmed with the owner before any sign-up or cost:
 
+0. Database logins: signed-in requests should connect with a login that
+   only has the rights of the limited role (`ppf_app`), and sign-in and
+   setup with a separate, fuller login. Today one login switches role per
+   request, which protects against mistakes in the app's own code but not
+   against someone who could run their own SQL on that connection. Decide
+   this before the first real data goes in.
 1. A hosting service for the app, connected to this repository so every
    change deploys by itself.
 2. A Postgres database with daily backups.
