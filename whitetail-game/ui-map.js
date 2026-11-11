@@ -276,6 +276,7 @@
     if (d.sesF < 0.75) notes.push(`better in the ${s.r.morning > s.r.evening ? 'morning' : 'evening'}`);
     if (d.presF < 0.8) notes.push('<span class="warn">pressured</span>');
     if (d.dayF < 0.8) notes.push('deer are off it today');
+    if (WT.warmWater(s) > 1.08) notes.push('<span class="good">warm day, water close</span>');
     { const w0 = Wd(), pid0 = w0.parcelOf[s.y * w0.W + s.x], ce = pid0 >= 0 ? WT.cropEffect(pid0) : null; if (ce && ce.phase === 'rush') notes.push('<span class="good">crops just came off</span>'); else if (ce && ce.phase === 'off' && ce.f < 0.95) notes.push('<span class="warn">crops are off</span>'); }
     return { stars: d.stars, rating: k.rating, score: k.rating * d.factor, notes };
   };
@@ -289,7 +290,8 @@
        <p>${swatch(SIMPLE.timber[0])}<b>Timber</b>: woods, tree rows and brush. Better than prairie: it holds more deer, and shots are close.</p>
        <p>${swatch(SIMPLE.farm[0])}<b>Farm</b>: someone's crop. You can't build or mark anything on it. It holds deer until the combines roll in the second week of October. Then for two weeks deer are packed into the cover beside it (the best hunting of the year if you have timber or swamp there), and after that they drift to the neighbors.</p>
        <p>${swatch(SIMPLE.swamp[0])}<b>Swamp</b>: rare, and where the old bucks live. Ladder stands and carried stands only: no blinds, no building.</p>
-       <p>${swatch(SIMPLE.water[0])}<b>Water</b> · ${swatch(SIMPLE.people[0])}<b>Roads, farmyards and town</b>: deer avoid people, and stands near roads get bumped walking in.</p>`,
+       <p>${swatch(SIMPLE.water[0])}<b>Water</b>: rivers and lakes hold no deer, but they shape the land beside them. Deer walk the bank rather than cross, so a stand near the water sits on a funnel. Land along water has no neighbor on that side, so fewer of its deer get shot. On warm days deer stay close to water.</p>
+       <p>${swatch(SIMPLE.people[0])}<b>Roads, farmyards and town</b>: deer avoid people, and stands near roads get bumped walking in.</p>`,
       `<h2>Reading the map (2/3): whose land</h2>
        <p>${box('#7fb0ff')}<b>Blue outline</b>: your land. Hunt any stand you put up. Bow or rifle.</p>
        <p>${box('#b6e08a')}<b>Green outline</b>: public land. Free, but crowded and pressured. Mark up to 3 spots per area. You need a mobile stand equipped under Gear: a hang-on, climber or saddle for a tree, or a pop-up blind for open ground.</p>
@@ -322,7 +324,8 @@
       if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera here. Hang one on this spot to learn what walks past this stand.</span>');
     }
     if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot at this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot at this stand</span>: it grows in next season and the rating goes up then');
-    if (info.nearWater) out.push('<span class="good">Water at this stand</span>: counted in its rating, most of all in early October');
+    if (s.r.shore > 0.2) out.push('<span class="good">On the bank</span>: deer walk the shoreline instead of crossing, so this stand sits on a funnel (counted in its rating)');
+    if (info.nearWater || (s.r.water || 0) > 0.3) out.push(`<span class="good">Water at this stand</span>: counted in its rating, and on warm days deer stay close to it${WT.warmWater(s) > 1.02 ? ' <b>(today is one)</b>' : ''}`);
     if (d.owner === 'player') { const cfg = WT.CONFIG.sanctuary, w2 = Wd(); const n = (d.sanctuary || []).filter((i) => Math.hypot(i % w2.W - s.x, ((i / w2.W) | 0) - s.y) <= cfg.standTiles).length; if (n) out.push(`<span class="bad">Too close to your sanctuary</span>: ${n} sanctuary tile${n === 1 ? '' : 's'} within 100 yards of this stand ${n === 1 ? "doesn't" : "don't"} count while it's here`); }
     return out.length ? `<h3>Stacked here</h3>${out.map((t) => `<p style="margin:2px 0">${t}</p>`).join('')}` : '';
   };
@@ -424,7 +427,7 @@
       return `<h3>Camera report</h3><p class="dim">Busiest first. The camera getting the most deer, and the most in daylight, is the spot to hunt. Compare the same model against itself: a camera with more reach catches more deer on the same spot.</p><div class="list">${all.map((a) => `<button class="item" style="text-align:left;border:0" data-cam="${a.pid}:${a.cam.x},${a.cam.y}"><span><span class="nm">${esc(WT.camType(a.cam.type).name)}</span> <span class="dim">${esc(a.parcel)}${a.owner === 'public' ? ' (public)' : ''}</span></span><span>${rateTxt(a.cam)}</span><span class="st">${a.cam.total || 0} photos · ${a.cam.dayN || 0} daylight · ${a.cam.bucks || 0} bucks${a.cam.queue && a.cam.queue.length ? ` · <b>${a.cam.queue.length} on the card</b>` : ''}</span></button>`).join('')}</div>`;
     }
     const bar = (v) => { const n = Math.max(0, Math.min(5, Math.round(v * 5))); return `<span class="${n >= 4 ? 'good' : n >= 2 ? 'warn' : 'bad'}">${'■'.repeat(n)}${'□'.repeat(5 - n)}</span>`; };
-    const mixLine = (pid) => { const m = WT.landMix(pid); return ['prairie', 'timber', 'farm', 'swamp'].filter((k) => m[k] >= 0.01).sort((a, b) => m[b] - m[a]).map((k) => `${WT.LAND[k].name} ${Math.round(m[k] * 100)}%`).join(' · '); };
+    const mixLine = (pid) => { const m = WT.landMix(pid); return ['prairie', 'timber', 'farm', 'swamp', 'water'].filter((k) => m[k] >= 0.01).sort((a, b) => m[b] - m[a]).map((k) => `${WT.LAND[k].name} ${Math.round(m[k] * 100)}%`).join(' · ') + (m.shoreline >= 0.08 ? ` · <span class="good">${Math.round(m.shoreline * 100)}% of the land is on the water</span>` : ''); };
     function landMeters(pid) {
       const ls = WT.landStats(pid), sa = WT.sanctuaryInfo(pid);
       const dead = sa.notCover + sa.nearStand;

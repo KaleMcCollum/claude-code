@@ -581,7 +581,7 @@
   WT.DIRS = DIRS;
   function spotRatings(world, x, y) {
     const { W, H, cover, travel, distRoad } = world;
-    let fW = 0, bW = 0, wW = 0, tot = 0, open = 0, openN = 0, tv = 0, tvN = 0, vx = 0, vy = 0, plotN = 0, swamp = 0, swN = 0;
+    let fW = 0, bW = 0, wW = 0, tot = 0, open = 0, openN = 0, tv = 0, tvN = 0, vx = 0, vy = 0, plotN = 0, swamp = 0, swN = 0, shW = 0, shN = 0;
     const R = 7;
     for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
       const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
@@ -591,20 +591,24 @@
       if (d <= 4) { open += 1 - c.c; openN++; }
       if (d <= 2.5) { tv += travel[i]; tvN++; if (cover[i] === T.PLOT) plotN++; }
       if (d <= 4) { swN++; if (cover[i] === T.SLOUGH) swamp++; }
+      if (d <= 3) { shN++; if (isWater(cover[i])) shW++; }
       if (d > 0) { const pull = (c.f + c.b) * wgt; vx += (dx / d) * pull; vy += (dy / d) * pull; }
     }
     const food = clamp(fW / tot * 1.6), bed = clamp(bW / tot * 1.5), wat = clamp(wW / tot * 4);
     const trav = clamp(tv / Math.max(1, tvN));
     const depth = clamp(distRoad[y * W + x] / 14);
     const vis = clamp(open / Math.max(1, openN) * 1.1);
+    // a bank is a funnel: some water close by, but not standing in the middle of it
+    const shoreShare = shW / Math.max(1, shN), shore = shoreShare > 0 && shoreShare < 0.6 ? Math.min(1, shoreShare * 5) : 0, LW = C().land.water;
     const jit = (k) => (hash2(x, y, world.seed + k) - 0.5) * 0.18;
     const r = {
-      morning: clamp(0.38 * bed + 0.34 * trav + 0.18 * depth + 0.1 * wat - 0.12 * Math.max(0, food - 0.7) + 0.08 + jit(1)),
-      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2) + 0.08 * Math.min(1, plotN / 4)), // a grown food plot right at the stand is a destination
-      rut: clamp(0.5 * trav + 0.3 * bed + 0.15 * food + 0.08 + jit(3)),
-      mature: clamp(0.45 * trav + 0.3 * depth + 0.2 * bed - 0.15 * Math.max(0, vis - 0.7) + jit(4) + 0.3 * Math.min(1, swamp / Math.max(1, swN) * 2)), // a stand in or beside a swamp is where the old ones are
+      morning: clamp(0.38 * bed + 0.34 * trav + 0.18 * depth + 0.1 * wat - 0.12 * Math.max(0, food - 0.7) + 0.08 + jit(1) + LW.shore * shore),
+      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2) + 0.08 * Math.min(1, plotN / 4) + LW.shore * shore), // a grown food plot right at the stand is a destination
+      rut: clamp(0.5 * trav + 0.3 * bed + 0.15 * food + 0.08 + jit(3) + LW.shore * shore),
+      mature: clamp(0.45 * trav + 0.3 * depth + 0.2 * bed - 0.15 * Math.max(0, vis - 0.7) + jit(4) + 0.3 * Math.min(1, swamp / Math.max(1, swN) * 2) + LW.shoreMature * shore), // a stand in or beside a swamp is where the old ones are
       water: wat,
       visibility: vis,
+      shore,
       accessImpact: clamp(0.25 + depth * 0.35 + bed * 0.35 + jit(5) * 0.5),
     };
     // deer come from the direction of the strongest pull; you want the wind blowing FROM there
@@ -720,7 +724,8 @@
     const den = D().density;
     const hq = habitatQuality({ food: prop.food, bedding: prop.bedding, water: prop.water, security: prop.security, soil: prop.soilQuality });
     const per100 = den.poor + (den.elite - den.poor) * clamp((hq - 0.25) / 0.65);
-    return Math.max(2, Math.round((prop.acres / 100) * per100 * (1 + C().sanctuary.capacity * (prop.sanct || 0)) * (1 + C().land.timberCapacity * ((prop.mix && prop.mix.timber) || 0)))); // working sanctuary holds more deer
+    const land = 1 - ((prop.mix && prop.mix.water) || 0); // water holds no deer
+    return Math.max(2, Math.round((prop.acres * land / 100) * per100 * (1 + C().sanctuary.capacity * (prop.sanct || 0)) * (1 + C().land.timberCapacity * ((prop.mix && prop.mix.timber) || 0)))); // working sanctuary holds more deer
   }
   WT.carryingCapacity = carryingCapacity;
 
@@ -760,6 +765,7 @@
     if (d.sex === 'b' && prop.npcStyle === 'manage') mult *= d.age <= 2.5 ? 0.6 : d.age >= 4.5 ? 1.2 : 0.9;
     if (d.sex === 'b' && prop.type !== 'public') mult *= 1 + (0.6 - d.tOP) * 0.7;
     mult *= 1.12 - 0.25 * prop.security;
+    if (prop.mix && d.age >= 1.5) mult *= 1 - C().land.water.barrier * Math.min(1, (prop.mix.shoreline || 0) / C().land.water.barrierFull); // nobody hunts the far bank
     if (d.sex === 'b' && d.age >= 3.5 && prop.mix) mult *= 1 - C().land.swampOldBucks * Math.min(1, prop.mix.swamp / C().land.swampFull); // old bucks live in the swamp
     return clamp(base * mult, 0.02, 0.95);
   }

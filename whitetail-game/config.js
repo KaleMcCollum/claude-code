@@ -249,6 +249,11 @@
       swampOldBucks: 0.4,       // bucks 3.5+ die up to 40% less on swampy ground (full effect at 20% swamp)
       swampFull: 0.2,
       swampStands: ['ladder'],  // the only stand you can leave up in a swamp
+      /* Water holds no deer, but it shapes the land beside it.
+         shore:   a stand within ~100 yards of open water sits on a funnel (deer walk the bank, they don't swim it)
+         barrier: land along a river or lake has no neighbor on that side, so fewer deer are lost to other hunters
+         warmDay: on warm days deer stay close to water */
+      water: { shore: 0.1, shoreMature: 0.06, barrier: 0.25, barrierFull: 0.3, warmHigh: 62, warmBoost: 0.35 },
       crops: { offDay: [7, 14], rushDays: 14, standing: 0.15, rush: [0.3, 0.9], after: 0.3, coverSaves: 0.6, neighbors: 0.5 },
     },
     mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards

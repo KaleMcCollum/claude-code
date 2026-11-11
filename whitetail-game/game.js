@@ -175,8 +175,23 @@
     if (w._mix[pid]) return w._mix[pid];
     const p = w.parcels[pid], m = { prairie: 0, timber: 0, farm: 0, swamp: 0, water: 0, road: 0 }; let n = 0;
     for (let y = p.minY; y <= p.maxY; y++) for (let x = p.minX; x <= p.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] !== pid) continue; m[WT.landType(w.cover[i])]++; n++; }
+    // shoreline: share of the land that lies within about 70 yards of open water
+    let land = 0, bank = 0;
+    for (let y = p.minY; y <= p.maxY; y++) for (let x = p.minX; x <= p.maxX; x++) {
+      const i = y * w.W + x; if (w.parcelOf[i] !== pid || WT.isWater(w.cover[i])) continue;
+      land++;
+      let near = false;
+      for (let dy = -2; dy <= 2 && !near; dy++) for (let dx = -2; dx <= 2; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < w.W && yy < w.H && WT.isWater(w.cover[yy * w.W + xx])) { near = true; break; } }
+      if (near) bank++;
+    }
     for (const k in m) m[k] /= Math.max(1, n);
+    m.shoreline = bank / Math.max(1, land);
     return (w._mix[pid] = m);
+  };
+  // On a warm day deer stay close to water: a stand near it sees more.
+  WT.warmWater = function (s) {
+    const cfg = C().land.water, hi = S().weather ? S().weather.high : 0;
+    return hi >= cfg.warmHigh ? 1 + cfg.warmBoost * (s.r.water || 0) : 1;
   };
   // Crops: standing until the combines roll, then two weeks of deer packed into cover, then they drift away.
   WT.cropsOff = () => S().day >= (S().cropDay ?? 9);
@@ -1212,7 +1227,7 @@
     const maxView = view.far, minView = view.near;
 
     const ctx = {
-      pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
+      pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * WT.warmWater(stand) * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
       tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1), // early archery: deer haven't been hunted yet place: rating, matureRating: stand.r.mature,
       hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
