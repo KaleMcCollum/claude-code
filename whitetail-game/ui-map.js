@@ -127,8 +127,8 @@
       // sanctuary: hatched so you can see where you promised not to go
       if (v.z >= 3) for (const p of w.parcels) {
         const d = st.parcels[p.id]; if (d.owner !== 'player' || !d.sanctuary.length) continue;
-        ctx.fillStyle = 'rgba(255,224,138,.38)';
-        for (const i of d.sanctuary) { const [X, Y] = toScreen(i % w.W, (i / w.W) | 0); const n = Math.max(2, Math.round(v.z / 3)); for (let k = 0; k < v.z; k += n * 2) ctx.fillRect(Math.round(X + k), Math.round(Y), n, Math.ceil(v.z)); }
+        const work = WT.sanctuaryInfo(p.id).working;
+        for (const i of d.sanctuary) { ctx.fillStyle = work.has(i) ? 'rgba(255,224,138,.42)' : 'rgba(255,90,60,.45)'; const [X, Y] = toScreen(i % w.W, (i / w.W) | 0); const n = Math.max(2, Math.round(v.z / 3)); for (let k = 0; k < v.z; k += n * 2) ctx.fillRect(Math.round(X + k), Math.round(Y), n, Math.ceil(v.z)); }
       }
       // labels
       ctx.font = '8px "Press Start 2P", monospace';
@@ -320,7 +320,7 @@
     }
     if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot at this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot at this stand</span>: it grows in next season and the rating goes up then');
     if (info.nearWater) out.push('<span class="good">Water at this stand</span>: counted in its rating, most of all in early October');
-    if (info.sanctuary) out.push('<span class="warn">This tile is sanctuary.</span>');
+    if (d.owner === 'player') { const cfg = WT.CONFIG.sanctuary, w2 = Wd(); const n = (d.sanctuary || []).filter((i) => Math.hypot(i % w2.W - s.x, ((i / w2.W) | 0) - s.y) <= cfg.standTiles).length; if (n) out.push(`<span class="bad">Too close to your sanctuary</span>: ${n} sanctuary tile${n === 1 ? '' : 's'} within 100 yards of this stand ${n === 1 ? "doesn't" : "don't"} count while it's here`); }
     return out.length ? `<h3>Stacked here</h3>${out.map((t) => `<p style="margin:2px 0">${t}</p>`).join('')}` : '';
   };
 
@@ -420,13 +420,32 @@
       const all = WT.allCameras(); if (!all.length) return '';
       return `<h3>Camera report</h3><p class="dim">Busiest first. The camera getting the most deer, and the most in daylight, is the spot to hunt. Compare the same model against itself: a camera with more reach catches more deer on the same spot.</p><div class="list">${all.map((a) => `<button class="item" style="text-align:left;border:0" data-cam="${a.pid}:${a.cam.x},${a.cam.y}"><span><span class="nm">${esc(WT.camType(a.cam.type).name)}</span> <span class="dim">${esc(a.parcel)}${a.owner === 'public' ? ' (public)' : ''}</span></span><span>${rateTxt(a.cam)}</span><span class="st">${a.cam.total || 0} photos · ${a.cam.dayN || 0} daylight · ${a.cam.bucks || 0} bucks${a.cam.queue && a.cam.queue.length ? ` · <b>${a.cam.queue.length} on the card</b>` : ''}</span></button>`).join('')}</div>`;
     }
+    const bar = (v) => { const n = Math.max(0, Math.min(5, Math.round(v * 5))); return `<span class="${n >= 4 ? 'good' : n >= 2 ? 'warn' : 'bad'}">${'■'.repeat(n)}${'□'.repeat(5 - n)}</span>`; };
+    function landMeters(pid) {
+      const ls = WT.landStats(pid), sa = WT.sanctuaryInfo(pid);
+      const dead = sa.notCover + sa.nearStand;
+      return `<dl class="kv" style="margin:4px 0"><dt>Food</dt><dd>${bar(ls.food)}</dd><dt>Water</dt><dd>${bar(ls.water)}</dd><dt>Bedding cover</dt><dd>${bar(ls.bedding)}</dd><dt>Security</dt><dd>${bar(ls.security)}</dd>
+        <dt>Sanctuary</dt><dd>${sa.marked ? `${(sa.working.size / 4).toFixed(1)} ac working${sa.full ? ' <span class="good">(at the ' + Math.round(sa.maxShare * 100) + '% cap)</span>' : ` <span class="faint">counts up to ${Math.round(sa.maxShare * 100)}% of the land</span>`}${dead ? ` · <span class="bad">${dead} tile${dead === 1 ? '' : 's'} not counting</span>` : ''}` : '<span class="faint">none</span>'}</dd></dl>`;
+    }
+    function showAdvice(pid) {
+      const a = WT.landAdvice(pid), p = w.parcels[pid];
+      UI.modal(`<h2>${esc(p.name)}: what would help</h2>${landMeters(pid)}
+        <div style="max-height:50vh;overflow:auto">${a.tips.map((t, i) => `<p style="margin:8px 0 2px"><b>${i + 1}. ${esc(t[0])}</b></p><p class="dim" style="margin:0">${esc(t[1])}</p>`).join('')}</div>
+        <p class="faint" style="margin-top:8px">Most useful first. Red stripes on the map are sanctuary that isn't counting.</p>
+        <div class="row" style="margin-top:8px"><button class="btn blaze" id="aclose">Got it</button><button class="btn ghost" id="aguide">How land works</button></div>`, (m) => {
+        $('#aclose', m).addEventListener('click', UI.closeModal);
+        $('#aguide', m).addEventListener('click', () => UI.guide('land'));
+      });
+    }
     function playerCard(p, d, pid) {
       const lim = WT.limits(pid), inv = st.inv, t = state.tile;
       const truck = Object.entries(inv.stands).filter(([id, n]) => n > 0 && id !== 'ground');
       const cams = Object.entries(inv.cameras).filter(([, n]) => n > 0);
       const pending = d.cams.reduce((a, c) => a + (c.queue ? c.queue.length : 0), 0);
       let html = `<p>${p.acres} acres${WT.contiguousAcres(pid) > p.acres ? ` (${WT.contiguousAcres(pid)} with your adjoining land)` : ''}. ${esc(flavor(p.habitat))}</p>
-        <p class="dim">Stands ${d.stands.length}/${lim.stands} · Cameras ${d.cams.length}/${lim.cams} · Food plots ${WT.plotAcresUsed(pid)}/${lim.plotAcres} ac · Water holes ${d.waterholes.length}/${lim.waterholes} · Sanctuary ${d.sanctuary.length} tiles</p>`;
+        <p class="dim">Stands ${d.stands.length}/${lim.stands} · Cameras ${d.cams.length}/${lim.cams} · Food plots ${WT.plotAcresUsed(pid)}/${lim.plotAcres} ac · Water holes ${d.waterholes.length}/${lim.waterholes}</p>
+        ${landMeters(pid)}
+        <div class="row" style="margin:6px 0"><button class="btn" id="advice">Help: how do I make this land better?</button></div>`;
       if (!t) {
         html += `<p><b>Tap any spot on this land</b> to see what's there, build on it, or move and pick up what you've placed.</p>
           ${d.stands.length ? `<h3>Stands</h3><div class="row">${d.stands.map((s) => `<button class="btn small" data-goto="${s.x},${s.y}">${esc(s.name || WT.standType(s.type).name)}</button>`).join('')}</div>` : ''}
@@ -526,6 +545,7 @@
       const t = state.tile;
       on('clr', () => { state.pid = null; state.sid = null; state.tile = null; state.move = null; setBanner(); refreshMap(); renderCard(); });
       on('unsel', () => { state.tile = null; state.sid = null; state.cid = null; refreshMap(); renderCard(); });
+      on('advice', () => showAdvice(pid));
       on('toLand', () => UI.go('map', { mode: 'land', pid, sid: state.sid }));
       card.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => { const [x, y] = b.dataset.goto.split(',').map(Number); selectTile(pid, x, y); refreshMap(); renderCard(); }));
       card.querySelectorAll('[data-guide]').forEach((b) => b.addEventListener('click', () => UI.guide(b.dataset.guide)));
@@ -559,7 +579,7 @@
       on('addWater', () => { if (UI.err(WT.digWaterhole(pid, t.x, t.y))) return; done('Water hole dug.', true); });
       on('addTreesH', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, false))) return; done('Tree row planted.', true); });
       on('addTreesV', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, true))) return; done('Tree row planted.', true); });
-      on('sanct', () => { if (UI.err(WT.toggleSanctuary(pid, t.x, t.y))) return; done(null); });
+      on('sanct', () => { if (UI.err(WT.toggleSanctuary(pid, t.x, t.y))) return; const sa = WT.sanctuaryInfo(pid); done(sa.nearStand ? 'Marked, but tiles within 100 yards of a stand do not count (red on the map).' : sa.full ? 'Marked. You are at the cap: more sanctuary adds nothing.' : 'Sanctuary updated.'); });
       const ps = $('#plotSel', card), pa = $('#plotAc', card);
       if (ps) ps.addEventListener('change', () => { state.plot.type = ps.value; renderCard(); });
       if (pa) pa.addEventListener('change', () => { state.plot.acres = +pa.value; renderCard(); });

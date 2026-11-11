@@ -548,7 +548,7 @@
     const food = clamp((f / n) * 1.25 + 0.05);
     const bedding = clamp((b / n) * 1.45);
     const water = clamp(Math.max((wt / n) * 9, 1 - dw / n / 26));
-    const sanctFrac = sanct / n;
+    const sanctFrac = Math.min(C().sanctuary.maxShare, sanct / n); // past the cap, more sanctuary adds nothing
     const security = clamp((dr / n) / 14 * 0.7 + bedding * 0.25 + sanctFrac * 1.2 + (n > 600 ? 0.08 : 0));
     // hidden layers mapped to a 0..1 spread
     const soilQ = clamp((so / n - 0.3) / 0.4);

@@ -216,6 +216,8 @@
       camera: { per100: 5 },
     },
     standLimitPer100: 4,
+    // Sanctuary: cover you never hunt. It only counts in cover, away from your stands, and up to a share of the land.
+    sanctuary: { maxShare: 0.25, standTiles: 3 },   // 3 tiles is about 100 yards
 
     /* ------------------------------------------------------------ trail cameras */
     // clear: yards out to which a deer can be told apart. reach: yards past which it never triggers.

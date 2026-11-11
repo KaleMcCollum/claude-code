@@ -151,10 +151,67 @@
     d.herd = prop.herd; d.capacity = prop.capacity; d.pressure = prop.huntingPressure;
   }
 
+  /* Sanctuary is ground you give up. A marked tile only works if it is cover (timber, tree rows, brush, slough,
+     CRP grass, young trees) and no stand of yours is within about 100 yards. The bonus stops at 25% of the land. */
+  const SANCT_COVER = () => [T().TIMBER, T().BELT, T().BRUSH, T().PRAIRIE, T().SLOUGH, T().YOUNGTREES];
+  WT.sanctuaryInfo = function (pid) {
+    const d = S().parcels[pid], w = G.world, cfg = C().sanctuary, ok = SANCT_COVER();
+    const working = new Set(); let notCover = 0, nearStand = 0;
+    for (const i of d.sanctuary || []) {
+      const x = i % w.W, y = (i / w.W) | 0;
+      if (!ok.includes(w.cover[i])) { notCover++; continue; }
+      if ((d.stands || []).some((s) => Math.hypot(s.x - x, s.y - y) <= cfg.standTiles)) { nearStand++; continue; }
+      working.add(i);
+    }
+    const tiles = Math.max(1, w.parcels[pid].tiles || Math.round(w.parcels[pid].acres * 4));
+    const share = working.size / tiles;
+    return { working, marked: (d.sanctuary || []).length, notCover, nearStand, share, counted: Math.min(cfg.maxShare, share), maxShare: cfg.maxShare, full: share >= cfg.maxShare };
+  };
+  // The four things the land itself gives deer, 0..1 each (with water holes and working sanctuary counted)
+  WT.landStats = function (pid) { const pr = makeProp(pid); return { food: pr.food, water: pr.water, bedding: pr.bedding, security: pr.security }; };
+
+  // Plain advice for one property: what is weakest and what to do about it, most useful first.
+  WT.landAdvice = function (pid) {
+    const st = S(), w = G.world, d = st.parcels[pid], p = w.parcels[pid], TT = T();
+    const ls = WT.landStats(pid), lim = WT.limits(pid), sa = WT.sanctuaryInfo(pid), tips = [];
+    const money = WT.money, imp = C().improvements;
+    const tilesOf = (...ts) => { let n = 0; for (let y = p.minY; y <= p.maxY; y++) for (let x = p.minX; x <= p.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] === pid && ts.includes(w.cover[i])) n++; } return n; };
+    const coverAc = tilesOf(...SANCT_COVER()) / 4, plotLeft = lim.plotAcres - WT.plotAcresUsed(pid);
+    const near = (a, list, r) => list.some((b) => Math.hypot(a.x - b.x, a.y - b.y) <= r);
+    const plotTiles = d.plots.flatMap((q) => q.tiles.map((i) => ({ x: i % w.W, y: (i / w.W) | 0 })));
+    // the land
+    if (ls.food < 0.5 && plotLeft >= 0.5) tips.push(['Food is the weak spot', `Deer here have to leave to eat. You can still plant ${plotLeft} acre${plotLeft === 1 ? '' : 's'} of food plot. More food means heavier deer, better antlers, and a reason for deer to be on your side of the fence in the evening. Winter rye is the cheap start (${money(imp.foodplot.types[0].cost)} an acre); corn and brassicas hold deer late in the season.`]);
+    if (ls.water < 0.45 && d.waterholes.length < lim.waterholes) tips.push(['Water is scarce', `Dig a water hole (${money(imp.waterhole.cost)}). It helps the herd, and a stand near it is better in early October when it's warm.`]);
+    if (ls.bedding < 0.4) tips.push(['Not much cover', `Deer feed here but bed somewhere else, so mornings are slow. Plant tree rows (${money(imp.trees.cost)} each). They take ${imp.trees.matureYears} years to become cover, so start early, and run them between cover and food to make a travel route.`]);
+    if (ls.security < 0.55) {
+      if (!sa.marked && coverAc >= 2) tips.push(['Deer don\'t feel safe here', `Set aside some cover as sanctuary: ground you never hunt. You have about ${Math.round(coverAc)} acres of cover and none of it is sanctuary. It counts up to ${Math.round(sa.maxShare * 100)}% of the property (about ${Math.round(p.acres * sa.maxShare)} acres). Fewer deer die, and they spend more time on your land.`]);
+      else if (!sa.full && sa.marked) tips.push(['Room for more sanctuary', `${(sa.working.size / 4).toFixed(1)} acres of sanctuary are working. It keeps helping up to about ${Math.round(p.acres * sa.maxShare)} acres.`]);
+      else if (coverAc < 2) tips.push(['No cover to protect', 'Sanctuary only works in cover, and this land has almost none. Plant tree rows first.']);
+    }
+    if (sa.nearStand) tips.push(['A stand is spoiling your sanctuary', `${sa.nearStand} sanctuary tile${sa.nearStand === 1 ? ' is' : 's are'} within 100 yards of a stand, so ${sa.nearStand === 1 ? 'it doesn\'t' : 'they don\'t'} count. Move the stand back or shrink the sanctuary.`]);
+    if (sa.notCover) tips.push(['Sanctuary in the open', `${sa.notCover} sanctuary tile${sa.notCover === 1 ? ' is' : 's are'} on open ground and ${sa.notCover === 1 ? 'does' : 'do'} nothing. Sanctuary only works in timber, brush, sloughs, CRP grass or tree rows.`]);
+    // the hunting setup
+    if (!d.stands.length) tips.push(['No stand here', 'Buy a stand at the Shop and put it up. A ladder stand on the edge where cover meets food is the safe first pick.']);
+    const unknown = d.stands.filter((s) => !(s.sits > 0));
+    if (unknown.length) tips.push(['Stands you have never sat', `${unknown.map((s) => s.name || WT.standType(s.type).name).join(', ')}: one sit tells you the spot's rating, winds and view.`]);
+    const weak = d.stands.filter((s) => s.sits > 0 && WT.standTraits(s).rating < 45);
+    if (weak.length) tips.push(['A stand in a poor spot', `${weak.map((s) => `${s.name || WT.standType(s.type).name} (rating ${WT.standTraits(s).rating})`).join(', ')}. Move it. Hang a few cheap cameras around the property first and put the stand where the busiest one is.`]);
+    if (d.stands.length && !d.stands.some((s) => WT.standView(s).far <= 230)) tips.push(['No close-range stand', 'Every stand here looks over open ground, so deer are 150 yards or more out. Put one in timber or brush for shots under 100 yards, which is what the starter rifle can do.']);
+    if (d.stands.length && !d.cams.length) tips.push(['No cameras', 'A trail camera tells you which deer live here and whether they move in daylight. Hang one on your best stand, and scatter cheap ones to find a better spot.']);
+    const blind = d.stands.filter((s) => !WT.camsAtStand(pid, s).length);
+    if (d.cams.length && blind.length && st.inv.cameras && Object.values(st.inv.cameras).some((n) => n > 0)) tips.push(['Cameras sitting in the truck', `You have a camera in the truck and ${blind.length} stand${blind.length === 1 ? '' : 's'} without one.`]);
+    if (plotTiles.length && d.stands.length && !plotTiles.some((t) => near(t, d.stands, 2.5))) tips.push(['Nobody is watching your food plot', 'A stand within about 90 yards of a grown plot gets an evening bonus. Put one on the plot\'s downwind corner.']);
+    const burned = d.stands.filter((s) => (s.pressure || 0) > 0.35);
+    if (burned.length) tips.push(['Rest a stand', `${burned.map((s) => s.name || WT.standType(s.type).name).join(', ')}: the pressure meter is high. Leave it alone for three or four days.`]);
+    if (d.stands.length < lim.stands && d.stands.length >= 1 && d.stands.every((s) => s.sits > 0)) tips.push(['Room for another stand', `This land takes ${lim.stands} stands and has ${d.stands.length}. A second stand that works on a different wind means you can hunt here on more days without burning the first.`]);
+    if (!tips.length) tips.push(['This place is in good shape', 'Nothing is holding it back. Keep the pressure low, pass young bucks, and let them get old.']);
+    return { stats: ls, sanctuary: sa, tips };
+  };
+
   // Property view handed to the deer simulation. Stats are computed from tiles + improvements.
   function makeProp(pid) {
     const p = G.world.parcels[pid], d = S().parcels[pid];
-    const h = WT.tileHabitat(G.world, pid, { sanctuary: new Set(d.sanctuary || []) });
+    const h = WT.tileHabitat(G.world, pid, { sanctuary: WT.sanctuaryInfo(pid).working });
     // a little extra water from water holes in dry spots
     if (d.waterholes && d.waterholes.length) h.water = clamp(h.water + 0.12 * d.waterholes.length);
     p.habitat = h;
@@ -261,7 +318,7 @@
     const w = G.world, mods = S().tileMods;
     for (const k in mods) w.cover[+k] = mods[k];
     WT.computeDerivedLayers(w);
-    for (const p of w.parcels) p.habitat = WT.tileHabitat(w, p.id, { sanctuary: new Set(S().parcels[p.id].sanctuary || []) });
+    for (const p of w.parcels) p.habitat = WT.tileHabitat(w, p.id, { sanctuary: WT.sanctuaryInfo(p.id).working });
   }
   function setTile(i, t) { G.world.cover[i] = t; S().tileMods[i] = t; }
   // A stand's rating is read off the ground around it, so anything you plant, dig or grow nearby counts.
@@ -605,19 +662,21 @@
     return null;
   };
   WT.toggleSanctuary = function (pid, x, y) {
-    const st = S(), d = st.parcels[pid], w = G.world;
+    const st = S(), d = st.parcels[pid], w = G.world, ok = SANCT_COVER();
     if (d.owner !== 'player') return 'Only on your land.';
-    let added = 0, removed = 0;
+    let added = 0, removed = 0, open = 0;
     const inSanct = d.sanctuary.includes(tileAt(x, y));
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       const i = tileAt(x + dx, y + dy);
       if (i < 0 || w.parcelOf[i] !== pid) continue;
-      if (d.stands.some((s) => tileAt(s.x, s.y) === i) || d.cams.some((c) => tileAt(c.x, c.y) === i)) continue;
       const k = d.sanctuary.indexOf(i);
-      if (inSanct && k >= 0) { d.sanctuary.splice(k, 1); removed++; }
-      else if (!inSanct && k < 0) { d.sanctuary.push(i); added++; }
+      if (inSanct) { if (k >= 0) { d.sanctuary.splice(k, 1); removed++; } continue; }
+      if (d.stands.some((s) => tileAt(s.x, s.y) === i) || d.cams.some((c) => tileAt(c.x, c.y) === i)) continue;
+      if (!ok.includes(w.cover[i])) { open++; continue; }
+      if (k < 0) { d.sanctuary.push(i); added++; }
     }
-    return added || removed ? null : 'Nothing changed there.';
+    if (!added && !removed) return open ? 'Sanctuary has to be cover: timber, tree rows, brush, slough or CRP grass. Open ground does nothing for deer.' : 'Nothing changed there.';
+    return null;
   };
 
   /* ================================================================ gear math */
