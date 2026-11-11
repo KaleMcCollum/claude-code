@@ -103,7 +103,7 @@
       rec.guessed = true;
       if (g) {
         rec.guess = g;
-        if (Math.abs(g - rec.sheet.gross) <= 5) { rec.guessBonus = 50; S().cash += 50; UI.toast(`You guessed ${g}". He grosses ${rec.sheet.gross}". +$50!`, 'good'); }
+        if (Math.abs(g - rec.sheet.gross) <= 5) { rec.guessBonus = 50; S().cash += 50; WT.ledger('Score guess bonus', 50); UI.toast(`You guessed ${g}". He grosses ${rec.sheet.gross}". +$50!`, 'good'); }
         else UI.toast(`You guessed ${g}". He grosses ${rec.sheet.gross}".`);
       }
       WT.save(); UI.topbar();

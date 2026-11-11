@@ -211,6 +211,11 @@
     // reapply ownership + tile modifications
     for (const p of G.world.parcels) { const d = st.parcels[p.id]; if (d) p.owner = d.owner; }
     applyTileMods();
+    // repair saves from before the dispersal fix: antlered bucks that never grew a rack
+    for (const p of G.world.parcels) {
+      const d = st.parcels[p.id];
+      for (const deer of d.herd || []) if (deer.sex === 'b' && deer.age >= 1.5 && !deer.rack) WT.growDeer(deer, makeProp(p.id), G.rng, 1);
+    }
     return st;
   };
   WT.wipeSave = function () { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* storage blocked */ } };
@@ -231,6 +236,14 @@
   }
   WT.news = news;
 
+  /* ================================================================ money ledger (shown at season end) */
+  function ledger(cat, amt) {
+    const st = S(); if (!st || !amt) return;
+    const L = (st.seasonLog.money = st.seasonLog.money || {});
+    L[cat] = (L[cat] || 0) + amt;
+  }
+  WT.ledger = ledger;
+
   /* ================================================================ progression */
   WT.addXp = function (n) {
     const st = S(), P = C().progression;
@@ -239,7 +252,7 @@
     while (st.level < P.maxLevel && st.xp >= P.xpForLevel(st.level)) {
       st.xp -= P.xpForLevel(st.level);
       st.level++; st.skillPts += P.skillPointsPerLevel;
-      const bonus = C().economy.levelUpCash(st.level); st.cash += bonus; st.levelCashTotal = (st.levelCashTotal || 0) + bonus;
+      const bonus = C().economy.levelUpCash(st.level); st.cash += bonus; ledger('Level-up bonuses', bonus); st.levelCashTotal = (st.levelCashTotal || 0) + bonus;
       ups.push(st.level);
       const unlocked = C().rifles.filter((r) => r.level === st.level);
       unlocked.forEach((r) => {
@@ -276,6 +289,7 @@
     }
     if (st.cash < price) return `Not enough money. You need ${WT.money(price)}.`;
     st.cash -= price;
+    ledger(kind === 'tag' ? 'Tags' : kind === 'consum' ? 'Consumables' : 'Gear', -price);
     switch (kind) {
       case 'rifle': inv.rifles.push(id); inv.rifleScope[id] = inv.scopes.includes('bushnell') ? 'bushnell' : 'simmons'; break;
       case 'scope': inv.scopes.push(id); break;
@@ -325,7 +339,7 @@
     if (!st.forSale.includes(pid)) return 'That parcel is not for sale.';
     const price = WT.landPrice(pid);
     if (st.cash < price) return `You need ${WT.money(price)}. Keep hunting and saving.`;
-    st.cash -= price;
+    st.cash -= price; ledger('Land', -price);
     d.owner = 'player'; d.permission = false; d.permBought = false;
     G.world.parcels[pid].owner = 'player';
     st.forSale = st.forSale.filter((x) => x !== pid);
@@ -339,7 +353,7 @@
     if (d.owner !== 'player') return 'Not yours to sell.';
     if (pid === G.world.starterId) return "You can't sell the Home Place.";
     const val = Math.round(WT.landPrice(pid) * (1 - C().economy.landSellFee));
-    st.cash += val;
+    st.cash += val; ledger('Land', val);
     for (const s of d.stands) st.inv.stands[s.type] = (st.inv.stands[s.type] || 0) + (WT.standType(s.type).kind === 'permanent' ? 0 : 1);
     for (const c of d.cams) st.inv.cameras[c.type] = (st.inv.cameras[c.type] || 0) + 1;
     d.stands = []; d.cams = []; d.owner = 'npc'; G.world.parcels[pid].owner = 'npc';
@@ -351,7 +365,7 @@
     if (d.owner !== 'npc' || !d.permission) return 'This landowner is not giving permission.';
     if (d.permBought) return 'You already have permission.';
     if (st.cash < d.permFee) return `You need ${WT.money(d.permFee)}.`;
-    st.cash -= d.permFee; d.permBought = true;
+    st.cash -= d.permFee; ledger('Land', -d.permFee); d.permBought = true;
     news(`${G.world.parcels[pid].ownerName} shook your hand. You can hunt their stands on ${G.world.parcels[pid].name} from now on.`, 'good');
     return null;
   };
@@ -390,7 +404,7 @@
     const st = S(), d = st.parcels[pid];
     const s = d.stands.find((z) => z.sid === sid); if (!s) return 'No stand.';
     const kind = WT.standType(s.type).kind;
-    if (kind === 'permanent') { if (st.cash < 50) return 'Moving a permanent stand costs $50 in labor.'; st.cash -= 50; }
+    if (kind === 'permanent') { if (st.cash < 50) return 'Moving a permanent stand costs $50 in labor.'; st.cash -= 50; ledger('Land work', -50); }
     d.stands = d.stands.filter((z) => z.sid !== sid);
     st.inv.stands[s.type] = (st.inv.stands[s.type] || 0) + 1;
     return null;
@@ -430,7 +444,7 @@
     }
     const cost = Math.round(pt.cost * acres);
     if (st.cash < cost) return `Seed, fertilizer and equipment rental run ${WT.money(cost)}.`;
-    st.cash -= cost;
+    st.cash -= cost; ledger('Land work', -cost);
     tiles.forEach((i) => setTile(i, TT.PLOT_NEW));
     d.plots.push({ type: typeId, acres, tiles, year: st.year, quality: null });
     WT.computeDerivedLayers(w);
@@ -444,7 +458,7 @@
     if (d.waterholes.length >= WT.limits(pid).waterholes) return 'Water hole limit reached.';
     const cost = C().improvements.waterhole.cost;
     if (st.cash < cost) return `A dozer and liner cost ${WT.money(cost)}.`;
-    st.cash -= cost; setTile(i, TT.POND); d.waterholes.push(i);
+    st.cash -= cost; ledger('Land work', -cost); setTile(i, TT.POND); d.waterholes.push(i);
     WT.computeDerivedLayers(w);
     return null;
   };
@@ -462,7 +476,7 @@
     }
     if (tiles.length < 3) return 'Not enough open ground in a row there.';
     if (st.cash < cost) return `Seedlings and fabric cost ${WT.money(cost)}.`;
-    st.cash -= cost;
+    st.cash -= cost; ledger('Land work', -cost);
     tiles.forEach((i) => setTile(i, TT.YOUNGTREES));
     d.trees.push({ tiles, year: st.year });
     WT.computeDerivedLayers(w);
@@ -732,7 +746,7 @@
       };
       st.hitList.unshift(e);
       info.added = true;
-      st.cash += C().economy.newDeerCash;
+      st.cash += C().economy.newDeerCash; ledger('New deer found', C().economy.newDeerCash);
     }
     if (clear) e.snap = WT.snapshot(deer);
     if (info.read && (!e.readLvl || info.level >= e.readLvl || e.readYear !== st.year)) { e.read = info.read; e.readLvl = info.level; e.readYear = st.year; }
@@ -1125,11 +1139,13 @@
     let legal = true, tagUsed;
     if (antlered) { if (st.tags.buck > 0) { st.tags.buck--; st.tags.buckFilled++; tagUsed = 'buck'; } else legal = false; }
     else if (st.tags.doe > 0) { st.tags.doe--; st.tags.doeFilled++; tagUsed = 'doe'; } else legal = false;
-    const sheet = antlered ? WT.measureRack(WT.rackGeom(deer)) : null;
+    if (antlered && !deer.rack) WT.growDeer(deer, H.prop, rng, 1); // safety net for an older save
+    const geom = antlered ? WT.rackGeom(deer) : null;
+    const sheet = geom ? WT.measureRack(geom) : null;
     let pay = legal ? WT.payoutFor(deer, rng) : 0;
     let xp = antlered ? P.xpBuckBase + Math.max(0, deer.gross - 100) * P.xpPerInch : P.xpDoe;
     xp += deer.age >= 4.5 ? 40 : 0;
-    if (!legal) { xp = 10; st.cash -= 500; }
+    if (!legal) { xp = 10; st.cash -= 500; ledger('Fines', -500); }
     const entry = WT.hitEntry(deer.id);
     const rec = {
       id: deer.id, y: st.year, d: st.day, sex: deer.sex, age: deer.age, lw: deer.lw, dw: Math.round(deer.lw * cfg.deer.weights.dressed),
@@ -1141,7 +1157,7 @@
     if (entry) WT.removeHit(deer.id);
     st.journal.unshift(rec);
     st.seasonLog.harvest.push(rec);
-    st.cash += pay;
+    st.cash += pay; ledger('Deer harvested', pay);
     H.xp += xp;
     H.harvested.push(rec);
     if (legal) H.log.push({ t: H.now, kind: 'good', text: `It ${how}. Deer down! Time to go see what you got.` });
@@ -1257,7 +1273,7 @@
     H.xp += hours * P.xpPerHourSat;
     st.stats.hours += hours; st.stats.seen += H.seenIds.size;
     H.levelUps = WT.addXp(H.xp);
-    if (!H.plan.blazeOk && G.rng.chance(0.15)) { st.cash -= 100; news('A game warden checked you without blaze orange. $100 fine.', 'bad'); H.log.push({ t: H.now, kind: 'bad', text: 'A game warden is waiting at your truck. No blaze orange: $100 fine.' }); }
+    if (!H.plan.blazeOk && G.rng.chance(0.15)) { st.cash -= 100; ledger('Fines', -100); news('A game warden checked you without blaze orange. $100 fine.', 'bad'); H.log.push({ t: H.now, kind: 'bad', text: 'A game warden is waiting at your truck. No blaze orange: $100 fine.' }); }
     st.lastHunt = { pid: H.setup.pid, sid: H.stand.sid, session: H.setup.session, seen: H.seenIds.size, harvested: H.harvested.length };
     advanceAfterHunt(H.setup.session);
     WT.save();
@@ -1377,16 +1393,17 @@
   /* ================================================================ season end */
   WT.endSeason = function () {
     const st = S(), cfg = C(), rng = G.rng, w = G.world;
-    const summary = { year: st.year, harvest: st.seasonLog.harvest.slice(), hunts: st.seasonLog.hunts, tax: 0, events: [] };
+    const summary = { year: st.year, harvest: st.seasonLog.harvest.slice(), hunts: st.seasonLog.hunts, tax: 0, events: [], money: Object.assign({}, st.seasonLog.money || {}) };
     // taxes
     let tax = 0;
     for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') tax += WT.landPrice(p.id) * cfg.economy.propertyTaxRate;
     tax = Math.round(tax);
-    st.cash -= tax; summary.tax = tax;
+    if (tax) { st.cash -= tax; ledger('Property tax', -tax); }
+    summary.tax = tax;
     // cellular plans
     let plans = 0;
     for (const p of w.parcels) for (const c of st.parcels[p.id].cams) { const ct = WT.camType(c.type); if (ct.cell) plans += ct.plan; }
-    if (plans) { st.cash -= plans; summary.plans = plans; }
+    void plans; // cellular cameras no longer charge a yearly plan: nothing is taken automatically when a year passes
     // improvements mature
     const TT = T();
     for (const p of w.parcels) {

@@ -210,8 +210,8 @@
     cameras: [
       { id: 'tasco',      name: 'Tasco 12MP',               price: 80,  detect: 0.35, night: 0.25, cell: false },
       { id: 'browning',   name: 'Browning Strike Force',    price: 140, detect: 0.5,  night: 0.5,  cell: false },
-      { id: 'reveal',     name: 'Tactacam Reveal X (cell)', price: 150, detect: 0.5,  night: 0.5,  cell: true, plan: 60 },
-      { id: 'spypoint',   name: 'Spypoint Flex G-36 (cell)',price: 280, detect: 0.65, night: 0.75, cell: true, plan: 100 },
+      { id: 'reveal',     name: 'Tactacam Reveal X (cell)', price: 150, detect: 0.5,  night: 0.5,  cell: true, plan: 0 },
+      { id: 'spypoint',   name: 'Spypoint Flex G-36 (cell)',price: 280, detect: 0.65, night: 0.75, cell: true, plan: 0 },
     ],
 
     /* ------------------------------------------------------------ clothing */

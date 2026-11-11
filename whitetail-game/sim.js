@@ -903,6 +903,9 @@
       delete d._from;
       if (!cur || rng.chance(0.08) || (cur.herd.length > cur.capacity * 1.2 && rng.chance(0.6))) { lost++; continue; } // hit by a car, left the map, no room
       d.tOP = 0.4;
+      // dispersers left before the growth step, so they grow this year's rack on their new ground
+      grow(d, cur, rng, env.yearFactor);
+      d.hist.push([d.age, d.gross, d.lw]); if (d.hist.length > 10) d.hist.shift();
       cur.herd.push(d); moved++;
     }
     // edges of the map: a trickle of young deer wanders in where there's room

@@ -126,8 +126,15 @@
             <dt>Winter</dt><dd>${esc(sum.winter)}</dd>
             <dt>Summer</dt><dd>${esc(sum.growing)}</dd>
             ${sum.tax ? `<dt>Property tax</dt><dd>${money(sum.tax)}</dd>` : ''}
-            ${sum.plans ? `<dt>Cell plans</dt><dd>${money(sum.plans)}</dd>` : ''}
+
           </dl>
+          ${(() => {
+            const rows = Object.entries(sum.money || {}).sort((a, b) => b[1] - a[1]);
+            if (!rows.length) return '';
+            const net = rows.reduce((a, r) => a + r[1], 0);
+            return `<h3>Money this season</h3><dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd class="${v >= 0 ? 'good' : 'bad'}">${v >= 0 ? '+' : ''}${money(v)}</dd>`).join('')}<dt><b>Net</b></dt><dd class="${net >= 0 ? 'good' : 'bad'}"><b>${net >= 0 ? '+' : ''}${money(net)}</b></dd></dl>
+              <p class="faint">Nothing is charged just for a year passing. Money only moves when you buy, hunt or get fined.</p>`;
+          })()}
           ${sum.events.length ? '<h3>On your land</h3>' + sum.events.map((e) => `<p>${esc(e)}</p>`).join('') : ''}
           <p class="dim">New tags are on sale at the shop. Your hit list entries are a year older.</p>
           <div class="row"><button class="btn blaze" id="ok">Back to the lodge</button></div>`, (m2) => $('#ok', m2).addEventListener('click', () => UI.go('lodge')));
@@ -353,7 +360,7 @@
         stats: consumDesc(c), owned: c.fuel ? (inv.propane ? `${inv.propane} on hand` : null) : inv.consum[c.id] ? `${inv.consum[c.id]} on hand` : null, buy: 'consum:' + c.id,
       })).join('');
     } else if (shopTab === 'cams') {
-      body = C().cameras.map((c) => row({ name: c.name, tags: c.cell ? ['Cellular'] : [], price: c.price, stats: `Detection ${Math.round(c.detect * 100)} · Night photos ${Math.round(c.night * 100)}${c.cell ? ` · plan ${money(c.plan)}/yr, photos come to your phone` : ' · walk in to pull the card (spooks deer)'}`, owned: inv.cameras[c.id] ? `${inv.cameras[c.id]} in truck` : null, buy: 'camera:' + c.id })).join('');
+      body = C().cameras.map((c) => row({ name: c.name, tags: c.cell ? ['Cellular'] : [], price: c.price, stats: `Detection ${Math.round(c.detect * 100)} · Night photos ${Math.round(c.night * 100)}${c.cell ? ' · photos come to your phone, no monthly plan' : ' · walk in to pull the card (spooks deer)'}`, owned: inv.cameras[c.id] ? `${inv.cameras[c.id]} in truck` : null, buy: 'camera:' + c.id })).join('');
     } else if (shopTab === 'tags') {
       const T = C().economy.tags;
       body = row({ name: 'Buck tag (any antlered deer)', price: T.buck, owned: st.tags.buck ? 'In wallet' : st.tags.buckFilled ? 'Filled' : null, buy: st.tags.buck + st.tags.buckFilled >= 1 ? null : 'tag:buck', stats: 'One per season. Antlerless deer (does, fawns, button bucks) need a doe tag.' }) +
