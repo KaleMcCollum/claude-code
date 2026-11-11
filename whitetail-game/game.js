@@ -777,12 +777,12 @@
     WT.computeDerivedLayers(w); refreshStands();
     return null;
   };
-  WT.toggleSanctuary = function (pid, x, y) {
+  WT.toggleSanctuary = function (pid, x, y, r = 0) { // r = 0: just this tile; r = 1: this tile and the 8 around it
     const st = S(), d = st.parcels[pid], w = G.world, ok = SANCT_COVER();
     if (d.owner !== 'player') return 'Only on your land.';
     let added = 0, removed = 0, open = 0;
     const inSanct = d.sanctuary.includes(tileAt(x, y));
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const i = tileAt(x + dx, y + dy);
       if (i < 0 || w.parcelOf[i] !== pid) continue;
       const k = d.sanctuary.indexOf(i);

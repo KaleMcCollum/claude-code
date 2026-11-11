@@ -143,6 +143,7 @@
         const d = st.parcels[p.id];
         const show = d.owner === 'player' || d.owner === 'public' || p.id === v.sel || d.permBought || (!opts.huntMode && st.forSale.includes(p.id));
         if (!show || v.z < 3.2 && p.id !== v.sel && d.owner !== 'player') continue;
+        if (p.id === v.sel && v.z >= 10) continue; // zoomed in to edit: the name would sit on top of the tile you picked
         const [X, Y] = toScreen(p.labelX + 0.5, p.labelY + 0.5);
         if (X < -40 || Y < -10 || X > LW + 40 || Y > LH + 10) continue;
         let txt = d.owner === 'player' ? p.name : d.owner === 'public' ? p.name + (d.bowOnly ? ' (BOW)' : '') : st.forSale.includes(p.id) ? '$ FOR SALE' : p.name;
@@ -217,6 +218,7 @@
     canvas.addEventListener('pointercancel', (e) => { pts.delete(e.pointerId); pinch0 = null; });
     canvas.addEventListener('wheel', (e) => { e.preventDefault(); const [mx, my] = rel(e); const [tx, ty] = toTile(mx, my); v.z *= e.deltaY < 0 ? 1.2 : 1 / 1.2; clampView(); v.cx = tx - (mx - LW / 2) / v.z; v.cy = ty - (my - LH / 2) / v.z; clampView(); draw(); }, { passive: false });
     v.zoomBy = (f) => { v.z *= f; clampView(); draw(); };
+    v.centerOn = (x, y, minZ) => { v.cx = x + 0.5; v.cy = y + 0.5; if (minZ && v.z < minZ) v.z = minZ; clampView(); draw(); };
     draw();
     return v;
   };
@@ -361,9 +363,8 @@
         const t = state.tile; if (!t) return;
         const box = (x, y, wd, hg, col) => { const [X, Y] = v.toScreen(x, y); const W2 = Math.round(wd * v.z), H2 = Math.round(hg * v.z), X0 = Math.round(X), Y0 = Math.round(Y); ctx.fillStyle = col; ctx.fillRect(X0 - 1, Y0 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 + H2 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 - 1, 2, H2 + 2); ctx.fillRect(X0 + W2 - 1, Y0 - 1, 2, H2 + 2); };
         // where a plot would go if you planted it from this corner
-        if (land && state.showPlot && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player') { const [pw, ph] = plotDims(state.plot.acres); box(t.x, t.y, pw, ph, '#8fe06a'); }
-        const m = Math.max(0, (9 / v.z - 1) / 2); // never smaller than a marker
-        box(t.x - m, t.y - m, 1 + 2 * m, 1 + 2 * m, '#ffe08a');
+        if (land && state.plotPreview && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player') { const [pw, ph] = plotDims(state.plot.acres); box(t.x, t.y, pw, ph, '#8fe06a'); }
+        box(t.x, t.y, 1, 1, '#ffe08a'); // exactly the one tile you picked
       },
     });
     const refreshMap = () => { view.sel = state.pid; view.draw(); };
@@ -389,9 +390,11 @@
       state.pid = pid; state.sid = null; state.cid = null; state.tile = null; state.showPlot = false;
       if (d.owner === 'player' || d.owner === 'public' || d.permBought) {
         const info = WT.tileInfo(pid, x, y);
-        const snap = info.stand || info.cam;
+        const exact = [info.stand, info.cam].find((o) => o && o.x === x && o.y === y);
+        const snap = exact || (view && view.z < 9 || d.owner === 'npc' ? info.stand || info.cam : null);
         state.tile = snap ? { x: snap.x, y: snap.y } : d.owner !== 'npc' ? { x, y } : null;
-        if (state.tile) { const at = WT.tileInfo(pid, state.tile.x, state.tile.y); state.sid = at.stand ? at.stand.sid : null; state.cid = at.cam ? at.cam.cid : null; }
+        state.plotPreview = false;
+        if (state.tile) { const at = WT.tileInfo(pid, state.tile.x, state.tile.y), here = (o) => o && (snap || (o.x === state.tile.x && o.y === state.tile.y)); state.sid = here(at.stand) ? at.stand.sid : null; state.cid = here(at.cam) ? at.cam.cid : null; }
       }
       view.sel = pid;
     }
@@ -405,6 +408,8 @@
         return;
       }
       selectTile(pid, x, y);
+      // close enough that one tile is easy to see and tap
+      if (state.tile && land && st.parcels[pid].owner === 'player') view.centerOn(state.tile.x, state.tile.y, 12);
       refreshMap(); renderCard();
     }
     // after any change: save, redraw, keep the same spot selected
@@ -470,7 +475,7 @@
           ${pid !== w.starterId ? `<div class="row" style="margin-top:8px"><button class="btn small" id="sell">Sell this land for ${WT.money(WT.landPrice(pid) * (1 - WT.CONFIG.economy.landSellFee))}</button><span id="sellq" class="dim"></span></div>` : ''}`;
         return html;
       }
-      const info = WT.tileInfo(pid, t.x, t.y), s = info.stand, c = info.cam;
+      const info = WT.tileInfo(pid, t.x, t.y), s = state.sid ? d.stands.find((z) => z.sid === state.sid) : null, c = state.cid ? d.cams.find((z) => z.cid === state.cid) : null;
       html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${WT.LAND[WT.landType(w.cover[info.i])].name}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div><p class="faint" style="margin:2px 0">${esc(info.cover)}. ${esc(WT.LAND[WT.landType(w.cover[info.i])].rule)}</p>`;
       if (s) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.standType(s.type).name)}</span><input type="text" id="sname" maxlength="28" value="${esc(s.name || '')}" placeholder="Name it" style="flex:1;min-width:90px"><button class="btn small" id="srename">Rename</button></div>
           <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
@@ -489,13 +494,13 @@
           <select id="plotSel">${WT.CONFIG.improvements.foodplot.types.map((x) => `<option value="${x.id}" ${state.plot.type === x.id ? 'selected' : ''}>${esc(x.name)} (${WT.money(x.cost)}/ac)</option>`).join('')}</select>
           <select id="plotAc">${[[0.5, '½ acre'], [1, '1 acre'], [2, '2 acres'], [4, '4 acres']].map(([v, n]) => `<option value="${v}" ${state.plot.acres === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
           <button class="btn small" id="addPlot">Plant food plot (${WT.money(Math.round(WT.plotType(state.plot.type).cost * state.plot.acres))})</button></div>
-        <p class="faint" style="margin:2px 0 0">The green box on the map is where the plot goes: this spot is its top-left corner. A stand or camera can sit right on it.</p>
+        <p class="faint" style="margin:2px 0 0">A plot is bigger than one tile: ${state.plot.acres} acre${state.plot.acres === 1 ? '' : 's'} is ${plotDims(state.plot.acres).join(' × ')} tiles, with the tile you picked as its top-left corner. <button class="btn small ghost" id="plotShow">${state.plotPreview ? 'Hide' : 'Show'} where it goes</button></p>
         <div class="row" style="margin-top:6px">
           <button class="btn small" id="addWater">Dig water hole (${WT.money(WT.CONFIG.improvements.waterhole.cost)})</button>
           <button class="btn small" id="addTreesH">Tree row → (${WT.money(WT.CONFIG.improvements.trees.cost)})</button>
           <button class="btn small" id="addTreesV">Tree row ↓</button>
         </div>`;
-      html += `<div class="row" style="margin-top:6px"><button class="btn small" id="sanct">${info.sanctuary ? 'Remove sanctuary here' : 'Make this sanctuary'}</button><button class="btn small ghost" data-guide="land">What does each of these do?</button></div>`;
+      html += `<div class="row" style="margin-top:6px"><button class="btn small" id="sanct">${info.sanctuary ? 'Remove sanctuary on this tile' : 'Make this tile sanctuary'}</button><button class="btn small" id="sanct9">${info.sanctuary ? 'Remove' : 'Mark'} this tile and the 8 around it</button><button class="btn small ghost" data-guide="land">What does each of these do?</button></div>`;
       return html;
     }
 
@@ -596,10 +601,13 @@
       on('addWater', () => { if (UI.err(WT.digWaterhole(pid, t.x, t.y))) return; done('Water hole dug.', true); });
       on('addTreesH', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, false))) return; done('Tree row planted.', true); });
       on('addTreesV', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, true))) return; done('Tree row planted.', true); });
-      on('sanct', () => { if (UI.err(WT.toggleSanctuary(pid, t.x, t.y))) return; const sa = WT.sanctuaryInfo(pid); done(sa.nearStand ? 'Marked, but tiles within 100 yards of a stand do not count (red on the map).' : sa.full ? 'Marked. You are at the cap: more sanctuary adds nothing.' : 'Sanctuary updated.'); });
+      const sanctMsg = () => { const sa = WT.sanctuaryInfo(pid); return sa.nearStand ? 'Marked, but tiles within 100 yards of a stand do not count (red on the map).' : sa.full ? 'Marked. You are at the cap: more sanctuary adds nothing.' : 'Sanctuary updated.'; };
+      on('sanct9', () => { if (UI.err(WT.toggleSanctuary(pid, t.x, t.y, 1))) return; done(sanctMsg()); });
+      on('sanct', () => { if (UI.err(WT.toggleSanctuary(pid, t.x, t.y, 0))) return; const sa = WT.sanctuaryInfo(pid); done(sa.nearStand ? 'Marked, but tiles within 100 yards of a stand do not count (red on the map).' : sa.full ? 'Marked. You are at the cap: more sanctuary adds nothing.' : 'Sanctuary updated.'); });
       const ps = $('#plotSel', card), pa = $('#plotAc', card);
       if (ps) ps.addEventListener('change', () => { state.plot.type = ps.value; renderCard(); });
-      if (pa) pa.addEventListener('change', () => { state.plot.acres = +pa.value; renderCard(); });
+      if (pa) pa.addEventListener('change', () => { state.plot.acres = +pa.value; state.plotPreview = true; renderCard(); });
+      on('plotShow', () => { state.plotPreview = !state.plotPreview; renderCard(); });
       let sellArmed = false;
       on('sell', () => { if (!sellArmed) { sellArmed = true; $('#sellq', card).innerHTML = '<span class="warn">Press again to sell.</span>'; return; } if (UI.err(WT.sellLand(pid))) return; WT.save(); state.pid = null; state.tile = null; view.rebuild(); renderCard(); UI.topbar(); });
     }
