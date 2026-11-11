@@ -263,29 +263,53 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
     }
     items.sort((p, q) => q.dist - p.dist);
     const hits = [];
+    /* Ground cover over the whole ground, in rows from the horizon to your feet. Cattails in swamp, standing crop
+       in a field, low yellow grass on prairie, low green in timber. Rows are drawn far to near together with the
+       deer, so a deer stands IN the cover. Because you sit above it, nearer rows are drawn short enough that they
+       don't hide deer farther out; each deer gets its own full-height patch at its feet. */
+    const coverStyle = (gy) => {
+      const inCrop = info.cropKind && !WT.cropsOff() && !snow && gy <= base + 9;
+      const kind = inCrop ? info.cropKind : swampy ? 'swamp' : woodsy ? 'woods' : 'prairie';
+      const tall = { swamp: 38, corn: 40, soy: 16, woods: 6, prairie: 5 }[kind] ?? 5; // inches
+      const cols = snow ? ['#d8d0b4', '#c2b894'] : kind === 'swamp' ? (bare ? ['#a89868', '#8e8054'] : ['#9a9450', '#847e42']) : kind === 'corn' ? ['#c4aa5c', '#a48c44'] : kind === 'soy' ? ['#a8884a', '#8e7240']
+        : kind === 'woods' ? (bare ? ['#7c8648', '#6a7440'] : ['#6f9a48', '#5c843c']) : ['#d6bc66', '#bca252'];
+      return { kind, tall, cols };
+    };
+    const stalk = (cs, sx, gy, hh, sw, ppi, q, hv) => {
+      ctx.fillStyle = cs.cols[q % 2]; ctx.fillRect(sx, gy - hh + 1, sw, hh);
+      if (cs.kind === 'swamp' && hh > 4 && hv < 0.4) { ctx.fillStyle = '#4a3020'; ctx.fillRect(sx, gy - hh - Math.max(1, Math.round(3 * ppi)) + 1, sw, Math.max(2, Math.round(5 * ppi))); } // cattail head
+      if (cs.kind === 'corn' && hh > 5 && hv < 0.5) { ctx.fillStyle = cs.cols[1]; ctx.fillRect(sx - sw, gy - Math.round(hh * 0.6), sw * 3, Math.max(1, Math.round(ppi))); }               // a leaf
+    };
+    const rows = []; for (let d = Math.min(520, H.maxView * 1.05); d > 16; d /= 1.22) rows.push(d);
+    let ri = 0;
+    const coverTo = (dist) => {
+      for (; ri < rows.length && rows[ri] > dist; ri++) {
+        const d = rows[ri], gy = Math.round(groundY(d)), ppi = Math.max(0.13 * BIG, Math.min(1.3 * BIG, 1.3 * BIG * persp(d)));
+        const cs = coverStyle(gy), sw = Math.max(1, Math.round(ppi * 0.9));
+        const hMax = Math.max(1, Math.min(cs.tall * ppi, (gy - groundY(d * 1.45)) * (cs.tall > 20 ? 0.9 : 1)));
+        const gap = sw * (cs.tall > 20 ? 3.6 : 4.5);
+        for (let sx0 = -gap * WT.hash2(ri, 3, seed); sx0 < SW; sx0 += gap) {
+          const q = Math.round(sx0 / gap), hv = WT.hash2(q, ri, seed + 73);
+          if (hv > (cs.tall > 20 ? 0.6 : 0.62)) continue;                                   // gaps: bare ground shows through
+          stalk(cs, Math.round(sx0 + hv * gap * 0.6), gy + Math.round((WT.hash2(ri, q, seed + 74) - 0.5) * 2), Math.max(1, Math.round(hMax * (0.5 + 0.5 * WT.hash2(q, ri, seed + 75)))), sw, ppi, q, hv);
+        }
+      }
+    };
     for (const it of items) {
+      coverTo(it.dist);
       const { g, m, dist, ppiT: ppi, sc: scl, spr, b } = it;
       const sc2 = scl;
       const x = Math.round(it.x), gy = Math.round(groundY(dist));
       const dw = Math.max(1, Math.round(spr.width * sc2)), dh = Math.max(1, Math.round(spr.height * sc2));
       const dx = Math.round(x - spr.anchor.x * sc2), dy = Math.round(gy - spr.anchor.y * sc2);
       ctx.drawImage(spr, 0, 0, spr.width, spr.height, dx, dy, dw, dh);
-      // ground cover right where the deer stands, in front of its legs. How tall depends on the ground:
-      // cattails to the neck in swamp, standing crops the same, a few inches of yellow grass on prairie, green in the woods.
+      // his own patch of cover, full height, right in front of his legs
       {
-        const inCrop = info.cropKind && !WT.cropsOff() && !snow && gy <= base + 9;
-        const kind = inCrop ? info.cropKind : swampy ? 'swamp' : woodsy ? 'woods' : 'prairie';
-        const tall = { swamp: 38, corn: 40, soy: 16, woods: 6, prairie: 5 }[kind] ?? 5;   // inches
-        const cols = snow ? ['#d8d0b4', '#c2b894'] : kind === 'swamp' ? (bare ? ['#a89868', '#8e8054'] : ['#9a9450', '#847e42']) : kind === 'corn' ? ['#c4aa5c', '#a48c44'] : kind === 'soy' ? ['#a8884a', '#8e7240']
-          : kind === 'woods' ? (bare ? ['#7c8648', '#6a7440'] : ['#6f9a48', '#5c843c']) : ['#d6bc66', '#bca252'];
-        const hMax = Math.max(1, tall * ppi), sw = Math.max(1, Math.round(ppi * 0.9)), half = it.w * 0.85 + sw * 2;
-        const n = Math.max(3, Math.round(half * 2 / (sw * (tall > 20 ? 1.6 : 2.4))));
+        const cs = coverStyle(gy), hMax = Math.max(1, cs.tall * ppi), sw = Math.max(1, Math.round(ppi * 0.9)), half = it.w * 0.85 + sw * 2;
+        const n = Math.max(3, Math.round(half * 2 / (sw * (cs.tall > 20 ? 1.6 : 2.4))));
         for (let q = 0; q < n; q++) {
           const hv = WT.hash2(m.deer.id, q, 71), sx = Math.round(x - half + (q + hv * 0.7) * (half * 2 / n));
-          const hh = Math.max(1, Math.round(hMax * (0.55 + 0.45 * WT.hash2(q, m.deer.id, 72))));
-          ctx.fillStyle = cols[q % 2]; ctx.fillRect(sx, gy - hh + 1, sw, hh);
-          if (kind === 'swamp' && hh > 4 && hv < 0.4) { ctx.fillStyle = '#4a3020'; ctx.fillRect(sx, gy - hh - Math.max(1, Math.round(3 * ppi)) + 1, sw, Math.max(2, Math.round(5 * ppi))); } // cattail head
-          if (kind === 'corn' && hh > 5 && hv < 0.5) { ctx.fillStyle = cols[1]; ctx.fillRect(sx - sw, gy - Math.round(hh * 0.6), sw * 3, Math.max(1, Math.round(ppi))); }               // a leaf
+          stalk(cs, sx, gy, Math.max(1, Math.round(hMax * (0.55 + 0.45 * WT.hash2(q, m.deer.id, 72)))), sw, ppi, q, hv);
         }
       }
       // brush between you and the deer: no clean shot
@@ -299,6 +323,7 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
         ctx.fillRect(X0, Y1, 3, 1); ctx.fillRect(X0, Y1 - 2, 1, 3); ctx.fillRect(X1 - 2, Y1, 3, 1); ctx.fillRect(X1, Y1 - 2, 1, 3);
       }
     }
+    coverTo(0);
     ctx.restore();
     // foreground: what you're sitting in
     const fg = st.day > 62 ? '#4a4038' : '#2e2418';
