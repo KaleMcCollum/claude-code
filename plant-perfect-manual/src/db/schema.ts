@@ -399,6 +399,13 @@ export const proposals = pgTable(
     structureChange: jsonb("structure_change"),
     /** For an approved "add a section": the section that was created. */
     createdSectionId: uuid("created_section_id").references(() => sections.id),
+    /**
+     * Structure proposals, once approved: the sentence that said what the
+     * change would do at the moment it was approved, with the sections'
+     * names and numbers as they were just before the change. Empty for
+     * everything else. The database lets it be set only in the approving step.
+     */
+    decidedTitle: text("decided_title"),
     /** True for "Edit official" saves and restores. */
     direct: boolean("direct").notNull().default(false),
     /** Who proposed it. Empty is reserved for the AI (Phase 5). */

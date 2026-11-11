@@ -1,10 +1,11 @@
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { type Queryable, type Tx, asSystem, asUser, sqlErrorText, sqlState } from "@/db/client";
 import { roles, users } from "@/db/schema";
 import { logActivity } from "./activity";
 import { confirmUrl, issueLoginToken, looksLikeEmail, normalizeEmail, revokeUserSessions } from "./auth/core";
 import { inviteEmail } from "./auth/emails";
 import type { SendEmail } from "./mailer";
+import { UNSEEN_CHARACTER_MESSAGE, hasUnseenCharacter, tidyPersonName } from "./names";
 import { type Actor, AppError, assertCan } from "./permissions";
 
 export type UserRow = {
@@ -76,11 +77,17 @@ async function countUserManagers(tx: Tx, exceptUserId: string): Promise<number> 
 }
 
 /**
- * No two people may have the same name, removed people included: names are
- * what everyone reads next to "Approved by", so two people called Casey
- * could not be told apart. Names are compared without regard to capitals,
- * and a run of spaces counts as one. The database has the same rule (a
- * unique index), with the same way of comparing (`user_name_key`).
+ * No two people may have the same name: names are what everyone reads next
+ * to "Approved by", so two people called Casey could not be told apart.
+ * Someone who was removed still counts, because their name stays on what
+ * they wrote and approved. The one exception is a removed person who never
+ * signed in: nothing was ever done under that entry, so its name is free
+ * again (a mistyped email address can be removed and the person added again
+ * under the same name).
+ *
+ * Names are compared the way `user_name_key` in the database does it:
+ * capitals and extra spaces do not count, and neither do characters that
+ * cannot be seen. The database has the same rule (a unique index).
  */
 async function requireFreeName(tx: Tx, name: string, exceptUserId: string | null): Promise<void> {
   const [taken] = await tx
@@ -89,6 +96,7 @@ async function requireFreeName(tx: Tx, name: string, exceptUserId: string | null
     .where(
       and(
         sql`public.user_name_key(${users.name}) = public.user_name_key(${name})`,
+        or(isNull(users.removedAt), isNotNull(users.lastActiveAt)),
         exceptUserId ? ne(users.id, exceptUserId) : undefined,
       ),
     )
@@ -98,17 +106,30 @@ async function requireFreeName(tx: Tx, name: string, exceptUserId: string | null
 
 function nameTaken(name: string, removed: boolean): string {
   return removed
-    ? `Someone who was removed earlier was also called ${name}, and that name is still on what they wrote and approved. Add a last initial so the two can be told apart.`
+    ? `Someone who was removed earlier was also called ${name}, and that name stays on what they wrote, approved or endorsed. Add a last initial so the two can be told apart.`
     : `Someone here is already called ${name}. Add a last initial so the two can be told apart.`;
 }
 
-export type AddUserResult = { userId: string; emailSent: boolean };
+export type AddUserResult = {
+  userId: string;
+  emailSent: boolean;
+  /**
+   * Set when a removed person was brought back and keeps the name they had,
+   * which is not the name that was typed. The screen can then say so.
+   */
+  keptName?: string;
+};
 
 /**
  * Add a user and email them an invitation with a sign-in link.
+ *
  * Adding the email of someone who was removed earlier brings that same
- * person back, so their past entries stay attached to them. They can come
- * back under a new name only if nobody else has that name.
+ * person back, so their past entries stay attached to them.
+ *  - If they ever signed in, they keep the name they had: it is on what
+ *    they wrote, approved and endorsed, and must not change under it. The
+ *    name typed now is not used (`keptName` says which name was kept).
+ *  - If they never signed in (a mistyped address, say), they take the name
+ *    typed now, which must be free like any new name.
  */
 export async function addUser(
   actor: Actor,
@@ -116,29 +137,38 @@ export async function addUser(
   options: { baseUrl: string; send: SendEmail },
 ): Promise<AddUserResult> {
   assertCan(actor, "manage_users");
-  const name = input.name.replace(/\s+/g, " ").trim();
+  const typedName = tidyPersonName(input.name);
   const email = normalizeEmail(input.email);
-  if (!name) throw new AppError("Enter a name or nickname.");
-  if (name.length > MAX_NAME_LENGTH) throw new AppError("That name is too long.");
+  if (!typedName) throw new AppError("Enter a name or nickname.");
+  if (typedName.length > MAX_NAME_LENGTH) throw new AppError("That name is too long.");
+  if (hasUnseenCharacter(typedName)) throw new AppError(UNSEEN_CHARACTER_MESSAGE);
   if (!looksLikeEmail(email)) throw new AppError("Enter a valid email address.");
 
-  const userId = await asUser(actor.id, async (tx) => {
+  const added = await asUser(actor.id, async (tx) => {
     const role = await requireRole(tx, input.roleKey);
     const [existing] = await tx.select().from(users).where(eq(users.email, email));
     if (existing && !existing.removedAt) {
       throw new AppError("There is already a user with that email address.");
     }
-    await requireFreeName(tx, name, existing?.id ?? null);
+    // Someone who has signed in keeps their name (the database refuses to
+    // change it, too).
+    const keepsName = existing !== undefined && existing.lastActiveAt !== null;
+    const name = keepsName ? existing.name : typedName;
+    if (!keepsName) await requireFreeName(tx, name, existing?.id ?? null);
     const now = new Date();
     // If someone else takes the same name or email at this very moment, the
     // database refuses the second one; say why in plain words.
     const refused = (error: unknown): never => {
+      const text = sqlErrorText(error);
       if (sqlState(error) === "23505") {
         throw new AppError(
-          sqlErrorText(error).includes("users_name_unique")
+          text.includes("users_name_unique")
             ? nameTaken(name, false)
             : "There is already a user with that email address.",
         );
+      }
+      if (sqlState(error) === "23514" && text.includes("users_name_can_be_seen")) {
+        throw new AppError(UNSEEN_CHARACTER_MESSAGE);
       }
       throw error;
     };
@@ -148,7 +178,7 @@ export async function addUser(
       await tx
         .update(users)
         .set({
-          name,
+          ...(keepsName ? {} : { name }),
           roleKey: role.key,
           removedAt: null,
           removedBy: null,
@@ -172,16 +202,16 @@ export async function addUser(
       summary: `${existing ? "Added back" : "Added"} ${name} as ${role.name}`,
       data: { roleKey: role.key },
     });
-    return id;
+    return { userId: id, name };
   });
 
   let emailSent = true;
   try {
-    const secret = await asSystem((db) => issueLoginToken(db, userId, "invite"));
+    const secret = await asSystem((db) => issueLoginToken(db, added.userId, "invite"));
     await options.send(
       inviteEmail({
         to: email,
-        name,
+        name: added.name,
         invitedBy: actor.name,
         url: confirmUrl(options.baseUrl, secret),
       }),
@@ -190,7 +220,9 @@ export async function addUser(
     console.error("Invitation email failed:", error);
     emailSent = false;
   }
-  return { userId, emailSent };
+  return added.name === typedName
+    ? { userId: added.userId, emailSent }
+    : { userId: added.userId, emailSent, keptName: added.name };
 }
 
 export async function changeUserRole(actor: Actor, userId: string, roleKey: string): Promise<void> {

@@ -57,6 +57,12 @@ import { addDays, centralDateKey, formatDate } from "./time";
  *  - An approval or endorsement is tied to the wording it was given on: it
  *    carries the proposal's revision number, and the database refuses it if
  *    the proposal has been changed since.
+ *  - A text proposal is also tied to the official text it was written
+ *    against (`baseVersionId`). When that text changes while the proposal
+ *    waits, the proposal is out of date: the proposer's approval was never
+ *    given on top of the newer text, so two people cannot approve it until
+ *    the proposer has checked it against the new text and saved it again.
+ *    One person can still approve it alone, which is flagged.
  *  - Only the proposer can change or withdraw a proposal, and can change it
  *    only until someone else has approved or endorsed it. Another Owner
  *    declines it instead.
@@ -96,6 +102,13 @@ export type ProposalView = {
   structureChange: StructureChange | null;
   /** For an approved "add a section": the section that was created. */
   createdSectionId: string | null;
+  /**
+   * Approved structure proposals: the sentence saying what the change would
+   * do, as it read at the moment of approval (what the approver was shown).
+   * Null for everything else, and for section changes approved before this
+   * was recorded.
+   */
+  decidedTitle: string | null;
   /** True for "Edit official" saves and restores. */
   direct: boolean;
   proposedById: string | null;
@@ -127,6 +140,19 @@ export type ProposalView = {
    * has a newer official version. ("No longer the current text.")
    */
   superseded: boolean;
+  /**
+   * An open text proposal whose section's official text has changed since
+   * it was proposed (or last checked by its proposer): `baseVersionId` is
+   * not the section's current official version. False for structure
+   * proposals and for anything that is not open.
+   */
+  outOfDate: boolean;
+  /**
+   * Open proposals: its proposer could still change it. They are still
+   * here, are still allowed to propose, and nobody else has approved or
+   * endorsed it. False for anything that is not open.
+   */
+  proposerCanChange: boolean;
 };
 
 /** What the person had on screen when they pressed a button. */
@@ -147,6 +173,15 @@ export type TextProposalInput = {
   description?: unknown;
   businessTag?: unknown;
   proposedOfficial: unknown;
+  /**
+   * A new proposal: the official version the form started from (null when
+   * the section had no official text). When given, it must still be the
+   * section's current version, or the proposal is refused: the person would
+   * be proposing to replace text they have not seen. Leave it out only where
+   * no page is involved; the current version is used then. Not used when a
+   * proposal is edited (see `editProposal`).
+   */
+  baseVersionId?: string | null;
   /** Notes this proposal came from. */
   noteIds?: string[];
 };
@@ -176,6 +211,7 @@ const UNREADABLE_CHANGE =
   "This proposal's change could not be read, so nothing was changed. Decline it and make a new one.";
 
 const proposer = alias(users, "proposer");
+const proposerRole = alias(roles, "proposer_role");
 const decider = alias(users, "decider");
 
 type ProposalRow = typeof proposals.$inferSelect;
@@ -184,13 +220,39 @@ type ProposalRow = typeof proposals.$inferSelect;
 
 function selectProposals(q: Queryable) {
   return q
-    .select({ row: proposals, proposedByName: proposer.name, decidedByName: decider.name })
+    .select({
+      row: proposals,
+      proposedByName: proposer.name,
+      proposerRemovedAt: proposer.removedAt,
+      proposerPermissions: proposerRole.permissions,
+      decidedByName: decider.name,
+    })
     .from(proposals)
     .leftJoin(proposer, eq(proposer.id, proposals.proposedBy))
+    .leftJoin(proposerRole, eq(proposerRole.key, proposer.roleKey))
     .leftJoin(decider, eq(decider.id, proposals.decidedBy));
 }
 
-type Joined = { row: ProposalRow; proposedByName: string | null; decidedByName: string | null };
+type Joined = {
+  row: ProposalRow;
+  proposedByName: string | null;
+  proposerRemovedAt: Date | null;
+  proposerPermissions: string[] | null;
+  decidedByName: string | null;
+};
+
+/** The id of each of these sections' current official version (sections with no official text are left out). */
+async function currentVersionIds(q: Queryable, sectionIds: string[]): Promise<Map<string, string>> {
+  const current = new Map<string, string>();
+  if (sectionIds.length === 0) return current;
+  const rows = await q
+    .selectDistinctOn([officialVersions.sectionId], { sectionId: officialVersions.sectionId, id: officialVersions.id })
+    .from(officialVersions)
+    .where(inArray(officialVersions.sectionId, sectionIds))
+    .orderBy(officialVersions.sectionId, desc(officialVersions.version));
+  for (const { sectionId, id } of rows) current.set(sectionId, id);
+  return current;
+}
 
 async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> {
   if (joined.length === 0) return [];
@@ -228,12 +290,23 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
   const approverIds = joined.some((j) => j.row.status === "approved" && j.row.decidedAlone)
     ? new Set((await activeApprovers(q)).map((owner) => owner.id))
     : new Set<string>();
+  // The current official version of each section an open text proposal is
+  // about, to say whether that proposal is out of date.
+  const openTextSections = [
+    ...new Set(
+      joined
+        .filter((j) => j.row.status === "open" && j.row.type !== "structure" && j.row.sectionId)
+        .map((j) => j.row.sectionId as string),
+    ),
+  ];
+  const current = await currentVersionIds(q, openTextSections);
 
-  return joined.map(({ row, proposedByName, decidedByName }) => {
+  return joined.map(({ row, proposedByName, proposerRemovedAt, proposerPermissions, decidedByName }) => {
     const version = versionRows.find((v) => v.proposalId === row.id);
     const pick = (list: (PersonStamp & { proposalId: string })[]) =>
       list.filter((s) => s.proposalId === row.id).map(({ userId, name, at }) => ({ userId, name, at }));
     const approvedBy = pick(approvalRows);
+    const endorsedBy = pick(endorsementRows);
     return {
       id: row.id,
       type: row.type,
@@ -245,6 +318,7 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
       baseVersionId: row.baseVersionId,
       structureChange: (row.structureChange as StructureChange | null) ?? null,
       createdSectionId: row.createdSectionId,
+      decidedTitle: row.decidedTitle,
       direct: row.direct,
       proposedById: row.proposedBy,
       proposedByName,
@@ -256,7 +330,7 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
       decidedByName,
       declineReason: row.declineReason,
       approvals: approvedBy,
-      endorsements: pick(endorsementRows),
+      endorsements: endorsedBy,
       resultVersion: version ? { id: version.id, version: version.version } : null,
       decidedAlone: row.decidedAlone,
       soloOpen:
@@ -265,6 +339,18 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
         !approvedBy.some((a) => a.userId !== row.decidedBy && approverIds.has(a.userId)),
       superseded:
         row.status === "approved" && version !== undefined && (newest.get(version.sectionId) ?? 0) > version.version,
+      outOfDate:
+        row.status === "open" &&
+        row.type !== "structure" &&
+        row.sectionId !== null &&
+        (current.get(row.sectionId) ?? null) !== row.baseVersionId,
+      proposerCanChange:
+        row.status === "open" &&
+        row.proposedBy !== null &&
+        proposerRemovedAt === null &&
+        (proposerPermissions ?? []).includes("propose") &&
+        !approvedBy.some((a) => a.userId !== row.proposedBy) &&
+        !endorsedBy.some((e) => e.userId !== row.proposedBy),
     };
   });
 }

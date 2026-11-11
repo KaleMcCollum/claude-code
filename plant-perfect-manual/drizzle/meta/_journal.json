@@ -71,6 +71,20 @@
       "when": 1794361932291,
       "tag": "0009_decisions_hardening_security",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794374120779,
+      "tag": "0010_decisions_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794374124480,
+      "tag": "0011_decisions_review_security",
+      "breakpoints": true
     }
   ]
 }

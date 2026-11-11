@@ -1,4 +1,5 @@
 import { count } from "drizzle-orm";
+import { hasUnseenCharacter, personNameKey, tidyPersonName } from "@/lib/names";
 import type { Db } from "./client";
 import { sections, users } from "./schema";
 
@@ -42,22 +43,44 @@ export const SEED_SECTIONS: { title: string; children: string[] }[] = [
 /**
  * Parse SEED_OWNERS, e.g. "Kale <kale@example.com>, Casey <casey@example.com>".
  * A bare address ("kale@example.com") uses the part before @ as the name.
+ *
+ * No two starting Owners may have the same name or the same email address
+ * (the database refuses that; this says so in plain words first). Names are
+ * compared the way the app compares them everywhere: capitals, extra spaces
+ * and characters that cannot be seen do not count.
  */
 export function parseSeedOwners(value: string | undefined): { name: string; email: string }[] {
   if (!value) return [];
-  const owners: { name: string; email: string }[] = [];
+  const owners: { name: string; email: string; entry: string }[] = [];
   for (const part of value.split(",")) {
-    const text = part.trim();
-    if (!text) continue;
-    const match = text.match(/^(.*)<([^<>]+)>$/);
-    const email = (match ? match[2] : text).trim().toLowerCase();
+    const entry = part.trim();
+    if (!entry) continue;
+    const match = entry.match(/^(.*)<([^<>]+)>$/);
+    const email = (match ? match[2] : entry).trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new Error(`SEED_OWNERS has an entry that is not an email address: "${text}"`);
+      throw new Error(`SEED_OWNERS has an entry that is not an email address: "${entry}"`);
     }
-    const name = (match ? match[1].trim() : "") || email.split("@")[0];
-    owners.push({ name, email });
+    const name = tidyPersonName(match ? match[1] : "") || email.split("@")[0];
+    if (hasUnseenCharacter(name)) {
+      throw new Error(
+        `SEED_OWNERS has a name with a character in it that cannot be seen: "${entry}". Type that name again by hand.`,
+      );
+    }
+    const sameEmail = owners.find((other) => other.email === email);
+    if (sameEmail) {
+      throw new Error(
+        `SEED_OWNERS has the same email address twice: "${sameEmail.entry}" and "${entry}". Each starting Owner needs their own email address.`,
+      );
+    }
+    const sameName = owners.find((other) => personNameKey(other.name) === personNameKey(name));
+    if (sameName) {
+      throw new Error(
+        `SEED_OWNERS has two starting Owners with the same name (${sameName.name}): "${sameName.entry}" and "${entry}". Give each a different name, like this: Kale <kale@example.com>, Casey <casey@example.com>`,
+      );
+    }
+    owners.push({ name, email, entry });
   }
-  return owners;
+  return owners.map(({ name, email }) => ({ name, email }));
 }
 
 /**
