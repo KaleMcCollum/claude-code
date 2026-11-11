@@ -5,7 +5,9 @@
   const S = () => WT.game.state;
   const Wd = () => WT.game.world;
   const T = WT.T;
-  const LW = 480, LH = 270; // logical map canvas
+  // Logical map canvas. Taller than it is wide on a phone, so the map gets most of the screen and the info sits below.
+  let LW = 480, LH = 330;
+  function setMapSize() { const phone = typeof window !== 'undefined' && window.innerWidth < 700; LW = phone ? 360 : 480; LH = phone ? 430 : 330; }
 
   /* ---------------------------------------------------------------- palette (flat, one color per tile) */
   const PAL = {
@@ -340,6 +342,7 @@
     const st = S(), w = Wd();
     const land = args.mode === 'land';
     const state = { pid: args.pid ?? null, sid: args.sid ?? null, cid: null, tile: null, move: null, plot: { type: 'rye', acres: 1 }, standType: null, camType: null };
+    setMapSize();
     el.innerHTML = UI.stage(LW, LH, `
       <div class="ov" style="right:8px;top:8px;flex-direction:column"><button class="btn ghost small" data-z="in">+</button><button class="btn ghost small" data-z="out">−</button><button class="btn ghost small" data-z="home">Home</button></div>
       <div class="ov" style="left:8px;top:8px"><button class="btn ghost small" data-back>Lodge</button><button class="btn ghost small ${land ? '' : 'on'}" data-mode="hunt">Hunt</button><button class="btn ghost small ${land ? 'on' : ''}" data-mode="land">Land</button></div>
@@ -347,6 +350,7 @@
       `<div class="row" id="banner" style="margin-top:6px;padding:4px 8px;border:2px solid #ffe08a;align-items:center;justify-content:space-between" hidden></div>
       <div class="row dim" style="font-size:15px;gap:4px 12px;margin-top:6px">${UI.mapLegend(args.mode)}<span class="faint">Drag to move, pinch or +/− to zoom</span></div>
       <section class="panel" id="card" style="margin-top:8px"></section>`;
+    Object.assign(el.querySelector('.stage').style, { aspectRatio: `${LW} / ${LH}`, width: `min(100%, calc(74vh * ${LW} / ${LH}))`, margin: '0 auto' });
     const card = $('#card', el), banner = $('#banner', el);
     const plotDims = (acres) => { const side = Math.round(Math.sqrt(acres * 4)); return [Math.ceil(acres * 4 / side), side]; };
     const view = UI.mapView($('canvas', el), {
