@@ -1340,8 +1340,8 @@
 
     const ctx = {
       pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * WT.warmWater(stand) * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
-      // early archery: deer haven't been hunted yet. A scrape touching the stand is worked in the rut.
-      tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1) * (/Pre|Seek|Peak/.test(rut.name) && WT.scrapeNear(setup.pid, stand.x, stand.y) ? C().scouting.scrapeRut : 1),
+      // early archery: deer haven't been hunted yet
+      tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1),
       place: 0.5, matureRating: 0.5, // neutral: the stand's worth comes through the two multipliers below
       spotMult: WT.spotMult(stand, today), matureMult: WT.matureMult(stand),
       hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
@@ -1360,10 +1360,11 @@
       return rng.chance(0.5) ? plan.legalStart + Math.pow(rng.next(), 1.6) * 3 : plan.legalEnd - Math.pow(rng.next(), 1.6) * 3;
     };
     const S2 = cfg.deer.sighting, out = new Set(), rutOn = /Seek|Peak/.test(rut.name);
+    const signHere = WT.signTouching(setup.pid, stand.x, stand.y); // whose scrapes, beds and rubs this stand sits on
     const hasMom = (deer) => deer.mom && herd.some((m) => m.id === deer.mom);
     for (const deer of herd) {
       if (hasMom(deer) || out.has(deer.id)) continue; // fawns follow mom
-      if (!rng.chance(WT.sightingChance(deer, ctx) * WT.homeFactor(setup.pid, deer, stand.x, stand.y, rutOn))) continue;
+      if (!rng.chance(Math.min(0.97, WT.sightingChance(deer, ctx) * WT.homeFactor(setup.pid, deer, stand.x, stand.y, rutOn) * WT.signBoost(signHere, deer, 'stand', rutOn)))) continue;
       const members = [deer, ...(byMom[deer.id] || []).filter(() => rng.chance(0.85))];
       // does often travel together: a second doe and her fawns may come along
       if (deer.sex === 'd' && deer.age >= 1 && rng.chance(S2.doeGroup || 0)) {
@@ -1938,10 +1939,11 @@
         const watched = Math.pow(sight.reach / 60, 0.7); // more ground in view, more deer caught
         const spotOf = d.owner === 'public' ? d.spots || [] : d.stands;
         const rutCam = /Seek|Peak/.test(WT.rutPhase(Math.min(st.day, 91)).name);
+        const signCam = WT.signTouching(p.id, cam.x, cam.y);
         const at = WT.standForCam(p.id, cam); void spotOf;
         for (const deer of d.herd) {
           if (deer.age < 1 && rng.chance(0.6)) continue;
-          const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6 * WT.homeFactor(p.id, deer, cam.x, cam.y, rutCam);
+          const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6 * WT.homeFactor(p.id, deer, cam.x, cam.y, rutCam) * WT.signBoost(signCam, deer, 'camera', rutCam);
           if (!rng.chance(p0)) continue;
           const night = deer.sex === 'b' && deer.age >= 3.5 ? rng.chance(0.85) : rng.chance(0.45);
           const dist = Math.round(4 + (sight.reach - 4) * Math.pow(rng.next(), 1.4));
@@ -2051,6 +2053,22 @@
     return { found, hint };
   };
   WT.foundSign = (pid) => (S().sign || []).filter((sg) => sg.f && (pid == null || sg.p === pid));
+  // Sign belongs to the buck that made it. Everything of his within one tile of (x, y), found or not.
+  WT.signTouching = function (pid, x, y) {
+    const w = G.world, out = new Map();
+    for (const sg of S().sign || []) {
+      if (sg.p !== pid || sg.t === 'shed') continue;
+      if (Math.abs((sg.i % w.W) - x) > 1 || Math.abs(((sg.i / w.W) | 0) - y) > 1) continue;
+      const cur = out.get(sg.k) || {}; cur[sg.t] = true; if (sg.f) cur.found = true; out.set(sg.k, cur);
+    }
+    return out;
+  };
+  // How much more often THAT buck shows at a stand or camera touching his sign. His scrape still pulls him in the rut.
+  WT.signBoost = function (touch, deer, kind, rutOn) {
+    const t = touch && touch.get(deer.id); if (!t) return 1;
+    const m = C().scouting[kind];
+    return Math.max(t.scrape ? (kind === 'stand' && rutOn ? m.scrapeRut : m.scrape) : 1, t.bed ? m.bed : 1, t.rub ? m.rub : 1);
+  };
   // A scrape touching a stand is worked in the rut: a small bonus whether or not you have found it.
   WT.scrapeNear = (pid, x, y) => { const w = G.world; return (S().sign || []).some((sg) => sg.t === 'scrape' && sg.p === pid && Math.abs((sg.i % w.W) - x) <= 1 && Math.abs(((sg.i / w.W) | 0) - y) <= 1); };
 

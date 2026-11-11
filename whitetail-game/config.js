@@ -272,7 +272,9 @@
        and a 5-star sit about twice a 1-star sit. Old bucks follow the big-buck rating: swamp is where you see them. */
     sightMult: { ratingBase: 0.45, ratingGain: 1.75, ratingPow: 1.3, starBase: 0.5, starGain: 1.0, norm: 1.15, matureBase: 0.5, matureGain: 3.0, maturePow: 1.5, matureLift: 0.5 },
     // Off-season scouting: 3 x 3 blocks you can search each spring, plus one per this many Woodcraft points.
-    scouting: { searches: 5, woodcraftPer: 8, scrapeRut: 1.12 },
+    scouting: { searches: 5, woodcraftPer: 8, scrapeRut: 1.12,
+      // sign belongs to one buck. A stand or camera touching it gets that buck this many times as often.
+      stand: { scrape: 2.2, scrapeRut: 2.8, bed: 1.8, rub: 1.25 }, camera: { scrape: 3, bed: 2, rub: 1.3 } },
     mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards
 
     /* ------------------------------------------------------------ trail cameras */
