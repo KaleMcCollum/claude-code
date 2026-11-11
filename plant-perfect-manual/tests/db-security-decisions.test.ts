@@ -20,7 +20,7 @@ import {
   loadProposal,
 } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
-import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
+import { actorFor, insertUser, refusal, withTestDatabase } from "./helpers/db";
 
 withTestDatabase();
 
@@ -141,20 +141,61 @@ describe("database rules: approvals and endorsements", () => {
 describe("database rules: deciding", () => {
   it("nothing is approved without the approval of the person approving it", async () => {
     const { casey } = await setup();
+    const training = await section("Training");
     const id = await openProposal("Needs an approval", "Training", "Training text.");
-    // Casey has not approved it, so she cannot mark it approved.
-    await expect(
-      asUser(casey.id, (tx) => tx.update(proposals).set({ status: "approved", decidedBy: casey.id }).where(eq(proposals.id, id))),
-    ).rejects.toThrow();
+    // Casey has not approved it. She marks it approved and saves its text in
+    // the same step, so the only thing missing is her own approval.
+    expect(
+      await refusal(
+        asUser(casey.id, async (tx) => {
+          await tx.update(proposals).set({ status: "approved", decidedBy: casey.id }).where(eq(proposals.id, id));
+          await tx.insert(officialVersions).values({
+            sectionId: training,
+            version: 1,
+            content: doc("Training text."),
+            contentText: "Training text.",
+            createdBy: casey.id,
+            proposalId: id,
+          });
+        }),
+      ),
+    ).toMatch(/Nothing becomes official without a recorded approval/);
     expect((await row(id)).status).toBe("open");
+    // The same for a structure proposal, which has no text to save.
+    const { kale } = await setup();
+    const structure = await createProposal(kale, { kind: "structure", change: { action: "archive", sectionId: training } });
+    expect(
+      await refusal(asUser(casey.id, (tx) => tx.update(proposals).set({ status: "approved", decidedBy: casey.id }).where(eq(proposals.id, structure)))),
+    ).toMatch(/Nothing becomes official without a recorded approval/);
+    expect((await row(structure)).status).toBe("open");
   });
 
   it("only in your own name, and an Advisor cannot decide anything", async () => {
     const { kale, casey, karen } = await setup();
+    const hours = await section("Store Hours");
     const id = await openProposal("Whose decision", "Store Hours", "Hours text.");
-    await expect(
-      asUser(kale.id, (tx) => tx.update(proposals).set({ status: "approved", decidedBy: casey.id }).where(eq(proposals.id, id))),
-    ).rejects.toThrow();
+    const NOT_YOUR_NAME = /A proposal can only be decided in your own name/;
+    // Kale approves it (his approval is on it, its text is saved in the same
+    // step) but names Casey as the one who decided.
+    expect(
+      await refusal(
+        asUser(kale.id, async (tx) => {
+          await tx.update(proposals).set({ status: "approved", decidedBy: casey.id }).where(eq(proposals.id, id));
+          await tx.insert(officialVersions).values({
+            sectionId: hours,
+            version: 1,
+            content: doc("Hours text."),
+            contentText: "Hours text.",
+            createdBy: kale.id,
+            proposalId: id,
+          });
+        }),
+      ),
+    ).toMatch(NOT_YOUR_NAME);
+    // The same when he takes it back in her name.
+    expect(
+      await refusal(asUser(kale.id, (tx) => tx.update(proposals).set({ status: "withdrawn", decidedBy: casey.id }).where(eq(proposals.id, id)))),
+    ).toMatch(NOT_YOUR_NAME);
     for (const status of ["approved", "declined", "withdrawn"] as const) {
       const changed = await asUser(karen.id, (tx) =>
         tx.update(proposals).set({ status, decidedBy: karen.id }).where(eq(proposals.id, id)).returning(),
@@ -225,12 +266,22 @@ describe("database rules: changing an open proposal", () => {
 
     await asUser(kale.id, (tx) => tx.update(proposals).set({ title: "Edited once", revision: 1 }).where(eq(proposals.id, id)));
     expect(await row(id)).toMatchObject({ title: "Edited once", revision: 2, updatedBy: kale.id });
-    // Changing it and deciding it cannot be one step.
-    await expect(
-      asUser(kale.id, (tx) =>
-        tx.update(proposals).set({ title: "Edited and approved", status: "approved", decidedBy: kale.id }).where(eq(proposals.id, id)),
+    // Changing it and deciding it cannot be one step, whatever the decision.
+    const ONE_STEP = /A proposal cannot be changed and decided in the same step/;
+    expect(
+      await refusal(
+        asUser(kale.id, (tx) =>
+          tx.update(proposals).set({ title: "Edited and approved", status: "approved", decidedBy: kale.id }).where(eq(proposals.id, id)),
+        ),
       ),
-    ).rejects.toThrow();
+    ).toMatch(ONE_STEP);
+    expect(
+      await refusal(
+        asUser(kale.id, (tx) =>
+          tx.update(proposals).set({ title: "Edited and withdrawn", status: "withdrawn", decidedBy: kale.id }).where(eq(proposals.id, id)),
+        ),
+      ),
+    ).toMatch(ONE_STEP);
 
     await endorseProposal(karen, id, { revision: 2 });
     await expect(asUser(kale.id, (tx) => tx.update(proposals).set({ title: "After endorsement" }).where(eq(proposals.id, id)))).rejects.toThrow();

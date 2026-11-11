@@ -396,6 +396,29 @@ describe("database rules: whether one person decided is worked out by the databa
     await removeUser(kale, rita.id);
     expect((await decideAsKale(removed)).decidedAlone).toBe(true);
   });
+
+  it("which transaction decided a proposal is recorded by the database alone, even for code with full access", async () => {
+    const id = await propose(kale, "Mission and Culture", "Mission text.");
+    // Code with full database access, acting in Kale's name, sends its own values with an edit ...
+    await asSystem((db) =>
+      db.transaction(async (tx) => {
+        await tx.execute(sql`select set_config('app.user_id', ${kale.id}, true)`);
+        await tx.update(proposals).set({ title: "Mission", decidedTxid: 7 }).where(eq(proposals.id, id));
+      }),
+    );
+    expect(await row(id)).toMatchObject({ title: "Mission", status: "open", decidedTxid: null, decidedAlone: false });
+    // ... and with the decision itself: what is stored is the real transaction, and the real count.
+    await asSystem((db) =>
+      db.transaction(async (tx) => {
+        await tx.execute(sql`select set_config('app.user_id', ${kale.id}, true)`);
+        await tx.update(proposals).set({ status: "withdrawn", decidedBy: kale.id, decidedTxid: 7 }).where(eq(proposals.id, id));
+      }),
+    );
+    const after = await row(id);
+    expect(after).toMatchObject({ status: "withdrawn", decidedAlone: false });
+    expect(after.decidedTxid).not.toBe(7);
+    expect(after.decidedTxid).toEqual(expect.any(Number));
+  });
 });
 
 describe("database rules: an approval or endorsement is tied to the wording it was given on", () => {
@@ -436,6 +459,23 @@ describe("database rules: changing an open proposal (the rest)", () => {
       await refusal(asUser(kale.id, (tx) => tx.update(proposals).set({ title: "After Casey approved" }).where(eq(proposals.id, id)))),
     ).toMatch(/someone else has approved or endorsed/);
     expect((await row(id)).title).toBe("Scheduling text.");
+  });
+
+  it("is for its proposer only, also when nobody has approved it at all", async () => {
+    // Through the app a proposal always carries its proposer's approval, and
+    // "someone else has approved" would stop Casey's change as well. Put in
+    // straight at the database it has no approval, so only this rule is left.
+    const annuals = await section("Annuals");
+    const [bare] = await asUser(kale.id, (tx) =>
+      tx
+        .insert(proposals)
+        .values({ type: "decision", title: "Bare", sectionId: annuals, proposedOfficial: doc("Annuals text."), proposedOfficialText: "Annuals text.", proposedBy: kale.id })
+        .returning(),
+    );
+    expect(
+      await refusal(asUser(casey.id, (tx) => tx.update(proposals).set({ title: "Casey's title" }).where(eq(proposals.id, bare.id)))),
+    ).toMatch(/Only the person who made a proposal can change it/);
+    expect((await row(bare.id)).title).toBe("Bare");
   });
 
   it("when, by whom and why cannot be set without deciding", async () => {

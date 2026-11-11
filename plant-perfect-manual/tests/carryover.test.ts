@@ -145,10 +145,14 @@ describe("official text saved before proposals existed", () => {
     const h2 = await saveOldWay(hours, 2, "Open 9 to 7, every day.", kale, "2026-11-05T15:00:00Z");
     await db.execute(sql`
       insert into approvals (official_version_id, user_id, created_at) values (${h2}, ${casey}, '2026-11-06T15:00:00Z'::timestamptz)`);
-    // Two people who were given the same name (one of them removed since).
+    // Two people who were given the same name (one of them removed since),
+    // and a third whose name is what the second would otherwise be renamed to.
     const otherCasey = (await one<{ id: string }>(
       sql`insert into users (name, email, role_key, removed_at, created_at)
           values ('casey', 'kale.other@example.com', 'owner', now(), now() + interval '1 second') returning id`,
+    )).id;
+    const caseyTwo = (await one<{ id: string }>(
+      sql`insert into users (name, email, role_key) values ('Casey (2)', 'casey.two@example.com', 'advisor') returning id`,
     )).id;
 
     // A Phase 2 note with a comment, which must also come through untouched.
@@ -236,10 +240,11 @@ describe("official text saved before proposals existed", () => {
     // renamed, the change is in the activity log, and it cannot happen again.
     const names = await db.select({ id: schema.users.id, name: schema.users.name }).from(schema.users);
     expect(names.find((u) => u.id === casey)?.name).toBe("Casey");
-    expect(names.find((u) => u.id === otherCasey)?.name).toBe("casey (2)");
+    expect(names.find((u) => u.id === caseyTwo)?.name).toBe("Casey (2)");
+    expect(names.find((u) => u.id === otherCasey)?.name).toBe("casey (3)");
     const renames = await db.select().from(schema.activityLog);
-    expect(renames.map((e) => [e.action, e.entityId, e.summary])).toEqual([
-      ["user.renamed", otherCasey, "Renamed casey to casey (2), because two people had the same name"],
+    expect(renames.map((e) => [e.action, e.entityId, e.summary, e.userId])).toEqual([
+      ["user.renamed", otherCasey, "Renamed casey to casey (3), because two people had the same name", null],
     ]);
     await expect(
       db.execute(sql`insert into users (name, email, role_key) values ('KALE', 'kale.two@example.com', 'advisor')`),

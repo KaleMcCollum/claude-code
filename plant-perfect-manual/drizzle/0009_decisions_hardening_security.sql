@@ -142,15 +142,16 @@ GRANT UPDATE ("name", "role_key", "removed_at", "removed_by", "updated_at", "upd
 -- ------------------------------------------------------------- proposals
 
 -- A structure change is one of the four the app can carry out, with what
--- each needs: a name for add and rename, a destination for move.
+-- each needs: a name for add and rename, a destination for move (a section,
+-- or an explicit "none" for the top level; leaving it out is not enough).
 ALTER TABLE "proposals" ADD CONSTRAINT proposals_structure_is_known CHECK (
   "structure_change" IS NULL
   OR (
-    jsonb_typeof("structure_change") = 'object'
-    AND CASE "structure_change"->>'action'
+    -- (Anything that is not a JSON object has no action, and ends at ELSE.)
+    CASE "structure_change"->>'action'
       WHEN 'add' THEN jsonb_typeof("structure_change"->'title') = 'string' AND btrim("structure_change"->>'title') <> ''
       WHEN 'rename' THEN jsonb_typeof("structure_change"->'title') = 'string' AND btrim("structure_change"->>'title') <> ''
-      WHEN 'move' THEN "structure_change" ? 'parentId' AND jsonb_typeof("structure_change"->'parentId') IN ('string', 'null')
+      WHEN 'move' THEN jsonb_typeof("structure_change"->'parentId') IN ('string', 'null')
       WHEN 'archive' THEN true
       ELSE false
     END
@@ -295,9 +296,9 @@ BEGIN
     IF NEW.status <> 'approved' THEN
       RAISE EXCEPTION 'A new section is recorded only when its proposal is approved' USING ERRCODE = '42501';
     END IF;
+    -- (Only a structure proposal has a structure change at all.)
     IF NEW.created_section_id IS NOT NULL AND NOT ((
-         OLD.type = 'structure'
-         AND OLD.structure_change->>'action' = 'add'
+         OLD.structure_change->>'action' = 'add'
          AND EXISTS (
            SELECT 1 FROM public.sections s
            WHERE s.id = NEW.created_section_id

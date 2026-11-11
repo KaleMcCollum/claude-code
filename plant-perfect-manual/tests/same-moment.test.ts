@@ -1,12 +1,13 @@
 import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { asSystem, asUser } from "@/db/client";
-import { endorsements, officialVersions, proposals, sections } from "@/db/schema";
-import { loadOfficial, saveOfficial } from "@/lib/official";
+import { endorsements, officialVersions, proposals, sections, users } from "@/db/schema";
+import { listVersions, loadOfficial, restoreVersion, saveOfficial } from "@/lib/official";
 import { type Actor, AppError } from "@/lib/permissions";
 import { approveAlone, approveProposal, createProposal, editProposal, endorseProposal } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
-import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
+import { addUser } from "@/lib/users";
+import { actorFor, fakeMailer, insertUser, withTestDatabase } from "./helpers/db";
 
 /**
  * What happens when two people press a button at the very same moment.
@@ -132,7 +133,7 @@ describe.skipIf(!onServer)("at the same moment (real Postgres only)", () => {
   it("Approve against a direct save of the same section: never both", async () => {
     const hiring = await section("Hiring");
     await saveOfficial(kale, hiring, doc("Original text 0."));
-    const rounds = 30;
+    const rounds = 40;
     let approvals = 0;
     for (let i = 1; i <= rounds; i += 1) {
       const start = (await asSystem((db) => loadOfficial(db, hiring)))!;
@@ -140,7 +141,9 @@ describe.skipIf(!onServer)("at the same moment (real Postgres only)", () => {
       // Casey has the proposal page open (it compares with `start`) and
       // presses Approve; at the same moment Kale saves a direct edit he
       // started from the same version.
-      const approve = () => approveProposal(casey, id, { revision: 1, currentVersionId: start.id });
+      // (Half the rounds with "Approve", half with "Approve on my own".)
+      const seen = { revision: 1, currentVersionId: start.id };
+      const approve = (): Promise<unknown> => (i % 4 < 2 ? approveProposal(casey, id, seen) : approveAlone(casey, id, seen));
       const save = () => saveOfficial(kale, hiring, doc(`Kale's direct edit ${i}.`), { baseVersionId: start.id });
       const [approved, saved] =
         i % 2 === 0 ? await together(approve, save, i % 3) : ((await together(save, approve, i % 3)).reverse() as [Settled<unknown>, Settled<unknown>]);
@@ -162,6 +165,51 @@ describe.skipIf(!onServer)("at the same moment (real Postgres only)", () => {
       }
     }
     console.log(`approve against direct save: the approval came first in ${approvals} of ${rounds} rounds`);
+  });
+
+  it("Restore against a direct save of the same section: never both", async () => {
+    const quotes = await section("Quotes");
+    await saveOfficial(kale, quotes, doc("The very first text."));
+    const [first] = await asSystem((db) => listVersions(db, quotes));
+    await saveOfficial(kale, quotes, doc("Text 0."));
+    for (let i = 1; i <= 20; i += 1) {
+      const start = (await asSystem((db) => loadOfficial(db, quotes)))!;
+      // Casey restores the first version from the history page; at the same
+      // moment Kale saves an edit. Both started from the same newest version.
+      const restore = () => restoreVersion(casey, quotes, first.id, { currentVersionId: start.id });
+      const save = () => saveOfficial(kale, quotes, doc(`Text ${i}.`), { baseVersionId: start.id });
+      const [restored, saved] =
+        i % 2 === 0 ? await together(restore, save, i % 3) : ((await together(save, restore, i % 3)).reverse() as [Settled<unknown>, Settled<unknown>]);
+      expect([restored.ok, saved.ok].filter(Boolean)).toHaveLength(1);
+      const after = (await versionsOf(quotes)).filter((v) => v.version > start.version);
+      expect(after).toHaveLength(1);
+      if (restored.ok) {
+        expect(after[0]).toMatchObject({ contentText: "The very first text.", restoredFromVersionId: first.id });
+        expect(shown(saved)).toContain("Someone else changed this official text after you opened it");
+      } else {
+        expect(after[0].contentText).toBe(`Text ${i}.`);
+        expect(shown(restored)).toContain("The official text was changed after you opened this page");
+      }
+      // Put a different text back so the next round's restore changes something.
+      if (restored.ok) await saveOfficial(kale, quotes, doc(`Text ${i}, again.`));
+    }
+  });
+
+  it("the same name given to two new people at the same moment: one is refused in plain words", async () => {
+    const mail = fakeMailer();
+    const options = { baseUrl: "https://manual.example.com", send: mail.send };
+    for (let i = 0; i < 12; i += 1) {
+      const [a, b] = await together(
+        () => addUser(kale, { name: `Twin ${i}`, email: `twin.a${i}@example.com`, roleKey: "advisor" }, options),
+        () => addUser(casey, { name: `twin  ${i}`, email: `twin.b${i}@example.com`, roleKey: "advisor" }, options),
+        0,
+      );
+      expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+      expect(shown(a.ok ? b : a)).toMatch(/^Someone here is already called twin {1,2}\d+\. Add a last initial/i);
+      const twins = await asSystem((db) => db.select().from(users).where(eq(users.name, a.ok ? `Twin ${i}` : `twin ${i}`)));
+      expect(twins).toHaveLength(1);
+    }
+    expect(mail.sent).toHaveLength(12);
   });
 
   it("three presses at once on one proposal make exactly one decision and one version", async () => {
