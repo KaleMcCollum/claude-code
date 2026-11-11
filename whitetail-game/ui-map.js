@@ -37,9 +37,12 @@
   // Simple view: four colors that say what deer use the ground for.
   // The map shows the four kinds of ground, plus water, roads and your own food plots.
   const SIMPLE = {
-    prairie: ['#b9a868', '#b2a160'], timber: ['#4f6b3a', '#56733f'], farm: ['#d9b24a', '#d2aa42'], farmOff: ['#cfc49a', '#c8bc90'],
+    prairie: ['#b9a868', '#b2a160'], timber: ['#4f6b3a', '#56733f'], farm: ['#d9b24a', '#d2aa42'], farmOff: ['#a8875c', '#a07f54'],
     swamp: ['#5d6f6a', '#667a70'], plot: ['#6fb04a', '#68a644'], water: ['#4a78a8', '#4a78a8'], people: ['#8a8076', '#8a8076'],
   };
+  // harvested fields are bare dirt and stubble: each field its own shade of brown
+  const OFF = [['#a8875c', '#a07f54'], ['#8f6f4a', '#876744'], ['#b89a70', '#b09268'], ['#9c7a50', '#94724a']];
+  const offShade = (w, i) => OFF[(w.fieldId && w.fieldId[i] >= 0 ? w.fieldId[i] : Math.floor(WT.hash2((i % w.W) >> 3, ((i / w.W) | 0) >> 3, 5) * 97)) % OFF.length];
   const catOf = (c) => { const lt = WT.landType(c); return c === T.PLOT || c === T.PLOT_NEW ? 'plot' : lt === 'road' ? 'people' : lt === 'farm' && WT.cropsOff() ? 'farmOff' : lt; };
   UI.MAP_SIMPLE = SIMPLE;
   function huntable(d) { return d.owner === 'player' || d.owner === 'public' || d.permBought; }
@@ -52,7 +55,8 @@
     const img = ctx.createImageData(w.W, w.H);
     for (let i = 0; i < w.W * w.H; i++) {
       const x = i % w.W, y = (i / w.W) | 0;
-      const p = simple ? SIMPLE[catOf(w.cover[i])] || SIMPLE.prairie : (PAL[w.cover[i]] || PAL[8])[season];
+      const cat = catOf(w.cover[i]);
+      const p = simple ? (cat === 'farmOff' ? offShade(w, i) : SIMPLE[cat] || SIMPLE.prairie) : (PAL[w.cover[i]] || PAL[8])[season];
       const rgb = hexRgb(p[simple ? (WT.hash2(x >> 1, y >> 1, 3) < 0.5 ? 0 : 1) : (x + y) % 2 === 0 || WT.hash2(x, y, 3) < 0.5 ? 0 : 1]);
       img.data.set([...rgb, 255], i * 4);
     }

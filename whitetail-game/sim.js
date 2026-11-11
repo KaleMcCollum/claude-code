@@ -130,7 +130,41 @@
     'Little Missouri Walk-in', 'Crane Lake WPA', 'Buffalo Coulee WMA'];
   const TOWN_NAMES = ['Valley Forks', 'New Bergen', 'Minnewauken', 'Dawes', 'Kloten'];
 
-  function genWorld(seed) {
+  /* Fields (worlds made from version 2 on). Row crops are laid out the way they are farmed: rectangles, each one
+     crop, never touching another field. They only take open ground, so rivers, creeks, sloughs, woods, roads and
+     farmyards cut straight through them and are never moved. Returns a field id per tile (-1 = not a field). */
+  function squareFields(cover, W, H, seed) {
+    const rng = makeRng(seed * 13 + 5), N = W * H;
+    const isCrop = (c) => c === T.CORN || c === T.SOY || c === T.SUNFLOWER;
+    const open = (c) => c === T.PRAIRIE || c === T.HAY || c === T.PASTURE || c === T.WHEAT || c === T.BRUSH;
+    const was = new Uint8Array(N); let target = 0;
+    for (let i = 0; i < N; i++) if (isCrop(cover[i])) {
+      was[i] = cover[i]; target++;
+      const h = hash2((i % W) >> 2, ((i / W) | 0) >> 2, seed + 3);
+      cover[i] = h < 0.5 ? T.PRAIRIE : h < 0.8 ? T.HAY : T.PASTURE; // the old ragged crop ground goes back to grass
+    }
+    const field = new Int16Array(N).fill(-1);
+    let placed = 0, id = 0;
+    target *= 0.8;
+    for (let tries = 0; tries < 6000 && placed < target; tries++) {
+      const w = rng.int(6, 16), h = rng.int(5, 12), x0 = rng.int(1, W - w - 2), y0 = rng.int(1, H - h - 2);
+      let conv = 0, wasC = 0, clash = false; const votes = {};
+      for (let y = y0 - 1; y <= y0 + h && !clash; y++) for (let x = x0 - 1; x <= x0 + w; x++) {
+        const i = y * W + x;
+        if (field[i] >= 0) { clash = true; break; }                       // a field, or the gap around one
+        if (x < x0 || y < y0 || x >= x0 + w || y >= y0 + h) continue;
+        if (open(cover[i])) conv++;
+        if (was[i]) { wasC++; votes[was[i]] = (votes[was[i]] || 0) + 1; }
+      }
+      if (clash || conv / (w * h) < 0.72 || wasC / (w * h) < 0.3) continue;   // mostly open, and where crops grew before
+      const crop = +Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0];
+      for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) { const i = y * W + x; if (open(cover[i])) { cover[i] = crop; field[i] = id; placed++; } }
+      id++;
+    }
+    return field;
+  }
+
+  function genWorld(seed, ver = 1) {
     const cfg = C().world;
     const W = cfg.width, H = cfg.height, N = W * H;
     const rng = makeRng(seed * 7 + 13);
@@ -310,9 +344,16 @@
       farmsteads.push({ x: x + 1, y: y + 1 });
     }
 
-    const world = { seed, W, H, cover, elev, soil, gen, moist, towns, farmsteads, riverPath };
+    const world = { seed, W, H, cover, elev, soil, gen, moist, towns, farmsteads, riverPath, ver };
+    if (ver >= 2) world.fieldId = squareFields(cover, W, H, seed);
     computeDerivedLayers(world);
     genParcels(world, rng);
+    if (ver >= 2) {
+      // public land is not farmed: it cuts across any field that reaches into it
+      let cut = false;
+      for (let i = 0; i < N; i++) { const pid = world.parcelOf[i]; if (pid >= 0 && world.fieldId[i] >= 0 && world.parcels[pid].owner === 'public') { cover[i] = T.PRAIRIE; world.fieldId[i] = -1; cut = true; } }
+      if (cut) { computeDerivedLayers(world); for (const p of world.parcels) p.habitat = tileHabitat(world, p.id); }
+    }
     return world;
   }
   WT.genWorld = genWorld;

@@ -222,7 +222,7 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
     if (swampy) { const wc = snow ? '#b8c4cc' : '#4f6064'; for (let n = 0; n < 9; n++) { const yy = base + 3 + Math.floor(hs(n, 58) * (SHd - base - 22)), x0 = Math.floor(hs(n, 59) * (SW - 30)), wd = 18 + Math.floor(hs(n, 60) * 46); R(wc, x0, yy, wd, 1); R(wc, x0 + 4, yy + 1, wd - 10, 1); } } // standing water between the hummocks
     // fields and plots are strips of ground colour: a crop field far out, your food plot in the middle distance
     if (info.cropKind && gc !== SCENE.corn && gc !== SCENE.soy) {
-      const cc = snow ? ['#d8cfb4', '#cabfa2'] : WT.cropsOff() ? ['#d0ba76', '#bca866'] : info.cropKind === 'corn' ? ['#c4aa5c', '#a48c44'] : info.cropKind === 'soy' ? ['#a8884a', '#8e7240'] : ['#d0ba76', '#bca866'];
+      const cc = snow ? ['#d8cfb4', '#cabfa2'] : WT.cropsOff() ? [['#a8875c', '#94724a'], ['#8f6f4a', '#7c5e3e'], ['#b89a70', '#a48860']][seed % 3] : info.cropKind === 'corn' ? ['#c4aa5c', '#a48c44'] : info.cropKind === 'soy' ? ['#a8884a', '#8e7240'] : ['#d0ba76', '#bca866'];
       const y0 = base + 3; R(cc[0], 0, y0, SW, 5); R(cc[1], 0, y0 + 1, SW, 1); R(cc[1], 0, y0 + 3, SW, 1);
     }
     if (info.plot || info.newPlot) {

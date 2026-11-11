@@ -76,7 +76,7 @@
   /* ================================================================ new game */
   WT.newGame = function (seed) {
     seed = seed || ((Math.random() * 1e9) | 0);
-    const world = WT.genWorld(seed);
+    const world = WT.genWorld(seed, 2); // version 2 worlds have rectangular fields
     captureNatural(world);
     G.world = world;
     const rng = WT.makeRng(seed ^ 0x5eed);
@@ -94,6 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
+      genV: 2,
       journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
@@ -362,7 +363,7 @@
     let st = raw;
     if (!st) { try { st = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { st = null; } }
     if (!st || st.v !== 1) return null;
-    G.world = WT.genWorld(st.seed);
+    G.world = WT.genWorld(st.seed, st.genV || 1); // a save keeps the kind of map it was made on
     captureNatural(G.world);
     G.state = st;
     G.rng = WT.makeRng(1); G.rng.setState(st.rngState);
