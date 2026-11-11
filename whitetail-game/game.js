@@ -950,7 +950,7 @@
     const windF = windOk ? 1 : windNear ? 0.75 : 0.5;
     const dayF = 1 - t.swing * WT.hash2(s.x * 31 + day, s.y * 17 + (session === 'evening' ? 1 : 0), G.world.seed + 913);
     const sesF = Math.min(1, standRatingFor(r, session, day) / Math.max(0.05, r.morning, r.evening, r.rut));
-    const presF = 1 - Math.min(0.5, (s.pressure || 0) * 1.1);
+    const presF = 1 - Math.min(0.4, (s.pressure || 0) * 0.8);
     const factor = windF * dayF * sesF * presF;
     return { factor, stars: Math.max(1, Math.min(5, Math.floor(factor / 0.18))), windOk, windNear, windF, dayF, sesF, presF };
   };
@@ -1216,8 +1216,8 @@
       if (why) {
         if (g.alert >= 2 || why === 'scent') {
           g.gone = true; g.busted = true;
-          H.prop.huntingPressure = clamp(H.prop.huntingPressure + 0.03);
-          H.stand.pressure = clamp((H.stand.pressure || 0) + 0.06);
+          H.prop.huntingPressure = clamp(H.prop.huntingPressure + 0.015);
+          H.stand.pressure = clamp((H.stand.pressure || 0) + 0.03);
           const txt = why === 'scent' ? 'A loud snort. One of them winded you. White flags bound away.' : why === 'sight' ? 'One catches your movement. Stomp, stomp, snort, and gone.' : 'A head snaps up at the sound. Then they are gone.';
           H.log.push({ t: H.now, kind: 'bad', gid: g.gid, text: txt });
           for (const sg of H.sched) if (sg.t < H.now + 0.75 && rng.chance(0.4)) sg.cancel = true;
@@ -1304,8 +1304,8 @@
     const p = hitChance(H, g, m);
     const r = H.rifle;
     H.log.push({ t: H.now, kind: 'shot', text: `BOOM. The ${r.name} (${r.cal}) barks${g.clear ? '' : ' through the brush'}.` });
-    H.prop.huntingPressure = clamp(H.prop.huntingPressure + 0.05);
-    H.stand.pressure = clamp((H.stand.pressure || 0) + 0.06);
+    H.prop.huntingPressure = clamp(H.prop.huntingPressure + 0.03);
+    H.stand.pressure = clamp((H.stand.pressure || 0) + 0.04);
     // everyone else in the group bolts
     g.members.forEach((x) => { if (x !== m) x.fled = true; });
     if (!rng.chance(p)) {
@@ -1469,7 +1469,7 @@
     H.log.push({ t: H.now, kind: 'head', text: msg });
     const d = st.parcels[H.setup.pid];
     d.pressure = clamp((H.prop.huntingPressure || 0) + H.pPerSit);
-    H.stand.pressure = clamp((H.stand.pressure || 0) + H.pPerSit * 1.5);
+    H.stand.pressure = clamp((H.stand.pressure || 0) + H.pPerSit);
     H.stand.sits = (H.stand.sits || 0) + 1;
     H.stand.sessions = H.stand.sessions || {};
     H.stand.sessions[H.setup.session] = (H.stand.sessions[H.setup.session] || 0) + 1;
@@ -1527,7 +1527,7 @@
       const d = st.parcels[p.id];
       const floor = d.owner === 'public' ? cfg.deer.pressure.publicFloor : 0.02;
       d.pressure = Math.max(floor, (d.pressure || 0) * decay);
-      for (const s of d.stands) s.pressure = (s.pressure || 0) * decay;
+      for (const s of [...d.stands, ...(d.spots || [])]) s.pressure = (s.pressure || 0) * decay; // marked public spots rest too
       // neighbors and other hunters
       const prop = makeProp(p.id);
       const died = WT.inSeasonDailyMortality(prop, rng, cfg.calendar.seasonDays);
@@ -1604,7 +1604,7 @@
       cam.daysChecked = cam.days || 0;
       cam.queue = []; cam.pending = 0;
     }
-    d.pressure = clamp((d.pressure || 0) + 0.04);
+    d.pressure = clamp((d.pressure || 0) + 0.02);
     return n;
   };
 

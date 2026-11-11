@@ -135,7 +135,7 @@
         pressureK: 1.4,               // mature bucks go nocturnal under pressure
         shotOpportunity: { young: 0.55, mature: 0.32 },
       },
-      pressure: { perSit: 0.05, decay: 0.8, publicFloor: 0.45 },
+      pressure: { perSit: 0.03, decay: 0.7, publicFloor: 0.3 }, // per-sit gain, what's left after each day of rest, public land's minimum
     },
 
     landTiers: {
