@@ -94,7 +94,7 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
   /* ================================================================ HUNT SCENE */
   const SCENE = {
     corn: ['#b8a056', '#a48e4a'], soy: ['#a8884a', '#987a42'], stubble: ['#c6b06e', '#b8a262'], grass: ['#a88e50', '#9a8248'], plot: ['#5e9a3e', '#54903a'],
-    timber: ['#96894e', '#887b45'], snow: ['#e8e4dc', '#d8d4cc'], slough: ['#8a7c48', '#7a6e40'],
+    timber: ['#96894e', '#887b45'], snow: ['#e8e4dc', '#d8d4cc'], slough: ['#7f7c4c', '#716e42'],
   };
   function groundColors(H) {
     const day = S().day, c = H.cover;
@@ -129,6 +129,7 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
     }
     const f = (...ts) => ts.reduce((a, t) => a + (cnt[t] || 0), 0) / Math.max(1, n);
     return {
+      swamp: f(T.SLOUGH), land: WT.landType(H.cover),
       woods: f(T.TIMBER, T.BRUSH), belt: f(T.BELT, T.YOUNGTREES), plot: (cnt[T.PLOT] || 0) > 0, newPlot: (cnt[T.PLOT_NEW] || 0) > 0,
       cropKind: f(T.CORN, T.SUNFLOWER) > 0.1 ? 'corn' : f(T.SOY) > 0.1 ? 'soy' : f(T.WHEAT) > 0.15 ? 'wheat' : null,
       water: f(T.WATER, T.CREEK, T.POND) > 0.02, slough: f(T.SLOUGH) > 0.08, corn: f(T.CORN, T.SUNFLOWER) > 0.12, farm: f(T.YARD) > 0.02,
@@ -158,9 +159,20 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
     }
     const leaf = [['#a8682e', '#8c5226'], ['#b88a30', '#96702a'], ['#8a4a2a', '#6e3a22']];
     const gc = groundColors(H);
-    const woodsy = info.woods + info.belt * 0.5 > 0.3 || H.maxView <= 230;
+    const swampy = info.land === 'swamp' || info.swamp > 0.3;
+    const woodsy = !swampy && (info.woods + info.belt * 0.5 > 0.3 || H.maxView <= 230);
     let base = HORIZON; // where the backdrop meets the ground
-    if (woodsy) {
+    if (swampy) {
+      /* ---- swamp: a wall of cattails, dead snags standing in it, mist, a thin far tree line ---- */
+      base = Math.max(HORIZON + 2, Math.min(78, Math.round(groundY(H.maxView)) - 2));
+      const farT = snow ? '#7a7672' : '#4a4436', reed = snow ? ['#cfc4a0', '#b8ac88'] : bare ? ['#a89868', '#8e8054'] : ['#9a9450', '#847e42'], head = '#4a3020', snag = snow ? '#6a645e' : '#4e463c';
+      for (let x = 0; x < SW; x += 3) { const hh = 4 + Math.floor(hs(x, 51) * 6); R(farT, x, base - 22 - hh, 3, hh + 6); }           // far timber
+      ctx.fillStyle = snow ? 'rgba(236,238,242,.5)' : 'rgba(214,214,204,.42)'; ctx.fillRect(0, base - 20, SW, 8);                          // mist lying on the marsh
+      for (let n = 0; n < 7; n++) { const x = Math.floor(hs(n, 52) * (SW - 8)) + 4, hgt = 22 + Math.floor(hs(n, 53) * 26); R(snag, x, base - hgt, 2, hgt); R(snag, x - 3, base - hgt + 4 + (n % 4), 3, 1); R(snag, x + 2, base - hgt + 9 + (n % 3), 4, 1); R(snag, x + 2, base - hgt + 2, 2, 1); if (snow) R('#e8e4dc', x - 3, base - hgt + 3 + (n % 4), 3, 1); }
+      if (!bare) for (let n = 0; n < 9; n++) { const x = Math.floor(hs(n, 54) * SW), wd = 10 + (n % 4) * 3; R('#6e7a3e', x, base - 13, wd, 7); R('#7e8a48', x + 2, base - 15, wd - 5, 4); } // willow brush
+      if (info.water) { R(snow ? '#b8c4cc' : '#51666c', 0, base - 3, SW, 3); R(snow ? '#c8d2d8' : '#6f868a', 0, base - 2, SW, 1); }
+      for (let x = 0; x < SW; x += 2) { const hh = 7 + Math.floor(hs(x, 55) * 9); R(reed[(x >> 1) % 2], x, base - hh, 1, hh); R(reed[1], x + 1, base - hh + 2, 1, hh - 2); if (hs(x, 56) < 0.45) R(head, x, base - hh - 2, 1, 3); if (snow && hs(x, 57) < 0.3) R('#e8e4dc', x, base - hh - 3, 1, 1); } // the cattail wall
+    } else if (woodsy) {
       /* ---- timber: a wall of woods pulled in close, right behind the farthest deer you could see ---- */
       base = Math.max(HORIZON + 2, Math.min(78, Math.round(groundY(H.maxView)) - 2));
       const farC = snow ? '#8a8682' : bare ? '#5a4c40' : '#7a5230', midT = snow ? '#5a544e' : '#3e3024', nearT = snow ? '#3e3832' : '#2a2018', nearS = snow ? '#2e2a26' : '#1c140e';
@@ -201,9 +213,13 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
       if (info.water) { const wc = snow ? ['#b8c4cc', '#d0d8dd'] : ['#5f7f9c', '#86a4bc']; R(wc[0], 0, HORIZON - 5, SW, 6); for (let n = 0; n < 16; n++) R(wc[1], Math.floor(hs(n, 35) * SW), HORIZON - 4 + (n % 4), 6 + (n % 5), 1); R(snow ? '#e8e4dc' : '#7c7040', 0, HORIZON, SW, 1); }
       if (info.slough && !info.water) { R(snow ? '#c8bc98' : '#8a8048', 0, HORIZON - 3, SW, 4); for (let x = 2; x < SW; x += 5) R(snow ? '#b8a878' : '#6e6238', x, HORIZON - 5 - Math.floor(hs(x, 36) * 2), 1, 3); }
     }
+    // a standing corn field beside the stand is a wall of gold at the back of the ground until the combines roll
+    if (info.cropKind === 'corn' && !WT.cropsOff() && !snow) { for (let x = 0; x < SW; x += 2) { const hh = 6 + Math.floor(hs(x, 61) * 3); R(x % 4 ? '#c4aa5c' : '#a48c44', x, base - hh, 2, hh); if (hs(x, 62) < 0.3) R('#8c7436', x, base - hh - 1, 1, 2); } }
+    else if (info.cropKind === 'soy' && !WT.cropsOff() && !snow) R('#9a7c42', 0, base - 2, SW, 2);
     // ground bands, nearer = taller bands
     let y = base, k = 0;
     while (y < SHd) { const bh = Math.max(1, Math.floor((y - base) / 6) + 1); R(gc[k % 2], 0, y, SW, bh); y += bh; k++; }
+    if (swampy) { const wc = snow ? '#b8c4cc' : '#4f6064'; for (let n = 0; n < 9; n++) { const yy = base + 3 + Math.floor(hs(n, 58) * (SHd - base - 22)), x0 = Math.floor(hs(n, 59) * (SW - 30)), wd = 18 + Math.floor(hs(n, 60) * 46); R(wc, x0, yy, wd, 1); R(wc, x0 + 4, yy + 1, wd - 10, 1); } } // standing water between the hummocks
     // fields and plots are strips of ground colour: a crop field far out, your food plot in the middle distance
     if (info.cropKind && gc !== SCENE.corn && gc !== SCENE.soy) {
       const cc = snow ? ['#d8cfb4', '#cabfa2'] : WT.cropsOff() ? ['#d0ba76', '#bca866'] : info.cropKind === 'corn' ? ['#c4aa5c', '#a48c44'] : info.cropKind === 'soy' ? ['#a8884a', '#8e7240'] : ['#d0ba76', '#bca866'];
