@@ -682,7 +682,16 @@
   };
   // Everything on (or right at) a spot: things within one tile of each other count as the same setup.
   const NEAR = (a, x, y) => Math.abs(a.x - x) <= 1 && Math.abs(a.y - y) <= 1;
-  WT.camsAtStand = (pid, s) => (S().parcels[pid].cams || []).filter((c) => c.x === s.x && c.y === s.y); // a camera covers a stand only from the stand's own tile
+  // A camera covers a stand from the stand's own tile, or from a food plot that the stand touches.
+  WT.plotAt = (pid, x, y) => { const w = G.world, i = y * w.W + x; return (S().parcels[pid].plots || []).find((q) => q.tiles.includes(i)) || null; };
+  WT.touchesPlot = (plot, a) => plot.tiles.some((i) => Math.abs((i % G.world.W) - a.x) <= 1 && Math.abs(((i / G.world.W) | 0) - a.y) <= 1);
+  WT.standForCam = function (pid, cam) {
+    const d = S().parcels[pid], list = d.owner === 'public' ? d.spots || [] : d.stands || [];
+    const same = list.find((z) => z.x === cam.x && z.y === cam.y); if (same) return same;
+    const plot = d.owner === 'player' ? WT.plotAt(pid, cam.x, cam.y) : null;
+    return plot ? list.find((z) => WT.touchesPlot(plot, z)) || null : null;
+  };
+  WT.camsAtStand = (pid, s) => (S().parcels[pid].cams || []).filter((c) => { if (c.x === s.x && c.y === s.y) return true; const plot = S().parcels[pid].owner === 'player' ? WT.plotAt(pid, c.x, c.y) : null; return !!plot && WT.touchesPlot(plot, s); });
   WT.tileInfo = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y), TT = T();
     const pick = (list) => (list || []).find((a) => a.x === x && a.y === y) || (list || []).find((a) => NEAR(a, x, y));
@@ -707,7 +716,7 @@
     const st = S(), d = st.parcels[pid], w = G.world, TT = T(), out = { stand: null, cams: [], plot: false, newPlot: false, field: false, water: false };
     if (!d) return out;
     const near = (a) => Math.abs(a.x - x) <= 1 && Math.abs(a.y - y) <= 1;
-    out.stand = [...(d.stands || []), ...(d.spots || [])].find((a) => a.x === x && a.y === y) || null; // stands and cameras pair up only on the same tile
+    out.stand = WT.standForCam(pid, { x, y }); // the stand on this tile, or the one touching the plot this tile is part of
     out.cams = (d.cams || []).filter((a) => a.x === x && a.y === y); void near;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       const i = tileAt(x + dx, y + dy); if (i < 0) continue;
@@ -1894,7 +1903,7 @@
         const watched = Math.pow(sight.reach / 60, 0.7); // more ground in view, more deer caught
         const spotOf = d.owner === 'public' ? d.spots || [] : d.stands;
         const rutCam = /Seek|Peak/.test(WT.rutPhase(Math.min(st.day, 91)).name);
-        const at = spotOf.find((z) => z.x === cam.x && z.y === cam.y);
+        const at = WT.standForCam(p.id, cam); void spotOf;
         for (const deer of d.herd) {
           if (deer.age < 1 && rng.chance(0.6)) continue;
           const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6 * WT.homeFactor(p.id, deer, cam.x, cam.y, rutCam);
