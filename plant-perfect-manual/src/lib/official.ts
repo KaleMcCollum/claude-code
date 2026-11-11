@@ -1,6 +1,6 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { type Queryable, type Tx, asUser } from "@/db/client";
+import { type Queryable, type Tx, asUser, sqlState } from "@/db/client";
 import { approvals, endorsements, officialVersions, proposals, sections, users } from "@/db/schema";
 import { logActivity } from "./activity";
 import { type Actor, AppError, assertCan } from "./permissions";
@@ -148,12 +148,16 @@ export async function listVersions(q: Queryable, sectionId: string): Promise<Off
   return toViews(q, rows);
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  for (let e = error as { code?: string; cause?: unknown } | undefined, i = 0; e && i < 5; i += 1) {
-    if (e.code === "23505") return true;
-    e = e.cause as { code?: string; cause?: unknown } | undefined;
-  }
-  return false;
+/**
+ * Lock a section's row until the end of the transaction, so that changes to
+ * one section's official text go one after the other: the second waits here,
+ * then sees the first one's new version and is refused as out of date.
+ * Call it before reading the section's newest version.
+ */
+export async function lockSection(tx: Tx, sectionId: string): Promise<typeof sections.$inferSelect | null> {
+  if (!isUuid(sectionId)) return null;
+  const [row] = await tx.select().from(sections).where(eq(sections.id, sectionId)).for("update");
+  return row ?? null;
 }
 
 /** "Kale", "Kale and Casey", "Kale, Casey and Sam" */
@@ -178,7 +182,9 @@ export function endorsementLine(endorsement: OfficialApproval): string {
  * Save the text of an approved proposal as the section's next official
  * version. The proposal must already be marked approved in this same
  * transaction: the database checks that, and that the text is exactly the
- * proposal's text.
+ * proposal's text. The database also numbers the version itself (the number
+ * sent here is only what the app expects it to be) and takes the plain-text
+ * copy from the proposal.
  */
 export async function addVersion(
   tx: Tx,
@@ -205,17 +211,17 @@ export async function addVersion(
       proposalId: input.proposalId,
       restoredFromVersionId: input.restoredFromVersionId ?? null,
     })
-    .returning({ id: officialVersions.id })
+    .returning({ id: officialVersions.id, version: officialVersions.version })
     .catch((error: unknown) => {
       // Two changes to the same section landed at the same moment.
-      if (isUniqueViolation(error)) throw new AppError(CHANGED_MEANWHILE);
+      if (sqlState(error) === "23505") throw new AppError(CHANGED_MEANWHILE);
       throw error;
     });
   await tx
     .update(sections)
     .set({ updatedAt: input.now, updatedBy: actor.id })
     .where(eq(sections.id, input.sectionId));
-  return { id: saved.id, version };
+  return { id: saved.id, version: saved.version };
 }
 
 /**
@@ -251,7 +257,8 @@ async function saveDirectly(
       updatedBy: actor.id,
     })
     .returning({ id: proposals.id });
-  await tx.insert(approvals).values({ proposalId: proposal.id, userId: actor.id, createdAt: now });
+  // A direct save is written and approved in one step, so its one revision is 1.
+  await tx.insert(approvals).values({ proposalId: proposal.id, userId: actor.id, revision: 1, createdAt: now });
   await tx
     .update(proposals)
     .set({ status: "approved", decidedAt: now, decidedBy: actor.id })
@@ -287,9 +294,8 @@ export async function saveOfficial(
   const now = options.now ?? new Date();
 
   return asUser(actor.id, async (tx) => {
-    const [section] = isUuid(sectionId)
-      ? await tx.select().from(sections).where(eq(sections.id, sectionId))
-      : [];
+    // First of all: one change to this section's official text at a time.
+    const section = await lockSection(tx, sectionId);
     if (!section || section.archivedAt) throw new AppError(GONE);
     const current = await latestVersionRow(tx, sectionId);
     if (options.baseVersionId !== undefined && (current?.id ?? null) !== options.baseVersionId) {
@@ -337,9 +343,8 @@ export async function restoreVersion(
   assertCan(actor, "approve");
   const now = options.now ?? new Date();
   return asUser(actor.id, async (tx) => {
-    const [section] = isUuid(sectionId)
-      ? await tx.select().from(sections).where(eq(sections.id, sectionId))
-      : [];
+    // First of all: one change to this section's official text at a time.
+    const section = await lockSection(tx, sectionId);
     if (!section || section.archivedAt) throw new AppError(GONE);
     const [old] = isUuid(versionId)
       ? await tx.select().from(officialVersions).where(eq(officialVersions.id, versionId))

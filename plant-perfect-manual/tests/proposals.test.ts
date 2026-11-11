@@ -13,6 +13,7 @@ import {
   approveAlone,
   approveProposal,
   canApproveToo,
+  changesNotApprovedBy,
   countAwaiting,
   createProposal,
   declineProposal,
@@ -32,7 +33,7 @@ import {
 } from "@/lib/proposals";
 import { type RichDoc, docToText } from "@/lib/richtext";
 import { archiveSection, flattenTree, loadTree, restoreSection } from "@/lib/sections";
-import { changeUserRole } from "@/lib/users";
+import { changeUserRole, removeUser } from "@/lib/users";
 import { formatDate } from "@/lib/time";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
@@ -141,9 +142,34 @@ describe("the normal path: one Owner proposes, the other approves", () => {
     const { kale } = await people();
     const id = await propose(kale, "Benefits", "Staff discount 20%", "Staff discount: 20%.");
     expect(await approveProposal(kale, id, await seen(id))).toEqual({ approved: false, waitingFor: ["Casey"] });
+    expect(await approveProposal(kale, id, await seen(id))).toEqual({ approved: false, waitingFor: ["Casey"] });
     expect((await proposal(id)).status).toBe("open");
     expect(await asSystem((db) => db.select().from(approvals).where(eq(approvals.proposalId, id)))).toHaveLength(1);
+    // No approval was added, so the activity log does not say one was.
+    const log = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)));
+    expect(log.map((e) => e.summary)).toEqual(["Proposed: Staff discount 20%"]);
     await withdrawProposal(kale, id);
+  });
+
+  it("logs an approval when one is added, and completes a proposal that has both approvals already", async () => {
+    const { kale, casey } = await people();
+    const id = await propose(kale, "Benefits", "Staff discount 15%", "Staff discount: 15%.");
+    // While Kale is not an Owner, Casey's approval is the only one that counts.
+    await changeUserRole(casey, kale.id, "advisor");
+    expect(await approveProposal(casey, id, await seen(id))).toEqual({ approved: false, waitingFor: [] });
+    const summaries = async () =>
+      (await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)))).map((e) => e.summary);
+    expect(await summaries()).toEqual(["Proposed: Staff discount 15%", "Approved, waiting for another Owner: Staff discount 15%"]);
+    // Kale is an Owner again: both approvals are there. Pressing Approve adds
+    // nothing, but two Owners have approved, so it becomes official.
+    await changeUserRole(casey, kale.id, "owner");
+    expect(await approveProposal(casey, id, await seen(id))).toEqual({ approved: true, waitingFor: [] });
+    expect(await proposal(id)).toMatchObject({ status: "approved", decidedByName: "Casey", decidedAlone: false, soloOpen: false });
+    expect(await summaries()).toEqual([
+      "Proposed: Staff discount 15%",
+      "Approved, waiting for another Owner: Staff discount 15%",
+      "Approved by Kale and Casey: Staff discount 15%",
+    ]);
   });
 
   it("counts what is waiting for each person", async () => {
@@ -187,24 +213,83 @@ describe("approving on your own", () => {
     expect(await asSystem((db) => db.select().from(approvals).where(eq(approvals.proposalId, id)))).toHaveLength(2);
   });
 
-  it("flags a one-person decision for 14 days, and a text change only while it is still the current text", async () => {
-    const { kale } = await people();
+  it("keeps a one-person change flagged for 14 days, also after the same section is saved again", async () => {
+    const { kale, casey } = await people();
     const scheduling = await sectionId("Scheduling");
     const start = new Date("2026-06-01T15:00:00Z");
-    const id = await propose(kale, "Scheduling", "Post schedules on Fridays", "Schedules go up every Friday.", { now: start });
+    const id = await propose(kale, "Scheduling", "Post schedules on Fridays", "Schedules go up every Friday", { now: start });
     await approveAlone(kale, id, await seen(id), { now: start });
+    expect(await proposal(id)).toMatchObject({ decidedAlone: true, soloOpen: true, superseded: false });
 
-    const flagged = async (at: string) => (await asSystem((db) => listOneOwnerDecisions(db, new Date(at)))).map((d) => d.id);
-    expect(await flagged("2026-06-01T20:00:00Z")).toContain(id);
-    expect(await flagged("2026-06-15T20:00:00Z")).toContain(id);
-    expect(await flagged("2026-06-16T20:00:00Z")).not.toContain(id);
+    const flaggedAt = (at: string) => asSystem((db) => listOneOwnerDecisions(db, new Date(at)));
+    const ids = async (at: string) => (await flaggedAt(at)).map((d) => d.id);
+    expect(await ids("2026-06-01T20:00:00Z")).toContain(id);
+    expect(await ids("2026-06-15T20:00:00Z")).toContain(id);
+    expect(await ids("2026-06-16T20:00:00Z")).not.toContain(id);
 
-    // A newer version of the same section takes its place.
-    const later = new Date("2026-06-03T15:00:00Z");
-    await saveOfficial(kale, scheduling, doc("Schedules go up every Thursday."), { now: later });
-    const at = await asSystem((db) => listOneOwnerDecisions(db, new Date("2026-06-04T15:00:00Z")));
-    expect(at.map((d) => d.id)).not.toContain(id);
-    expect(at.filter((d) => d.sectionId === scheduling).map((d) => d.title)).toEqual(["Edited directly"]);
+    // Two days later Kale saves the section again to add a full stop. The
+    // first, real change must not drop off Casey's list: both are flagged,
+    // and the first one says it is no longer the current text.
+    await saveOfficial(kale, scheduling, doc("Schedules go up every Friday."), { now: new Date("2026-06-03T15:00:00Z") });
+    const here = (await flaggedAt("2026-06-04T15:00:00Z")).filter((d) => d.sectionId === scheduling);
+    expect(here.map((d) => [d.title, d.superseded])).toEqual([
+      ["Edited directly", false],
+      ["Post schedules on Fridays", true],
+    ]);
+    const direct = here[0].id;
+
+    // What Casey has never approved in this section's text: both versions. Kale approved them all.
+    const forCasey = await asSystem((db) => changesNotApprovedBy(db, scheduling, casey));
+    expect(forCasey.total).toBe(2);
+    expect(forCasey.items.map((c) => [c.version, c.title, c.approvedBy, c.proposalId])).toEqual([
+      [2, "Edited directly", ["Kale"], direct],
+      [1, "Post schedules on Fridays", ["Kale"], id],
+    ]);
+    expect(forCasey.items[0].savedAt.toISOString()).toBe("2026-06-03T15:00:00.000Z");
+    expect(forCasey.items[0].versionId).toBe(await currentVersionId(scheduling));
+    expect(await asSystem((db) => changesNotApprovedBy(db, scheduling, kale))).toEqual({ items: [], total: 0 });
+
+    // A later change that both Owners approve does not clear the earlier
+    // one-person changes: Casey approved the third text, not those two.
+    const third = await propose(kale, "Scheduling", "Post schedules on Thursdays", "Schedules go up every Thursday.", {
+      now: new Date("2026-06-05T15:00:00Z"),
+    });
+    await approveProposal(casey, third, await seen(third), { now: new Date("2026-06-05T16:00:00Z") });
+    expect(await proposal(third)).toMatchObject({ decidedAlone: false, soloOpen: false, superseded: false });
+    const after = (await flaggedAt("2026-06-06T15:00:00Z")).filter((d) => d.sectionId === scheduling);
+    expect(after.map((d) => [d.id, d.superseded])).toEqual([
+      [direct, true],
+      [id, true],
+    ]);
+    // The current text is one Casey approved, so nothing in it is new to her.
+    expect(await asSystem((db) => changesNotApprovedBy(db, scheduling, casey))).toEqual({ items: [], total: 0 });
+
+    // Each stays listed until Casey adds her approval to it (or 14 days pass).
+    expect(canApproveToo(await proposal(id), casey)).toBe(true);
+    await addApproval(casey, id);
+    expect(await proposal(id)).toMatchObject({ decidedAlone: true, soloOpen: false });
+    expect(await ids("2026-06-06T15:00:00Z")).not.toContain(id);
+    expect(await ids("2026-06-06T15:00:00Z")).toContain(direct);
+    expect(await ids("2026-06-18T15:00:00Z")).not.toContain(direct);
+  });
+
+  it("hands back at most 10 unapproved changes, with the full count, and nothing to someone who cannot approve", async () => {
+    const { kale, casey } = await people();
+    const karen = await actorFor("karen@example.com");
+    const payments = await sectionId("Payments Log");
+    for (let i = 1; i <= 12; i += 1) await saveOfficial(kale, payments, doc(`Payments, edit ${i}.`));
+    const forCasey = await asSystem((db) => changesNotApprovedBy(db, payments, casey));
+    expect(forCasey.total).toBe(12);
+    expect(forCasey.items.map((c) => c.version)).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+    expect(await asSystem((db) => changesNotApprovedBy(db, payments, karen))).toEqual({ items: [], total: 0 });
+    // Casey approves edit 9: only what came after it is still unapproved by her.
+    await addApproval(casey, forCasey.items[3].proposalId);
+    const now = await asSystem((db) => changesNotApprovedBy(db, payments, casey));
+    expect(now.items.map((c) => c.version)).toEqual([12, 11, 10]);
+    expect(now.total).toBe(3);
+    // A section with no official text, and an id that is not a section.
+    expect(await asSystem(async (db) => changesNotApprovedBy(db, await sectionId("Finance"), casey))).toEqual({ items: [], total: 0 });
+    expect(await asSystem((db) => changesNotApprovedBy(db, "not-an-id", casey))).toEqual({ items: [], total: 0 });
   });
 
   it("is the way forward when there is only one Owner, and then nothing is flagged", async () => {
@@ -456,6 +541,26 @@ describe("endorsements", () => {
     await endorseProposal(karen, id, { revision: 2 });
     await withdrawProposal(kale, id);
   });
+
+  it("is refused from a page that shows older wording, also once the proposal is approved", async () => {
+    const { kale, casey } = await people();
+    const karen = await actorFor("karen@example.com");
+    const closing = await sectionId("Closing Procedures");
+    const id = await propose(kale, "Closing Procedures", "Lock up at 9", "Doors are locked at 9 PM.");
+    // Karen opens the page. Kale then changes the proposal and makes it official on his own.
+    await editProposal(kale, id, { kind: "decision", sectionId: closing, title: "Lock up at 10", proposedOfficial: doc("Doors are locked at 10 PM.") });
+    await approveAlone(kale, id, await seen(id));
+    await expect(endorseProposal(karen, id, { revision: 1 })).rejects.toThrow("Kale changed this proposal after you opened it");
+    expect((await proposal(id)).endorsements).toEqual([]);
+    await endorseProposal(karen, id, { revision: 2 });
+    await addApproval(casey, id);
+    // Each name is recorded with the wording it was given on.
+    const stamps = await asSystem((db) => db.select().from(approvals).where(eq(approvals.proposalId, id)));
+    expect(stamps.map((a) => [a.userId === kale.id ? "Kale" : "Casey", a.revision]).sort()).toEqual([
+      ["Casey", 2],
+      ["Kale", 1],
+    ]);
+  });
 });
 
 describe("structure proposals", () => {
@@ -566,6 +671,45 @@ describe("when people change", () => {
     // Sam's approval stays on record.
     expect(view.approvals.map((a) => a.name)).toEqual(["Sam", "Casey", "Kale"]);
     expect(view.decidedByName).toBe("Kale");
+    // Two people who can approve did: not a one-person decision.
+    expect(view).toMatchObject({ decidedAlone: false, soloOpen: false });
+  });
+
+  it("a proposer who is no longer an Owner does not hide a one-person approval", async () => {
+    const { kale, casey } = await people();
+    const robin = await insertUser("Robin", "robin@example.com", "owner");
+    const id = await propose(robin, "Trees and Shrubs", "Plant trees in fall", "Trees are planted in fall.");
+    await changeUserRole(kale, robin.id, "advisor");
+
+    expect(await approveProposal(kale, id, await seen(id))).toEqual({ approved: false, waitingFor: ["Casey"] });
+    await approveAlone(kale, id, await seen(id));
+    let view = await proposal(id);
+    // Two names are on it, but only one of them could approve when it was decided.
+    expect(view.approvals.map((a) => a.name)).toEqual(["Robin", "Kale"]);
+    expect(view).toMatchObject({ status: "approved", decidedByName: "Kale", decidedAlone: true, soloOpen: true });
+    expect((await asSystem((db) => listOneOwnerDecisions(db))).map((d) => d.id)).toContain(id);
+    expect(canApproveToo(view, casey)).toBe(true);
+    expect(canApproveToo(view, kale)).toBe(false);
+    expect(canApproveToo(view, await actorFor("robin@example.com"))).toBe(false);
+
+    await addApproval(casey, id);
+    view = await proposal(id);
+    expect(view).toMatchObject({ decidedAlone: true, soloOpen: false });
+    expect((await asSystem((db) => listOneOwnerDecisions(db))).map((d) => d.id)).not.toContain(id);
+    expect(canApproveToo(view, casey)).toBe(false);
+  });
+
+  it("a decision two Owners made is not flagged later because one of them was removed", async () => {
+    const { kale, casey } = await people();
+    const dana = await insertUser("Dana", "dana@example.com", "owner");
+    const id = await propose(dana, "Houseplants", "Water houseplants on Mondays", "Houseplants are watered on Mondays.");
+    expect(await approveProposal(kale, id, await seen(id))).toEqual({ approved: true, waitingFor: [] });
+    await removeUser(kale, dana.id);
+    const view = await proposal(id);
+    expect(view.approvals.map((a) => a.name)).toEqual(["Dana", "Kale"]);
+    expect(view).toMatchObject({ decidedAlone: false, soloOpen: false });
+    expect((await asSystem((db) => listOneOwnerDecisions(db))).map((d) => d.id)).not.toContain(id);
+    expect(canApproveToo(view, casey)).toBe(false);
   });
 });
 

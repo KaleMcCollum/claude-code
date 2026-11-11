@@ -106,3 +106,28 @@ export async function asUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Pro
 export async function asSystem<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   return fn(await getDb());
 }
+
+/**
+ * The database's own error code for a failed query (for example "23505" when
+ * a value must be unique), or null. Database errors arrive wrapped, so this
+ * looks through the wrappers.
+ */
+export function sqlState(error: unknown): string | null {
+  for (let e = error as { code?: unknown; cause?: unknown } | undefined, i = 0; e && i < 5; i += 1) {
+    if (typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code)) return e.code;
+    e = e.cause as { code?: unknown; cause?: unknown } | undefined;
+  }
+  return null;
+}
+
+/** The whole text of a database error, wrappers included (to find a rule's name in it). */
+export function sqlErrorText(error: unknown): string {
+  const parts: string[] = [];
+  for (let e = error as Record<string, unknown> | undefined, i = 0; e && i < 5; i += 1) {
+    for (const key of ["message", "constraint", "constraint_name", "detail"]) {
+      if (typeof e[key] === "string") parts.push(e[key] as string);
+    }
+    e = e.cause as Record<string, unknown> | undefined;
+  }
+  return parts.join("\n");
+}

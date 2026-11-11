@@ -113,14 +113,14 @@ describe("database rules: approvals and endorsements", () => {
   it("are only ever added, in your own name, by people allowed to", async () => {
     const { kale, casey, karen } = await setup();
     const id = await openProposal("Approvals test", "Benefits", "Benefits text.");
-    await expect(asUser(kale.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: casey.id }))).rejects.toThrow();
-    await expect(asUser(karen.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: karen.id }))).rejects.toThrow();
-    await expect(asUser(karen.id, (tx) => tx.insert(endorsements).values({ proposalId: id, userId: kale.id }))).rejects.toThrow();
+    await expect(asUser(kale.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: casey.id, revision: 1 }))).rejects.toThrow();
+    await expect(asUser(karen.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: karen.id, revision: 1 }))).rejects.toThrow();
+    await expect(asUser(karen.id, (tx) => tx.insert(endorsements).values({ proposalId: id, userId: kale.id, revision: 1 }))).rejects.toThrow();
     // Never twice.
-    await expect(asUser(kale.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: kale.id }))).rejects.toThrow();
+    await expect(asUser(kale.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: kale.id, revision: 1 }))).rejects.toThrow();
 
     await endorseProposal(karen, id, { revision: 1 });
-    await expect(asUser(karen.id, (tx) => tx.insert(endorsements).values({ proposalId: id, userId: karen.id }))).rejects.toThrow();
+    await expect(asUser(karen.id, (tx) => tx.insert(endorsements).values({ proposalId: id, userId: karen.id, revision: 1 }))).rejects.toThrow();
     // Never changed, never removed.
     await expect(asUser(kale.id, (tx) => tx.update(approvals).set({ createdAt: new Date(0) }))).rejects.toThrow();
     await expect(asUser(kale.id, (tx) => tx.delete(approvals))).rejects.toThrow();
@@ -133,8 +133,8 @@ describe("database rules: approvals and endorsements", () => {
     const { casey, karen } = await setup();
     const id = await openProposal("To decline", "Hiring", "Hiring text.");
     await declineProposal(casey, id, "");
-    await expect(asUser(casey.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: casey.id }))).rejects.toThrow();
-    await expect(asUser(karen.id, (tx) => tx.insert(endorsements).values({ proposalId: id, userId: karen.id }))).rejects.toThrow();
+    await expect(asUser(casey.id, (tx) => tx.insert(approvals).values({ proposalId: id, userId: casey.id, revision: 1 }))).rejects.toThrow();
+    await expect(asUser(karen.id, (tx) => tx.insert(endorsements).values({ proposalId: id, userId: karen.id, revision: 1 }))).rejects.toThrow();
   });
 });
 

@@ -119,14 +119,16 @@ export default async function TodayPage() {
             <ul className="decision-list">
               {decidedAlone.map((view) => {
                 const title = displayTitle(view, tree);
-                const by = view.approvals[0];
+                // The person who decided it: not always the first name on it
+                // (the proposer may have stopped being an Owner since).
+                const by = view.decidedByName ?? view.approvals[0]?.name;
                 return (
                   <li key={view.id}>
                     <Link className="title" href={`/proposals/${view.id}`}>
                       {title}
                     </Link>
                     <p className="flag">
-                      Decided by {by?.name ?? "one Owner"} alone, {formatDate(view.decidedAt ?? view.createdAt)}
+                      Decided by {by ?? "one Owner"} alone, {formatDate(view.decidedAt ?? view.createdAt)}
                     </p>
                     {canApproveToo(view, user) && (
                       <div className="actions">

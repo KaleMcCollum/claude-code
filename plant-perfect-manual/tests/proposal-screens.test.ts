@@ -4,17 +4,23 @@ import { compareDocs } from "@/lib/diff";
 import { loadOfficial, saveOfficial } from "@/lib/official";
 import {
   type ProposalView,
+  UNREADABLE_CHANGE_SENTENCE,
+  addApproval,
   approveAlone,
   approveChoices,
   activeApprovers,
   approveProposal,
+  canApproveToo,
   canEditProposal,
   canEndorse,
+  changesNotApprovedBy,
   createProposal,
   declineProposal,
+  describeStructure,
   displayTitle,
   endorseProposal,
   listDecisions,
+  listOneOwnerDecisions,
   loadProposal,
   loadTextChange,
   statusLine,
@@ -22,7 +28,7 @@ import {
   withdrawProposal,
 } from "@/lib/proposals";
 import { type RichDoc, docToLines, docToText, sanitizeDoc, textToDoc } from "@/lib/richtext";
-import { flattenTree, loadTree } from "@/lib/sections";
+import { flattenTree, loadTree, moveSection, renameSection } from "@/lib/sections";
 import { removeUser } from "@/lib/users";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
@@ -118,6 +124,109 @@ describe("which buttons a proposal shows", () => {
     const [direct] = await asSystem(async (db) => listDecisions(db, await loadTree(db), { sectionId: benefits }));
     expect(displayTitle(direct, await tree())).toBe("Edited directly: 2.2 Benefits");
     expect(statusLine(direct)).toBe("Approved by Kale, Nov 14, 2026");
+  });
+});
+
+describe("the title of a structure proposal", () => {
+  it("is worked out from what it will do, with the sections as they are named and numbered now", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const training = flattenTree(await tree()).find((n) => n.title === "Training")!;
+    expect(training.number).toBe("2.4");
+    const archive = await createProposal(kale, { kind: "structure", change: { action: "archive", sectionId: training.id } });
+    const rename = await createProposal(kale, { kind: "structure", change: { action: "rename", sectionId: training.id, title: "Learning" } });
+    const move = await createProposal(casey, { kind: "structure", change: { action: "move", sectionId: training.id, parentId: await sectionId("Finance") } });
+    const shown = async (id: string) => displayTitle(await view(id), await tree());
+    expect(await shown(archive)).toBe("Archive 2.4 Training");
+    expect(await shown(rename)).toBe('Rename 2.4 Training to "Learning"');
+    expect(await shown(move)).toBe("Move 2.4 Training under 8 Finance");
+
+    // The section is renamed, and moved up one place, while the proposals are open.
+    await renameSection(kale, training.id, "Training and Shadowing");
+    await moveSection(kale, training.id, "up");
+    await renameSection(kale, await sectionId("Finance"), "Money");
+    expect(await shown(archive)).toBe("Archive 2.3 Training and Shadowing");
+    expect(await shown(rename)).toBe('Rename 2.3 Training and Shadowing to "Learning"');
+    expect(await shown(move)).toBe("Move 2.3 Training and Shadowing under 8 Money");
+    // What was stored when they were proposed is not what is shown.
+    expect((await view(archive)).title).toBe("Archive 2.4 Training");
+
+    // Once decided, a proposal keeps the title it was decided under.
+    await declineProposal(casey, archive, "");
+    expect(await shown(archive)).toBe("Archive 2.4 Training");
+    await approveProposal(casey, rename, { revision: 1 });
+    expect(await shown(rename)).toBe('Rename 2.4 Training to "Learning"');
+    await withdrawProposal(casey, move);
+    expect(await shown(move)).toBe("Move 2.4 Training under 8 Finance");
+    await renameSection(kale, await sectionId("Money"), "Finance");
+  });
+
+  it("says so plainly when a change is not one the app knows", async () => {
+    const current = await tree();
+    const hiring = await sectionId("Hiring");
+    for (const odd of [{ action: "tidy" }, { action: "rename" }, { action: "add", title: " " }, { action: "move" }, {}]) {
+      expect(describeStructure(current, hiring, odd as never)).toBe(UNREADABLE_CHANGE_SENTENCE);
+      expect(
+        displayTitle(
+          { title: "Tidy up the Hiring page", direct: false, sectionId: hiring, type: "structure", status: "open", structureChange: odd as never },
+          current,
+        ),
+      ).toBe(UNREADABLE_CHANGE_SENTENCE);
+    }
+    expect(UNREADABLE_CHANGE_SENTENCE).toContain("cannot read");
+  });
+});
+
+describe("a one-person change that is followed by a small proposal", () => {
+  it("stays flagged, and the proposal page can warn what the comparison already contains", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const karen = await actorFor("karen@example.com");
+    const pay = await sectionId("Policies and Expectations");
+    const flagged = async () => (await asSystem((db) => listOneOwnerDecisions(db))).filter((d) => d.sectionId === pay);
+
+    // Both Owners agreed on $15.
+    const agreed = await createProposal(kale, {
+      kind: "decision",
+      sectionId: pay,
+      title: "Coffee staff start at $15/hr",
+      proposedOfficial: doc("Coffee staff start at $15.00/hr. Raises are reviewed every March"),
+    });
+    await approveProposal(casey, agreed, { revision: 1, currentVersionId: null });
+    expect(await asSystem((db) => changesNotApprovedBy(db, pay, casey))).toEqual({ items: [], total: 0 });
+
+    // Kale alone changes the wage, then proposes only a full stop.
+    await saveOfficial(kale, pay, doc("Coffee staff start at $11.00/hr. Raises are reviewed every March"));
+    const [solo] = await flagged();
+    expect(solo).toMatchObject({ direct: true, decidedAlone: true, soloOpen: true, superseded: false });
+    const fix = await createProposal(kale, {
+      kind: "official_text",
+      sectionId: pay,
+      title: "Add the missing full stop",
+      proposedOfficial: doc("Coffee staff start at $11.00/hr. Raises are reviewed every March."),
+    });
+
+    // Casey's page compares $11 with $11 plus a full stop. The warning says
+    // what that $11 text is: a change she never approved.
+    const c = (await change(fix))!;
+    expect(docToText(c.before!)).toContain("$11.00/hr");
+    const warning = await asSystem((db) => changesNotApprovedBy(db, pay, casey));
+    expect(warning.total).toBe(1);
+    expect(warning.items[0]).toMatchObject({ version: 2, proposalId: solo.id, title: "Edited directly", approvedBy: ["Kale"], versionId: c.currentVersionId });
+    // Kale approved everything that is in the current text; an Advisor is not asked.
+    expect(await asSystem((db) => changesNotApprovedBy(db, pay, kale))).toEqual({ items: [], total: 0 });
+    expect(await asSystem((db) => changesNotApprovedBy(db, pay, karen))).toEqual({ items: [], total: 0 });
+
+    // She approves the full stop. The $11 change is still on her list, marked as no longer current.
+    await approveProposal(casey, fix, { revision: 1, currentVersionId: c.currentVersionId });
+    const after = await flagged();
+    expect(after.map((d) => [d.id, d.superseded])).toEqual([[solo.id, true]]);
+    expect(canApproveToo(after[0], casey)).toBe(true);
+    expect(canApproveToo(after[0], kale)).toBe(false);
+    expect(canApproveToo(after[0], karen)).toBe(false);
+    expect(statusLine(after[0])).toMatch(/^Approved by Kale, /);
+    await addApproval(casey, solo.id);
+    expect(await flagged()).toEqual([]);
   });
 });
 

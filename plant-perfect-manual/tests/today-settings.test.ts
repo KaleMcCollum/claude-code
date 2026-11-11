@@ -190,6 +190,20 @@ describe("Today page", () => {
     await addApproval(casey, plans);
     expect((await loadToday(casey)).decidedAlone.map((p) => p.id)).not.toContain(plans);
 
+    // Saving a section a second time does not take the first save off the
+    // list: both are shown, the first as no longer the current text.
+    const signage = byTitle("Signage").id;
+    const firstSave = today.decidedAlone.find((p) => p.sectionId === signage)!;
+    expect(firstSave.superseded).toBe(false);
+    await saveOfficial(kale, signage, doc("Pylon sign by Holly Lumber, lit at night."));
+    today = await loadToday(casey);
+    const onSignage = today.decidedAlone.filter((p) => p.sectionId === signage);
+    expect(onSignage.map((p) => p.superseded)).toEqual([false, true]);
+    expect(onSignage[1].id).toBe(firstSave.id);
+    expect(today.decidedAlone).toHaveLength(flaggedBefore + 1);
+    await addApproval(casey, onSignage[0].id);
+    expect((await loadToday(casey)).decidedAlone).toHaveLength(flaggedBefore);
+
     // After 14 days nothing from today is flagged any more.
     const later = new Date(Date.now() + 15 * 86_400_000);
     expect((await loadToday(kale, later)).decidedAlone).toEqual([]);

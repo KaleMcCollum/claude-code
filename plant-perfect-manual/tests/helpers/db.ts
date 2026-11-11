@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll } from "vitest";
-import { asSystem, closeDb, getDb, migrateServerDatabase } from "@/db/client";
-import { roles, users } from "@/db/schema";
+import { asSystem, closeDb, getDb, migrateServerDatabase, sqlErrorText, sqlState } from "@/db/client";
+import { roles, systemFlags, users } from "@/db/schema";
 import { seed } from "@/db/seed";
 import type { Email } from "@/lib/mailer";
 import type { Actor } from "@/lib/permissions";
@@ -36,6 +36,7 @@ export function withTestDatabase(): void {
       process.env.PGLITE_DIR = "memory";
       await getDb();
     }
+    await allowSetTime(true);
   });
 
   afterAll(async () => {
@@ -48,6 +49,36 @@ export function withTestDatabase(): void {
       await admin.end();
     }
   });
+}
+
+/**
+ * The database refuses records dated in the past or the future when they
+ * come through the app's limited role. Many tests need exactly that (a note
+ * "three days ago", a decision "in June") and get it through the rules'
+ * own `now` options, so every test database starts with the switch that
+ * allows it (`allow_set_time`). Only code with full database access can set
+ * the switch; nothing in the app does. Tests of the time rule itself turn
+ * it off for their duration: `await allowSetTime(false)` ... `finally
+ * allowSetTime(true)`.
+ */
+export async function allowSetTime(allowed: boolean): Promise<void> {
+  await asSystem(async (db) => {
+    if (allowed) {
+      await db.insert(systemFlags).values({ key: "allow_set_time", value: true }).onConflictDoNothing();
+    } else {
+      await db.delete(systemFlags).where(eq(systemFlags.key, "allow_set_time"));
+    }
+  });
+}
+
+/** Run `work` with the real-time rule switched on, as it is for the app, then allow set times again. */
+export async function withRealTimeOnly<T>(work: () => Promise<T>): Promise<T> {
+  await allowSetTime(false);
+  try {
+    return await work();
+  } finally {
+    await allowSetTime(true);
+  }
 }
 
 /** The signed-in identity for a user, as the app would build it from a session. */
@@ -92,3 +123,22 @@ export function tokenFrom(email: Email): string {
   if (!match) throw new Error("No sign-in link found in the email");
   return match[1];
 }
+
+/**
+ * For tests of what the database refuses: runs `work`, which must fail, and
+ * hands back why (the database's error code and its own words). A test can
+ * then check it was refused for the reason it is about, not for another.
+ */
+export async function refusal(work: Promise<unknown>): Promise<string> {
+  try {
+    await work;
+  } catch (error) {
+    return `${sqlState(error) ?? "no code"}: ${sqlErrorText(error)}`;
+  }
+  throw new Error("Expected the database to refuse this, but it was accepted.");
+}
+
+/** The database's words when a row breaks a row level security rule. */
+export const BROKE_A_RULE = /row-level security policy/;
+/** The database's words when the app's role may not touch a table or column at all. */
+export const NOT_ALLOWED = /permission denied/;

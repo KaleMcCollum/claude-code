@@ -84,6 +84,26 @@ describe("adding a user", () => {
     expect(mail.sent).toHaveLength(0);
   });
 
+  it("refuses a name someone else already has, so two people can always be told apart", async () => {
+    const kale = await actorFor("kale@example.com");
+    const mail = fakeMailer();
+    const options = { baseUrl: BASE, send: mail.send };
+    // A second "Casey", under another email address.
+    await expect(addUser(kale, { name: "Casey", email: "kale.other@example.com", roleKey: "owner" }, options)).rejects.toThrow(
+      "Someone here is already called Casey. Add a last initial so the two can be told apart.",
+    );
+    // Capitals and extra spaces make no difference.
+    await expect(addUser(kale, { name: "  cAsEy ", email: "kale.other@example.com", roleKey: "owner" }, options)).rejects.toThrow(AppError);
+    await expect(addUser(kale, { name: "KALE", email: "kale.other@example.com", roleKey: "advisor" }, options)).rejects.toThrow(
+      "already called Kale",
+    );
+    expect(mail.sent).toHaveLength(0);
+    expect(await asSystem((db) => db.select().from(users).where(eq(users.email, "kale.other@example.com")))).toEqual([]);
+    // A different name is fine.
+    await addUser(kale, { name: "Casey B", email: "casey.b@example.com", roleKey: "advisor" }, options);
+    expect((await actorFor("casey.b@example.com")).name).toBe("Casey B");
+  });
+
   it("is not allowed for Advisors", async () => {
     const karen = await actorFor("karen@example.com");
     const mail = fakeMailer();
@@ -148,5 +168,37 @@ describe("changing roles and removing users", () => {
     expect(result.userId).toBe(before.id);
     const list = await listUsers(kale);
     expect(list.find((u) => u.email === "karen@example.com")?.name).toBe("Karen M");
+  });
+
+  it("does not let a removed person come back under someone else's name, or anyone take a removed person's name", async () => {
+    const kale = await actorFor("kale@example.com");
+    const karen = await actorFor("karen@example.com");
+    const mail = fakeMailer();
+    const options = { baseUrl: BASE, send: mail.send };
+    await removeUser(kale, karen.id);
+
+    // Karen's name is still on everything she endorsed: nobody else gets it.
+    await expect(addUser(kale, { name: "karen m", email: "someone.else@example.com", roleKey: "advisor" }, options)).rejects.toThrow(
+      "Someone who was removed earlier was also called Karen M",
+    );
+    // Added back as "Casey", her past endorsements would read "Endorsed by Casey".
+    await expect(addUser(kale, { name: "Casey", email: "karen@example.com", roleKey: "advisor" }, options)).rejects.toThrow(
+      "Someone here is already called Casey",
+    );
+    await expect(addUser(kale, { name: "Sam", email: "karen@example.com", roleKey: "advisor" }, options)).rejects.toThrow(
+      "already called Sam",
+    );
+    const [still] = await asSystem((db) => db.select().from(users).where(eq(users.id, karen.id)));
+    expect(still.name).toBe("Karen M");
+    expect(still.removedAt).not.toBeNull();
+    expect(mail.sent).toHaveLength(0);
+
+    // Back under her own name (however it is typed), or under a new name nobody has.
+    await addUser(kale, { name: "karen  M", email: "karen@example.com", roleKey: "advisor" }, options);
+    expect((await actorFor("karen@example.com")).name).toBe("karen M");
+    await removeUser(kale, karen.id);
+    await addUser(kale, { name: "Karen Miller", email: "karen@example.com", roleKey: "advisor" }, options);
+    expect((await actorFor("karen@example.com")).name).toBe("Karen Miller");
+    expect(mail.sent).toHaveLength(2);
   });
 });

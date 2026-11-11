@@ -12,10 +12,15 @@
  *  - 3.1 Store Hours: version 1 saved by Kale 60 days ago, version 2 saved
  *    by Casey 20 days ago (a one-person decision that is too old to be
  *    flagged on Today).
+ *
+ * The database refuses records dated in the past when they come through the
+ * app's own (limited) access. This script has full access to the brand-new
+ * test database, so it switches that rule off while it saves these texts and
+ * back on before it finishes: the app under test runs with the rule on.
  */
 import { eq } from "drizzle-orm";
 import { asSystem, closeDb } from "../src/db/client";
-import { roles, users } from "../src/db/schema";
+import { roles, systemFlags, users } from "../src/db/schema";
 import { saveOfficial } from "../src/lib/official";
 import type { Actor } from "../src/lib/permissions";
 import type { RichDoc } from "../src/lib/richtext";
@@ -59,24 +64,31 @@ async function main() {
   };
   const daysAgo = (days: number) => new Date(Date.now() - days * DAY_MS);
 
-  await saveOfficial(
-    kale,
-    idOf("Wages"),
-    doc("Starting wage, Coffee Shop: $13.00/hr.", "Starting wage, Garden Center Registers: $15.00/hr."),
-    { now: daysAgo(25) },
-  );
-  await saveOfficial(
-    kale,
-    idOf("Store Hours"),
-    doc("Open 9 AM to 6 PM, Monday to Saturday.", "Closed Sunday."),
-    { now: daysAgo(60) },
-  );
-  await saveOfficial(
-    casey,
-    idOf("Store Hours"),
-    doc("Open 9 AM to 7 PM, Monday to Saturday.", "Open 11 AM to 4 PM Sunday."),
-    { now: daysAgo(20) },
-  );
+  await asSystem((db) => db.insert(systemFlags).values({ key: "allow_set_time", value: true }).onConflictDoNothing());
+  try {
+    await saveOfficial(
+      kale,
+      idOf("Wages"),
+      doc("Starting wage, Coffee Shop: $13.00/hr.", "Starting wage, Garden Center Registers: $15.00/hr."),
+      { now: daysAgo(25) },
+    );
+    await saveOfficial(
+      kale,
+      idOf("Store Hours"),
+      doc("Open 9 AM to 6 PM, Monday to Saturday.", "Closed Sunday."),
+      { now: daysAgo(60) },
+    );
+    await saveOfficial(
+      casey,
+      idOf("Store Hours"),
+      doc("Open 9 AM to 7 PM, Monday to Saturday.", "Open 11 AM to 4 PM Sunday."),
+      { now: daysAgo(20) },
+    );
+  } finally {
+    await asSystem((db) => db.delete(systemFlags).where(eq(systemFlags.key, "allow_set_time")));
+  }
+  const left = await asSystem((db) => db.select().from(systemFlags));
+  if (left.length > 0) throw new Error("The set-time switch is still on. The app must not be tested with it on.");
   await closeDb();
   console.log("Saved official text for Wages (25 days ago) and Store Hours (60 and 20 days ago).");
 }

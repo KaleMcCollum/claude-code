@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigint,
   bigserial,
   boolean,
   date,
@@ -172,6 +173,11 @@ export const approvals = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
+    /**
+     * The proposal revision the person had in front of them. The database
+     * refuses the row unless it is the proposal's current revision.
+     */
+    revision: integer("revision").notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("approvals_proposal_user_unique").on(t.proposalId, t.userId)],
@@ -191,6 +197,8 @@ export const endorsements = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
+    /** The proposal revision the person had in front of them (see approvals). */
+    revision: integer("revision").notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("endorsements_proposal_user_unique").on(t.proposalId, t.userId)],
@@ -402,6 +410,18 @@ export const proposals = pgTable(
     decidedAt: ts("decided_at"),
     decidedBy: uuid("decided_by").references(() => users.id),
     declineReason: text("decline_reason"),
+    /**
+     * Set by the database at the moment of approval, never by the app: true
+     * when fewer than two people who could approve at that moment had
+     * approved it (a one-person decision).
+     */
+    decidedAlone: boolean("decided_alone").notNull().default(false),
+    /**
+     * Set by the database when the proposal is decided: the number of the
+     * database transaction that decided it. An official version can only be
+     * saved in that same transaction, so "approved" always means "applied".
+     */
+    decidedTxid: bigint("decided_txid", { mode: "number" }),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
     updatedBy: uuid("updated_by").references(() => users.id),
@@ -432,3 +452,15 @@ export const proposalNotes = pgTable(
     index("proposal_notes_note_idx").on(t.noteId),
   ],
 );
+
+/**
+ * Switches only someone with full database access can set (the app's limited
+ * role cannot read or write this table). `allow_set_time` lets the automated
+ * tests and test seeds save records with a time in the past; the app itself
+ * never sets it, so in normal use every record is stamped with the real time.
+ */
+export const systemFlags = pgTable("system_flags", {
+  key: text("key").primaryKey(),
+  value: jsonb("value"),
+  updatedAt: ts("updated_at").defaultNow(),
+});

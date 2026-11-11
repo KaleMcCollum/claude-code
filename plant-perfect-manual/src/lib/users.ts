@@ -1,5 +1,5 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
-import { type Queryable, type Tx, asSystem, asUser } from "@/db/client";
+import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { type Queryable, type Tx, asSystem, asUser, sqlErrorText, sqlState } from "@/db/client";
 import { roles, users } from "@/db/schema";
 import { logActivity } from "./activity";
 import { confirmUrl, issueLoginToken, looksLikeEmail, normalizeEmail, revokeUserSessions } from "./auth/core";
@@ -75,12 +75,40 @@ async function countUserManagers(tx: Tx, exceptUserId: string): Promise<number> 
   return rows.filter((r) => r.id !== exceptUserId && r.permissions.includes("manage_users")).length;
 }
 
+/**
+ * No two people may have the same name, removed people included: names are
+ * what everyone reads next to "Approved by", so two people called Casey
+ * could not be told apart. Names are compared without regard to capitals,
+ * and a run of spaces counts as one. The database has the same rule (a
+ * unique index), with the same way of comparing (`user_name_key`).
+ */
+async function requireFreeName(tx: Tx, name: string, exceptUserId: string | null): Promise<void> {
+  const [taken] = await tx
+    .select({ name: users.name, removedAt: users.removedAt })
+    .from(users)
+    .where(
+      and(
+        sql`public.user_name_key(${users.name}) = public.user_name_key(${name})`,
+        exceptUserId ? ne(users.id, exceptUserId) : undefined,
+      ),
+    )
+    .limit(1);
+  if (taken) throw new AppError(nameTaken(taken.name, taken.removedAt !== null));
+}
+
+function nameTaken(name: string, removed: boolean): string {
+  return removed
+    ? `Someone who was removed earlier was also called ${name}, and that name is still on what they wrote and approved. Add a last initial so the two can be told apart.`
+    : `Someone here is already called ${name}. Add a last initial so the two can be told apart.`;
+}
+
 export type AddUserResult = { userId: string; emailSent: boolean };
 
 /**
  * Add a user and email them an invitation with a sign-in link.
  * Adding the email of someone who was removed earlier brings that same
- * person back, so their past entries stay attached to them.
+ * person back, so their past entries stay attached to them. They can come
+ * back under a new name only if nobody else has that name.
  */
 export async function addUser(
   actor: Actor,
@@ -100,7 +128,20 @@ export async function addUser(
     if (existing && !existing.removedAt) {
       throw new AppError("There is already a user with that email address.");
     }
+    await requireFreeName(tx, name, existing?.id ?? null);
     const now = new Date();
+    // If someone else takes the same name or email at this very moment, the
+    // database refuses the second one; say why in plain words.
+    const refused = (error: unknown): never => {
+      if (sqlState(error) === "23505") {
+        throw new AppError(
+          sqlErrorText(error).includes("users_name_unique")
+            ? nameTaken(name, false)
+            : "There is already a user with that email address.",
+        );
+      }
+      throw error;
+    };
     let id: string;
     if (existing) {
       id = existing.id;
@@ -114,12 +155,14 @@ export async function addUser(
           updatedAt: now,
           updatedBy: actor.id,
         })
-        .where(eq(users.id, id));
+        .where(eq(users.id, id))
+        .catch(refused);
     } else {
       const [created] = await tx
         .insert(users)
         .values({ name, email, roleKey: role.key, createdBy: actor.id, updatedBy: actor.id })
-        .returning({ id: users.id });
+        .returning({ id: users.id })
+        .catch(refused);
       id = created.id;
     }
     await logActivity(tx, actor.id, {

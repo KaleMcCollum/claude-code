@@ -1,6 +1,6 @@
-import { type SQL, and, asc, count, desc, eq, exists, inArray, isNull, ne, notExists, sql } from "drizzle-orm";
+import { type SQL, and, asc, count, desc, eq, exists, inArray, isNull, max, ne, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { type Queryable, type Tx, asUser } from "@/db/client";
+import { type Queryable, type Tx, asUser, sqlState } from "@/db/client";
 import {
   approvals,
   comments,
@@ -16,7 +16,7 @@ import {
 import { logActivity } from "./activity";
 import { type BusinessTag, parseBusinessTag } from "./business";
 import { type CommentView, businessFilterTags } from "./notes";
-import { addVersion, approvalLine, joinNames, latestVersionRow } from "./official";
+import { addVersion, approvalLine, joinNames, latestVersionRow, lockSection } from "./official";
 import { type Actor, AppError, assertCan, can } from "./permissions";
 import { type RichDoc, docToText, isEmptyDoc, sameDoc, sanitizeDoc } from "./richtext";
 import {
@@ -51,7 +51,12 @@ import { addDays, centralDateKey, formatDate } from "./time";
  *    proposal is approved and its change is applied, in one step.
  *  - "Approve on my own" makes it official with a single approval. Such
  *    one-person decisions are flagged on Today for the other Owner, who can
- *    add "I approve too" at any time.
+ *    add "I approve too" at any time. Whether a decision was made by one
+ *    person is worked out by the database at the moment of deciding
+ *    (`decidedAlone`), from the people who can approve at that moment.
+ *  - An approval or endorsement is tied to the wording it was given on: it
+ *    carries the proposal's revision number, and the database refuses it if
+ *    the proposal has been changed since.
  *  - Only the proposer can change or withdraw a proposal, and can change it
  *    only until someone else has approved or endorsed it. Another Owner
  *    declines it instead.
@@ -106,6 +111,22 @@ export type ProposalView = {
   endorsements: PersonStamp[];
   /** The official version this proposal produced, once approved (text proposals). */
   resultVersion: { id: string; version: number } | null;
+  /**
+   * Approved by one person: at the moment it was approved, fewer than two
+   * people who could approve had approved it. Recorded by the database.
+   */
+  decidedAlone: boolean;
+  /**
+   * A one-person decision nobody else has approved since: approved, decided
+   * alone, and no one who can approve right now, other than the person who
+   * decided it, has an approval on it.
+   */
+  soloOpen: boolean;
+  /**
+   * An approved text change that is no longer the current text: its section
+   * has a newer official version. ("No longer the current text.")
+   */
+  superseded: boolean;
 };
 
 /** What the person had on screen when they pressed a button. */
@@ -151,6 +172,8 @@ const MAX_REASON_LENGTH = 500;
 const NOT_FOUND = "That proposal could not be found. Reload the page and try again.";
 const SECTION_GONE =
   "The section this is about no longer exists (it may have been archived). Withdraw or decline this proposal.";
+const UNREADABLE_CHANGE =
+  "This proposal's change could not be read, so nothing was changed. Decline it and make a new one.";
 
 const proposer = alias(users, "proposer");
 const decider = alias(users, "decider");
@@ -182,14 +205,35 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
   const approvalRows = await stamps(approvals);
   const endorsementRows = await stamps(endorsements);
   const versionRows = await q
-    .select({ id: officialVersions.id, version: officialVersions.version, proposalId: officialVersions.proposalId })
+    .select({
+      id: officialVersions.id,
+      version: officialVersions.version,
+      proposalId: officialVersions.proposalId,
+      sectionId: officialVersions.sectionId,
+    })
     .from(officialVersions)
     .where(inArray(officialVersions.proposalId, ids));
+  // The newest version number of each section these versions belong to.
+  const versionSections = [...new Set(versionRows.map((v) => v.sectionId))];
+  const newest = new Map<string, number>();
+  if (versionSections.length > 0) {
+    const rows = await q
+      .select({ sectionId: officialVersions.sectionId, version: max(officialVersions.version) })
+      .from(officialVersions)
+      .where(inArray(officialVersions.sectionId, versionSections))
+      .groupBy(officialVersions.sectionId);
+    for (const { sectionId, version } of rows) newest.set(sectionId, version ?? 0);
+  }
+  // Who can approve right now (only needed to say whether a one-person decision is still open).
+  const approverIds = joined.some((j) => j.row.status === "approved" && j.row.decidedAlone)
+    ? new Set((await activeApprovers(q)).map((owner) => owner.id))
+    : new Set<string>();
 
   return joined.map(({ row, proposedByName, decidedByName }) => {
     const version = versionRows.find((v) => v.proposalId === row.id);
     const pick = (list: (PersonStamp & { proposalId: string })[]) =>
       list.filter((s) => s.proposalId === row.id).map(({ userId, name, at }) => ({ userId, name, at }));
+    const approvedBy = pick(approvalRows);
     return {
       id: row.id,
       type: row.type,
@@ -211,9 +255,16 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
       decidedById: row.decidedBy,
       decidedByName,
       declineReason: row.declineReason,
-      approvals: pick(approvalRows),
+      approvals: approvedBy,
       endorsements: pick(endorsementRows),
       resultVersion: version ? { id: version.id, version: version.version } : null,
+      decidedAlone: row.decidedAlone,
+      soloOpen:
+        row.status === "approved" &&
+        row.decidedAlone &&
+        !approvedBy.some((a) => a.userId !== row.decidedBy && approverIds.has(a.userId)),
+      superseded:
+        row.status === "approved" && version !== undefined && (newest.get(version.sectionId) ?? 0) > version.version,
     };
   });
 }
@@ -330,43 +381,111 @@ export async function listDecisions(
 
 /**
  * Decisions made by one person that the other Owner(s) should see: approved
- * in the last 14 days (US Central days), with exactly one approval, while at
- * least one other person who can approve has not approved. A change to
- * official text is listed only while it is still that section's current text.
+ * in the last 14 days (US Central days), decided by one person, and not yet
+ * approved by anyone else who can approve now (`soloOpen`), while there is
+ * at least one other person who can approve.
+ *
+ * A change to official text stays listed when the section has been saved
+ * again since (`superseded` says so): saving a section a second time must
+ * never take the first one-person change off the other Owner's list.
  */
 export async function listOneOwnerDecisions(q: Queryable, now: Date = new Date()): Promise<ProposalView[]> {
   const since = addDays(centralDateKey(now), -SOLO_FLAG_DAYS);
   const rows = await selectProposals(q)
-    .where(and(eq(proposals.status, "approved"), sql`${centralDay(proposals.decidedAt)} >= ${since}::date`))
+    .where(
+      and(
+        eq(proposals.status, "approved"),
+        eq(proposals.decidedAlone, true),
+        sql`${centralDay(proposals.decidedAt)} >= ${since}::date`,
+      ),
+    )
     .orderBy(desc(proposals.decidedAt), desc(proposals.id));
   const views = await toViews(q, rows);
   const owners = await activeApprovers(q);
-  const latest = new Map<string, number>();
-  for (const row of await q
-    .select({ sectionId: officialVersions.sectionId, version: officialVersions.version })
-    .from(officialVersions)) {
-    latest.set(row.sectionId, Math.max(latest.get(row.sectionId) ?? 0, row.version));
-  }
-  return views.filter((view) => {
-    if (view.approvals.length !== 1) return false;
-    if (!owners.some((owner) => owner.id !== view.approvals[0].userId)) return false;
-    if (view.type === "structure") return true;
-    return (
-      view.resultVersion !== null &&
-      view.sectionId !== null &&
-      latest.get(view.sectionId) === view.resultVersion.version
-    );
-  });
+  return views.filter((view) => view.soloOpen && owners.some((owner) => owner.id !== view.decidedById));
 }
 
-/** True when an approved proposal has one approval and `actor` could add theirs. */
+/**
+ * True when `actor` could add "I approve too": it was approved by one
+ * person, nobody else who can approve has approved it since, and `actor`
+ * can approve and has not.
+ */
 export function canApproveToo(view: ProposalView, actor: Actor): boolean {
   return (
     view.status === "approved" &&
+    view.soloOpen &&
     can(actor, "approve") &&
-    view.approvals.length === 1 &&
     !view.approvals.some((a) => a.userId === actor.id)
   );
+}
+
+export type UnapprovedChange = {
+  versionId: string;
+  version: number;
+  /** When this version became official. */
+  savedAt: Date;
+  /** The proposal (or direct edit) behind it. */
+  proposalId: string;
+  /** That proposal's title as stored ("Edited directly" for a direct edit). */
+  title: string;
+  /** Everyone whose approval is on it, in the order they approved. */
+  approvedBy: string[];
+};
+
+/** How many of a section's unapproved changes `changesNotApprovedBy` hands back. */
+export const UNAPPROVED_CHANGES_SHOWN = 10;
+
+/**
+ * The changes to a section's official text that `actor` has never approved:
+ * its versions, newest first, back to (but not including) the newest version
+ * whose proposal `actor` approved. If they never approved any version of the
+ * section, that is every version. At most 10 are handed back; `total` is how
+ * many there are.
+ *
+ * The proposal page uses this to warn an Owner that the text a proposal is
+ * compared with already contains changes they did not approve. Empty for
+ * someone who cannot approve.
+ */
+export async function changesNotApprovedBy(
+  q: Queryable,
+  sectionId: string,
+  actor: Actor,
+): Promise<{ items: UnapprovedChange[]; total: number }> {
+  if (!can(actor, "approve") || !isUuid(sectionId)) return { items: [], total: 0 };
+  const versions = await q
+    .select({
+      versionId: officialVersions.id,
+      version: officialVersions.version,
+      savedAt: officialVersions.createdAt,
+      proposalId: officialVersions.proposalId,
+      title: proposals.title,
+    })
+    .from(officialVersions)
+    .innerJoin(proposals, eq(proposals.id, officialVersions.proposalId))
+    .where(eq(officialVersions.sectionId, sectionId))
+    .orderBy(desc(officialVersions.version));
+  if (versions.length === 0) return { items: [], total: 0 };
+  const approvalRows = await q
+    .select({ proposalId: approvals.proposalId, userId: approvals.userId, name: users.name })
+    .from(approvals)
+    .innerJoin(users, eq(users.id, approvals.userId))
+    .where(
+      inArray(
+        approvals.proposalId,
+        versions.map((v) => v.proposalId),
+      ),
+    )
+    .orderBy(asc(approvals.createdAt), asc(approvals.id));
+  const mine = new Set(approvalRows.filter((a) => a.userId === actor.id).map((a) => a.proposalId));
+  const firstApproved = versions.findIndex((v) => mine.has(v.proposalId));
+  const unapproved = firstApproved < 0 ? versions : versions.slice(0, firstApproved);
+  return {
+    items: unapproved.slice(0, UNAPPROVED_CHANGES_SHOWN).map((v) => ({
+      ...v,
+      approvedBy: approvalRows.filter((a) => a.proposalId === v.proposalId).map((a) => a.name),
+    })),
+    total: unapproved.length,
+  };
 }
 
 /**
@@ -437,14 +556,23 @@ export function statusLine(view: ProposalView): string {
 }
 
 /**
- * The title to show in lists. A direct edit or restore has no written title,
- * so its section is added: "Edited directly: 2.1 Wages".
+ * The title to show in lists.
+ *  - A direct edit or restore has no written title, so its section is added:
+ *    "Edited directly: 2.1 Wages".
+ *  - A structure proposal that is still open is described from what it will
+ *    actually do, with the sections' names and numbers as they are right
+ *    now, never from its stored title. Once decided it keeps the title it
+ *    was decided under.
  */
 export function displayTitle(
-  view: Pick<ProposalView, "title" | "direct" | "sectionId">,
+  view: Pick<ProposalView, "title" | "direct" | "sectionId" | "type" | "status" | "structureChange">,
   tree: SectionNode[],
 ): string {
-  return view.direct ? `${view.title}: ${sectionLabel(tree, view.sectionId)}` : view.title;
+  if (view.direct) return `${view.title}: ${sectionLabel(tree, view.sectionId)}`;
+  if (view.type === "structure" && view.status === "open" && view.structureChange) {
+    return describeStructure(tree, view.sectionId, view.structureChange);
+  }
+  return view.title;
 }
 
 export type TextChange = {
@@ -572,19 +700,55 @@ export function describeStructure(
   sectionId: string | null,
   change: StructureChange,
 ): string {
-  switch (change.action) {
+  const known = readStructureChange(change);
+  if (!known) return UNREADABLE_CHANGE_SENTENCE;
+  switch (known.action) {
     case "add":
       return sectionId
-        ? `Add a section "${change.title}" under ${sectionLabel(tree, sectionId)}`
-        : `Add a top-level section "${change.title}"`;
+        ? `Add a section "${known.title}" under ${sectionLabel(tree, sectionId)}`
+        : `Add a top-level section "${known.title}"`;
     case "rename":
-      return `Rename ${sectionLabel(tree, sectionId)} to "${change.title}"`;
+      return `Rename ${sectionLabel(tree, sectionId)} to "${known.title}"`;
     case "move":
-      return change.parentId
-        ? `Move ${sectionLabel(tree, sectionId)} under ${sectionLabel(tree, change.parentId)}`
+      return known.parentId
+        ? `Move ${sectionLabel(tree, sectionId)} under ${sectionLabel(tree, known.parentId)}`
         : `Move ${sectionLabel(tree, sectionId)} to the top level`;
     case "archive":
       return `Archive ${sectionLabel(tree, sectionId)}`;
+  }
+}
+
+/** What is shown for a structure change the app does not know how to carry out. */
+export const UNREADABLE_CHANGE_SENTENCE = "A change to the sections that this app cannot read (it will not be carried out)";
+
+/**
+ * A stored structure change, checked: one of the four the app can carry out,
+ * with what each needs. Null for anything else. Stored changes are never
+ * taken on trust and never guessed at.
+ */
+function readStructureChange(raw: unknown): StructureChange | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const change = raw as Record<string, unknown>;
+  const hasTitle = typeof change.title === "string" && change.title.trim().length > 0;
+  switch (change.action) {
+    case "add":
+      return hasTitle ? { action: "add", title: change.title as string } : null;
+    case "rename":
+      return hasTitle
+        ? {
+            action: "rename",
+            title: change.title as string,
+            fromTitle: typeof change.fromTitle === "string" ? change.fromTitle : "",
+          }
+        : null;
+    case "move":
+      return change.parentId === null || typeof change.parentId === "string"
+        ? { action: "move", parentId: change.parentId }
+        : null;
+    case "archive":
+      return { action: "archive" };
+    default:
+      return null;
   }
 }
 
@@ -717,12 +881,17 @@ async function nameOf(tx: Tx, userId: string | null): Promise<string> {
   return row?.name ?? "Someone";
 }
 
+/** What the database answers (SQLSTATE) when an approval or endorsement names an out-of-date revision. */
+const STALE_REVISION = "PPF01";
+
+function changedAfterOpening(who: string, verb: string): string {
+  return `${who} changed this proposal after you opened it. Reload the page and read it again, then ${verb}.`;
+}
+
 /** Refuse to act on a page that no longer shows what would be approved. */
 async function checkSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Promise<void> {
   if (seen.revision !== row.revision) {
-    throw new AppError(
-      `${await nameOf(tx, row.proposedBy)} changed this proposal after you opened it. Reload the page and read it again, then ${verb}.`,
-    );
+    throw new AppError(changedAfterOpening(await nameOf(tx, row.proposedBy), verb));
   }
   if (row.type !== "structure" && row.sectionId && seen.currentVersionId !== undefined) {
     const current = await latestVersionRow(tx, row.sectionId);
@@ -736,6 +905,32 @@ async function checkSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Pr
 
 async function approvalsOf(tx: Tx, proposalId: string): Promise<{ userId: string }[]> {
   return tx.select({ userId: approvals.userId }).from(approvals).where(eq(approvals.proposalId, proposalId));
+}
+
+/**
+ * Record an approval or an endorsement, tied to the proposal revision the
+ * person had in front of them. The database checks that number against the
+ * proposal while holding a lock on it, so even when the proposer saves a
+ * change at the very same moment, nobody's name ends up on words they did
+ * not see: whichever of the two comes second is refused.
+ */
+async function addStamp(
+  tx: Tx,
+  table: typeof approvals | typeof endorsements,
+  row: Pick<ProposalRow, "id" | "proposedBy">,
+  stamp: { userId: string; revision: number; now: Date },
+  verb: string,
+): Promise<void> {
+  // Looked up first: once the database has refused a row, nothing more can
+  // be read in this transaction.
+  const proposerName = await nameOf(tx, row.proposedBy);
+  await tx
+    .insert(table)
+    .values({ proposalId: row.id, userId: stamp.userId, revision: stamp.revision, createdAt: stamp.now })
+    .catch((error: unknown) => {
+      if (sqlState(error) === STALE_REVISION) throw new AppError(changedAfterOpening(proposerName, verb));
+      throw error;
+    });
 }
 
 // -------------------------------------------------------------- proposing
@@ -768,8 +963,10 @@ export async function createProposal(
       .insert(proposals)
       .values({ ...prepared, proposedBy: actor.id, createdAt: now, updatedAt: now, updatedBy: actor.id })
       .returning({ id: proposals.id });
-    // Proposing counts as approving.
-    await tx.insert(approvals).values({ proposalId: created.id, userId: actor.id, createdAt: now });
+    // Proposing counts as approving. The proposer's approval is given on
+    // revision 1 and keeps that number even after they edit their proposal:
+    // that is fine, the new words are their own.
+    await tx.insert(approvals).values({ proposalId: created.id, userId: actor.id, revision: 1, createdAt: now });
     if (noteIds.length > 0) {
       await tx
         .insert(proposalNotes)
@@ -871,7 +1068,9 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date): Prom
   const decided = { status: "approved" as const, decidedAt: now, decidedBy: actor.id };
 
   if (row.type === "structure") {
-    const change = row.structureChange as StructureChange;
+    // Checked, never guessed: a change the app cannot read changes nothing.
+    const change = readStructureChange(row.structureChange);
+    if (!change) throw new AppError(UNREADABLE_CHANGE);
     const tree = await loadTree(tx);
     if (change.action === "add") {
       if (row.sectionId && !findNode(tree, row.sectionId)) throw new AppError(SECTION_GONE);
@@ -879,9 +1078,23 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date): Prom
       await tx.update(proposals).set({ ...decided, createdSectionId }).where(eq(proposals.id, row.id));
     } else {
       if (!row.sectionId || !findNode(tree, row.sectionId)) throw new AppError(SECTION_GONE);
-      if (change.action === "rename") await renameSectionIn(tx, actor, row.sectionId, change.title);
-      else if (change.action === "move") await moveSectionToIn(tx, actor, row.sectionId, change.parentId);
-      else await archiveSectionIn(tx, actor, row.sectionId);
+      switch (change.action) {
+        case "rename":
+          await renameSectionIn(tx, actor, row.sectionId, change.title);
+          break;
+        case "move":
+          await moveSectionToIn(tx, actor, row.sectionId, change.parentId);
+          break;
+        case "archive":
+          await archiveSectionIn(tx, actor, row.sectionId);
+          break;
+        default: {
+          // A kind of change added later must be handled here on purpose.
+          const unhandled: never = change;
+          void unhandled;
+          throw new AppError(UNREADABLE_CHANGE);
+        }
+      }
       await tx.update(proposals).set(decided).where(eq(proposals.id, row.id));
     }
   } else {
@@ -913,10 +1126,30 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date): Prom
   });
 }
 
-async function recordApproval(tx: Tx, actor: Actor, proposalId: string, now: Date): Promise<boolean> {
-  if ((await approvalsOf(tx, proposalId)).some((a) => a.userId === actor.id)) return false;
-  await tx.insert(approvals).values({ proposalId, userId: actor.id, createdAt: now });
+/**
+ * Add `actor`'s approval, given on `revision`, unless they have approved
+ * already. Says whether an approval was added.
+ */
+async function recordApproval(
+  tx: Tx,
+  actor: Actor,
+  row: ProposalRow,
+  revision: number,
+  now: Date,
+): Promise<boolean> {
+  if ((await approvalsOf(tx, row.id)).some((a) => a.userId === actor.id)) return false;
+  await addStamp(tx, approvals, row, { userId: actor.id, revision, now }, "approve");
   return true;
+}
+
+/**
+ * Before approving a text proposal: lock its section, so that an approval
+ * and any other change to that section's official text go one after the
+ * other. Always after the proposal's own lock, and before looking at which
+ * version is current.
+ */
+async function lockSectionOf(tx: Tx, row: ProposalRow): Promise<void> {
+  if (row.type !== "structure" && row.sectionId) await lockSection(tx, row.sectionId);
 }
 
 export type ApproveOutcome = { approved: boolean; waitingFor: string[] };
@@ -937,8 +1170,9 @@ export async function approveProposal(
   return asUser(actor.id, async (tx) => {
     const row = await lockProposal(tx, id);
     requireOpen(row);
+    await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
-    await recordApproval(tx, actor, id, now);
+    const added = await recordApproval(tx, actor, row, seen.revision, now);
     const owners = await activeApprovers(tx);
     const approvedBy = new Set((await approvalsOf(tx, id)).map((a) => a.userId));
     const counted = owners.filter((owner) => approvedBy.has(owner.id));
@@ -947,12 +1181,17 @@ export async function approveProposal(
       return { approved: true, waitingFor: [] };
     }
     const waitingFor = owners.filter((owner) => !approvedBy.has(owner.id)).map((owner) => owner.name);
-    await logActivity(tx, actor.id, {
-      action: "proposal.approval_added",
-      entityType: "proposal",
-      entityId: id,
-      summary: `Approved, waiting for ${waitingFor.length > 0 ? joinNames(waitingFor) : "another Owner"}: ${row.title}`,
-    });
+    // The log says "approved" only when an approval was really added just
+    // now: pressing Approve again on something you already approved (the
+    // proposer always has) records nothing and so logs nothing.
+    if (added) {
+      await logActivity(tx, actor.id, {
+        action: "proposal.approval_added",
+        entityType: "proposal",
+        entityId: id,
+        summary: `Approved, waiting for ${waitingFor.length > 0 ? joinNames(waitingFor) : "another Owner"}: ${row.title}`,
+      });
+    }
     return { approved: false, waitingFor };
   });
 }
@@ -972,8 +1211,9 @@ export async function approveAlone(
   await asUser(actor.id, async (tx) => {
     const row = await lockProposal(tx, id);
     requireOpen(row);
+    await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
-    await recordApproval(tx, actor, id, now);
+    await recordApproval(tx, actor, row, seen.revision, now);
     await finalize(tx, actor, row, now);
   });
 }
@@ -987,7 +1227,8 @@ export async function addApproval(actor: Actor, id: string, options: { now?: Dat
     if (row.status !== "approved") {
       throw new AppError("This can only be added to something that has been approved. Reload the page.");
     }
-    if (!(await recordApproval(tx, actor, id, now))) return;
+    // A decided proposal never changes again, so its revision is the wording that was approved.
+    if (!(await recordApproval(tx, actor, row, row.revision, now))) return;
     await logActivity(tx, actor.id, {
       action: "proposal.approval_added",
       entityType: "proposal",
@@ -1067,12 +1308,12 @@ export async function endorseProposal(
   const now = options.now ?? new Date();
   await asUser(actor.id, async (tx) => {
     // Advisors cannot lock a proposal for change, so this reads it plainly.
+    // The database takes the lock for them when the endorsement is added.
     const [row] = isUuid(id) ? await tx.select().from(proposals).where(eq(proposals.id, id)) : [];
     if (!row) throw new AppError(NOT_FOUND);
     if (row.status !== "open" && row.status !== "approved") {
       throw new AppError("This proposal was declined or withdrawn, so it can no longer be endorsed.");
     }
-    if (row.status === "open") await checkSeen(tx, row, { revision: seen.revision }, "endorse");
     if ((await approvalsOf(tx, id)).some((a) => a.userId === actor.id)) {
       throw new AppError("You have already approved this, which says more than an endorsement.");
     }
@@ -1081,7 +1322,11 @@ export async function endorseProposal(
       .from(endorsements)
       .where(and(eq(endorsements.proposalId, id), eq(endorsements.userId, actor.id)));
     if (already) return;
-    await tx.insert(endorsements).values({ proposalId: id, userId: actor.id, createdAt: now });
+    // The friendly check first; the database then checks the same number
+    // again under a lock (see addStamp), which is what holds if the proposer
+    // saves a change at this very moment.
+    await checkSeen(tx, row, { revision: seen.revision }, "endorse");
+    await addStamp(tx, endorsements, row, { userId: actor.id, revision: seen.revision, now }, "endorse");
     await logActivity(tx, actor.id, {
       action: "proposal.endorsed",
       entityType: "proposal",
