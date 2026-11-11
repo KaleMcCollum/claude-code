@@ -16,6 +16,8 @@ const RichTextEditor = dynamic(() => import("./RichTextEditor"), {
 type Props = {
   sectionId: string;
   doc: RichDoc | null;
+  /** The official version on screen (null when there is no official text yet). */
+  versionId: string | null;
   canEdit: boolean;
   userName: string;
   /** The official text as shown to readers (drawn on the server). */
@@ -23,7 +25,7 @@ type Props = {
 };
 
 /** The Official area of a section page: the text, plus "Edit official" for Owners. */
-export function OfficialBlock({ sectionId, doc, canEdit, userName, children }: Props) {
+export function OfficialBlock({ sectionId, doc, versionId, canEdit, userName, children }: Props) {
   const [editing, setEditing] = useState(false);
   const draftKey = officialDraftKey(sectionId);
   const hasDraft = useHasDraft(draftKey);
@@ -45,7 +47,7 @@ export function OfficialBlock({ sectionId, doc, canEdit, userName, children }: P
           label="Official text"
           saveLabel="Save as official"
           note={`Saving records this text as approved by ${userName}, with today's date. Earlier versions are kept.`}
-          onSave={(next) => saveOfficialAction(sectionId, next)}
+          onSave={(next) => saveOfficialAction(sectionId, next, versionId)}
           onDone={() => setEditing(false)}
         />
       ) : (

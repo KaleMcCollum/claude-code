@@ -138,6 +138,7 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
         key={official?.id ?? "none"}
         sectionId={node.id}
         doc={official?.content ?? null}
+        versionId={official?.id ?? null}
         canEdit={can(user, "edit_official")}
         userName={user.name}
       >

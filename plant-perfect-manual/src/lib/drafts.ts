@@ -30,6 +30,21 @@ export function commentDraftKey(noteId: string): string {
   return `ppf:draft:comment:${noteId}`;
 }
 
+/** The proposed official text of a new proposal for a section, not sent yet. */
+export function newProposalDraftKey(sectionId: string): string {
+  return `ppf:draft:proposal:new:${sectionId}`;
+}
+
+/** Unsaved changes to the proposed text of an existing proposal. */
+export function proposalDraftKey(proposalId: string): string {
+  return `ppf:draft:proposal:${proposalId}`;
+}
+
+/** An unsaved comment on a proposal. */
+export function proposalCommentDraftKey(proposalId: string): string {
+  return `ppf:draft:comment:proposal:${proposalId}`;
+}
+
 export function readDraft(key: string): Draft | null {
   try {
     const raw = window.localStorage.getItem(key);

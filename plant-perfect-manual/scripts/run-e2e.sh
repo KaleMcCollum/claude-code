@@ -7,7 +7,9 @@
 #   start  a production build (run `npm run build` first)
 #   With no test names, every e2e/phase*.cjs file runs, in order.
 # Options (environment): PORT (default 3111), SHOTS (screenshot folder),
-#   SHOT_SCALE (1 or 2), E2E_LOG (server log file).
+#   SHOT_SCALE (1 or 2), E2E_LOG (server log file),
+#   E2E_SCRIPT (run this script instead of e2e/<name>.cjs, on a database
+#   prepared for <name>; for trying something out without adding a test).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -86,7 +88,7 @@ for name in "${TESTS[@]}"; do
   done
 
   echo "== $name"
-  if ! BASE_URL="http://localhost:$PORT" OUTBOX="$EMAIL_OUTBOX_DIR" node "e2e/$name.cjs"; then
+  if ! BASE_URL="http://localhost:$PORT" OUTBOX="$EMAIL_OUTBOX_DIR" node "${E2E_SCRIPT:-e2e/$name.cjs}"; then
     FAILED+=("$name")
     echo "(server log: $LOG)"
   fi
