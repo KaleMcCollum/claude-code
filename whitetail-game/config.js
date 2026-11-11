@@ -119,7 +119,7 @@
       mortality: {              // non-player annual, private land, average neighbor pressure
         buck: { 0.5: [0.15, 0.25], 1.5: 0.25, 2.5: 0.25, 3.5: 0.29, 4.5: 0.30, 5.5: 0.32, 6.5: 0.38, 7.5: 0.44, 8.5: 0.52, 9.5: 0.6, 10.5: 0.75 },
         doe:  { 0.5: [0.15, 0.25], 1.5: 0.12, 2.5: 0.12, 3.5: 0.12, 4.5: 0.12, 5.5: 0.12, 6.5: 0.18, 7.5: 0.18, 8.5: 0.27, 9.5: 0.35, 10.5: 0.5 },
-        publicBuck: [0.55, 0.70],
+        publicBuck: [0.38, 0.46],
         inSeasonShare: 0.45,          // share of neighbor/hunter mortality that happens during the season
         winterBase: 0.03, winterSevere: 0.10,
       },

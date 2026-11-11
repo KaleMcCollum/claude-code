@@ -94,7 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
-      journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right' },
+      journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', pubHerds: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
     };
@@ -323,6 +323,16 @@
       st.settings = st.settings || {};
       for (const p of G.world.parcels) if (st.parcels[p.id].owner === 'public' && st.parcels[p.id].bowOnly) initParcelHerd(p.id);
       st.settings.bowHerds = true;
+    }
+    // older saves: regular public land was hunted down to yearlings. Restock it once, keeping any deer on your hit list.
+    if (!st.settings.pubHerds) {
+      for (const p of G.world.parcels) {
+        const d = st.parcels[p.id]; if (d.owner !== 'public' || d.bowOnly) continue;
+        const keep = (d.herd || []).filter((x) => st.hitList.some((e) => e.k === x.id));
+        initParcelHerd(p.id);
+        st.parcels[p.id].herd.push(...keep);
+      }
+      st.settings.pubHerds = true;
     }
     // older saves: untagged deer used to cost a $500 ticket. Pay those back once.
     st.settings = st.settings || {};
