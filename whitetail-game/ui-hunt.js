@@ -348,7 +348,7 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
       const legal = WT.huntLegal(H);
       $('#clock', el).innerHTML = `${WT.fmtTime(H.now)} · ${legal ? 'legal light' : '<span class="warn">not legal light</span>'} · sit left ${WT.fmtDur(Math.max(0, H.sitEnd - H.now))}`;
       const rng = H.selected && H.visible.length ? (() => { const f = WT.findTarget(H, H.selected); return f && H.ranged[f.g.gid]; })() : null;
-      $('#hud', el).innerHTML = `${H.rounds}/${H.rifle.mag} rds${rng ? ` · <span class="good">${rng} yd</span>` : ''}${optic ? ` · ${opticKind === 'scope' ? 'scope' : 'binos'} up` : ''}`;
+      $('#hud', el).innerHTML = `${H.rounds}/${H.rifle.mag} ${H.rifle.bow ? 'arrows' : 'rds'}${rng ? ` · <span class="good">${rng} yd</span>` : ''}${optic ? ` · ${opticKind === 'scope' ? 'scope' : 'binos'} up` : ''}`;
     };
     const controls = () => {
       if (H.over) return showSummary();

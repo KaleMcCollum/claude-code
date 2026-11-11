@@ -31,7 +31,7 @@ Money comes from harvested deer, leveling up (a little more each level) and new 
 - **Home areas**: each deer lives around one spot on its property (usually cover). It can show at any stand, but about twice as often near home and half as often at the far end; bucks roam wider than does and go anywhere in the rut. Properties take 8 stands and 15 cameras per 100 acres, and public areas 5 marked spots and 10 cameras, so you can cover the ground.
 - **What you see**: does and fawns move in daylight at any age and often travel together. The "old deer are hard to see" rule applies to bucks: most bucks you see are 1.5 and 2.5 years old.
 - **Hunts**: sighting odds per deer by age, wariness, pressure, rut phase, weather, stand placement and time of day; wind and scent, concealment and noise; comfort from clothing, wind chill, heaters and snacks; calls; shot placement from rifle, scope, skill, rest, range and light.
-- **Progression**: levels 1 to 100 unlock rifles and bows (two compounds and a crossbow: short range, quiet, barely any pressure; rifles run from the free .223 Ruger American Ranch to a gold-plated 7mm at level 90 and a level-100 heirloom). Skill points go to Stealth, Marksmanship, Calling, Scent Discipline, Patience and Woodcraft.
+- **Progression**: levels 1 to 100 unlock rifles and, from level 15, bows (two compounds and a crossbow: short range, quiet, barely any pressure, with their own Archery skill). Owning a bow opens an early archery season from Sep 17, and bow-only public land holds older, bigger bucks. Rifles run from the free .223 Ruger American Ranch to a gold-plated 7mm at level 90 and a level-100 heirloom). Skill points go to Stealth, Marksmanship, Calling, Scent Discipline, Patience and Woodcraft.
 
 ## Files
 

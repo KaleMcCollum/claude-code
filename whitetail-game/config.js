@@ -54,6 +54,7 @@
       calling:  { name: 'Calling',        desc: 'Grunts, rattling and snort-wheezes sound real.' },
       scent:    { name: 'Scent Discipline', desc: 'Less human odor, fewer deer winding you.' },
       patience: { name: 'Patience',       desc: 'Sit longer. 4 pts = +1 hr. All-day sits need ~10 hrs.' },
+      archery:  { name: 'Archery',        desc: 'Bow and crossbow accuracy, and clean kills with an arrow. Rifles use Marksmanship.' },
       woodcraft:{ name: 'Woodcraft',      desc: 'Spot deer sooner, judge age and score better, track wounded deer.' },
     },
 
@@ -61,7 +62,8 @@
     calendar: {
       // Day 0 = Oct 1. Rifle legal Oct 1 - Dec 31 (game rule until bows/muzzleloaders land).
       seasonDays: 92,
-      monthStarts: [{ name: 'Oct', start: 0 }, { name: 'Nov', start: 31 }, { name: 'Dec', start: 61 }],
+      earlyBowDays: 14,                 // own a bow and the year opens Sep 17: two weeks of archery before rifle season
+      monthStarts: [{ name: 'Sep', start: -30 }, { name: 'Oct', start: 0 }, { name: 'Nov', start: 31 }, { name: 'Dec', start: 61 }],
       rutPhases: [
         { name: 'Early season', from: 0,  to: 18, buck: 0.85, mature: 0.75, doe: 1.0 },
         { name: 'Pre-rut',      from: 19, to: 30, buck: 1.1,  mature: 1.05, doe: 1.0 },
@@ -71,10 +73,10 @@
       ],
       // Average temps (°F) by day index, linearly interpolated: [day, low, high]
       // The first week of October is mild so starter clothes work; the first cold front ends that.
-      temps: [[0, 51, 73], [6, 50, 71], [9, 34, 56], [31, 25, 44], [61, 12, 28], [91, 2, 19]],
+      temps: [[-14, 54, 78], [0, 51, 73], [6, 50, 71], [9, 34, 56], [31, 25, 44], [61, 12, 28], [91, 2, 19]],
       fairDays: 7,                    // calm, mild, no fronts until this day; a cold front arrives on it
-      sunrise: [[0, 7.45], [31, 7.95], [36, 7.05], [61, 7.85], [91, 8.3]],   // hour-of-day (DST ends ~Nov 5)
-      sunset:  [[0, 19.2], [31, 18.15], [36, 17.1], [61, 16.8], [91, 16.95]],
+      sunrise: [[-14, 7.2], [0, 7.45], [31, 7.95], [36, 7.05], [61, 7.85], [91, 8.3]],   // hour-of-day (DST ends ~Nov 5)
+      sunset:  [[-14, 19.65], [0, 19.2], [31, 18.15], [36, 17.1], [61, 16.8], [91, 16.95]],
       legalLightMin: 30,
     },
 
@@ -135,7 +137,8 @@
         pressureK: 1.4,               // mature bucks go nocturnal under pressure
         shotOpportunity: { young: 0.55, mature: 0.32 },
       },
-      pressure: { perSit: 0.03, decay: 0.7, publicFloor: 0.3 }, // per-sit gain, what's left after each day of rest, public land's minimum
+      pressure: { perSit: 0.03, decay: 0.7, publicFloor: 0.3, bowOnlyFloor: 0.1 },
+      bowOnlyBuckSurvival: 0.3,        // bucks on bow-only public land die at this fraction of the private-land rate, so they get old and big // per-sit gain, what's left after each day of rest, public land's minimum
     },
 
     landTiers: {
@@ -150,9 +153,9 @@
     // Bows are coming later. level = level needed to buy. award = only unlocked, not sold.
     rifles: [
       // bows: quiet and short. Good to about 3 x range yards; needed for bow-only public land.
-      { id: 'bear_cruzer',  level: 1,   name: 'Bear Cruzer G3 compound',     cal: 'compound bow',    bow: true, acc: 56, range: 12, power: 30, recoil: 0, mag: 4, price: 350 },
-      { id: 'ravin_r10',    level: 8,   name: 'Ravin R10 crossbow',          cal: 'crossbow',        bow: true, acc: 68, range: 20, power: 42, recoil: 0, mag: 3, price: 1400 },
-      { id: 'mathews_v3x',  level: 12,  name: 'Mathews V3X compound',        cal: 'compound bow',    bow: true, acc: 70, range: 16, power: 38, recoil: 0, mag: 5, price: 1150 },
+      { id: 'bear_cruzer',  level: 15,  name: 'Bear Cruzer G3 compound',     cal: 'compound bow',    bow: true, acc: 56, range: 12, power: 30, recoil: 0, mag: 4, price: 900 },
+      { id: 'ravin_r10',    level: 22,  name: 'Ravin R10 crossbow',          cal: 'crossbow',        bow: true, acc: 66, range: 20, power: 42, recoil: 0, mag: 3, price: 1800 },
+      { id: 'mathews_v3x',  level: 30,  name: 'Mathews V3X compound',        cal: 'compound bow',    bow: true, acc: 72, range: 17, power: 38, recoil: 0, mag: 5, price: 2400 },
       { id: 'ruger_ranch',  level: 1,   name: 'Ruger American Ranch',        cal: '.223 Rem',        acc: 60, range: 35, power: 30, recoil: 10, mag: 5, price: 0 },
       { id: 'mossberg_pat', level: 3,   name: 'Mossberg Patriot',            cal: '.243 Win',        acc: 63, range: 50, power: 45, recoil: 22, mag: 5, price: 380 },
       { id: 'savage_axis',  level: 5,   name: 'Savage Axis II',              cal: '.243 Win',        acc: 68, range: 55, power: 50, recoil: 25, mag: 4, price: 420 },
@@ -191,7 +194,7 @@
     // cover/noise/scent/accuracy/comfort/visibility are 0-100 bonuses; patienceHrs adds sit time.
     stands: [
       { id: 'ground',  name: 'Ground sit (no stand)', kind: 'mobile',    price: 0,    cover: 10, noise: 20, scent: 0,  accuracy: 0,  comfort: 0,  visibility: 30, patienceHrs: -0.5, starter: true, note: 'Sit against a tree. Free and miserable.' },
-      { id: 'saddle',  name: 'Tethrd Phantom saddle',  kind: 'mobile',    price: 380,  cover: 55, noise: 60, scent: 60, accuracy: 10, comfort: 15, visibility: 60, patienceHrs: -0.5, note: 'Light and quiet. Any tree, any weapon.' },
+      { id: 'saddle',  name: 'Tethrd Phantom saddle',  kind: 'mobile',    price: 1200, cover: 72, noise: 78, scent: 70, accuracy: 22, comfort: 30, visibility: 60, patienceHrs: 0.5, note: 'The best way up a tree: light, silent, hidden. Any tree, any weapon.' },
       { id: 'hangon',  name: 'Hawk Helium hang-on',    kind: 'mobile',    price: 160,  cover: 60, noise: 55, scent: 65, accuracy: 15, comfort: 20, visibility: 55, patienceHrs: 0 },
       { id: 'climber', name: 'Summit Viper climber',   kind: 'mobile',    price: 330,  cover: 55, noise: 45, scent: 65, accuracy: 25, comfort: 40, visibility: 60, patienceHrs: 0.75 },
       { id: 'popup',   name: 'Primos pop-up blind',    kind: 'portable',  price: 190,  cover: 55, noise: 70, scent: 15, accuracy: 30, comfort: 45, visibility: 35, patienceHrs: 0.75, blind: true },

@@ -300,6 +300,7 @@
       <nav class="lodge-bar">${nav.map(([k, n]) => `<button class="btn" data-go="${k}">${n}</button>`).join('')}<button class="btn" data-guide>Guide</button></nav>
       <section class="panel news" style="margin-top:22px">
         <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
+        ${st.day < 0 ? `<p class="good">Early archery season: bow only until Oct 1. ${WT.hasBow() ? 'Your bow is equipped.' : 'Equip your bow under Gear to hunt, or press Wait.'}</p>` : ''}
         ${needTag ? '<p class="warn">You need a buck tag before you can shoot a buck. Get one at the Shop.</p>' : ''}
         ${st.news.slice(0, 3).map((n) => `<p class="${n.kind}"><span class="faint">${WT.dateLabel(Math.min(n.d, 91))}:</span> ${esc(n.text)}</p>`).join('')}
       </section>`;
@@ -345,7 +346,8 @@
       <p><b>Hit list:</b> a deer you've seen clearly before shows its name and the status you gave it (Hit list, Pass, Cull...) right above your read.</p>`],
     ['shot', 'Taking the shot', () => `
       <p><b>Distance decides it.</b> Inside 40 yards a clear rifle shot almost never misses. The bonus fades out by 100 yards, and past that it's your rifle, scope and Marksmanship skill.</p>
-      <p><b>Bows</b> are short and quiet: deadly inside 20 yards, fading fast, and done past their range. A bow shot barely adds pressure, and you need a bow in hand to hunt bow-only public land.</p>
+      <p><b>Bows</b> are a late-game tool for hunting big bucks (the first unlocks at level ${WT.CONFIG.rifles.filter((r) => r.bow).reduce((a, r) => Math.min(a, r.level), 99)}). They are short and quiet: strong inside 20 yards, fading fast, and not possible much past their range. Accuracy comes from the <b>Archery</b> skill, not Marksmanship. A bow shot barely adds pressure, often doesn't clear the rest of the group, and a miss frequently leaves the deer standing there for a second arrow.</p>
+      <p><b>What a bow opens up:</b> the <b>early archery season</b> (if you own a bow the year starts Sep 17, two weeks before rifle season, with nobody else in the woods and deer that haven't been hunted), and <b>bow-only public land</b>, where far fewer bucks get killed, so they are older and bigger on average than anywhere else.</p>
       <p><b>Each rifle has a reach.</b> The starter .223 is good to about 100 yards and falls off fast after. Better rifles reach farther and hit harder, which means fewer wounded deer. A rangefinder removes the guesswork past 150 yards.</p>
       <p><b>Wait for a clear shot.</b> "Brush in the way" costs a lot of accuracy and wounds deer. Standing deer are easier than walking deer.</p>
       <p><b>Low light</b> hurts unless your scope gathers light well. Big antlers give you buck fever until your Marksmanship is up.</p>

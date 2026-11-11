@@ -85,7 +85,7 @@
     const st = {
       v: 1, seed, year: 1, day: 0, slot: 'morning',
       cash: C().economy.startingCash, xp: 0, level: 1, skillPts: 2,
-      skills: { stealth: 0, shooting: 0, calling: 0, scent: 0, patience: 0, woodcraft: 0 },
+      skills: { stealth: 0, shooting: 0, calling: 0, scent: 0, patience: 0, archery: 0, woodcraft: 0 },
       inv: {
         rifles: ['ruger_ranch'], scopes: ['simmons'], rifleScope: { ruger_ranch: 'simmons' },
         stands: { ground: 1 }, clothing: C().clothing.filter((c) => c.starter).map((c) => c.id),
@@ -244,6 +244,8 @@
     prop.herd = d.herd || [];
     prop.huntingPressure = d.pressure ?? 0.05;
     prop.sanct = WT.sanctuaryInfo(pid).counted;
+    prop.bowOnly = !!d.bowOnly;
+    if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
     return prop;
@@ -314,6 +316,13 @@
     for (const p of G.world.parcels) {
       const d = st.parcels[p.id];
       for (const deer of d.herd || []) if (deer.sex === 'b' && deer.age >= 1.5 && !deer.rack) WT.growDeer(deer, makeProp(p.id), G.rng, 1);
+    }
+    for (const k in C().skills) if (st.skills[k] === undefined) st.skills[k] = 0; // skills added since this save
+    // older saves: bow-only public land now holds an older, bigger herd. Restock it once.
+    if (!st.settings || !st.settings.bowHerds) {
+      st.settings = st.settings || {};
+      for (const p of G.world.parcels) if (st.parcels[p.id].owner === 'public' && st.parcels[p.id].bowOnly) initParcelHerd(p.id);
+      st.settings.bowHerds = true;
     }
     // older saves: untagged deer used to cost a $500 ticket. Pay those back once.
     st.settings = st.settings || {};
@@ -808,6 +817,8 @@
     return out;
   };
   WT.publicAreas = () => G.world.parcels.filter((p) => S().parcels[p.id].owner === 'public');
+  WT.ownsBow = () => S().inv.rifles.some((id) => WT.isBow(id));
+  WT.earlySeason = () => S().day < 0; // Sep 17 to Sep 30: archery only, and nobody else is in the woods yet
   WT.isBow = (id) => !!(WT.rifle(id) || {}).bow;
   WT.hasBow = () => WT.isBow(S().loadout.rifle); // a bow in your hands, not just in the closet
   // The mobile stand on your back (saddle, hang-on, climber or pop-up). Public land can't be hunted without one.
@@ -842,6 +853,7 @@
   // Can you hunt this public spot right now? Returns null, or the reason you can't.
   WT.spotBlock = function (pid, spot) {
     const d = S().parcels[pid];
+    if (WT.earlySeason() && !WT.hasBow()) return 'Early archery season: bow only until Oct 1. Equip your bow under Gear, or press Wait.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (spot.kind !== 'spot') return null;
     const id = WT.mobileStand();
@@ -1130,7 +1142,7 @@
 
     const ctx = {
       pressure: pressureCtx, rut, weather: st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
-      tod: setup.session === 'allday' ? 1.15 : 1, place: rating, matureRating: stand.r.mature,
+      tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1), // early archery: deer haven't been hunted yet place: rating, matureRating: stand.r.mature,
       hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
     const herd = d.herd;
@@ -1372,7 +1384,8 @@
     if (!t) return { ok: false, reason: 'Tap a deer in the view to pick your target.' };
     if (!WT.huntLegal(H)) return { ok: false, reason: 'Not legal shooting light.' };
     if (st.tags.buck < 1 && st.tags.doe < 1) return { ok: false, reason: 'You have no unfilled tags.' };
-    if (H.rounds <= 0) return { ok: false, reason: 'Out of rounds.' };
+    if (H.rounds <= 0) return { ok: false, reason: H.rifle.bow ? 'Out of arrows.' : 'Out of rounds.' };
+    if (H.rifle.bow && Math.max(5, t.g.dist + t.m.dd) > H.rifle.range * 3 + 20) return { ok: false, reason: `Too far for a bow. Wait until it's inside about ${H.rifle.range * 3} yards.` };
     return { ok: true, clear: t.g.clear };
   };
 
@@ -1382,15 +1395,16 @@
     const dist = Math.max(5, g.dist + m.dd);
     const effRange = r.range * 3;
     if (r.bow) { // an arrow: deadly close, fading fast past 20 yards, hopeless past its range
-      let a = r.acc + st.skills.shooting * 0.8 + H.sType.accuracy * 0.18 + 24;
+      const ar = st.skills.archery || 0;
+      let a = r.acc + ar * 0.7 + H.sType.accuracy * 0.18 + 18;
       if (dist > 20) a -= (dist - 20) * 1.1;
       if (dist > effRange) a -= (dist - effRange) * 2.5;
       if (WT.lightFactor(H) < 1) a -= 10;
       if (!g.clear) a -= 30;
       if (g.pose === 'walk') a -= 12;
       if (g.alert) a -= 12; // a wound-up deer jumps the string
-      if (m.deer.sex === 'b' && m.deer.gross > 130) a -= Math.max(0, 14 - st.skills.shooting * 0.5);
-      return clamp(a / 100, 0.02, 0.95);
+      if (m.deer.sex === 'b' && m.deer.gross > 130) a -= Math.max(0, 14 - ar * 0.5);
+      return clamp(a / 100, 0.02, 0.96);
     }
     let acc = r.acc * 0.55 + sc.acc + st.skills.shooting * 0.8 + H.sType.accuracy * 0.18 + 25;
     acc -= r.recoil * 0.15 * (1 - st.skills.shooting / 60);
@@ -1408,6 +1422,7 @@
     return clamp(acc / 100, floor, 0.98);
   }
 
+  WT._hit = hitChance;
   WT.shoot = function (deerId) {
     const H = G.hunt, st = S(), rng = G.rng, cfg = C();
     const chk = WT.shotCheck(H, deerId);
@@ -1422,17 +1437,18 @@
     H.prop.huntingPressure = clamp(H.prop.huntingPressure + (r.bow ? 0.008 : 0.03)); // a bow doesn't wake the county
     H.stand.pressure = clamp((H.stand.pressure || 0) + (r.bow ? 0.012 : 0.04));
     // everyone else in the group bolts
-    g.members.forEach((x) => { if (x !== m) x.fled = true; });
+    g.members.forEach((x) => { if (x !== m && (!r.bow || rng.chance(0.5))) x.fled = true; }); // an arrow doesn't always clear the field
     if (!rng.chance(p)) {
       H.misses++; st.stats.misses++;
       H.log.push({ t: H.now, kind: 'bad', text: rng.pick(['Clean miss. Dirt kicks up behind it.', 'You see the bullet smack a branch. Miss.', 'The deer flinches at the shot and bounds off untouched.']) });
       g.alert = 2;
-      if (rng.chance(0.3 * (1 - r.recoil / 150)) && H.rounds > 0) { g.p = Math.max(0, g.p - 0.1); g.dmin += 30; H.log.push({ t: H.now, kind: 'warn', text: 'It stops farther out and looks back. Follow-up shot?' }); }
+      if (r.bow && rng.chance(0.5) && H.rounds > 0) { g.alert = 1; H.log.push({ t: H.now, kind: 'warn', text: 'It jumps, looks around, and stays. It never figured out what that was. Nock another arrow.' }); }
+      else if (rng.chance(0.3 * (1 - r.recoil / 150)) && H.rounds > 0) { g.p = Math.max(0, g.p - 0.1); g.dmin += 30; H.log.push({ t: H.now, kind: 'warn', text: 'It stops farther out and looks back. Follow-up shot?' }); }
       else { g.gone = true; H.log.push({ t: H.now, kind: 'bad', text: 'Gone.' }); }
       cleanup(H); return;
     }
     const effRange = r.range * 3;
-    const vital = r.bow ? clamp(0.72 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) - Math.max(0, dist - 25) * 0.008) : clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) + (dist <= 40 ? 0.2 : dist < 100 ? 0.2 * (100 - dist) / 60 : 0));
+    const vital = r.bow ? clamp(0.7 + (st.skills.archery || 0) * 0.006 + (g.clear ? 0.05 : -0.2) - Math.max(0, dist - 25) * 0.008) : clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) + (dist <= 40 ? 0.2 : dist < 100 ? 0.2 * (100 - dist) / 60 : 0));
     g.gone = true;
     if (rng.chance(vital)) harvest(H, g, deer, dist, rng.chance(0.5) ? 'drops in its tracks' : `runs ${rng.int(30, 90)} yards and piles up`);
     else {
@@ -1664,11 +1680,12 @@
     const decay = cfg.deer.pressure.decay;
     for (const p of G.world.parcels) {
       const d = st.parcels[p.id];
-      const floor = d.owner === 'public' ? cfg.deer.pressure.publicFloor : 0.02;
+      const floor = d.owner === 'public' ? (d.bowOnly ? cfg.deer.pressure.bowOnlyFloor : cfg.deer.pressure.publicFloor) : 0.02;
       d.pressure = Math.max(floor, (d.pressure || 0) * decay);
       for (const s of [...d.stands, ...(d.spots || [])]) s.pressure = (s.pressure || 0) * decay; // marked public spots rest too
       // neighbors and other hunters
       const prop = makeProp(p.id);
+      if (st.day <= 0) continue; // before Oct 1 nobody else is hunting
       const died = WT.inSeasonDailyMortality(prop, rng, cfg.calendar.seasonDays);
       d.herd = prop.herd;
       for (const deer of died) neighborKill(p, d, deer);
@@ -1676,6 +1693,7 @@
     cameraDay();
     if (st.day >= cfg.calendar.seasonDays) { G.seasonOver = true; return; }
     st.weather = rollWeather(st.day, st.weather, rng);
+    if (st.day === 0) news('Rifle season is open. Everybody is in the woods now.', 'info');
     const rut = WT.rutPhase(st.day), prev = WT.rutPhase(st.day - 1);
     if (rut !== prev) news(`${rut.name} has started.${/Seek/.test(rut.name) ? ' Mature bucks are on their feet in daylight. Hunt all day if you can.' : ''}`, 'info');
     if (st.weather.front && st.day === (cfg.calendar.fairDays || -1)) news('The first cold front of the fall is here. The mild weather is over: dress for it, or your sits will be short. Deer will be on their feet tomorrow.', 'warn');
@@ -1858,12 +1876,13 @@
     }
     if (st.sheds.length > 120) st.sheds.length = 120;
     // reset season
-    st.year++; st.day = 0; st.slot = 'morning';
+    st.year++; st.day = WT.ownsBow() ? -(cfg.calendar.earlyBowDays || 0) : 0; st.slot = 'morning';
     st.tags = { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 };
     st.seasonLog = { hunts: 0, harvest: [] };
     st.weather = rollWeather(0, null, rng);
     rotateListings();
     G.seasonOver = false;
+    if (st.day < 0) news(`Early archery season is open: ${WT.dateLabel(st.day)} to Sep 30, bow only. You have the woods to yourself until rifle season opens Oct 1.`, 'good');
     news(`Year ${st.year}. New season, new tags.${tax ? ' Property tax: ' + WT.money(tax) + '.' : ''}`);
     WT.save();
     return summary;
