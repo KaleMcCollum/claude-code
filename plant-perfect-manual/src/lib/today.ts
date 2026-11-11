@@ -3,6 +3,7 @@ import { type Queryable, asUser } from "@/db/client";
 import { noteSections, notes, officialVersions } from "@/db/schema";
 import { type NoteView, listUnsortedNotes } from "./notes";
 import type { Actor } from "./permissions";
+import { type ProposalView, activeApprovers, listOneOwnerDecisions, listOpenProposals } from "./proposals";
 import { flattenTree, loadTree } from "./sections";
 import { loadSettings } from "./settings";
 import { centralDateKey, daysBetween } from "./time";
@@ -24,6 +25,12 @@ export type TodayView = {
     /** Days from today until the opening date (0 = today, negative = past). */
     days: number;
   };
+  /** Open proposals, the one waiting longest first. */
+  awaiting: ProposalView[];
+  /** Approved by one person in the last 14 days (see listOneOwnerDecisions). */
+  decidedAlone: ProposalView[];
+  /** People who can approve, to say whose approval a proposal is waiting for. */
+  approvers: { id: string; name: string }[];
   unsorted: { total: number; notes: NoteView[] };
   stale: { afterDays: number; sections: StaleSection[] };
 };
@@ -62,7 +69,7 @@ async function sectionsWithContent(q: Queryable): Promise<Set<string>> {
 /**
  * Everything the Today page shows so far. Each part reads the live records
  * (notes, sections, settings); nothing is copied or stored for this page.
- * To-dos and deadlines join in Phase 4, approvals in Phase 3.
+ * To-dos and deadlines join in Phase 4.
  */
 export async function loadToday(actor: Actor, now: Date = new Date()): Promise<TodayView> {
   return asUser(actor.id, async (tx) => {
@@ -89,6 +96,9 @@ export async function loadToday(actor: Actor, now: Date = new Date()): Promise<T
     return {
       todayKey,
       opening: { date: settings.openingDate, days: daysBetween(todayKey, settings.openingDate) },
+      awaiting: await listOpenProposals(tx),
+      decidedAlone: await listOneOwnerDecisions(tx, now),
+      approvers: await activeApprovers(tx),
       unsorted: await listUnsortedNotes(tx, tree, 10),
       stale: { afterDays: settings.staleDays, sections: staleSections },
     };

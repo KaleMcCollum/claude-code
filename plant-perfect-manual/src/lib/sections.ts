@@ -122,63 +122,86 @@ async function nextPosition(tx: Tx, parentId: string | null): Promise<number> {
   return (row?.last ?? 0) + 1;
 }
 
-export async function createSection(
+/**
+ * The structure changes below each come in two forms: the plain one opens
+ * its own transaction (used by the Edit sections page), and the "...In" one
+ * runs inside a transaction that is already open (used when an approved
+ * proposal is applied, so the approval and the change succeed or fail
+ * together).
+ */
+
+/** Check a new section name without saving anything. */
+export function checkSectionTitle(input: string): string {
+  return cleanTitle(input);
+}
+
+export async function createSectionIn(
+  tx: Tx,
   actor: Actor,
   input: { parentId: string | null; title: string },
 ): Promise<string> {
   assertCan(actor, "structure");
   const title = cleanTitle(input.title);
-  return asUser(actor.id, async (tx) => {
-    let parent: SectionNode | null = null;
-    if (input.parentId) {
-      parent = findNode(await loadTree(tx), input.parentId);
-      if (!parent) throw new AppError(GONE);
-      if (parent.depth >= MAX_DEPTH) {
-        throw new AppError("Sections can go three levels deep at most (for example 1.1.1).");
-      }
+  let parent: SectionNode | null = null;
+  if (input.parentId) {
+    parent = findNode(await loadTree(tx), input.parentId);
+    if (!parent) throw new AppError(GONE);
+    if (parent.depth >= MAX_DEPTH) {
+      throw new AppError("Sections can go three levels deep at most (for example 1.1.1).");
     }
-    const [created] = await tx
-      .insert(sections)
-      .values({
-        parentId: parent?.id ?? null,
-        title,
-        position: await nextPosition(tx, parent?.id ?? null),
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      })
-      .returning({ id: sections.id });
-    await logActivity(tx, actor.id, {
-      action: "section.created",
-      entityType: "section",
-      entityId: created.id,
-      summary: parent
-        ? `Added section "${title}" under ${label(parent)}`
-        : `Added section "${title}"`,
-      data: { title, parentId: parent?.id ?? null },
-    });
-    return created.id;
+  }
+  const [created] = await tx
+    .insert(sections)
+    .values({
+      parentId: parent?.id ?? null,
+      title,
+      position: await nextPosition(tx, parent?.id ?? null),
+      createdBy: actor.id,
+      updatedBy: actor.id,
+    })
+    .returning({ id: sections.id });
+  await logActivity(tx, actor.id, {
+    action: "section.created",
+    entityType: "section",
+    entityId: created.id,
+    summary: parent ? `Added section "${title}" under ${label(parent)}` : `Added section "${title}"`,
+    data: { title, parentId: parent?.id ?? null },
+  });
+  return created.id;
+}
+
+export async function createSection(
+  actor: Actor,
+  input: { parentId: string | null; title: string },
+): Promise<string> {
+  assertCan(actor, "structure");
+  cleanTitle(input.title);
+  return asUser(actor.id, (tx) => createSectionIn(tx, actor, input));
+}
+
+export async function renameSectionIn(tx: Tx, actor: Actor, id: string, newTitle: string): Promise<void> {
+  assertCan(actor, "structure");
+  const title = cleanTitle(newTitle);
+  const [row] = await tx.select().from(sections).where(eq(sections.id, id));
+  if (!row || row.archivedAt) throw new AppError(GONE);
+  if (row.title === title) return;
+  await tx
+    .update(sections)
+    .set({ title, updatedAt: new Date(), updatedBy: actor.id })
+    .where(eq(sections.id, id));
+  await logActivity(tx, actor.id, {
+    action: "section.renamed",
+    entityType: "section",
+    entityId: id,
+    summary: `Renamed section "${row.title}" to "${title}"`,
+    data: { from: row.title, to: title },
   });
 }
 
 export async function renameSection(actor: Actor, id: string, newTitle: string): Promise<void> {
   assertCan(actor, "structure");
-  const title = cleanTitle(newTitle);
-  await asUser(actor.id, async (tx) => {
-    const [row] = await tx.select().from(sections).where(eq(sections.id, id));
-    if (!row || row.archivedAt) throw new AppError(GONE);
-    if (row.title === title) return;
-    await tx
-      .update(sections)
-      .set({ title, updatedAt: new Date(), updatedBy: actor.id })
-      .where(eq(sections.id, id));
-    await logActivity(tx, actor.id, {
-      action: "section.renamed",
-      entityType: "section",
-      entityId: id,
-      summary: `Renamed section "${row.title}" to "${title}"`,
-      data: { from: row.title, to: title },
-    });
-  });
+  cleanTitle(newTitle);
+  await asUser(actor.id, (tx) => renameSectionIn(tx, actor, id, newTitle));
 }
 
 async function applyOrder(
@@ -248,23 +271,86 @@ export async function moveSection(actor: Actor, id: string, direction: "up" | "d
 }
 
 /** Hide a section (and everything under it). Nothing is deleted; it can be restored. */
+export async function archiveSectionIn(tx: Tx, actor: Actor, id: string): Promise<void> {
+  assertCan(actor, "structure");
+  const node = findNode(await loadTree(tx), id);
+  if (!node) throw new AppError(GONE);
+  await tx
+    .update(sections)
+    .set({ archivedAt: new Date(), archivedBy: actor.id })
+    .where(eq(sections.id, id));
+  await logActivity(tx, actor.id, {
+    action: "section.archived",
+    entityType: "section",
+    entityId: id,
+    summary: `Archived section ${label(node)}`,
+    data: { title: node.title, number: node.number },
+  });
+}
+
 export async function archiveSection(actor: Actor, id: string): Promise<void> {
   assertCan(actor, "structure");
-  await asUser(actor.id, async (tx) => {
-    const node = findNode(await loadTree(tx), id);
-    if (!node) throw new AppError(GONE);
-    await tx
-      .update(sections)
-      .set({ archivedAt: new Date(), archivedBy: actor.id })
-      .where(eq(sections.id, id));
-    await logActivity(tx, actor.id, {
-      action: "section.archived",
-      entityType: "section",
-      entityId: id,
-      summary: `Archived section ${label(node)}`,
-      data: { title: node.title, number: node.number },
-    });
+  await asUser(actor.id, (tx) => archiveSectionIn(tx, actor, id));
+}
+
+/** How many levels a section and everything under it take up (1 = no subsections). */
+function heightOf(node: SectionNode): number {
+  return 1 + Math.max(0, ...node.children.map(heightOf));
+}
+
+/**
+ * Why a section cannot be moved under `parentId` (null = top level), or null
+ * if it can. Used when a move is proposed and again when it is approved.
+ */
+export function moveProblem(tree: SectionNode[], id: string, parentId: string | null): string | null {
+  const path = pathTo(tree, id);
+  const node = path.at(-1);
+  if (!node) return GONE;
+  const currentParentId = path.at(-2)?.id ?? null;
+  if (currentParentId === parentId) return "That section is already there.";
+  if (parentId === null) return null;
+  const targetPath = pathTo(tree, parentId);
+  const target = targetPath.at(-1);
+  if (!target) return "The section to move it under no longer exists. Reload the page and choose again.";
+  if (targetPath.some((step) => step.id === id)) {
+    return "A section cannot be moved under itself or under one of its own subsections.";
+  }
+  if (target.depth + heightOf(node) > MAX_DEPTH) {
+    return "That would put sections more than three levels deep (for example 1.1.1.1).";
+  }
+  return null;
+}
+
+/**
+ * Move a section, with everything under it, to another parent (or to the top
+ * level). It goes to the end of its new group. Like reordering, a move does
+ * not count as a content update.
+ */
+export async function moveSectionToIn(tx: Tx, actor: Actor, id: string, parentId: string | null): Promise<void> {
+  assertCan(actor, "structure");
+  const tree = await loadTree(tx);
+  const problem = moveProblem(tree, id, parentId);
+  if (problem) throw new AppError(problem);
+  const node = findNode(tree, id)!;
+  const target = parentId ? findNode(tree, parentId) : null;
+  await tx
+    .update(sections)
+    .set({ parentId, position: await nextPosition(tx, parentId) })
+    .where(eq(sections.id, id));
+  await logActivity(tx, actor.id, {
+    action: "section.moved",
+    entityType: "section",
+    entityId: id,
+    summary: target
+      ? `Moved section ${label(node)} under ${label(target)}`
+      : `Moved section ${label(node)} to the top level`,
+    data: { title: node.title, fromParentId: node.parentId, toParentId: parentId },
   });
+}
+
+export async function moveSectionTo(actor: Actor, id: string, parentId: string | null): Promise<void> {
+  assertCan(actor, "structure");
+  await asUser(actor.id, (tx) => moveSectionToIn(tx, actor, id, parentId));
 }
 
 export async function restoreSection(actor: Actor, id: string): Promise<void> {

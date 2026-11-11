@@ -7,6 +7,7 @@ export const PERMISSIONS = [
   "comment",
   "endorse",
   "write_notes",
+  "propose",
   "edit_official",
   "approve",
   "structure",

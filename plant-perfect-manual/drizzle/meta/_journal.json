@@ -36,6 +36,27 @@
       "when": 1794356718993,
       "tag": "0004_capture_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794357714558,
+      "tag": "0005_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794357715291,
+      "tag": "0006_decisions_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794357798589,
+      "tag": "0007_decisions_security",
+      "breakpoints": true
     }
   ]
 }

@@ -1,11 +1,11 @@
 import { type SQL, and, desc, eq, exists, ilike, inArray, isNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Queryable } from "@/db/client";
-import { comments, noteSections, notes, officialVersions, users } from "@/db/schema";
+import { comments, noteSections, notes, officialVersions, proposals, users } from "@/db/schema";
 import type { BusinessTag } from "./business";
 import { type NoteSectionLink, businessFilterTags, loadNoteSectionLinks } from "./notes";
 import { type SectionNode, findNode, flattenTree } from "./sections";
-import { TIME_ZONE } from "./time";
+import { centralDay } from "./sqltime";
 
 /**
  * Global search. So far it covers section names, current official text,
@@ -41,6 +41,17 @@ export type CommentHit = {
   excerpt: string;
 };
 
+export type ProposalHit = {
+  proposalId: string;
+  title: string;
+  status: "open" | "approved" | "declined" | "withdrawn";
+  createdAt: Date;
+  /** Empty when the AI proposed it (Phase 5). */
+  proposedByName: string | null;
+  /** A piece of the title, description or proposed text around the match. */
+  excerpt: string;
+};
+
 export type SearchFilters = {
   /** First and last day to include, as "YYYY-MM-DD" in US Central time. */
   from?: string | null;
@@ -58,6 +69,8 @@ export type SearchResults = {
   /** The newest matching notes, at most MAX_PER_TYPE. */
   notes: NoteHit[];
   comments: CommentHit[];
+  /** Written proposals (direct edits are found through the official text). */
+  proposals: ProposalHit[];
   /** True when there were more matches than the list shows. */
   moreNotes: boolean;
   moreComments: boolean;
@@ -69,6 +82,7 @@ const EMPTY: SearchResults = {
   official: [],
   notes: [],
   comments: [],
+  proposals: [],
   moreNotes: false,
   moreComments: false,
 };
@@ -106,10 +120,6 @@ function excerptAround(text: string, words: string[], radius = 90): string {
   return (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ") + (end < text.length ? "…" : "");
 }
 
-/** The calendar day of a timestamp column, in US Central time. */
-function centralDay(column: AnyPgColumn): SQL {
-  return sql`(${column} at time zone ${sql.raw(`'${TIME_ZONE}'`)})::date`;
-}
 
 export async function search(
   q: Queryable,
@@ -275,10 +285,49 @@ export async function search(
   commentRows.length = Math.min(commentRows.length, MAX_PER_TYPE);
   const commentHits: CommentHit[] = commentRows.map((row) => ({
     commentId: row.commentId,
-    noteId: row.noteId,
+    // (Joined to its note above, so the note id is always there.)
+    noteId: row.noteId as string,
     logDate: row.logDate,
     createdAt: row.createdAt,
     authorName: row.authorName,
+    excerpt: excerptAround(row.text, words),
+  }));
+
+  // Proposals: found by their title, description or proposed text. The date
+  // filter uses the day it was proposed, the author filter who proposed it.
+  const proposalText = sql<string>`${proposals.title} || E'\n' || ${proposals.descriptionText} || E'\n' || coalesce(${proposals.proposedOfficialText}, '')`;
+  const proposalRows = await q
+    .select({
+      proposalId: proposals.id,
+      title: proposals.title,
+      status: proposals.status,
+      createdAt: proposals.createdAt,
+      proposedByName: users.name,
+      text: proposalText,
+    })
+    .from(proposals)
+    .leftJoin(users, eq(users.id, proposals.proposedBy))
+    .where(
+      and(
+        eq(proposals.direct, false),
+        and(...words.map((word) => sql`${proposalText} ilike ${likePattern(word)}`)),
+        sectionIds
+          ? sql`(${inArray(proposals.sectionId, sectionIds)} or ${inArray(proposals.createdSectionId, sectionIds)})`
+          : undefined,
+        businessTags ? inArray(proposals.businessTag, businessTags) : undefined,
+        filters.authorId ? eq(proposals.proposedBy, filters.authorId) : undefined,
+        filters.from ? sql`${centralDay(proposals.createdAt)} >= ${filters.from}::date` : undefined,
+        filters.to ? sql`${centralDay(proposals.createdAt)} <= ${filters.to}::date` : undefined,
+      ),
+    )
+    .orderBy(desc(proposals.createdAt), desc(proposals.id))
+    .limit(MAX_PER_TYPE);
+  const proposalHits: ProposalHit[] = proposalRows.map((row) => ({
+    proposalId: row.proposalId,
+    title: row.title,
+    status: row.status,
+    createdAt: row.createdAt,
+    proposedByName: row.proposedByName,
     excerpt: excerptAround(row.text, words),
   }));
 
@@ -287,6 +336,7 @@ export async function search(
     official: officialHits,
     notes: noteHits,
     comments: commentHits,
+    proposals: proposalHits,
     moreNotes,
     moreComments,
   };

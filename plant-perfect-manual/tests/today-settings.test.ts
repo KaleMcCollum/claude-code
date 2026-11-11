@@ -5,6 +5,7 @@ import { activityLog, sections, settings } from "@/db/schema";
 import { addNote, removeNote, setNoteSorted, sortNote } from "@/lib/notes";
 import { saveOfficial } from "@/lib/official";
 import { AppError } from "@/lib/permissions";
+import { addApproval, approveAlone, approveProposal, createProposal } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
 import { loadTree, renameSection } from "@/lib/sections";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "@/lib/settings";
@@ -141,5 +142,57 @@ describe("Today page", () => {
     const karen = await actorFor("karen@example.com");
     const today = await loadToday(karen);
     expect(today.unsorted.total).toBe(14);
+  });
+
+  it("shows what is waiting for approval and what one person decided alone", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const karen = await actorFor("karen@example.com");
+    const all = await asSystem((db) => db.select().from(sections));
+    const byTitle = (title: string) => all.find((s) => s.title === title)!;
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
+
+    const winter = await createProposal(
+      casey,
+      { kind: "decision", sectionId: byTitle("Store Hours").id, title: "Winter hours", proposedOfficial: doc("Open 9 to 5 in winter.") },
+      { now: twoDaysAgo },
+    );
+    const plans = await createProposal(kale, {
+      kind: "structure",
+      change: { action: "add", parentId: null, title: "Seasonal Plans" },
+    });
+
+    // The one waiting longest comes first. An Advisor sees the same list.
+    let today = await loadToday(kale);
+    expect(today.awaiting.map((p) => p.title)).toEqual(["Winter hours", 'Add a top-level section "Seasonal Plans"']);
+    expect(today.approvers.map((a) => a.name).sort()).toEqual(["Casey", "Kale"]);
+    expect((await loadToday(karen)).awaiting.map((p) => p.id)).toEqual([winter, plans]);
+
+    // Kale's "Edit official" saves earlier in this file were one-person
+    // decisions: they are flagged for Casey to see.
+    expect(today.decidedAlone.length).toBeGreaterThanOrEqual(2);
+    expect(today.decidedAlone.every((p) => p.direct && p.approvals.map((a) => a.name).join() === "Kale")).toBe(true);
+    expect(today.decidedAlone.map((p) => p.sectionId)).toContain(byTitle("Signage").id);
+    const flaggedBefore = today.decidedAlone.length;
+
+    // Approved by both: no longer waiting, and not flagged.
+    await approveProposal(kale, winter, { revision: 1, currentVersionId: null });
+    today = await loadToday(casey);
+    expect(today.awaiting.map((p) => p.id)).toEqual([plans]);
+    expect(today.decidedAlone).toHaveLength(flaggedBefore);
+
+    // Approved by Kale alone: flagged, newest first, until Casey adds her approval.
+    await approveAlone(kale, plans, { revision: 1 });
+    today = await loadToday(casey);
+    expect(today.awaiting).toEqual([]);
+    expect(today.decidedAlone[0]).toMatchObject({ id: plans, direct: false, decidedByName: "Kale" });
+    expect(today.decidedAlone).toHaveLength(flaggedBefore + 1);
+    await addApproval(casey, plans);
+    expect((await loadToday(casey)).decidedAlone.map((p) => p.id)).not.toContain(plans);
+
+    // After 14 days nothing from today is flagged any more.
+    const later = new Date(Date.now() + 15 * 86_400_000);
+    expect((await loadToday(kale, later)).decidedAlone).toEqual([]);
+    expect((await loadToday(kale, new Date(Date.now() + 13 * 86_400_000))).decidedAlone).toHaveLength(flaggedBefore);
   });
 });

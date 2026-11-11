@@ -4,6 +4,7 @@ import { asSystem } from "@/db/client";
 import { sections } from "@/db/schema";
 import { addComment, addNote, removeNote, restoreNote, sortNote } from "@/lib/notes";
 import { saveOfficial } from "@/lib/official";
+import { createProposal, declineProposal } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
 import { type SearchFilters, search, searchWords } from "@/lib/search";
 import { flattenTree, loadTree } from "@/lib/sections";
@@ -109,7 +110,7 @@ describe("search", () => {
     expect((await run("C:\\plants")).notes.map((n) => n.excerpt)).toEqual(["plant list is in C:\\plants\\2027"]);
     expect((await run("plants\\")).notes).toHaveLength(1);
     expect((await run("\\screws")).notes).toHaveLength(0);
-    expect(await run("s")).toEqual({ sections: [], official: [], notes: [], comments: [], moreNotes: false, moreComments: false });
+    expect(await run("s")).toEqual({ sections: [], official: [], notes: [], comments: [], proposals: [], moreNotes: false, moreComments: false });
   });
 
   it("filters by date range (Central days)", async () => {
@@ -139,6 +140,7 @@ describe("search", () => {
       official: [],
       notes: [],
       comments: [],
+      proposals: [],
       moreNotes: false,
       moreComments: false,
     });
@@ -213,5 +215,83 @@ describe("search with very many matches", () => {
     expect(results.moreNotes).toBe(true);
     expect(results.notes[0].excerpt).toBe("zebragrass order line 51");
     expect((await run("zebragrass line 7")).moreNotes).toBe(false);
+  });
+});
+
+describe("search over proposals", () => {
+  beforeAll(async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    await createProposal(
+      kale,
+      {
+        kind: "decision",
+        sectionId: await sectionId("Wages"),
+        title: "Raise the quokka wage",
+        description: doc("Karen recommended matching what the wombat registers pay."),
+        businessTag: "coffee_shop",
+        proposedOfficial: doc("Starting wage, Coffee Shop: $15.00/hr for every quokka."),
+      },
+      { now: new Date("2026-11-17T16:00:00Z") },
+    );
+    const winter = await createProposal(
+      casey,
+      {
+        kind: "official_text",
+        sectionId: await sectionId("Store Hours"),
+        title: "Winter hours",
+        proposedOfficial: doc("Open 9 to 5 from December through February (quokka season)."),
+      },
+      { now: new Date("2026-11-18T16:00:00Z") },
+    );
+    await declineProposal(kale, winter, "Too early to say");
+    await createProposal(
+      casey,
+      { kind: "structure", change: { action: "add", parentId: await sectionId("Departments"), title: "Quokka Corner" } },
+      { now: new Date("2026-11-19T16:00:00Z") },
+    );
+    // A direct edit is found through the official text, not as a proposal.
+    await saveOfficial(kale, await sectionId("Benefits"), doc("Every quokka gets a free coffee per shift."));
+  });
+
+  const titles = async (query: string, filters?: SearchFilters) =>
+    (await run(query, filters)).proposals.map((p) => p.title);
+
+  it("finds them by title, description and proposed text, newest first, whatever became of them", async () => {
+    const found = (await run("quokka")).proposals;
+    expect(found.map((p) => [p.title, p.status, p.proposedByName])).toEqual([
+      ['Add a section "Quokka Corner" under 4 Departments', "open", "Casey"],
+      ["Winter hours", "declined", "Casey"],
+      ["Raise the quokka wage", "open", "Kale"],
+    ]);
+    expect(await titles("wombat registers")).toEqual(["Raise the quokka wage"]);
+    expect((await run("wombat")).proposals[0].excerpt).toContain("matching what the wombat registers pay");
+    expect(await titles("december february")).toEqual(["Winter hours"]);
+    // Words may be spread over the title, the description and the text.
+    expect(await titles("raise wombat $15.00/hr")).toEqual(["Raise the quokka wage"]);
+    expect(await titles("quokka giraffe")).toEqual([]);
+  });
+
+  it("does not list direct edits as proposals", async () => {
+    const results = await run("free coffee per shift");
+    expect(results.proposals).toEqual([]);
+    expect(results.official.map((s) => s.title)).toEqual(["Benefits"]);
+    expect(await titles("edited directly")).toEqual([]);
+  });
+
+  it("follows the same filters as everything else", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    expect(await titles("quokka", { sectionId: await sectionId("People") })).toEqual(["Raise the quokka wage"]);
+    expect(await titles("quokka", { sectionId: await sectionId("Departments") })).toEqual([
+      'Add a section "Quokka Corner" under 4 Departments',
+    ]);
+    expect(await titles("quokka", { sectionId: await sectionId("Finance") })).toEqual([]);
+    expect(await titles("quokka", { business: "coffee_shop" })).toEqual(["Raise the quokka wage"]);
+    expect(await titles("quokka", { business: "garden_center" })).toEqual([]);
+    expect(await titles("quokka", { authorId: kale.id })).toEqual(["Raise the quokka wage"]);
+    expect((await titles("quokka", { authorId: casey.id })).length).toBe(2);
+    expect(await titles("quokka", { from: "2026-11-18", to: "2026-11-18" })).toEqual(["Winter hours"]);
+    expect(await titles("quokka", { to: "2026-11-17" })).toEqual(["Raise the quokka wage"]);
   });
 });

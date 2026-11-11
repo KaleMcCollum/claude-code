@@ -121,6 +121,10 @@ export const sections = pgTable(
 /**
  * Every saved state of a section's Official block. Rows are never changed or
  * deleted; a new edit adds a new row with the next version number.
+ *
+ * Every version comes from exactly one approved proposal (`proposalId`):
+ * the proposal holds who proposed it, who approved it and who endorsed it.
+ * A direct "Edit official" save is a proposal approved on the spot.
  */
 export const officialVersions = pgTable(
   "official_versions",
@@ -135,27 +139,61 @@ export const officialVersions = pgTable(
     /** Plain-text copy of `content`, for search. */
     contentText: text("content_text").notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
+    /** The Owner whose approval made it official. */
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
+    proposalId: uuid("proposal_id")
+      .notNull()
+      .references((): AnyPgColumn => proposals.id),
+    /** Set when this version brings back the text of an earlier one. */
+    restoredFromVersionId: uuid("restored_from_version_id").references(
+      (): AnyPgColumn => officialVersions.id,
+    ),
   },
-  (t) => [uniqueIndex("official_versions_section_version_unique").on(t.sectionId, t.version)],
+  (t) => [
+    uniqueIndex("official_versions_section_version_unique").on(t.sectionId, t.version),
+    uniqueIndex("official_versions_proposal_unique").on(t.proposalId),
+  ],
 );
 
-/** Who approved an official version, and when. Never changed or deleted. */
+/**
+ * An Owner's approval of a proposal: who and when. Never changed or deleted.
+ * Proposing counts as approving, so the proposer's approval is recorded when
+ * the proposal is made.
+ */
 export const approvals = pgTable(
   "approvals",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    officialVersionId: uuid("official_version_id")
+    proposalId: uuid("proposal_id")
       .notNull()
-      .references(() => officialVersions.id),
+      .references((): AnyPgColumn => proposals.id),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("approvals_version_user_unique").on(t.officialVersionId, t.userId)],
+  (t) => [uniqueIndex("approvals_proposal_user_unique").on(t.proposalId, t.userId)],
+);
+
+/**
+ * "Endorsed by Karen": an Advisor's (or Owner's) support for a proposal.
+ * It never changes the proposal's status. Never changed or deleted.
+ */
+export const endorsements = pgTable(
+  "endorsements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    proposalId: uuid("proposal_id")
+      .notNull()
+      .references((): AnyPgColumn => proposals.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("endorsements_proposal_user_unique").on(t.proposalId, t.userId)],
 );
 
 /** Append-only record of every change: who, when, what. */
@@ -279,14 +317,16 @@ export const noteSections = pgTable(
   ],
 );
 
-/** A comment on a note (Owners and Advisors). Stored verbatim, add-only. */
+/**
+ * A comment on a note or on a proposal (Owners and Advisors). Exactly one of
+ * `noteId` / `proposalId` is set. Stored verbatim, add-only.
+ */
 export const comments = pgTable(
   "comments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    noteId: uuid("note_id")
-      .notNull()
-      .references(() => notes.id),
+    noteId: uuid("note_id").references(() => notes.id),
+    proposalId: uuid("proposal_id").references((): AnyPgColumn => proposals.id),
     body: jsonb("body").notNull(),
     bodyText: text("body_text").notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
@@ -294,7 +334,10 @@ export const comments = pgTable(
       .notNull()
       .references(() => users.id),
   },
-  (t) => [index("comments_note_idx").on(t.noteId, t.createdAt)],
+  (t) => [
+    index("comments_note_idx").on(t.noteId, t.createdAt),
+    index("comments_proposal_idx").on(t.proposalId, t.createdAt),
+  ],
 );
 
 /** App-wide settings Owners can change, one row per setting. */
@@ -304,3 +347,88 @@ export const settings = pgTable("settings", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
   updatedBy: uuid("updated_by").references(() => users.id),
 });
+
+/** What a proposal is about (the owner's three kinds, spec section 10). */
+export const proposalType = pgEnum("proposal_type", ["decision", "structure", "official_text"]);
+
+export const proposalStatus = pgEnum("proposal_status", ["open", "approved", "declined", "withdrawn"]);
+
+/**
+ * A proposed change that needs (or has) approval. It is the single record of
+ * every official change:
+ *  - `decision` and `official_text` carry the complete new Official text for
+ *    one section (`proposedOfficial`); approving saves it as a new version.
+ *  - `structure` carries one change to the section tree (`structureChange`).
+ *  - a direct "Edit official" save or a restore is also a proposal
+ *    (`direct`), approved on the spot by the Owner who did it.
+ *
+ * Once a proposal is approved, declined or withdrawn it never changes again.
+ */
+export const proposals = pgTable(
+  "proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    type: proposalType("type").notNull(),
+    title: text("title").notNull(),
+    /** Optional explanation, rich text, stored verbatim. */
+    description: jsonb("description"),
+    descriptionText: text("description_text").notNull().default(""),
+    /**
+     * The section this is about. For "add a section" it is the parent (empty
+     * for a new top-level section).
+     */
+    sectionId: uuid("section_id").references(() => sections.id),
+    businessTag: businessTag("business_tag"),
+    /** The whole Official text as it will read if approved (text proposals). */
+    proposedOfficial: jsonb("proposed_official"),
+    proposedOfficialText: text("proposed_official_text"),
+    /** The official version the proposed text was written against, if any. */
+    baseVersionId: uuid("base_version_id").references((): AnyPgColumn => officialVersions.id),
+    /**
+     * Structure proposals: {action:"add", title} | {action:"rename", title,
+     * fromTitle} | {action:"move", parentId} | {action:"archive"}.
+     */
+    structureChange: jsonb("structure_change"),
+    /** For an approved "add a section": the section that was created. */
+    createdSectionId: uuid("created_section_id").references(() => sections.id),
+    /** True for "Edit official" saves and restores. */
+    direct: boolean("direct").notNull().default(false),
+    /** Who proposed it. Empty is reserved for the AI (Phase 5). */
+    proposedBy: uuid("proposed_by").references(() => users.id),
+    /** Goes up by one each time the proposer edits it. */
+    revision: integer("revision").notNull().default(1),
+    status: proposalStatus("status").notNull().default("open"),
+    /** When and by whom it was approved, declined or withdrawn. */
+    decidedAt: ts("decided_at"),
+    decidedBy: uuid("decided_by").references(() => users.id),
+    declineReason: text("decline_reason"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+  },
+  (t) => [
+    index("proposals_status_idx").on(t.status, t.createdAt),
+    index("proposals_section_idx").on(t.sectionId),
+  ],
+);
+
+/** The notes a proposal came from. Add-only. */
+export const proposalNotes = pgTable(
+  "proposal_notes",
+  {
+    proposalId: uuid("proposal_id")
+      .notNull()
+      .references(() => proposals.id),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => notes.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+  },
+  (t) => [
+    uniqueIndex("proposal_notes_unique").on(t.proposalId, t.noteId),
+    index("proposal_notes_note_idx").on(t.noteId),
+  ],
+);

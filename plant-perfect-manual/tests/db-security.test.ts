@@ -104,7 +104,7 @@ describe("database rules: Owner", () => {
     const [version] = await asSystem((db) => db.select().from(officialVersions).limit(1));
     await expect(
       asUser(kale.id, (tx) =>
-        tx.insert(approvals).values({ officialVersionId: version.id, userId: casey.id }),
+        tx.insert(approvals).values({ proposalId: version.proposalId, userId: casey.id }),
       ),
     ).rejects.toThrow();
     await expect(
@@ -149,6 +149,7 @@ describe("database rules: Advisor", () => {
     await expect(
       asUser(karen.id, (tx) => tx.insert(sections).values({ title: "Sneaky", position: 99 })),
     ).rejects.toThrow();
+    const [version] = await asSystem((db) => db.select().from(officialVersions).limit(1));
     await expect(
       asUser(karen.id, (tx) =>
         tx.insert(officialVersions).values({
@@ -157,13 +158,13 @@ describe("database rules: Advisor", () => {
           content: DOC,
           contentText: "x",
           createdBy: karen.id,
+          proposalId: version.proposalId,
         }),
       ),
     ).rejects.toThrow();
-    const [version] = await asSystem((db) => db.select().from(officialVersions).limit(1));
     await expect(
       asUser(karen.id, (tx) =>
-        tx.insert(approvals).values({ officialVersionId: version.id, userId: karen.id }),
+        tx.insert(approvals).values({ proposalId: version.proposalId, userId: karen.id }),
       ),
     ).rejects.toThrow();
 

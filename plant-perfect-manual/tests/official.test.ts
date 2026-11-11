@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { asSystem } from "@/db/client";
 import { activityLog, approvals, officialVersions, sections } from "@/db/schema";
-import { approvalLine, joinNames, loadOfficial, saveOfficial } from "@/lib/official";
+import { approvalLine, joinNames, listVersions, loadOfficial, restoreVersion, saveOfficial } from "@/lib/official";
 import { AppError } from "@/lib/permissions";
 import { type RichDoc, docToText } from "@/lib/richtext";
 import { search } from "@/lib/search";
@@ -72,7 +72,7 @@ describe("saving official text", () => {
     const official = await asSystem((db) => loadOfficial(db, id));
     expect(official?.approvals.map((a) => a.name)).toEqual(["Casey"]);
     // The old approval is still on record.
-    const old = await asSystem((db) => db.select().from(approvals).where(eq(approvals.officialVersionId, versions[0].id)));
+    const old = await asSystem((db) => db.select().from(approvals).where(eq(approvals.proposalId, versions[0].proposalId)));
     expect(old.map((a) => a.userId)).toEqual([kale.id]);
   });
 
@@ -127,6 +127,80 @@ describe("saving official text", () => {
   });
 });
 
+describe("version history", () => {
+  const wagesVersions = async () => asSystem(async (db) => listVersions(db, await sectionId("Wages")));
+
+  it("lists every version, newest first, with who approved each", async () => {
+    const versions = await wagesVersions();
+    expect(versions.map((v) => [v.version, v.origin, v.proposalTitle, v.approvals.map((a) => a.name)])).toEqual([
+      [2, "direct", "Edited directly", ["Casey"]],
+      [1, "direct", "Edited directly", ["Kale"]],
+    ]);
+    expect(await asSystem(async (db) => listVersions(db, await sectionId("Training")))).toEqual([]);
+  });
+
+  it("restores an earlier version as a new version, without touching the ones in between", async () => {
+    const kale = await actorFor("kale@example.com");
+    const id = await sectionId("Wages");
+    const [second, first] = await wagesVersions();
+
+    const result = await restoreVersion(kale, id, first.id, {
+      currentVersionId: second.id,
+      now: new Date("2026-11-20T16:00:00Z"),
+    });
+    expect(result).toEqual({ version: 3 });
+
+    const versions = await wagesVersions();
+    expect(versions.map((v) => v.version)).toEqual([3, 2, 1]);
+    expect(versions[0]).toMatchObject({
+      origin: "restored",
+      restoredFromVersion: 1,
+      proposalTitle: "Restored version 1",
+      proposedByName: "Kale",
+    });
+    expect(docToText(versions[0].content)).toBe("Starting wage, Coffee Shop: $13.00/hr.");
+    expect(approvalLine(versions[0].approvals)).toBe("Approved by Kale, Nov 20, 2026");
+    // The versions in between are exactly as they were.
+    expect(docToText(versions[1].content)).toBe("Starting wage, Coffee Shop: $15.00/hr.");
+    expect(versions[1].approvals.map((a) => a.name)).toEqual(["Casey"]);
+    expect(versions[2].id).toBe(first.id);
+
+    const log = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.action, "official.restored")));
+    expect(log.map((entry) => entry.summary)).toEqual([
+      'Restored version 1 of the official text for "Wages" as version 3, approved by Kale',
+    ]);
+    expect(log[0].userId).toBe(kale.id);
+  });
+
+  it("refuses a restore that makes no sense or comes from an out-of-date page", async () => {
+    const kale = await actorFor("kale@example.com");
+    const karen = await actorFor("karen@example.com");
+    const id = await sectionId("Wages");
+    const [third, second, first] = await wagesVersions();
+
+    // The page showed version 2 as the newest, but version 3 exists by now.
+    await expect(restoreVersion(kale, id, first.id, { currentVersionId: second.id })).rejects.toThrow(/changed after you opened/);
+    // Version 1 says what the official text already says.
+    await expect(restoreVersion(kale, id, first.id, { currentVersionId: third.id })).rejects.toThrow(/already what the official text says/);
+    // A version of another section.
+    await expect(
+      restoreVersion(kale, await sectionId("Hiring"), second.id, {
+        currentVersionId: (await asSystem(async (db) => loadOfficial(db, await sectionId("Hiring"))))!.id,
+      }),
+    ).rejects.toThrow(/could not be found/);
+    await expect(restoreVersion(kale, id, "not-an-id", { currentVersionId: third.id })).rejects.toThrow(AppError);
+    // Advisors cannot restore.
+    await expect(restoreVersion(karen, id, second.id, { currentVersionId: third.id })).rejects.toThrow(AppError);
+    expect((await wagesVersions()).map((v) => v.version)).toEqual([3, 2, 1]);
+
+    // Restoring version 2 brings the $15.00 text back as version 4.
+    expect(await restoreVersion(kale, id, second.id, { currentVersionId: third.id })).toEqual({ version: 4 });
+    const current = await asSystem((db) => loadOfficial(db, id));
+    expect(current).toMatchObject({ version: 4, origin: "restored", restoredFromVersion: 2 });
+    expect(docToText(current!.content)).toBe("Starting wage, Coffee Shop: $15.00/hr.");
+  });
+});
+
 describe("approval line", () => {
   const at = new Date("2026-11-12T18:00:00Z");
   it("names one approver", () => {
@@ -168,6 +242,6 @@ describe("search", () => {
     expect((await run("%")).official).toEqual([]);
     expect((await run("100%_")).sections).toEqual([]);
     // Too short to search.
-    expect(await run("c")).toEqual({ sections: [], official: [], notes: [], comments: [], moreNotes: false, moreComments: false });
+    expect(await run("c")).toEqual({ sections: [], official: [], notes: [], comments: [], proposals: [], moreNotes: false, moreComments: false });
   });
 });

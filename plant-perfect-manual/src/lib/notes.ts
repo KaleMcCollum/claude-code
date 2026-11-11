@@ -272,6 +272,16 @@ export async function listRemovedNotes(q: Queryable, tree: SectionNode[], limit 
   return withDetails(q, tree, rows);
 }
 
+/** Several notes by id, oldest first, whether or not they have been removed. */
+export async function loadNotesByIds(q: Queryable, tree: SectionNode[], noteIds: string[]): Promise<NoteView[]> {
+  const ids = noteIds.filter(isUuid);
+  if (ids.length === 0) return [];
+  const rows = await selectNotes(q)
+    .where(inArray(notes.id, ids))
+    .orderBy(asc(notes.createdAt), asc(notes.id));
+  return withDetails(q, tree, rows);
+}
+
 /** One note, whether or not it has been removed (check `removedAt`). */
 export async function loadNote(q: Queryable, tree: SectionNode[], noteId: string): Promise<NoteView | null> {
   if (!isUuid(noteId)) return null;

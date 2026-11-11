@@ -11,7 +11,9 @@ import {
   flattenTree,
   listArchivedSections,
   loadTree,
+  moveProblem,
   moveSection,
+  moveSectionTo,
   renameSection,
   reorderSections,
   restoreSection,
@@ -187,6 +189,80 @@ describe("Owners changing the structure", () => {
   });
 });
 
+describe("moving a section somewhere else", () => {
+  it("takes everything under it along and goes to the end of the new group", async () => {
+    const kale = await actorFor("kale@example.com");
+    const training = await byTitle("Training");
+    await createSection(kale, { parentId: training.id, title: "Barista Training" });
+    const before = await byTitle("Training");
+    const finance = await byTitle("Finance");
+
+    await moveSectionTo(kale, training.id, finance.id);
+    let moved = await byTitle("Training");
+    expect(moved.parentId).toBe(finance.id);
+    expect(moved.number).toBe(`${finance.number}.4`);
+    expect((await byTitle("Barista Training")).number).toBe(`${finance.number}.4.1`);
+    // The group it left closes up.
+    expect((await byTitle("People")).children.map((n) => n.title)).not.toContain("Training");
+    expect((await byTitle("Policies and Expectations")).number).toBe("2.4");
+    // Like reordering, moving is not a content update (it does not reset "stale").
+    expect(moved.updatedAt.getTime()).toBe(before.updatedAt.getTime());
+    const log = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.action, "section.moved")));
+    expect(log.at(-1)?.summary).toBe(`Moved section 2.4 Training under ${finance.number} Finance`);
+
+    // To the top level, then back under People (at the end).
+    await moveSectionTo(kale, training.id, null);
+    moved = await byTitle("Training");
+    expect(moved.parentId).toBeNull();
+    expect(moved.number).toBe(String((await tree()).length));
+    expect((await byTitle("Barista Training")).number).toBe(`${moved.number}.1`);
+    const people = await byTitle("People");
+    await moveSectionTo(kale, training.id, people.id);
+    expect((await byTitle("Training")).number).toBe(`2.${people.children.length + 1}`);
+  });
+
+  it("refuses moves that make no sense", async () => {
+    const kale = await actorFor("kale@example.com");
+    const people = await byTitle("People");
+    const wages = await byTitle("Wages");
+    const seasonal = await byTitle("Seasonal Staff");
+    const finance = await byTitle("Finance");
+    const budget = await byTitle("Budget");
+    const marketing = await byTitle("Marketing and Events");
+    const refuse = (id: string, parentId: string | null, why: RegExp) =>
+      expect(moveSectionTo(kale, id, parentId)).rejects.toThrow(why);
+
+    await refuse(wages.id, people.id, /already there/);
+    await refuse(people.id, null, /already there/);
+    await refuse(wages.id, wages.id, /under itself/);
+    await refuse(wages.id, seasonal.id, /under itself or under one of its own subsections/);
+    await refuse(people.id, seasonal.id, /under itself/);
+    // People has three levels in it, Finance has two: neither fits a level down.
+    await refuse(people.id, finance.id, /more than three levels/);
+    await refuse(finance.id, budget.id, /under itself/);
+    await refuse(finance.id, wages.id, /more than three levels/);
+    await refuse(marketing.id, seasonal.id, /more than three levels/);
+    await refuse(marketing.id, "00000000-0000-4000-8000-000000000000", /no longer exists/);
+    await refuse("00000000-0000-4000-8000-000000000000", null, AppError as unknown as RegExp);
+
+    // An archived section is not there to move, or to move under.
+    const quotes = await byTitle("Quotes");
+    await archiveSection(kale, quotes.id);
+    await refuse(quotes.id, null, AppError as unknown as RegExp);
+    await refuse(marketing.id, quotes.id, /no longer exists/);
+    await restoreSection(kale, quotes.id);
+
+    // The same check, without doing anything: null means the move is fine.
+    const now = await tree();
+    expect(moveProblem(now, marketing.id, wages.id)).toBeNull();
+    expect(moveProblem(now, marketing.id, finance.id)).toBeNull();
+    expect(moveProblem(now, wages.id, null)).toBeNull();
+    expect(moveProblem(now, wages.id, people.id)).toBe("That section is already there.");
+    expect((await byTitle("Wages")).number).toBe("2.1");
+    expect((await byTitle("Marketing and Events")).parentId).toBeNull();
+  });
+});
+
 describe("Advisors", () => {
   it("cannot change the structure", async () => {
     const karen = await insertUser("Karen", "karen@example.com", "advisor");
@@ -194,6 +270,7 @@ describe("Advisors", () => {
     await expect(createSection(karen, { parentId: null, title: "Nope" })).rejects.toThrow(AppError);
     await expect(renameSection(karen, wages.id, "Nope")).rejects.toThrow(AppError);
     await expect(moveSection(karen, wages.id, "down")).rejects.toThrow(AppError);
+    await expect(moveSectionTo(karen, wages.id, null)).rejects.toThrow(AppError);
     await expect(archiveSection(karen, wages.id)).rejects.toThrow(AppError);
     await expect(restoreSection(karen, wages.id)).rejects.toThrow(AppError);
     expect((await byTitle("Wages")).number).toBe("2.1");
