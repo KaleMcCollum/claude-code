@@ -14,6 +14,22 @@ export function officialDraftKey(sectionId: string): string {
   return `ppf:draft:official:${sectionId}`;
 }
 
+/**
+ * The note being typed but not saved yet. One per device, whatever the day:
+ * a note started late at night is still there in the morning.
+ */
+export const NEW_NOTE_DRAFT_KEY = "ppf:draft:note:new";
+
+/** Unsaved changes to the wording of an existing note. */
+export function noteDraftKey(noteId: string): string {
+  return `ppf:draft:note:${noteId}`;
+}
+
+/** An unsaved comment on a note. */
+export function commentDraftKey(noteId: string): string {
+  return `ppf:draft:comment:${noteId}`;
+}
+
 export function readDraft(key: string): Draft | null {
   try {
     const raw = window.localStorage.getItem(key);

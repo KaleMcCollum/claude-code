@@ -64,6 +64,15 @@ for name in "${TESTS[@]}"; do
   export APP_URL="http://localhost:$PORT"
   export NEXT_TELEMETRY_DISABLED=1
 
+  # Test-only starting data, if this test has any (e2e/<name>.seed.ts). It is
+  # written straight into the new database before the app opens it.
+  if [ -f "e2e/$name.seed.ts" ]; then
+    if ! npx tsx "e2e/$name.seed.ts" >"$DATA/seed.log" 2>&1; then
+      echo "Could not prepare the test database for $name (see $DATA/seed.log)." >&2
+      exit 1
+    fi
+  fi
+
   # Job control gives the server its own process group, so stopping it also
   # stops the helper processes it starts.
   set -m

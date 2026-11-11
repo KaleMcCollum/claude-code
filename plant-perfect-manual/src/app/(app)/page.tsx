@@ -1,20 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { NoteBlock } from "@/components/notes/NoteBlock";
+import { toNoteBlockData, toSectionOptions } from "@/components/notes/data";
+import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/permissions";
-import { docToText } from "@/lib/richtext";
+import { loadTree } from "@/lib/sections";
 import { type StaleSection, loadToday } from "@/lib/today";
-import { formatDate, formatDateKey, formatDateKeyLong, formatDateTime } from "@/lib/time";
+import { formatDate, formatDateKey, formatDateKeyLong } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Today" };
 
 /** How many stale sections are listed before the "Show all" line. */
 const STALE_SHOWN = 8;
-
-function excerpt(text: string, max = 160): string {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > max ? `${oneLine.slice(0, max).trimEnd()}…` : oneLine;
-}
 
 function countdown(days: number): string {
   if (days > 1) return `${days} days until opening`;
@@ -45,6 +43,13 @@ export default async function TodayPage() {
   const user = await requireUser();
   const today = await loadToday(user);
   const { unsorted, stale, opening } = today;
+  const canWrite = can(user, "write_notes");
+  const canComment = can(user, "comment");
+  // The sorting form needs the list of sections, and only Owners can sort.
+  const sections =
+    canWrite && unsorted.notes.length > 0
+      ? toSectionOptions(await asUser(user.id, (tx) => loadTree(tx)))
+      : [];
 
   return (
     <>
@@ -53,21 +58,17 @@ export default async function TodayPage() {
         <p className="meta">{formatDateKeyLong(today.todayKey)}</p>
       </div>
 
-      <section className="block" aria-labelledby="opening-heading">
-        <div className="block-head">
-          <h2 id="opening-heading">Opening countdown</h2>
-        </div>
-        <p className="today-count">{countdown(opening.days)}</p>
-        <p className="muted small">
-          Opening date: {formatDateKey(opening.date)}.
-          {can(user, "settings") && (
-            <>
-              {" "}
-              <Link href="/settings?from=/">Change</Link>
-            </>
-          )}
-        </p>
-      </section>
+      <p className="today-opening">
+        {countdown(opening.days)} ({formatDateKey(opening.date)})
+        {can(user, "settings") && (
+          <>
+            {" "}
+            <Link href="/settings?from=/" aria-label="Change the opening date">
+              Change
+            </Link>
+          </>
+        )}
+      </p>
 
       <section className="block" aria-labelledby="unsorted-heading">
         <div className="block-head">
@@ -78,19 +79,18 @@ export default async function TodayPage() {
           <p className="muted">Nothing waiting. Every note has been sorted.</p>
         ) : (
           <>
-            <ul className="today-list">
+            <div className="notes">
               {unsorted.notes.map((note) => (
-                <li key={note.id}>
-                  <Link href={`/daily-log/${note.logDate}#note-${note.id}`}>
-                    {excerpt(docToText(note.body))}
-                  </Link>
-                  <span className="muted small">
-                    {" "}
-                    {note.authorName}, {formatDateTime(note.createdAt)}
-                  </span>
-                </li>
+                <NoteBlock
+                  key={note.id}
+                  note={toNoteBlockData(note, user.id)}
+                  mode="today"
+                  canWrite={canWrite}
+                  canComment={canComment}
+                  sections={sections}
+                />
               ))}
-            </ul>
+            </div>
             {unsorted.total > unsorted.notes.length && (
               <p className="muted small">
                 Showing the newest {unsorted.notes.length}. The rest are in the{" "}

@@ -1,0 +1,427 @@
+/*
+  Phase 2 (Capture): the Daily Log, note blocks, the sorting form, the
+  Discussion thread and the compact editor for notes and comments.
+  Same rules as globals.css: white, near-black text, light gray lines, one
+  dark teal accent, no shadows, no animation.
+*/
+
+/* ---------- Checkboxes and one-tap choices ---------- */
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.check input:disabled,
+.check:has(input:disabled) {
+  cursor: default;
+}
+
+.check .num {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Daily Log list ---------- */
+
+.date-jump {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.date-jump .field {
+  flex: 0 1 220px;
+  margin-bottom: 0;
+}
+
+.date-jump .notice {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.day-list {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.day-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 16px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---------- One day ---------- */
+
+.day-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-top: 8px;
+  font-size: 15px;
+}
+
+.today-opening {
+  margin: -8px 0 0;
+}
+
+/* ---------- Note block ---------- */
+
+/* Notes follow one another like paragraphs in a document, with a light
+   line between them. No boxes. */
+.notes {
+  border-top: 1px solid var(--line);
+}
+
+.note {
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--line);
+  /* A link to one note (from search or Today) lands with the note in view. */
+  scroll-margin-top: 16px;
+}
+
+.note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+}
+
+.byline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.byline .who {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.note-sorted {
+  flex: none;
+  gap: 8px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.note .rich > :last-child {
+  margin-bottom: 0;
+}
+
+.note > .rich {
+  margin: 2px 0 8px;
+}
+
+.note-facts {
+  margin: 0 0 4px;
+}
+
+.ai-mark {
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.note-edited {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.note-edited > summary {
+  display: inline-block;
+  min-height: 32px;
+  padding: 4px 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.note-revision {
+  margin: 4px 0 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.note-revision > p {
+  margin: 0 0 2px;
+}
+
+.note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  /* Line the button text up with the note's words. */
+  margin-left: -8px;
+}
+
+.note-actions .btn-text {
+  min-height: 40px;
+  font-size: 15px;
+}
+
+.note .notice {
+  margin: 8px 0;
+}
+
+.note-confirm {
+  margin: 8px 0 4px;
+}
+
+.note-confirm p {
+  margin-bottom: 8px;
+}
+
+/* Comments sit under their note, set in behind a thin gray line. */
+.note-comments {
+  margin: 6px 0 2px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line-strong);
+}
+
+.note-comments ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note-comments li {
+  padding: 4px 0 8px;
+}
+
+.note-comments .rich {
+  margin-top: 2px;
+  font-size: 15px;
+}
+
+.note-comments .editor-block {
+  margin: 6px 0 4px;
+}
+
+.note-removed {
+  padding: 4px 0;
+}
+
+.note-removed p {
+  margin: 0;
+}
+
+/* ---------- Adding a note ---------- */
+
+.note-entry {
+  margin: 16px 0 0;
+}
+
+.editor-loading {
+  min-height: 120px;
+  margin: 0;
+}
+
+/* ---------- Compact editor (notes and comments) ---------- */
+
+.editor-block.compact {
+  /* When the box is brought into view, keep Save on screen too. */
+  scroll-margin: 16px 0;
+}
+
+.editor.compact .ProseMirror {
+  /* About four lines; it grows with the text. */
+  min-height: 116px;
+  padding: 10px 12px;
+}
+
+.editor.compact .ProseMirror > p:last-child {
+  margin-bottom: 0;
+}
+
+.editor-restored {
+  margin: 0 0 6px;
+}
+
+.editor-tools-toggle {
+  margin-left: auto;
+}
+
+/* ---------- Sorting form ---------- */
+
+.sort-form {
+  margin: 8px 0 6px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.sort-form fieldset {
+  min-width: 0;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.sort-form legend,
+.sort-form .field > span {
+  margin-bottom: 2px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sort-find {
+  max-width: 420px;
+  margin-bottom: 4px;
+}
+
+.sort-matches p,
+.sort-all p {
+  margin: 6px 0;
+}
+
+.sort-all {
+  margin: 4px 0 12px;
+}
+
+.sort-all > summary {
+  display: inline-block;
+  min-height: 36px;
+  padding: 6px 0;
+  color: var(--accent);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.sort-form .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 22px;
+}
+
+.sort-mark {
+  margin-bottom: 10px;
+}
+
+/* ---------- Discussion thread on a section page ---------- */
+
+.discussion-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 24px;
+  margin: -2px 0 8px;
+  font-size: 15px;
+}
+
+.discussion-controls a,
+.discussion-controls .current {
+  display: inline-block;
+  padding: 6px 0;
+}
+
+.discussion-controls .current {
+  font-weight: 600;
+}
+
+/* Inside the gray area notes are divided by a light line, not boxed. */
+.discussion-box .notes {
+  border-top: 0;
+}
+
+.discussion-box .note {
+  border-bottom-color: var(--line-strong);
+}
+
+.discussion-box .note:first-child {
+  padding-top: 0;
+}
+
+.discussion-box .note:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* ---------- Phones and small tablets ---------- */
+
+@media (max-width: 820px) {
+  .check {
+    min-height: 44px;
+  }
+
+  .note {
+    /* Clear the bar that stays at the top of the screen. */
+    scroll-margin-top: calc(var(--topbar-height) + 12px);
+  }
+
+  .note-head {
+    min-height: 44px;
+  }
+
+  .note-actions .btn-text {
+    min-height: 44px;
+  }
+
+  .note-edited > summary,
+  .sort-all > summary {
+    min-height: 44px;
+    padding: 10px 0;
+  }
+
+  .day-list li {
+    padding: 12px 2px;
+  }
+
+  .day-nav {
+    gap: 2px 20px;
+  }
+
+  .day-nav a {
+    padding: 8px 0;
+  }
+
+  .discussion-controls a,
+  .discussion-controls .current {
+    padding: 10px 0;
+  }
+
+  .sort-form {
+    padding: 10px 12px 12px;
+  }
+
+  /* On a phone the keyboard covers the lower part of the screen. Bring the
+     box, with its Save button, into the part that stays visible. */
+  .editor-block.compact {
+    scroll-margin-top: calc(var(--topbar-height) + 12px);
+    scroll-margin-bottom: 45vh;
+  }
+
+  /* Room below the last thing on the page, so the note box can move up
+     above the keyboard. */
+  .note-entry.open {
+    margin-bottom: 36vh;
+  }
+}
