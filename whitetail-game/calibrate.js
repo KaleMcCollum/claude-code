@@ -36,7 +36,8 @@ function runTier(t) {
     soilQuality: L.soil, regionalGenetics: L.genetics,
   };
   WT.initHerd(prop, rng);
-  const harvest = [], sightAge = {}, herdSizes = [];
+  const harvest = [], sightAge = {}, buckSight = {}, herdSizes = [];
+  let buckSightN = 0;
   let money = 0, moneyByYear = [], seenSightings = 0, passedAt25 = 0, aliveAt45 = 0;
   const tracked = new Map(); // buck id -> year passed at 2.5
   const doeTags = 2;
@@ -59,6 +60,7 @@ function runTier(t) {
         if (!rng.chance(WT.sightingChance(d, ctx))) continue;
         seenSightings++;
         sightAge[Math.min(d.age, 6.5)] = (sightAge[Math.min(d.age, 6.5)] || 0) + 1;
+        if (d.sex === 'b' && d.age >= 1.5) { buckSight[Math.min(d.age, 6.5)] = (buckSight[Math.min(d.age, 6.5)] || 0) + 1; buckSightN++; }
         const mature = d.age >= 3.5;
         if (!rng.chance(mature ? CFG.deer.sighting.shotOpportunity.mature : CFG.deer.sighting.shotOpportunity.young)) continue;
         let shoot = false;
@@ -91,7 +93,7 @@ function runTier(t) {
       }
     }
   }
-  return { t, harvest, sightAge, seenSightings, herdSizes, money, moneyByYear, passedAt25, aliveAt45, capacity: prop.capacity };
+  return { t, harvest, sightAge, buckSight, buckSightN, seenSightings, herdSizes, money, moneyByYear, passedAt25, aliveAt45, capacity: prop.capacity };
 }
 
 const results = TIERS.map(runTier);
@@ -120,7 +122,11 @@ console.log('\nSightings by age (all deer)');
 for (const a of [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5]) {
   console.log(pad(a === 6.5 ? '6.5+' : a, 12) + results.map((r) => padL(pct(r.sightAge[a] || 0, r.seenSightings), 11)).join(''));
 }
-console.log(pad('1.5+2.5 share', 12) + results.map((r) => padL(pct((r.sightAge[1.5] || 0) + (r.sightAge[2.5] || 0), r.seenSightings - (r.sightAge[0.5] || 0)), 11)).join('') + '  (of non-fawns)');
+console.log('\nBuck sightings by age (antlered bucks only)');
+for (const a of [1.5, 2.5, 3.5, 4.5, 5.5, 6.5]) {
+  console.log(pad(a === 6.5 ? '6.5+' : a, 12) + results.map((r) => padL(pct(r.buckSight[a] || 0, r.buckSightN), 11)).join(''));
+}
+console.log(pad('1.5+2.5 share', 12) + results.map((r) => padL(pct((r.buckSight[1.5] || 0) + (r.buckSight[2.5] || 0), r.buckSightN), 11)).join('') + '  (of bucks seen; target 70%+)');
 console.log(pad('Sight/sit', 12) + results.map((r) => padL((r.seenSightings / (YEARS * r.t.sits)).toFixed(2), 11)).join(''));
 
 console.log('\nHerd and survival');

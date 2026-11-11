@@ -931,10 +931,12 @@
   // Per-sit chance that a deer shows in daylight within view.
   function sightingChance(d, ctx) {
     const s = D().sighting;
-    const ageM = ageTable(s.ageMult, Math.min(d.age, 6.5));
-    let p = s.baseActivity * ageM * (1 - d.w * s.warinessK);
+    // "Old deer are hard to see" is about bucks. Does and fawns are what you mostly see in daylight.
+    const antlered = d.sex === 'b' && d.age >= 1.5;
+    const ageM = antlered ? ageTable(s.ageMult, Math.min(d.age, 6.5)) : ageTable(s.doeMult || s.ageMult, Math.min(d.age, 4.5));
+    let p = s.baseActivity * ageM * (1 - d.w * s.warinessK * (antlered ? 1 : 0.5));
     const pr = clamp(ctx.pressure || 0);
-    if (d.age >= 3.5) p *= Math.exp(-s.pressureK * pr * (d.age >= 4.5 ? 1.4 : 1));
+    if (antlered && d.age >= 3.5) p *= Math.exp(-s.pressureK * pr * (d.age >= 4.5 ? 1.4 : 1)); // mature bucks go nocturnal under pressure
     else p *= 1 - 0.45 * pr;
     const rut = ctx.rut || { buck: 1, mature: 1, doe: 1 };
     p *= d.sex === 'b' ? (d.age >= 3.5 ? rut.mature : rut.buck) : rut.doe;

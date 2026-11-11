@@ -38,14 +38,18 @@
   /* ================================================================ weather */
   function rollWeather(day, prev, rng) {
     const lo = WT.lerpTable(C().calendar.temps, day, 1), hi = WT.lerpTable(C().calendar.temps, day, 2);
-    let anom = prev ? prev.anom * 0.65 + rng.normal(0, 6) : rng.normal(0, 6);
+    // The first week is mild, calm and steady so a new hunter can sit in starter clothes.
+    // Then the first cold front of the fall arrives and the weather follows the normal slide into winter.
+    const fairDays = C().calendar.fairDays || 0, fair = day < fairDays;
+    let anom = prev ? prev.anom * 0.65 + rng.normal(0, fair ? 2 : 6) : rng.normal(0, fair ? 2 : 6);
     let front = false;
-    if (rng.chance(0.13)) { front = true; anom -= rng.range(8, 18); }
+    if (fairDays && day === fairDays) { front = true; anom -= rng.range(5, 9); }
+    else if (!fair && rng.chance(0.13)) { front = true; anom -= rng.range(8, 18); }
     const after = prev && prev.front;
     const windDir = front ? rng.pick(['NW', 'N', 'NW', 'W']) : rng.pick(['NW', 'NW', 'N', 'W', 'S', 'S', 'SE', 'SW', 'E', 'NE']);
-    const wind = Math.round(front ? rng.range(14, 28) : after ? rng.range(2, 9) : rng.range(3, 20));
+    const wind = Math.round(front ? rng.range(14, 28) : after ? rng.range(2, 9) : fair ? rng.range(2, 8) : rng.range(3, 20));
     const low = Math.round(lo + anom), high = Math.round(hi + anom);
-    const precipChance = front ? 0.4 : 0.12;
+    const precipChance = front ? 0.4 : fair ? 0.04 : 0.12;
     const precip = rng.chance(precipChance) ? (low < 30 ? 'snow' : 'rain') : null;
     let move = 1;
     if (front) move *= 1.1;
@@ -125,7 +129,7 @@
     st.weather = rollWeather(0, null, rng);
     news(`Welcome to the Home Place: ${home.acres} acres of your own. Buy a buck tag at the shop, check your gear, then press HUNT.`);
     news('Rifle season runs Oct 1 to Dec 31 this year. Blaze orange is required.');
-    news('Tip: your starter clothes are miserable below 50°F. A cheap jacket, bibs, rubber boots and a hat from the shop will let you sit for hours instead of minutes.');
+    news('Tip: the first week of October is mild, so your starter clothes are fine for now. After the first cold front (around Oct 8) you will need a jacket, bibs, boots and a hat to sit more than a few minutes.');
     return st;
   };
 
@@ -866,19 +870,34 @@
       if (rng.chance(midday)) return 10.5 + rng.range(0, 3.5);
       return rng.chance(0.5) ? plan.legalStart + Math.pow(rng.next(), 1.6) * 3 : plan.legalEnd - Math.pow(rng.next(), 1.6) * 3;
     };
+    const S2 = cfg.deer.sighting, out = new Set();
+    const hasMom = (deer) => deer.mom && herd.some((m) => m.id === deer.mom);
     for (const deer of herd) {
-      if (deer.mom && herd.some((m) => m.id === deer.mom)) continue; // fawns follow mom
+      if (hasMom(deer) || out.has(deer.id)) continue; // fawns follow mom
       if (!rng.chance(WT.sightingChance(deer, ctx))) continue;
       const members = [deer, ...(byMom[deer.id] || []).filter(() => rng.chance(0.85))];
+      // does often travel together: a second doe and her fawns may come along
+      if (deer.sex === 'd' && deer.age >= 1 && rng.chance(S2.doeGroup || 0)) {
+        const pal = herd.find((x) => x.sex === 'd' && x.age >= 1 && x !== deer && !out.has(x.id) && !hasMom(x));
+        if (pal) members.push(pal, ...(byMom[pal.id] || []).filter(() => rng.chance(0.85)));
+      }
+      members.forEach((m) => out.add(m.id));
       sched.push({ t: pickTime(deer), members });
+    }
+    // a fawn whose mother stayed hidden can still wander out by itself
+    for (const deer of herd) {
+      if (!hasMom(deer) || out.has(deer.id)) continue;
+      if (rng.chance(WT.sightingChance(deer, ctx) * (S2.fawnAlone || 0))) { out.add(deer.id); sched.push({ t: pickTime(deer), members: [deer] }); }
     }
     // rut: a buck sometimes trails a doe group
     if (/Seek|Peak/.test(rut.name)) for (const sg of sched) if (sg.members[0].sex === 'd' && rng.chance(0.25)) {
       const b = herd.find((x) => x.sex === 'b' && x.age >= 1.5 && !sched.some((q) => q.members.includes(x)) && rng.chance(0.3 * x.tOP));
       if (b) sg.members.push(b);
     }
-    if (rng.chance(walkNoise * 0.6) && sched.length) {
-      sched.splice(rng.int(0, sched.length - 1), 1);
+    // walking in can bump deer, but only ones that were already close (due within the hour)
+    const nearby = sched.filter((g) => g.t < start + 1);
+    if (nearby.length && rng.chance(walkNoise * 0.45)) {
+      sched.splice(sched.indexOf(rng.pick(nearby)), 1);
       log.push({ t: start, kind: 'bad', text: 'Walking in you hear a snort and crashing brush. Something was bedded close and blew out ahead of you.' });
     } else if (walkNoise > 0.45) log.push({ t: start, kind: 'warn', text: 'Your walk in was noisy. Leaves crunched with every step.' });
     for (const sg of sched) if (sg.t < start) sg.done = true; // came through before you got there
@@ -1341,7 +1360,8 @@
     st.weather = rollWeather(st.day, st.weather, rng);
     const rut = WT.rutPhase(st.day), prev = WT.rutPhase(st.day - 1);
     if (rut !== prev) news(`${rut.name} has started.${/Seek/.test(rut.name) ? ' Mature bucks are on their feet in daylight. Hunt all day if you can.' : ''}`, 'info');
-    if (st.weather.front) news('Cold front coming through today. Tomorrow should be a good one.');
+    if (st.weather.front && st.day === (cfg.calendar.fairDays || -1)) news('The first cold front of the fall is here. The mild weather is over: dress for it, or your sits will be short. Deer will be on their feet tomorrow.', 'warn');
+    else if (st.weather.front) news('Cold front coming through today. Tomorrow should be a good one.');
     if (rng.chance(0.04)) {
       const pub = WT.publicAreas();
       if (pub.length) news(`Rumor: a truck at the gas station had a big buck in the bed from ${rng.pick(pub).name}.`);

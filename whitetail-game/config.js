@@ -65,7 +65,9 @@
         { name: 'Post-rut',     from: 53, to: 91, buck: 0.9,  mature: 0.8, doe: 1.0 },
       ],
       // Average temps (°F) by day index, linearly interpolated: [day, low, high]
-      temps: [[0, 36, 60], [31, 25, 44], [61, 12, 28], [91, 2, 19]],
+      // The first week of October is mild so starter clothes work; the first cold front ends that.
+      temps: [[0, 51, 73], [6, 50, 71], [9, 34, 56], [31, 25, 44], [61, 12, 28], [91, 2, 19]],
+      fairDays: 7,                    // calm, mild, no fronts until this day; a cold front arrives on it
       sunrise: [[0, 7.45], [31, 7.95], [36, 7.05], [61, 7.85], [91, 8.3]],   // hour-of-day (DST ends ~Nov 5)
       sunset:  [[0, 19.2], [31, 18.15], [36, 17.1], [61, 16.8], [91, 16.95]],
       legalLightMin: 30,
@@ -120,7 +122,10 @@
       sighting: {
         baseActivity: 0.28,           // per-deer daylight-in-view chance for a standard 4 hr sit
         viewAcres: 110, viewExp: 0.8, // one stand only watches part of a big property
-        ageMult: { 0.5: 1.0, 1.5: 1.0, 2.5: 0.70, 3.5: 0.40, 4.5: 0.22, 5.5: 0.14, 6.5: 0.10 },
+        ageMult: { 0.5: 1.0, 1.5: 1.0, 2.5: 0.70, 3.5: 0.40, 4.5: 0.22, 5.5: 0.14, 6.5: 0.10 }, // bucks: old ones are hard to see
+        doeMult: { 0.5: 1.0, 1.5: 1.0, 2.5: 0.95, 3.5: 0.9, 4.5: 0.85 },                       // does and fawns move in daylight at any age
+        fawnAlone: 0.45,              // a fawn whose mother stays hidden may still wander out on its own
+        doeGroup: 0.35,               // chance a second doe (and her fawns) travels with the first
         warinessK: 0.5,
         pressureK: 1.4,               // mature bucks go nocturnal under pressure
         shotOpportunity: { young: 0.55, mature: 0.32 },
