@@ -151,7 +151,8 @@
               ${r.neighbors.length ? `<p class="dim">Killed by others: ${r.neighbors.map((n) => esc(n.hit ? `"${n.hit}" (hit list)` : 'a ' + n.cls)).join(', ')}.</p>` : ''}
               ${r.tips.length ? `<h3>For next year</h3>${r.tips.map((t) => `<p>• ${esc(t)}</p>`).join('')}` : ''}`;
           })()}
-          ${sum.sheds && sum.sheds.length ? `<h3>Shed hunting</h3><p>You walked your land in March and found ${sum.sheds.length} shed${sum.sheds.length === 1 ? '' : 's'}. Each one is a buck that made it through the winter:</p>${sum.sheds.map((sh) => `<p class="dim">• ${sh.name ? `"${esc(sh.name)}": ` : ''}${sh.side === 'both' ? 'a matched set' : 'one side'}, ${sh.pts} points, off a ${sh.age}-year-old on ${esc(sh.parcel)}</p>`).join('')}<p class="faint">They're in the Trophy Room.</p>` : sum.sheds ? '<h3>Shed hunting</h3><p class="dim">You walked your land in March and came back empty-handed.</p>' : ''}
+          <h3>Off-season scouting</h3><p>This year's sign is on the ground. You have <b>${sum.scout}</b> searches: each one covers a 3 × 3 block on your land or on public land, and turns up whatever is there. Beds, rubs, scrapes, and the sheds of bucks that made it through winter.</p>
+          <p class="dim">Open the map, tap a tile, and press Search. Good places to look: timber, tree lines, swamp edges.</p>
           ${sum.events.length ? '<h3>On your land</h3>' + sum.events.map((e) => `<p>${esc(e)}</p>`).join('') : ''}
           <p class="dim">New tags are on sale at the shop. Your hit list entries are a year older.</p>
           <div class="row"><button class="btn blaze" id="ok">${WT.plotSites().length ? 'On to spring planting' : 'Back to the lodge'}</button></div>`, (m2) => $('#ok', m2).addEventListener('click', () => { UI.go('lodge'); if (WT.plantingOpen() && WT.plotSites().some((x) => !x.plot.planted)) UI.planting(); }));
@@ -301,6 +302,7 @@
       <section class="panel news" style="margin-top:22px">
         <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
         ${st.day < 0 ? `<p class="good">Early archery season: bow only until Oct 1. ${WT.hasBow() ? 'Your bow is equipped.' : 'Equip your bow under Gear to hunt, or press Wait.'}</p>` : ''}
+        ${WT.offseason() && st.scoutLeft > 0 ? `<p class="good">Off-season: ${st.scoutLeft} scouting search${st.scoutLeft === 1 ? '' : 'es'} left. <button class="btn small" data-scout>Scout the map</button></p>` : ''}
         ${WT.plantingOpen() && WT.plotSites().some((x) => !x.plot.planted) ? '<p class="good">Spring planting is open until your first hunt. <button class="btn small" data-planting>Choose your crops</button></p>' : ''}
         ${needTag ? '<p class="warn">You need a buck tag before you can shoot a buck. Get one at the Shop.</p>' : ''}
         ${st.news.slice(0, 3).map((n) => `<p class="${n.kind}"><span class="faint">${WT.dateLabel(Math.min(n.d, 91))}:</span> ${esc(n.text)}</p>`).join('')}
@@ -309,6 +311,7 @@
     el.querySelectorAll('[data-menu]').forEach((b) => b.addEventListener('click', UI.menu));
     el.querySelectorAll('[data-guide]').forEach((b) => b.addEventListener('click', () => UI.guide()));
     el.querySelectorAll('[data-planting]').forEach((b) => b.addEventListener('click', () => UI.planting()));
+    el.querySelectorAll('[data-scout]').forEach((b) => b.addEventListener('click', () => UI.go('map', { mode: 'land', pid: WT.game.world.starterId })));
     const canvas = $('canvas', el);
     let raf, last = 0;
     const loop = (t) => { if (t - last > 140) { drawLodge(canvas, t); last = t; } raf = requestAnimationFrame(loop); };
@@ -378,8 +381,8 @@
       <p><b>Levels</b> come from hunting: seeing deer, long sits, and deer you tag. Each level pays cash and gives skill points, and unlocks better rifles.</p>
       <p><b>Skills:</b> Stealth (quieter, less noticed), Marksmanship (accuracy, less buck fever), Calling, Scent Discipline, Patience (longer sits) and Woodcraft (finding hit deer).</p>`],
     ['books', 'Hit list and trophies', () => `
-      <p><b>Hit list:</b> nothing goes on it by itself. Add a deer from the stand once you've had a clear look, or from a trail camera photo. Each row shows where he was last seen, you can filter by property, and Pull cameras collects every card at once. Name them, guess their age, and mark them Hit list, Pass, Cull or Watch. The game doesn't tell you if a deer is alive, with two exceptions: you hear about it when a neighbor kills one of your hit list deer, and finding his sheds in spring means he made it through the winter.</p>
-      <p><b>Shed hunting</b> happens by itself each March on land you own. Sheds are kept in the Trophy Room, and a hit list deer's page lists the years you found his.</p>
+      <p><b>Hit list:</b> nothing goes on it by itself. Add a deer from the stand once you've had a clear look, or from a trail camera photo. Each row shows where he was last seen, you can filter by property, and Pull cameras collects every card at once. Name them, guess their age, and mark them Hit list, Pass, Cull or Watch. The game doesn't tell you if a deer is alive, with two exceptions: you hear about it when a neighbor kills one of your hit list deer, and finding his sheds while scouting means he made it through the winter.</p>
+      <p><b>Off-season scouting.</b> Between seasons you get a few searches (more with Woodcraft). Each one covers a 3 × 3 block on your land or public land. Every buck leaves sign around where he lives: a bed at home, rubs on timber and tree lines nearby, scrapes on the edges he travels, and his sheds if he survived the winter. You only find what is in the block you search. Found sign stays marked on the map for the season, so it shows you where bucks live, and deer are about twice as likely to show near home. A stand touching a scrape sees a few more deer during the rut. Sheds go to the Trophy Room and onto a hit list deer's page.</p>
       <p><b>After a harvest</b> you guess the score, then see the real age, weight and the full score sheet.</p>
       <p><b>Mounts</b> cost money: shoulder mount ${WT.money(WT.CONFIG.economy.mounts.shoulder.price)}, European ${WT.money(WT.CONFIG.economy.mounts.euro.price)}, felt cap ${WT.money(WT.CONFIG.economy.mounts.cap.price)}. Mounted deer hang in the Trophy Room.</p>`],
   ];

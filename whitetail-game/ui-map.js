@@ -155,6 +155,17 @@
         ctx.fillText(txt, Math.round(X), Math.round(Y));
       }
       // markers: stands, spots, cameras, plots
+      // sign you found scouting: a bed (oval), a rub (trunk with a pale scar), a scrape (dark patch), a shed (little antler)
+      if (v.z >= 5) for (const sg of WT.foundSign()) {
+        const tx = sg.i % w.W, ty = (sg.i / w.W) | 0, [cx0, cy0] = toScreen(tx + 0.5, ty + 0.5);
+        if (cx0 < -12 || cy0 < -12 || cx0 > LW + 12 || cy0 > LH + 12) continue;
+        const s2 = Math.max(7, Math.round(v.z * 0.8)), u = s2 / 7, X = Math.round(cx0 - s2 / 2), Y = Math.round(cy0 - s2 / 2);
+        const r = (gx, gy, gw, gh, c) => { ctx.fillStyle = c; ctx.fillRect(X + Math.round(gx * u), Y + Math.round(gy * u), Math.max(1, Math.round(gw * u)), Math.max(1, Math.round(gh * u))); };
+        if (sg.t === 'bed') { r(1, 2, 5, 3, '#2a1d16'); r(2, 3, 3, 1, '#c9b48a'); }
+        else if (sg.t === 'rub') { r(3, 0, 2, 7, '#3a2a1c'); r(3, 2, 1, 3, '#f0dcb0'); }
+        else if (sg.t === 'scrape') { r(1, 3, 5, 3, '#2a1d16'); r(2, 4, 3, 1, '#5a4030'); r(3, 0, 1, 3, '#3a2a1c'); }
+        else { r(1, 5, 5, 1, '#f2ead8'); r(1, 1, 1, 4, '#f2ead8'); r(3, 2, 1, 3, '#f2ead8'); r(5, 3, 1, 2, '#f2ead8'); }
+      }
       // Tiny pictures instead of letters. Each sits on its own tile: a ladder, a box blind on legs, a tripod, a pop-up
       // dome, a platform on a trunk, a camera, a flag for a marked spot. Zoomed far out they shrink to a coloured dot.
       const ICON = { ladder: 'ladder', box: 'box', house: 'house', tripod: 'tripod', popup: 'popup', hangon: 'tree', climber: 'tree', saddle: 'tree', ground: 'flag' };
@@ -387,7 +398,7 @@
         const box = (x, y, wd, hg, col) => { const [X, Y] = v.toScreen(x, y); const W2 = Math.round(wd * v.z), H2 = Math.round(hg * v.z), X0 = Math.round(X), Y0 = Math.round(Y); ctx.fillStyle = col; ctx.fillRect(X0 - 1, Y0 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 + H2 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 - 1, 2, H2 + 2); ctx.fillRect(X0 + W2 - 1, Y0 - 1, 2, H2 + 2); };
         // where a plot would go if you planted it from this corner
         if (land && state.plotPreview && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player') { box(t.x, t.y, 2, 2, '#8fe06a'); }
-        if (land && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player' && v.z >= 7) box(t.x - 1, t.y - 1, 3, 3, 'rgba(239,227,211,.45)'); // the 8 tiles that touch it: what's there counts together
+        if (st.parcels[state.pid] && ((land && st.parcels[state.pid].owner === 'player') || (WT.offseason() && st.scoutLeft > 0 && st.parcels[state.pid].owner === 'public')) && v.z >= 7) box(t.x - 1, t.y - 1, 3, 3, 'rgba(239,227,211,.45)'); // the 8 tiles that touch it: what's there counts together
         box(t.x, t.y, 1, 1, '#ffe08a'); // exactly the one tile you picked
       },
     });
@@ -482,6 +493,16 @@
         $('#aguide', m).addEventListener('click', () => UI.guide('land'));
       });
     }
+    const SIGN = { bed: ['a bed', 'beds'], rub: ['a rub', 'rubs'], scrape: ['a scrape', 'scrapes'], shed: ['a shed', 'sheds'] };
+    // what you have found on or touching this tile, and the off-season Search button
+    function scoutRow(pid, t) {
+      const here = WT.foundSign(pid).filter((sg) => Math.abs((sg.i % w.W) - t.x) <= 1 && Math.abs(((sg.i / w.W) | 0) - t.y) <= 1);
+      const count = {}; here.forEach((sg) => { count[sg.t] = (count[sg.t] || 0) + 1; });
+      const list = Object.keys(count).map((k) => (count[k] === 1 ? SIGN[k][0] : `${count[k]} ${SIGN[k][1]}`)).join(', ');
+      const can = WT.offseason() && st.scoutLeft > 0;
+      return `${list ? `<p style="margin:6px 0 2px"><span class="good">Sign found here:</span> ${list}. <span class="faint">A buck lives close by.</span></p>` : ''}
+        ${can ? `<div class="row" style="margin-top:6px"><button class="btn blaze small" id="scout">Search this 3 × 3 block (${st.scoutLeft} left)</button></div><p class="faint" style="margin:2px 0 0">Looks for beds, rubs, scrapes and sheds on this tile and the 8 around it.</p>` : WT.offseason() ? '<p class="faint" style="margin:6px 0 0">No searches left this off-season.</p>' : ''}`;
+    }
     function playerCard(p, d, pid) {
       const lim = WT.limits(pid), inv = st.inv, t = state.tile;
       const truck = Object.entries(inv.stands).filter(([id, n]) => n > 0 && WT.standType(id).kind !== 'mobile');
@@ -512,7 +533,7 @@
       if (info.waterhole) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Water hole</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Fill it in</button></div></div>`;
       // add to this exact spot
       const noStand = !s || !(s.x === t.x && s.y === t.y), noCam = !c || !(c.x === t.x && c.y === t.y);
-      html += `<h3>Add to this spot</h3>`;
+      html += scoutRow(pid, t) + `<h3>Add to this spot</h3>`;
       if (!s && info.plot) html += '<p class="faint">Stands go on the edge of a food plot: pick a tile touching it.</p>';
       else if (!s) html += `<div class="row">${truck.length ? `<select id="standSel">${truck.map(([id, n]) => `<option value="${id}" ${state.standType === id ? 'selected' : ''}>${esc(WT.standType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addStand">Put up stand</button>` : '<span class="faint">No stands in your truck. Buy one at the Shop.</span>'}</div>`;
       if (noCam) html += addCamRow(!!s);
@@ -571,6 +592,7 @@
         html += `<p class="dim">${mixLine(pid)}</p><p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
           <dl class="kv"><dt>How busy</dt><dd><b>${WT.crowd(pid).name}</b> <span class="faint">${WT.crowd(pid).note}</span></dd><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
+          ${state.tile ? scoutRow(pid, state.tile) : ''}
           ${state.cid ? camBlock(d.cams.find((c) => c.cid === state.cid)) : ''}
           ${state.tile && !standObj ? `<div class="row" style="margin-top:6px"><button class="btn" id="markHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark ${state.cid ? 'this camera spot' : 'the spot you tapped'} to hunt</button></div>` : !state.tile ? '<p><b>Tap the map inside this area</b> to mark a spot to sit or hang a camera.</p>' : ''}
           ${state.tile && !(state.cid && d.cams.some((c) => c.cid === state.cid && c.x === state.tile.x && c.y === state.tile.y)) ? addCamRow(!!standObj) : ''}
@@ -590,6 +612,13 @@
       const t = state.tile;
       on('clr', () => { state.pid = null; state.sid = null; state.tile = null; state.move = null; setBanner(); refreshMap(); renderCard(); });
       on('unsel', () => { state.tile = null; state.sid = null; state.cid = null; refreshMap(); renderCard(); });
+      on('scout', () => {
+        const res = WT.scoutBlock(pid, t.x, t.y); if (UI.err(typeof res === 'string' ? res : null)) return;
+        const f = res.found, count = {}; f.forEach((sg) => { count[sg.t] = (count[sg.t] || 0) + 1; });
+        const sheds = f.filter((sg) => sg.t === 'shed');
+        const txt = f.length ? 'Found ' + Object.keys(count).map((k) => (count[k] === 1 ? SIGN[k][0] : `${count[k]} ${SIGN[k][1]}`)).join(', ') + '.' + sheds.map((sg) => ` ${sg.name ? `"${sg.name}"'s shed` : 'A shed'}: ${sg.sh.side === 'both' ? 'a matched set' : 'one side'}, ${sg.sh.pts} points.`).join('') : res.hint ? `Nothing in this block, but tracks lead off to the ${res.hint.dir}${res.hint.far ? ', a good way off' : ', not far'}.` : 'Nothing here, and no fresh tracks. This property may not be holding a buck.';
+        done(null); UI.toast(txt, f.length ? 'good' : undefined);
+      });
       on('advice', () => showAdvice(pid));
       on('toLand', () => UI.go('map', { mode: 'land', pid, sid: state.sid }));
       card.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => { const [x, y] = b.dataset.goto.split(',').map(Number); selectTile(pid, x, y); refreshMap(); renderCard(); }));

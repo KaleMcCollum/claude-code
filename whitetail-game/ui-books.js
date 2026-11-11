@@ -161,9 +161,9 @@
       : '<p class="dim">Nothing yet.</p>'}</section>`;
     const sheds = st.sheds || [];
     el.insertAdjacentHTML('beforeend', `<section class="panel" style="margin-top:10px"><h3>Shed antlers</h3>
-      ${sheds.length ? `<p class="dim">${sheds.length} found walking your land in spring. A shed means that buck was alive when winter ended.</p>
+      ${sheds.length ? `<p class="dim">${sheds.length} found scouting in the off-season. A shed means that buck was alive when winter ended.</p>
       <div class="tiles">${sheds.slice(0, 60).map((sh, k) => `<div class="tile">${canvasHtml('sh' + k, 88, 92, true)}<span class="cap">${sh.name ? `"${esc(sh.name)}" · ` : ''}${sh.side === 'both' ? 'Matched set' : 'One side'} · ${sh.pts} pts</span><span class="cap faint">Spring Yr ${sh.y + 1} · he was ${sh.age} · ${esc(sh.parcel)}</span></div>`).join('')}</div>`
-      : '<p class="dim">None yet. Each spring you walk the land you own; bucks that lived there and made it through winter leave antlers behind.</p>'}</section>`);
+      : '<p class="dim">None yet. In the off-season, search 3 × 3 blocks on the map; sheds turn up near where a buck lives.</p>'}</section>`);
     sheds.slice(0, 60).forEach((sh, k) => paint(el, 'sh' + k, WT.deerSprite(WT.snapDeer(sh.snap), { lod: 0, frame: 'bust', mount: 'shed', side: sh.side, day: 60 })));
     recs.forEach((r, k) => paint(el, 't' + k, UI.mountImg(r.snap, r.mount)));
     el.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', () => UI.trophyDetail(recs[+b.dataset.k], el, { onBack: () => UI.go('trophies') })));

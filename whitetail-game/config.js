@@ -268,6 +268,8 @@
       },
       crops: { offDay: [7, 14], rushDays: 14, standing: 0.15, rush: [0.3, 0.9], after: 0.3, coverSaves: 0.6, neighbors: 0.5 },
     },
+    // Off-season scouting: 3 x 3 blocks you can search each spring, plus one per this many Woodcraft points.
+    scouting: { searches: 5, woodcraftPer: 8, scrapeRut: 1.12 },
     mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards
 
     /* ------------------------------------------------------------ trail cameras */

@@ -1308,7 +1308,7 @@
 
     const ctx = {
       pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * WT.warmWater(stand) * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
-      tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1), // early archery: deer haven't been hunted yet place: rating, matureRating: stand.r.mature,
+      tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1) * (/Pre|Seek|Peak/.test(rut.name) && WT.scrapeNear(setup.pid, stand.x, stand.y) ? C().scouting.scrapeRut : 1), // early archery: deer haven't been hunted yet place: rating, matureRating: stand.r.mature,
       hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
     const herd = d.herd;
@@ -1385,7 +1385,7 @@
     if (setup.competition) log.push({ t: start, kind: 'warn', text: 'You can hear another hunter walking in somewhere off to the east.' });
     if (plan.deficit > 0) log.push({ t: start, kind: 'warn', text: `You're dressed for about ${plan.comfortable}°F. You'll get cold after ${fmtDur(plan.maxHrs)}.` });
     if (plan.hot > 0) log.push({ t: start, kind: 'warn', text: 'You were sweating on the walk in. Your scent is going to carry.' });
-    st.plantingOpen = false; // the season has started: what's planted is planted
+    st.plantingOpen = false; st.scouted = []; // the season has started: what's planted is planted, scouting is over
     G.hunt = H;
     st.stats.hunts++;
     st.seasonLog.hunts++;
@@ -1956,6 +1956,69 @@
   };
 
   /* ================================================================ season end */
+  /* Sign. Every buck leaves sign around the spot he lives: a bed at home, rubs on timber and tree lines close by,
+     scrapes on the edges he travels, and his sheds if he made it through winter. It is laid down at the end of each
+     season on land you own and on public land, and stays hidden until you search the 3 x 3 block it is in. */
+  function layDownSign(carried) {
+    const st = S(), w = G.world, out = [];
+    const racks = new Map(carried.map((c) => [c.id, c]));
+    for (const p of w.parcels) {
+      const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue;
+      const near = (h, r, ok, salt, deer, n) => { // up to n tiles within r of home that pass ok, chosen the same way every time
+        const c = [];
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const x = h.x + dx, y = h.y + dy; if (x < 1 || y < 1 || x >= w.W - 1 || y >= w.H - 1) continue; const i = y * w.W + x; if (w.parcelOf[i] === p.id && ok(x, y, i)) c.push(i); }
+        c.sort((a, b2) => WT.hash2(a, deer.id, salt) - WT.hash2(b2, deer.id, salt));
+        return c.slice(0, n);
+      };
+      const dry = (i) => { const lt = WT.landType(w.cover[i]); return lt !== 'water' && lt !== 'road'; };
+      for (const deer of d.herd) {
+        if (deer.sex !== 'b' || deer.age < 1.5) continue;
+        const h = WT.deerHome(p.id, deer), hi = h.y * w.W + h.x;
+        if (dry(hi)) out.push({ p: p.id, i: hi, t: 'bed', k: deer.id, f: 0 });
+        const nRub = 1 + Math.floor(WT.hash2(deer.id, 1, st.year + 5) * 3), nScr = 1 + Math.floor(WT.hash2(deer.id, 2, st.year + 6) * 2);
+        for (const i of near(h, 4, (x, y, i) => { const id = WT.spotSetting(w, x, y).id; return WT.landType(w.cover[i]) === 'timber' || id === 'treeline'; }, 81, deer, nRub)) out.push({ p: p.id, i, t: 'rub', k: deer.id, f: 0 });
+        for (const i of near(h, 5, (x, y, i) => dry(i) && WT.landType(w.cover[i]) !== 'farm' && (['treeline', 'fieldEdge', 'swampEdge', 'bank'].includes(WT.spotSetting(w, x, y).id) || w.travel[i] > 0.55), 82, deer, nScr)) out.push({ p: p.id, i, t: 'scrape', k: deer.id, f: 0 });
+        const rk = racks.get(deer.id);
+        if (rk) { const side = WT.hash2(deer.id, 3, st.year) < 0.3 ? 'both' : WT.hash2(deer.id, 4, st.year) < 0.5 ? 'R' : 'L'; for (const i of near(h, 3, (x, y, i) => dry(i), 83, deer, 1)) out.push({ p: p.id, i, t: 'shed', k: deer.id, f: 0, sh: { age: rk.age, side, pts: side === 'both' ? rk.pR + rk.pL : side === 'R' ? rk.pR : rk.pL, snap: rk.snap } }); }
+      }
+    }
+    st.sign = out;
+  }
+  WT.offseason = () => !!S().plantingOpen; // from the end of one season until your first hunt or wait of the next
+  // Search one 3 x 3 block. Returns { found: [...] } or an error string.
+  WT.scoutBlock = function (pid, x, y) {
+    const st = S(), w = G.world, d = st.parcels[pid];
+    if (!WT.offseason()) return 'Scouting is for the off-season, after one season ends and before you hunt the next.';
+    if (!d || (d.owner !== 'player' && d.owner !== 'public')) return 'You can scout your own land and public land.';
+    if (!(st.scoutLeft > 0)) return 'You have used all your searches this off-season.';
+    st.scoutLeft--;
+    const found = [];
+    for (const sg of st.sign || []) {
+      if (sg.f || sg.p !== pid) continue;
+      const sx = sg.i % w.W, sy = (sg.i / w.W) | 0;
+      if (Math.abs(sx - x) > 1 || Math.abs(sy - y) > 1) continue;
+      sg.f = 1; found.push(sg);
+      if (sg.t === 'shed') {
+        const e = WT.hitEntry(sg.k), parcel = w.parcels[pid].name;
+        st.sheds.unshift({ k: sg.k, y: st.year - 1, age: sg.sh.age, side: sg.sh.side, pts: sg.sh.pts, parcel, snap: sg.sh.snap, name: e ? e.name || null : null });
+        if (e) { (e.sheds = e.sheds || []).unshift({ y: st.year - 1, age: sg.sh.age, side: sg.sh.side, pts: sg.sh.pts, parcel }); e.last = [st.year, 0]; sg.name = e.name || null; }
+      }
+    }
+    if (st.sheds.length > 120) st.sheds.length = 120;
+    (st.scouted = st.scouted || []).push({ p: pid, x, y });
+    // an empty block still tells you something: which way the tracks lead (toward the nearest sign you haven't found)
+    let hint = null;
+    if (!found.length) {
+      let best = null;
+      for (const sg of st.sign || []) { if (sg.f || sg.p !== pid) continue; const dx = (sg.i % w.W) - x, dy = ((sg.i / w.W) | 0) - y, dd = Math.hypot(dx, dy); if (!best || dd < best.dd) best = { dx, dy, dd }; }
+      if (best) { let a = Math.atan2(best.dx, -best.dy); if (a < 0) a += Math.PI * 2; hint = { dir: ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'][Math.round(a / (Math.PI / 4)) % 8], far: best.dd > 8 }; }
+    }
+    return { found, hint };
+  };
+  WT.foundSign = (pid) => (S().sign || []).filter((sg) => sg.f && (pid == null || sg.p === pid));
+  // A scrape touching a stand is worked in the rut: a small bonus whether or not you have found it.
+  WT.scrapeNear = (pid, x, y) => { const w = G.world; return (S().sign || []).some((sg) => sg.t === 'scrape' && sg.p === pid && Math.abs((sg.i % w.W) - x) <= 1 && Math.abs(((sg.i / w.W) | 0) - y) <= 1); };
+
   // A plain look back at the season: what worked, so next year's plan writes itself.
   function buildRecap() {
     const st = S(), L = slog(), out = { hours: Math.round(L.hours), hunts: L.hunts || 0, shots: L.shots, misses: L.misses, busted: L.busted, tips: [] };
@@ -2014,7 +2077,7 @@
     summary.growing = yearFactor > 1.03 ? 'a wet summer with great growing conditions' : yearFactor < 0.97 ? 'a dry summer' : 'an average summer';
     // what every buck on your land was carrying this fall (he drops it in late winter if he lives)
     const carried = [];
-    for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
+    for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
     summary.recap = buildRecap();
     // whole-map year: every parcel's cycle, dispersal between real parcels, population stabilizer
     const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; return pr; });
@@ -2027,20 +2090,11 @@
       for (const s2 of d.spots || []) s2.pressure = 0;
       if (res.logs[k].disease && d.owner === 'player') summary.events.push(`EHD hit ${p.name} in late summer. You found dead deer near the water.`);
     });
-    // shed hunting: walk your land in March. A shed means he made it through the winter and is still yours.
+    // off-season scouting: this year's sign is on the ground now. Nothing is found until you go and look.
     st.sheds = st.sheds || [];
-    summary.sheds = [];
-    const findP = clamp(0.5 + (st.skills.woodcraft || 0) * 0.012, 0.5, 0.9);
-    for (const c of carried) {
-      const d = st.parcels[c.pid];
-      if (d.owner !== 'player' || !d.herd.some((x) => x.id === c.id) || !rng.chance(findP)) continue;
-      const side = rng.chance(0.3) ? 'both' : rng.chance(0.5) ? 'R' : 'L';
-      const e = WT.hitEntry(c.id);
-      const shed = { k: c.id, y: st.year, age: c.age, side, pts: side === 'both' ? c.pR + c.pL : side === 'R' ? c.pR : c.pL, parcel: w.parcels[c.pid].name, snap: c.snap, name: e ? e.name || null : null };
-      st.sheds.unshift(shed); summary.sheds.push(shed);
-      if (e) { (e.sheds = e.sheds || []).unshift({ y: st.year, age: c.age, side, pts: shed.pts, parcel: shed.parcel }); e.last = [st.year + 1, 0]; }
-    }
-    if (st.sheds.length > 120) st.sheds.length = 120;
+    layDownSign(carried);
+    st.scoutLeft = C().scouting.searches + Math.floor((st.skills.woodcraft || 0) / C().scouting.woodcraftPer);
+    summary.scout = st.scoutLeft;
     // reset season
     st.plantingOpen = true; // spring: choose what goes in each plot before the first hunt
     st.year++; st.day = WT.ownsBow() ? -(cfg.calendar.earlyBowDays || 0) : 0; st.slot = 'morning';
