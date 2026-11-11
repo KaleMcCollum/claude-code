@@ -11,16 +11,15 @@ confirmed with the owner before the next one starts.
 
 | Phase | What it covers | Status |
 | --- | --- | --- |
-| 1. Foundation | Sign-in by email link, users and roles, Settings and Add user, the sidebar layout, the starting sections, section pages with Official and Discussion, the text editor | Built and tested. Waiting for the owner to approve the look. |
-| 2. Capture | Daily Log, notes, sorting notes into sections, full search, Today page | Not started |
+| 1. Foundation | Sign-in by email link, users and roles, Settings and Add user, the sidebar layout, the starting sections, section pages with Official and Discussion, the text editor | Built and tested. |
+| 2. Capture | Daily Log, notes, sorting notes into sections, search, Today page | Built and tested. Waiting for the owner's approval. |
 | 3. Decisions | Proposals, approvals by one or both owners, endorsements, Decisions Log, version history screens | Not started |
 | 4. Operations records | To-dos, order deadlines, quotes, payments, vendors, timeline, documents | Not started |
 | 5. AI | Automatic sorting, to-do extraction, proposals from notes, Draft with AI, Suggest wording, undo | Not started |
 | 6. Output and safety | Word and PDF export, handbook builder, notifications, backups, full export | Not started |
 
 The app is **not online yet**. It runs on a developer machine only. Putting it
-online needs the owner to create a few accounts (hosting, database, email),
-which is the step after Phase 1 is approved.
+online needs the owner to create a few accounts (hosting, database, email).
 
 ### What works today (Phase 1)
 
@@ -47,13 +46,44 @@ which is the step after Phase 1 is approved.
 - **Phone home screen.** The app can be added to a phone's home screen and
   opens on Today.
 
-Daily Log, Proposals, To-do and Documents appear in the sidebar but show a
-"not built yet" page until their phase.
+### What Phase 2 added
 
-### Known gaps in Phase 1
+- **Daily Log.** Every day that has notes has its own page, listed newest
+  first, with a date field to jump to any day. Each day shows all notes from
+  all users in the order they were written.
+- **Notes.** "New note" in the sidebar (the plus on a phone) opens the note
+  box from anywhere. Save, or Ctrl/Cmd+Enter, and the box is ready for the
+  next note. A note is stored and shown exactly as typed. Only its author can
+  change its wording, and the earlier wording is kept and can be opened from
+  the "Edited" line. Owners can remove a note; it is hidden, not deleted, and
+  can be restored from its day or from "Removed notes" on the Daily Log page.
+- **Sorting by hand.** Choose the sections a note belongs to (type to find
+  one, or show them all), a business tag (Garden Center, Coffee Shop, Both)
+  and tick "Sorted". The same note then shows, word for word, in each chosen
+  section's Discussion with its author, original time and a link back to its
+  day.
+- **Discussion.** Each section page lists its notes newest first, with a
+  switch to oldest first and a business filter.
+- **Comments.** Owners and Advisors can comment on a note. Comments show
+  wherever the note shows.
+- **Today.** The opening countdown, the unsorted notes (sortable right
+  there) and stale sections: sections with content that nobody has updated
+  for a set number of days. The opening date and the number of days are in
+  Settings.
+- **Search.** Notes and comments join section names and official text.
+  Every word must appear, in any order. Filters: date range, section,
+  business, author.
 
-- Pictures inside text are not available yet. They need file storage, which
-  arrives with the Documents library in Phase 4.
+Proposals, To-do and Documents appear in the sidebar but show a "not built
+yet" page until their phase.
+
+### Known gaps
+
+- Pictures and attachments are not available yet. They need file storage,
+  which arrives with the Documents library in Phase 4.
+- Notes are sorted by hand. Sorting with AI is Phase 5.
+- To-dos, deadlines and approvals are not on the Today page yet (Phases 3
+  and 4).
 - Sections can be reordered within their group but not yet moved to a
   different parent section.
 - The home screen icon is a placeholder ("PP" on dark teal) until the real
@@ -65,7 +95,10 @@ Daily Log, Proposals, To-do and Documents appear in the sidebar but show a
 
 These come from the owner's build spec and are enforced in code:
 
-1. **Owner words are never altered.** Text is stored and shown exactly as typed.
+1. **Owner words are never altered.** Text is stored and shown exactly as
+   typed. The editor never turns typed characters into formatting, and the
+   database itself refuses a change to a note's wording by anyone but its
+   author.
 2. **Official and Discussion are always separate.**
 3. **Nothing is official without a recorded approval** (who and when).
 4. **Nothing is ever hard-deleted.** Sections are archived, users are removed
@@ -100,9 +133,9 @@ printed in the terminal and saved in `.data/outbox/`.
 | `npm run dev` | Start the app for development |
 | `npm run build` / `npm start` | Production build and server |
 | `npm run lint` / `npm run typecheck` | Code checks |
-| `npm test` | Automated tests of the rules (sign-in, permissions, sections, official text, users) on the built-in database |
+| `npm test` | Automated tests of the rules (sign-in, permissions, sections, official text, users, notes, search, Today) on the built-in database |
 | `TEST_DATABASE_URL=postgres://... npm test` | The same tests on a real Postgres server |
-| `scripts/run-e2e.sh` | Browser test: starts the app on a fresh database and clicks through everything on computer and phone sizes. `scripts/run-e2e.sh start` tests a production build. Needs Playwright with Chromium. |
+| `scripts/run-e2e.sh` | Browser tests: for each phase, starts the app on a fresh database and clicks through everything on computer and phone sizes. `scripts/run-e2e.sh start` tests a production build; add names (`phase1 phase2`) to run only some. Needs Playwright with Chromium. |
 | `npm run db:generate` | Create a migration after changing `src/db/schema.ts` |
 | `npm run db:setup` | Apply migrations and first-time data to the database in `DATABASE_URL` |
 
@@ -135,12 +168,16 @@ settings, never in files.
 - **Rich text** is stored as the editor's JSON, never as HTML. It is checked
   on the server before saving (`src/lib/richtext.ts`) and drawn by our own
   component (`src/components/RichText.tsx`).
+- **Notes** (`src/lib/notes.ts`) belong to the Daily Log of the US Central
+  day they were written. Filing a note under a section is a link, never a
+  copy. Removing is a mark on the note, never a delete.
 - **Dates** are always shown in US Central time (`src/lib/time.ts`).
 
 ```
 src/app/            pages and actions (login, the signed-in pages, settings)
-src/components/     sidebar, editor, section manager, rich text
-src/lib/            the rules: auth, sections, official text, users, search
+src/components/     sidebar, editor, section manager, rich text, notes
+src/lib/            the rules: auth, sections, official text, users, notes,
+                    settings, Today, search
 src/db/             schema, database connection, first-time data
 drizzle/            SQL migrations
 tests/              automated tests of the rules

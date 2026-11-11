@@ -54,6 +54,20 @@ secrets here.
   `<RichText>`. Never store or inject HTML.
 - Dates: format with `src/lib/time.ts` (US Central time).
 
+## What the database guarantees for notes (Phase 2)
+
+These hold whatever the app code does (see `drizzle/0003` and `0004`):
+
+- Only a note's author, acting as a signed-in user, can change its wording.
+  The earlier wording is saved and the "edited" time is stamped by a trigger.
+- A note's author, time and day never change. Its day always matches its
+  time in US Central time. (The time itself is supplied by the app: tests
+  pass a fixed `now` to `addNote`. The database does not force it to "now".)
+- Filings (`note_sections`) are add-only records; taking one out sets
+  `removed_at` once. Filing again adds a new row.
+- Comments and earlier wordings can never be changed. Nothing can be deleted.
+- Stored text must be a document (`type: "doc"` with a `content` array).
+
 ## When you add a database table
 
 1. Add it to `src/db/schema.ts` with `created_at`, `created_by`, `updated_at`,
@@ -73,8 +87,11 @@ TEST_DATABASE_URL=postgres://... npm test   # when a Postgres server is availabl
 npm run build && scripts/run-e2e.sh start   # browser test, computer and phone sizes
 ```
 
-Add tests for new rules in `tests/` and new screens in `e2e/`. Look at the
-phone screenshots yourself before showing them to the owner.
+Add tests for new rules in `tests/` and new screens in `e2e/` (one
+`e2e/phaseN.cjs` per phase; an optional `e2e/phaseN.seed.ts` puts test-only
+starting data into the fresh database). For each database rule, make sure a
+test fails when the rule is taken away. Look at the phone screenshots
+yourself before showing them to the owner.
 
 ## Things worth knowing
 
