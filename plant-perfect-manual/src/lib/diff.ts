@@ -4,6 +4,8 @@
  * of official text, the same way on both screens.
  */
 
+import { type RichDoc, docToText, sameDoc } from "./richtext";
+
 export type DiffPart = { kind: "same" | "added" | "removed"; text: string };
 
 /** Above this many words on either side, comparing word by word is skipped. */
@@ -60,4 +62,26 @@ export function diffWords(before: string, after: string): DiffPart[] | null {
   while (i < a.length) push("removed", a[i++]);
   while (j < b.length) push("added", b[j++]);
   return parts;
+}
+
+/** How two versions of official text differ, for the screen to describe. */
+export type DocComparison =
+  /** Nothing differs. */
+  | { kind: "same" }
+  /** The words are the same; only formatting or layout (bold, a table, a list) differs. */
+  | { kind: "formatting" }
+  | { kind: "words"; parts: DiffPart[] }
+  /** Too long to compare word by word: show both texts in full instead. */
+  | { kind: "tooLong" };
+
+/** Compare official text before and after a change. `before` is null when there was none. */
+export function compareDocs(before: RichDoc | null, after: RichDoc): DocComparison {
+  const beforeText = before ? docToText(before) : "";
+  const afterText = docToText(after);
+  if (beforeText === afterText) {
+    if (!before) return { kind: "same" };
+    return sameDoc(before, after) ? { kind: "same" } : { kind: "formatting" };
+  }
+  const parts = diffWords(beforeText, afterText);
+  return parts ? { kind: "words", parts } : { kind: "tooLong" };
 }

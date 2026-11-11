@@ -16,7 +16,7 @@ import {
 import { logActivity } from "./activity";
 import { type BusinessTag, parseBusinessTag } from "./business";
 import { type CommentView, businessFilterTags } from "./notes";
-import { addVersion, joinNames, latestVersionRow } from "./official";
+import { addVersion, approvalLine, joinNames, latestVersionRow } from "./official";
 import { type Actor, AppError, assertCan, can } from "./permissions";
 import { type RichDoc, docToText, isEmptyDoc, sameDoc, sanitizeDoc } from "./richtext";
 import {
@@ -34,7 +34,7 @@ import {
   renameSectionIn,
 } from "./sections";
 import { centralDay } from "./sqltime";
-import { addDays, centralDateKey } from "./time";
+import { addDays, centralDateKey, formatDate } from "./time";
 
 /**
  * Proposals and approvals.
@@ -367,6 +367,148 @@ export function canApproveToo(view: ProposalView, actor: Actor): boolean {
     view.approvals.length === 1 &&
     !view.approvals.some((a) => a.userId === actor.id)
   );
+}
+
+/**
+ * Which approve buttons an open proposal shows this person.
+ *  - `approve`: they have not approved yet ("Approve").
+ *  - `alone`: after their approval it would still be waiting for someone
+ *    else, so they may also make it official without waiting
+ *    ("Approve on my own"). For the proposer this is the only one of the two.
+ */
+export function approveChoices(
+  view: ProposalView,
+  actor: Actor,
+  approvers: { id: string }[],
+): { approve: boolean; alone: boolean } {
+  if (view.status !== "open" || !can(actor, "approve")) return { approve: false, alone: false };
+  const approved = new Set(view.approvals.map((a) => a.userId));
+  const mine = approved.has(actor.id);
+  const counted =
+    approvers.filter((owner) => owner.id !== actor.id && approved.has(owner.id)).length + 1;
+  return { approve: !mine, alone: counted < 2 };
+}
+
+/** The people an open proposal is still waiting for. */
+export function waitingFor(view: ProposalView, approvers: { id: string; name: string }[]): string[] {
+  if (view.status !== "open") return [];
+  const approved = new Set(view.approvals.map((a) => a.userId));
+  return approvers.filter((owner) => !approved.has(owner.id)).map((owner) => owner.name);
+}
+
+/** True when this person could endorse it: allowed to, and has neither approved nor endorsed it. */
+export function canEndorse(view: ProposalView, actor: Actor): boolean {
+  return (
+    (view.status === "open" || view.status === "approved") &&
+    can(actor, "endorse") &&
+    !view.approvals.some((a) => a.userId === actor.id) &&
+    !view.endorsements.some((e) => e.userId === actor.id)
+  );
+}
+
+/** True while the proposer may still change it: open, and nobody else has approved or endorsed. */
+export function canEditProposal(view: ProposalView, actor: Actor): boolean {
+  return (
+    view.status === "open" &&
+    can(actor, "propose") &&
+    view.proposedById === actor.id &&
+    !view.approvals.some((a) => a.userId !== actor.id) &&
+    !view.endorsements.some((e) => e.userId !== actor.id)
+  );
+}
+
+export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
+  open: "Waiting for approval",
+  approved: "Approved",
+  declined: "Declined",
+  withdrawn: "Withdrawn",
+};
+
+/**
+ * One line saying where a proposal stands, e.g. "Waiting for approval",
+ * "Approved by Kale and Casey, Nov 12, 2026", "Declined by Casey, Nov 12, 2026".
+ */
+export function statusLine(view: ProposalView): string {
+  if (view.status === "open") return PROPOSAL_STATUS_LABELS.open;
+  if (view.status === "approved") return approvalLine(view.approvals) ?? PROPOSAL_STATUS_LABELS.approved;
+  const verb = view.status === "declined" ? "Declined" : "Withdrawn";
+  const by = view.decidedByName ? ` by ${view.decidedByName}` : "";
+  return `${verb}${by}${view.decidedAt ? `, ${formatDate(view.decidedAt)}` : ""}`;
+}
+
+/**
+ * The title to show in lists. A direct edit or restore has no written title,
+ * so its section is added: "Edited directly: 2.1 Wages".
+ */
+export function displayTitle(
+  view: Pick<ProposalView, "title" | "direct" | "sectionId">,
+  tree: SectionNode[],
+): string {
+  return view.direct ? `${view.title}: ${sectionLabel(tree, view.sectionId)}` : view.title;
+}
+
+export type TextChange = {
+  /** The official text the proposed text is compared with (null: there was none). */
+  before: RichDoc | null;
+  after: RichDoc;
+  /**
+   * What `before` is: the official text as it is now (open proposals), the
+   * text this replaced (approved), or the text at the time it was proposed
+   * (declined and withdrawn).
+   */
+  basis: "now" | "replaced" | "then";
+  /** Open proposals: the official text has changed since this was proposed. */
+  changedSince: boolean;
+  /** The section's current official version, to send back as `seen.currentVersionId`. */
+  currentVersionId: string | null;
+};
+
+/** What a text proposal changes. Null for structure proposals. */
+export async function loadTextChange(q: Queryable, view: ProposalView): Promise<TextChange | null> {
+  if (view.type === "structure" || !view.sectionId || !view.proposedOfficial) return null;
+  const current = await latestVersionRow(q, view.sectionId);
+  const currentVersionId = current?.id ?? null;
+  const after = view.proposedOfficial;
+  if (view.status === "open") {
+    return {
+      before: (current?.content as RichDoc | undefined) ?? null,
+      after,
+      basis: "now",
+      changedSince: currentVersionId !== view.baseVersionId,
+      currentVersionId,
+    };
+  }
+  if (view.status === "approved" && view.resultVersion) {
+    const [replaced] = await q
+      .select({ content: officialVersions.content })
+      .from(officialVersions)
+      .where(
+        and(
+          eq(officialVersions.sectionId, view.sectionId),
+          eq(officialVersions.version, view.resultVersion.version - 1),
+        ),
+      );
+    return {
+      before: (replaced?.content as RichDoc | undefined) ?? null,
+      after,
+      basis: "replaced",
+      changedSince: false,
+      currentVersionId,
+    };
+  }
+  const [base] = view.baseVersionId
+    ? await q
+        .select({ content: officialVersions.content })
+        .from(officialVersions)
+        .where(eq(officialVersions.id, view.baseVersionId))
+    : [];
+  return {
+    before: (base?.content as RichDoc | undefined) ?? null,
+    after,
+    basis: "then",
+    changedSince: false,
+    currentVersionId,
+  };
 }
 
 /** Proposals (not direct edits) made from each of these notes. */

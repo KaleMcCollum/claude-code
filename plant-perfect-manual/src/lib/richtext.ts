@@ -172,6 +172,28 @@ export function docToText(doc: RichDoc): string {
     .trim();
 }
 
+/**
+ * A document made from text typed in a plain multi-line box: one paragraph
+ * per line, every line exactly as typed.
+ */
+export function textToDoc(text: string): RichDoc {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  return {
+    type: "doc",
+    content: lines.map((line) =>
+      line.length > 0 ? { type: "paragraph", content: [{ type: "text", text: line }] } : { type: "paragraph" },
+    ),
+  };
+}
+
+/**
+ * The other way round, to put such a document back into a plain box for
+ * editing: one line per top-level block, nothing trimmed.
+ */
+export function docToLines(doc: RichDoc): string {
+  return doc.content.map((node) => nodeText(node).replace(/\n$/, "")).join("\n");
+}
+
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (isRecord(value)) {
