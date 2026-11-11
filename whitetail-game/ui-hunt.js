@@ -104,29 +104,174 @@
   // Deer are always drawn facing the hunter. Distance picks the sprite size (each step is half the last).
   const poseFor = (g) => (g.pose === 'down' ? 'down' : g.pose === 'walk' ? 'walk' : 'alert');
 
+  /* ---- the country in front of the stand, read off the real map ----
+     You face the way deer come from. Every pixel of ground is the actual tile out there (your food plot shows up
+     green where you planted it), and trees, cattails, corn and buildings stand where the map has them. */
+  const FOV = 50 * Math.PI / 180; // half-angle: the view is 100 degrees wide
+  const YD = 35;                  // yards per map tile
+  const GROUND = {};
+  GROUND[T.WATER] = GROUND[T.CREEK] = GROUND[T.POND] = [['#5f7f9c', '#6a8aa6'], ['#566f88', '#607a92']];
+  GROUND[T.SLOUGH] = [['#8a8048', '#7a7040'], ['#7c7248', '#6e6640']];
+  GROUND[T.TIMBER] = [['#7a5a34', '#6a4c2c'], ['#5e4a36', '#52402e']];
+  GROUND[T.BELT] = [['#5c5230', '#50482a'], ['#52482e', '#484028']];
+  GROUND[T.BRUSH] = [['#80603a', '#705432'], ['#665038', '#5a4630']];
+  GROUND[T.YOUNGTREES] = [['#8a8a4e', '#7e7e46'], ['#807a52', '#746e4a']];
+  GROUND[T.PRAIRIE] = [['#b49a5a', '#a48a4e'], ['#a48e5e', '#968254']];
+  GROUND[T.HAY] = [['#9aa054', '#8e944c'], ['#948e60', '#888256']];
+  GROUND[T.PASTURE] = [['#8c9a52', '#80904a'], ['#8c8a5e', '#807e54']];
+  GROUND[T.CORN] = [['#c4aa5c', '#b49a50'], ['#b09a62', '#a08c58']];
+  GROUND[T.SOY] = [['#b08e48', '#a08040'], ['#8e7c58', '#827050']];
+  GROUND[T.WHEAT] = [['#d0ba76', '#c2ac6a'], ['#b8a878', '#aa9a6c']];
+  GROUND[T.SUNFLOWER] = [['#6a5632', '#5c4a2c'], ['#544630', '#4a3e2a']];
+  GROUND[T.ROAD] = [['#9a8e7e', '#8e8272'], ['#9a8e7e', '#8e8272']];
+  GROUND[T.YARD] = GROUND[T.TOWN] = [['#8a8468', '#7e785e'], ['#8a8468', '#7e785e']];
+  GROUND[T.PLOT] = [['#5e9a3e', '#4f8a34'], ['#6a8e44', '#5c803c']];
+  GROUND[T.PLOT_NEW] = [['#6e5038', '#5e4430'], ['#6e5038', '#5e4430']];
+  const SNOW = { def: ['#e8e4dc', '#dad6ce'], water: ['#b8c4cc', '#aab8c2'], woods: ['#cfc8bc', '#bdb6aa'], plot: ['#c8d4b8', '#b6c4a6'], tall: ['#d8cfb4', '#cabfa2'], road: ['#c4bcb0', '#b6aea2'] };
+  const hx = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const distAtRow = (y) => (y <= HORIZON + 4 ? 9999 : 32 * 61 / (y - HORIZON - 4) - 12);
+
+  const t0Night = (H) => H.now < H.plan.sun.rise - 0.6 || H.now > H.plan.sun.set + 0.6;
+
+  function buildScene(H) {
+    const w = Wd(), st = S();
+    const snow = st.day > 62, nov = st.day >= 31;
+    const face = Math.max(0, WT.DIRS.indexOf(H.stand.r.deerFrom)) * Math.PI / 4; // 0 = north, clockwise
+    const coverAt = (tx, ty) => { const x = Math.floor(tx), y = Math.floor(ty); return x < 0 || y < 0 || x >= w.W || y >= w.H ? T.PRAIRIE : w.cover[y * w.W + x]; };
+    const sx0 = H.stand.x + 0.5, sy0 = H.stand.y + 0.5;
+    const colorsFor = (c) => {
+      if (!snow) return (GROUND[c] || GROUND[T.PRAIRIE])[nov ? 1 : 0];
+      if (c === T.WATER || c === T.CREEK || c === T.POND) return SNOW.water;
+      if (c === T.TIMBER || c === T.BELT || c === T.BRUSH) return SNOW.woods;
+      if (c === T.PLOT) return SNOW.plot;
+      if (c === T.CORN || c === T.SLOUGH || c === T.PRAIRIE) return SNOW.tall;
+      if (c === T.ROAD) return SNOW.road;
+      return SNOW.def;
+    };
+    // ground: one lookup per pixel pair, hazed toward the horizon
+    const g = document.createElement('canvas'); g.width = SW; g.height = SH;
+    const gx = g.getContext('2d');
+    const haze = snow ? [214, 216, 220] : [176, 176, 170];
+    for (let y = HORIZON; y < SH; y++) {
+      const d = Math.min(900, distAtRow(y));
+      const f = Math.min(0.45, d / 1100);
+      for (let x = 0; x < SW; x += 2) {
+        const a = (x + 1 - SW / 2) / (SW / 2 - 14), ang = face + a * FOV;
+        const tx = sx0 + Math.sin(ang) * d / YD, ty = sy0 - Math.cos(ang) * d / YD;
+        const c = coverAt(tx, ty);
+        const pal = colorsFor(c);
+        // texture follows the ground: finer than a tile up close, row-like in crops
+        const rowCrop = c === T.CORN || c === T.SOY || c === T.PLOT_NEW || c === T.SUNFLOWER;
+        const k = rowCrop ? (Math.floor(tx * 6) & 1) : WT.hash2(Math.floor(tx * 5), Math.floor(ty * 5), 7) < 0.5 ? 0 : 1;
+        const [r, gg, b] = hx(pal[k]);
+        gx.fillStyle = `rgb(${Math.round(r + (haze[0] - r) * f)},${Math.round(gg + (haze[1] - gg) * f)},${Math.round(b + (haze[2] - b) * f)})`;
+        gx.fillRect(x, y, 2, 1);
+      }
+    }
+    // things standing on the ground, each at its real distance and bearing
+    const feats = [];
+    const R = 15;
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const tx = H.stand.x + dx, ty = H.stand.y + dy;
+      if (tx < 0 || ty < 0 || tx >= w.W || ty >= w.H) continue;
+      const c = w.cover[ty * w.W + tx];
+      const n = c === T.TIMBER ? 2 : c === T.BELT || c === T.BRUSH || c === T.YOUNGTREES || c === T.SLOUGH || c === T.YARD ? 1 : c === T.CORN || c === T.PRAIRIE || c === T.PLOT || c === T.SUNFLOWER ? 2 : 0;
+      for (let k = 0; k < n; k++) {
+        const h1 = WT.hash2(tx, ty, 11 + k), h2 = WT.hash2(tx, ty, 23 + k), h3 = WT.hash2(tx, ty, 37 + k);
+        const fx = dx + h1 - 0.5, fy = dy + h2 - 0.5;
+        const dist = Math.hypot(fx, fy) * YD;
+        if (dist < 14 || dist > 520) continue;
+        let da = Math.atan2(fx, -fy) - face; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        const a = da / FOV; if (Math.abs(a) > 1.12) continue;
+        let kind = c === T.TIMBER ? 'tree' : c === T.BELT ? 'spruce' : c === T.BRUSH ? 'bush' : c === T.YOUNGTREES ? 'sapling' : c === T.SLOUGH ? 'cattail' : c === T.YARD ? (h3 < 0.3 ? 'barn' : h3 < 0.5 ? 'bin' : null) : c === T.CORN ? 'corn' : c === T.SUNFLOWER ? 'corn' : c === T.PLOT ? 'forage' : 'grass';
+        if (!kind) continue;
+        if ((kind === 'grass' || kind === 'forage') && dist > 90) continue;      // small stuff only reads up close
+        if (kind === 'corn' && dist > 160) continue;
+        if (kind === 'tree' && dist < 45 && Math.abs(a) < 0.35 && h3 < 0.7) continue; // keep the shooting lane open
+        if (kind === 'bush' && dist < 80 && Math.abs(a) < 0.6) continue;
+        if ((kind === 'cattail' || kind === 'corn') && dist < 40 && Math.abs(a) < 0.5) continue;
+        feats.push({ dist, a, kind, h: h3, v: h1 });
+      }
+    }
+    feats.sort((p, q) => q.dist - p.dist);
+    return { ground: g, feats, snow, nov, key: `${snow}:${nov}` };
+  }
+
+  // one standing thing, sized by the same perspective rule as the deer
+  function drawFeat(ctx, f, sc, lowLight) {
+    const s = persp(f.dist), x = Math.round(SW / 2 + f.a * (SW / 2 - 14)), gy = Math.round(groundY(f.dist));
+    const px = (v) => Math.max(1, Math.round(v * s));
+    const R = (c, x0, y0, wd, hg) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x0), Math.round(y0), Math.max(1, Math.round(wd)), Math.max(1, Math.round(hg))); };
+    const snow = sc.snow, bare = sc.nov;
+    switch (f.kind) {
+      case 'tree': {
+        const hgt = Math.min(170, (230 + f.h * 110) * s), tw = px(13 + f.h * 8);
+        const bark = f.h < 0.5 ? '#3a2c20' : '#46362a';
+        R(bark, x - tw / 2, gy - hgt, tw, hgt); if (tw >= 3) R('#2a2018', x + tw / 2 - Math.max(1, tw / 4), gy - hgt, Math.max(1, tw / 4), hgt);
+        if (snow && tw >= 3) R('#e8e4dc', x - tw / 2, gy - 1, tw, 1);
+        const top = gy - hgt, cw = hgt * 0.5;
+        if (bare) { // bare limbs
+          for (let k = 0; k < 4; k++) { const by = top + hgt * (0.12 + k * 0.13), len = cw * (0.5 - k * 0.07), dir = k % 2 ? 1 : -1; for (let q = 0; q < len; q++) R(bark, x + dir * q, by - q * 0.6, Math.max(1, tw / 4), Math.max(1, tw / 4)); }
+        } else { // October leaves
+          const cols = f.h < 0.33 ? ['#a8682e', '#8c5226'] : f.h < 0.66 ? ['#b88a30', '#96702a'] : ['#8a4a2a', '#6e3a22'];
+          R(cols[1], x - cw / 2, top - cw * 0.15, cw, cw * 0.7); R(cols[0], x - cw * 0.38, top - cw * 0.3, cw * 0.6, cw * 0.5); R(cols[1], x - cw * 0.6, top + cw * 0.1, cw * 0.4, cw * 0.35);
+        }
+        break;
+      }
+      case 'spruce': {
+        const hgt = Math.min(150, (150 + f.h * 60) * s), wd = hgt * 0.42;
+        R('#3a2c20', x - px(3), gy - hgt * 0.15, px(6), hgt * 0.15);
+        const col = snow ? '#3a4a3a' : '#2e4a30', col2 = snow ? '#2c3a2e' : '#243c28';
+        for (let k = 0; k < 6; k++) { const yy = gy - hgt * 0.12 - (hgt * 0.88) * (k + 1) / 6, ww = wd * (1 - k / 6.5); R(k % 2 ? col2 : col, x - ww / 2, yy, ww, hgt * 0.88 / 6 + 1); if (snow && ww >= 3) R('#e8e4dc', x - ww / 2, yy, ww * 0.6, 1); }
+        break;
+      }
+      case 'bush': { // a rounded clump, about waist high
+        const hgt = (24 + f.h * 18) * s, wd = hgt * 1.5, c1 = bare ? '#5e4a36' : '#8a5a3a', c2 = bare ? '#4a3a2c' : '#70462c', c3 = bare ? '#6e5a44' : '#a06c40';
+        R(c2, x - wd / 2, gy - hgt * 0.55, wd, hgt * 0.55); R(c1, x - wd * 0.4, gy - hgt * 0.85, wd * 0.8, hgt * 0.4); R(c1, x - wd * 0.25, gy - hgt, wd * 0.5, hgt * 0.25);
+        R(c3, x - wd * 0.3, gy - hgt * 0.8, wd * 0.25, Math.max(1, hgt * 0.15)); R(c3, x + wd * 0.05, gy - hgt * 0.5, wd * 0.2, Math.max(1, hgt * 0.12));
+        if (bare) for (let k = -1; k <= 1; k++) R(c2, x + k * wd * 0.22, gy - hgt * 1.25, Math.max(1, px(1.5)), hgt * 0.3);
+        if (snow) R('#e8e4dc', x - wd * 0.25, gy - hgt, wd * 0.45, 1);
+        break;
+      }
+      case 'sapling': { const hgt = (55 + f.h * 30) * s; R('#4a3a28', x, gy - hgt, px(2), hgt); R(bare ? '#5a4a34' : '#8a9a4a', x - hgt * 0.18, gy - hgt, hgt * 0.36, hgt * 0.4); break; }
+      case 'cattail': { const hgt = (50 + f.h * 20) * s; for (let k = -2; k <= 2; k++) { R(snow ? '#b8a878' : '#9a8a4c', x + k * px(5), gy - hgt * (0.8 + ((k + 2) % 3) * 0.1), px(2), hgt); R('#4a3020', x + k * px(5), gy - hgt * (0.9 + ((k + 2) % 3) * 0.1), px(3), px(8)); } break; }
+      case 'corn': { const hgt = (70 + f.h * 14) * s; for (let k = -1; k <= 1; k++) { R(snow ? '#c8b888' : '#b89a4a', x + k * px(9), gy - hgt, px(2), hgt); R(snow ? '#b8a878' : '#a0863e', x + k * px(9) - px(4), gy - hgt * 0.6, px(9), px(2)); R(snow ? '#b8a878' : '#a0863e', x + k * px(9) - px(3), gy - hgt * 0.35, px(8), px(2)); } break; }
+      case 'grass': { const hgt = (16 + f.h * 12) * s; for (let k = -1; k <= 1; k++) R(snow ? '#c8bc98' : '#c2a862', x + k * px(4), gy - hgt * (0.7 + (k + 1) * 0.15), px(1.5), hgt); break; }
+      case 'forage': { const hgt = (9 + f.h * 6) * s; for (let k = -1; k <= 1; k++) { R(snow ? '#9ab08a' : '#3f7a2c', x + k * px(6), gy - hgt, px(5), hgt); R(snow ? '#b6c8a6' : '#78b452', x + k * px(6), gy - hgt, px(3), Math.max(1, hgt * 0.4)); } break; }
+      case 'barn': { const hgt = 260 * s, wd = 420 * s; R('#7a2e22', x - wd / 2, gy - hgt, wd, hgt); R(snow ? '#e8e4dc' : '#4a3a34', x - wd / 2 - 1, gy - hgt * 1.25, wd + 2, hgt * 0.28); R('#2a1a16', x - wd * 0.1, gy - hgt * 0.5, wd * 0.2, hgt * 0.5); break; }
+      case 'bin': { const hgt = 220 * s, wd = 170 * s; R('#b0b0b4', x - wd / 2, gy - hgt, wd, hgt); R('#8e8e94', x + wd * 0.2, gy - hgt, wd * 0.3, hgt); R(snow ? '#e8e4dc' : '#7a7a80', x - wd * 0.4, gy - hgt * 1.15, wd * 0.8, hgt * 0.16); break; }
+    }
+    void lowLight;
+  }
+
   function drawScene(canvas, H, t) {
     if (canvas.width !== SW) { canvas.width = SW; canvas.height = SH; }
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     const st = S();
+    const key = `${st.day > 62}:${st.day >= 31}`;
+    if (!H._scene || H._scene.key !== key) Object.defineProperty(H, '_scene', { value: buildScene(H), configurable: true, enumerable: false });
+    const sc = H._scene;
     const sky = skyColors(H);
     ctx.fillStyle = sky[0]; ctx.fillRect(0, 0, SW, 22);
     ctx.fillStyle = sky[1]; ctx.fillRect(0, 22, SW, 20);
     ctx.fillStyle = sky[2]; ctx.fillRect(0, 42, SW, HORIZON - 42);
-    // distant tree line / shelterbelt
-    const far = st.day > 62 ? '#6a6660' : '#3e3428';
-    for (let x = 0; x < SW; x += 3) {
-      const h = 3 + Math.floor(WT.hash2(x, 5, H.stand.x) * 5) + (H.stand.r.visibility < 0.5 ? 6 : 0);
-      ctx.fillStyle = far; ctx.fillRect(x, HORIZON - h, 3, h);
+    const night = t0Night(H);
+    if (night) { ctx.fillStyle = '#d8dcf0'; for (let n = 0; n < 26; n++) ctx.fillRect((n * 53 + H.stand.x * 7) % SW, (n * 29 + H.stand.y * 3) % 44, 1, 1); }
+    else {
+      // a few slow clouds
+      ctx.fillStyle = 'rgba(255,255,255,.28)';
+      for (let n = 0; n < 4; n++) { const cx = ((n * 71 + H.stand.x * 13 + Math.floor(t / 2600)) % (SW + 60)) - 30, cy = 8 + (n * 11) % 26, cw = 22 + (n * 9) % 18; ctx.fillRect(cx, cy, cw, 3); ctx.fillRect(cx + 4, cy - 2, cw - 10, 2); }
+      // low sun on the horizon at first and last light
+      const sun = H.plan.sun, dawn = Math.abs(H.now - sun.rise) < 0.8, dusk = Math.abs(H.now - sun.set) < 0.8;
+      if (dawn || dusk) { const sx = dawn ? SW * 0.72 : SW * 0.28, sy = HORIZON - 6 - Math.round(((dawn ? H.now - sun.rise : sun.set - H.now) + 0.8) * 8); ctx.fillStyle = 'rgba(255,214,150,.35)'; ctx.fillRect(sx - 9, sy - 3, 18, 6); ctx.fillStyle = '#ffe2a8'; ctx.fillRect(sx - 4, sy - 4, 8, 8); ctx.fillRect(sx - 5, sy - 3, 10, 6); }
     }
-    // ground bands, nearer = taller bands
-    const gc = groundColors(H);
-    let y = HORIZON, k = 0;
-    while (y < SH) { const bh = Math.max(1, Math.floor((y - HORIZON) / 6) + 1); ctx.fillStyle = gc[k % 2]; ctx.fillRect(0, y, SW, bh); y += bh; k++; }
-    // corn rows / stubble lines near the bottom
-    if (gc === SCENE.corn) for (let x = 4; x < SW; x += 14) { ctx.fillStyle = '#8c7a40'; ctx.fillRect(x, 100, 2, 35); }
-    if (st.weather.precip === 'snow') { ctx.fillStyle = '#ffffff'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 90)) % SW, (n * 23 + Math.floor(t / 60)) % SH, 1, 1); }
-    if (st.weather.precip === 'rain') { ctx.fillStyle = '#9fb3c8'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 40)) % SW, (n * 23 + Math.floor(t / 25) * 3) % SH, 1, 3); }
+    // far hills and tree line beyond anything you can shoot to
+    const far = sc.snow ? '#8e8c8a' : '#5a5246', far2 = sc.snow ? '#a6a4a2' : '#746c5c';
+    for (let x = 0; x < SW; x += 2) { const h2 = 2 + Math.round(3 * Math.sin(x / 31 + H.stand.x) + 2 * Math.sin(x / 13 + H.stand.y)); ctx.fillStyle = far2; ctx.fillRect(x, HORIZON - 3 - h2, 2, h2 + 3); }
+    for (let x = 0; x < SW; x += 3) { const h = 2 + Math.floor(WT.hash2(x, 5, H.stand.x) * 4); ctx.fillStyle = far; ctx.fillRect(x, HORIZON - h, 3, h); }
+    ctx.drawImage(sc.ground, 0, 0);
+    const gc = [`rgb(${hx(GROUND[T.BRUSH][sc.nov ? 1 : 0][0]).join(',')})`];
     // deer, far to near
     const items = [];
     const lf = WT.lightFactor(H);
@@ -153,15 +298,26 @@
     }
     items.sort((p, q) => q.dist - p.dist);
     const hits = [];
+    let fi = 0;
+    // Anything standing between you and a deer with a clear shot is drawn faint, so a tree never hides your target.
+    const HW = { tree: 11, spruce: 36, bush: 28, barn: 210, bin: 85, cattail: 13, corn: 13, sapling: 10 };
+    const blocks = (f) => {
+      if (!HW[f.kind]) return false;
+      const fx = SW / 2 + f.a * (SW / 2 - 14), hw = HW[f.kind] * persp(f.dist) + 1;
+      return items.some((it) => it.g.clear && f.dist < it.dist && Math.abs(fx - it.x) < hw + it.w / 2);
+    };
+    const featsTo = (d) => { while (fi < sc.feats.length && sc.feats[fi].dist >= d) { const f = sc.feats[fi++]; if (blocks(f)) { ctx.globalAlpha = 0.25; drawFeat(ctx, f, sc); ctx.globalAlpha = 1; } else drawFeat(ctx, f, sc); } };
     for (const it of items) {
-      const { g, m, dist, ppiT: ppi, sc, spr, b } = it;
+      featsTo(it.dist); // everything farther than this deer goes behind it
+      const { g, m, dist, ppiT: ppi, sc: scl, spr, b } = it;
+      const sc2 = scl;
       const x = Math.round(it.x), gy = Math.round(groundY(dist));
-      const dw = Math.max(1, Math.round(spr.width * sc)), dh = Math.max(1, Math.round(spr.height * sc));
-      const dx = Math.round(x - spr.anchor.x * sc), dy = Math.round(gy - spr.anchor.y * sc);
+      const dw = Math.max(1, Math.round(spr.width * sc2)), dh = Math.max(1, Math.round(spr.height * sc2));
+      const dx = Math.round(x - spr.anchor.x * sc2), dy = Math.round(gy - spr.anchor.y * sc2);
       ctx.drawImage(spr, 0, 0, spr.width, spr.height, dx, dy, dw, dh);
       // brush between you and the deer: no clean shot
       if (!g.clear) { ctx.fillStyle = gc[0]; const bw = Math.max(1, Math.round(4 * ppi)); for (let k = -3; k <= 3; k++) ctx.fillRect(x + k * bw * 2, gy - Math.round((12 + (k & 1) * 4) * ppi), bw, Math.round(16 * ppi) + 1); }
-      const box = { id: m.deer.id, x0: dx + b.x0 * sc, y0: dy + b.y0 * sc, x1: dx + (b.x1 + 1) * sc, y1: dy + (b.y1 + 1) * sc };
+      const box = { id: m.deer.id, x0: dx + b.x0 * sc2, y0: dy + b.y0 * sc2, x1: dx + (b.x1 + 1) * sc2, y1: dy + (b.y1 + 1) * sc2 };
       hits.push(box);
       if (H.selected === m.deer.id) {
         ctx.fillStyle = '#ff6a1a';
@@ -170,6 +326,9 @@
         ctx.fillRect(X0, Y1, 3, 1); ctx.fillRect(X0, Y1 - 2, 1, 3); ctx.fillRect(X1 - 2, Y1, 3, 1); ctx.fillRect(X1, Y1 - 2, 1, 3);
       }
     }
+    featsTo(0);
+    if (st.weather.precip === 'snow') { ctx.fillStyle = '#ffffff'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 90)) % SW, (n * 23 + Math.floor(t / 60)) % SH, 1, 1); }
+    if (st.weather.precip === 'rain') { ctx.fillStyle = '#9fb3c8'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 40)) % SW, (n * 23 + Math.floor(t / 25) * 3) % SH, 1, 3); }
     // foreground: what you're sitting in
     const fg = st.day > 62 ? '#4a4038' : '#2e2418';
     const sid = H.sType.id;
