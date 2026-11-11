@@ -2,7 +2,7 @@
 /* Headless smoke test: plays a season of hunts through the game API. Usage: node tests/smoke.js [seed] */
 const path = require('path');
 globalThis.localStorage = { _s: {}, getItem(k) { return this._s[k] || null; }, setItem(k, v) { this._s[k] = String(v); }, removeItem(k) { delete this._s[k]; } };
-for (const f of ['config.js', 'sim.js', 'antlers.js', 'render.js', 'game.js']) require(path.join(__dirname, '..', f));
+for (const f of ['config.js', 'sim.js', 'antlers.js', 'deerart.js', 'game.js']) require(path.join(__dirname, '..', f));
 const WT = globalThis.WT;
 const seed = +process.argv[2] || 7;
 let t = Date.now();

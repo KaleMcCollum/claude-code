@@ -102,13 +102,15 @@
   .tile .cap { font-size: 17px; }
   .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
   .views figure { margin: 0; background: #ece7df; }
+  figure.hero { margin: 0; background: #f4f1ec; max-width: 420px; }
+  figure.hero canvas { width: 100%; image-rendering: pixelated; display: block; }
   .views figcaption { background: var(--wood-2); padding: 2px 6px; font-size: 16px; color: var(--ink-dim); }
   .views canvas { width: 100%; }
   .photo { position: relative; background: #111; }
   .photo canvas { width: 100%; }
   .sheet { overflow-x: auto; }
   .sheet table { border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 380px; width: 100%; }
-  .sheet th, .sheet td { padding: 2px 8px; text-align: right; border-bottom: 1px solid var(--wood-2); }
+  .sheet th, .sheet td { padding: 2px 8px; text-align: right; border-bottom: 1px solid var(--wood-2); white-space: nowrap; }
   .sheet th:first-child, .sheet td:first-child { text-align: left; color: var(--ink-dim); }
   .sheet tr.tot td { color: var(--cream); border-top: 2px solid var(--wood-3); }
 
@@ -142,7 +144,7 @@
 <script src="config.js"></script>
 <script src="sim.js"></script>
 <script src="antlers.js"></script>
-<script src="render.js"></script>
+<script src="deerart.js"></script>
 <script src="game.js"></script>
 <script src="ui-core.js"></script>
 <script src="ui-map.js"></script>

@@ -8,7 +8,6 @@
   const SW = 240, SH = 135; // scene pixels
   const HORIZON = 60;
   const groundY = (d) => HORIZON + 1500 / (d + 12);
-  const dispPpi = (d) => Math.min(2.4, 20 / Math.max(4, d));
 
   function findStand(pid, sid) {
     const d = S().parcels[pid];
@@ -99,16 +98,12 @@
     if (t > sun.set - 0.5) return ['#3a3a5a', '#9a6a6a', '#e08a50'];
     return ['#8a9ab0', '#a6b2c2', '#c4ccd4'];
   }
-  function yawFor(g, m) {
-    const s = Math.sign(g.x1 - g.x0) || 1;
-    const base = s > 0 ? -90 : 90;
-    if (g.pose === 'down') return base + (m.deer.id % 2 ? 25 : -25);
-    if (g.pose === 'alert') return base * 0.4;
-    const k = g.p < 0.35 ? 0.35 : g.p > 0.7 ? -0.35 : 0;
-    return k > 0 ? base * (1 - k) : base + (base > 0 ? 1 : -1) * 35 * -k;
-  }
+  // Deer are always drawn facing the hunter. Distance picks the sprite size (each step is half the last).
+  const lodFor = (dist) => (dist <= 22 ? 1 : dist <= 55 ? 2 : dist <= 130 ? 3 : 4);
+  const poseFor = (g) => (g.pose === 'down' ? 'down' : g.pose === 'walk' ? 'walk' : 'alert');
 
   function drawScene(canvas, H, t) {
+    if (canvas.width !== SW) { canvas.width = SW; canvas.height = SH; }
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     const st = S();
@@ -138,26 +133,24 @@
     const hits = [];
     for (const it of items) {
       const { g, m, dist } = it;
-      const ppi = dispPpi(dist);
+      const lod = lodFor(dist), ppi = WT.ART_PPI / Math.pow(2, lod);
       const x = Math.round(SW / 2 + (g.x + m.dx) * (SW / 2 - 14));
       const gy = Math.round(groundY(dist));
-      const size = Math.ceil(110 * ppi) + 4;
-      const yaw = Math.round(yawFor(g, m) / 15) * 15;
-      const step = g.pose === 'walk' ? Math.floor(t / 300) % 2 : 0;
-      const spr = UI.sprite(`hv${m.deer.id}:${g.pose}:${yaw}:${ppi.toFixed(2)}:${step}:${lf < 1 ? 'l' : 'd'}`, () => WT.renderDeer(m.deer, { W: size, H: size, scale: ppi, yaw, elev: H.sType.kind === 'mobile' && H.sType.id === 'ground' ? 1 : 7, center: [0, 30, 0], pose: { head: g.pose, step: step * 0.5 }, day: st.day, mode: lf < 1 ? 'low' : 'day' }));
-      const dx = x - size / 2, dy = gy - size / 2 - 30 * ppi;
-      ctx.drawImage(spr, Math.round(dx), Math.round(dy));
-      if (!g.clear) { ctx.fillStyle = gc[0]; for (let bx = -6; bx < 8; bx += 2) ctx.fillRect(x + bx * ppi * 3, gy - 14 * ppi - (bx % 4 ? 2 : 0), Math.max(1, ppi * 4), 14 * ppi + 2); }
-      const b = spr.bounds || { x0: 0, y0: 0, x1: size, y1: size };
+      const pose = poseFor(g);
+      const step = pose === 'walk' ? Math.floor(t / 300) % 2 : 0;
+      const spr = UI.sprite(`hv${m.deer.id}:${m.deer.age}:${lod}:${pose}:${step}:${lf < 1 ? 'l' : 'd'}`, () => WT.deerSprite(m.deer, { lod, frame: 'full', pose, step, day: st.day, mode: lf < 1 ? 'low' : 'day' }));
+      const dx = x - spr.anchor.x, dy = gy - spr.anchor.y;
+      ctx.drawImage(spr, dx, dy);
+      // brush between you and the deer: no clean shot
+      if (!g.clear) { ctx.fillStyle = gc[0]; const bw = Math.max(1, Math.round(4 * ppi)); for (let k = -3; k <= 3; k++) ctx.fillRect(x + k * bw * 2, gy - Math.round((12 + (k & 1) * 4) * ppi), bw, Math.round(16 * ppi) + 1); }
+      const b = spr.bounds || { x0: 0, y0: 0, x1: spr.width, y1: spr.height };
       const box = { id: m.deer.id, x0: dx + b.x0, y0: dy + b.y0, x1: dx + b.x1 + 1, y1: dy + b.y1 + 1 };
       hits.push(box);
       if (H.selected === m.deer.id) {
         ctx.fillStyle = '#ff6a1a';
-        const c = (X, Y, sx, sy) => { ctx.fillRect(X, Y, 3 * sx || 1, 1); ctx.fillRect(X, Y, 1, 3 * sy || 1); };
         const X0 = Math.round(box.x0) - 2, Y0 = Math.round(box.y0) - 2, X1 = Math.round(box.x1) + 1, Y1 = Math.round(box.y1) + 1;
         ctx.fillRect(X0, Y0, 3, 1); ctx.fillRect(X0, Y0, 1, 3); ctx.fillRect(X1 - 2, Y0, 3, 1); ctx.fillRect(X1, Y0, 1, 3);
         ctx.fillRect(X0, Y1, 3, 1); ctx.fillRect(X0, Y1 - 2, 1, 3); ctx.fillRect(X1 - 2, Y1, 3, 1); ctx.fillRect(X1, Y1 - 2, 1, 3);
-        void c;
       }
     }
     // foreground: what you're sitting in
@@ -178,13 +171,15 @@
   }
 
   // Binoculars (two circles) or scope (one circle + crosshair) framed on head, neck and chest
+  const OW = 176, OH = 99; // the optics view is drawn bigger: the full-size head fills the lens
   function drawOptic(canvas, H, kind, optic, t) {
+    if (canvas.width !== OW) { canvas.width = OW; canvas.height = OH; }
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     const st = S();
     const gc = groundColors(H), sky = skyColors(H);
-    ctx.fillStyle = gc[0]; ctx.fillRect(0, 0, SW, SH);
-    ctx.fillStyle = sky[2]; ctx.fillRect(0, 0, SW, 30);
+    ctx.fillStyle = gc[0]; ctx.fillRect(0, 0, OW, OH);
+    ctx.fillStyle = sky[2]; ctx.fillRect(0, 0, OW, 26);
     const target = (() => {
       if (H.selected) { const f = WT.findTarget(H, H.selected); if (f) return f; }
       const g = H.visible.find((x) => !x.gone); return g ? { g, m: g.members[0] } : null;
@@ -192,36 +187,26 @@
     if (target) {
       const { g, m } = target;
       const dist = Math.max(5, g.dist + m.dd);
-      const disp = SH / 34; // about 34 inches of deer fill the view: head, neck, chest
-      const res = WT.resolvePpi(H, dist, optic);
-      const drift = g.pose === 'walk' ? (Math.floor(t / 400) % 3 - 1) * 8 : 0;
-      const yaw = Math.round(yawFor(g, m) / 15) * 15;
+      // what your glass can resolve decides which size of sprite you get; it is blown up to fill the lens
+      const level = WT.detailLevel(H, dist, optic);
+      const lod = Math.max(0, Math.min(4, 4 - level)), k = Math.pow(2, lod);
       const lf = WT.lightFactor(H);
-      const spr = UI.sprite(`op${kind}${optic.id}:${m.deer.id}:${g.pose}:${yaw}:${Math.round(res * 20)}:${drift}:${lf < 1 ? 'l' : 'd'}`, () => {
-        const model = WT.deerModel(m.deer, { head: g.pose }, st.day);
-        const c = model.anchors.bino;
-        const img = WT.renderDeerLimited(m.deer, { W: SW, H: SH, yaw, elev: 6, center: [c[0], c[1], c[2] + drift / disp], pose: { head: g.pose }, day: st.day, mode: lf < 1 ? 'low' : 'day' }, res, disp);
-        return img;
-      });
-      ctx.drawImage(spr, 0, 0);
+      const pose = poseFor(g) === 'down' ? 'down' : 'alert';
+      const spr = UI.sprite(`op${m.deer.id}:${m.deer.age}:${lod}:${pose}:${lf < 1 ? 'l' : 'd'}`, () => WT.deerSprite(m.deer, { lod, frame: 'bust', pose, day: st.day, mode: lf < 1 ? 'low' : 'day' }));
+      const bob = g.pose === 'walk' ? (Math.floor(t / 400) % 2) * 2 : 0;
+      const w = spr.width * k, h = spr.height * k;
+      ctx.drawImage(spr, 0, 0, spr.width, spr.height, Math.round(OW / 2 - w / 2), Math.round(OH / 2 - h / 2) + 2 + bob, w, h);
     }
     // mask: dark everywhere except the lens circles
-    const mk = document.createElement('canvas'); mk.width = SW; mk.height = SH;
+    const mk = document.createElement('canvas'); mk.width = OW; mk.height = OH;
     const mc = mk.getContext('2d');
-    mc.fillStyle = '#0a0806'; mc.fillRect(0, 0, SW, SH);
+    mc.fillStyle = '#0a0806'; mc.fillRect(0, 0, OW, OH);
     mc.globalCompositeOperation = 'destination-out';
     const circle = (x, y, r) => { mc.beginPath(); mc.arc(x, y, r, 0, Math.PI * 2); mc.fill(); };
-    if (kind === 'scope') circle(SW / 2, SH / 2, 60); else { circle(SW / 2 - 34, SH / 2, 58); circle(SW / 2 + 34, SH / 2, 58); }
+    if (kind === 'scope') circle(OW / 2, OH / 2, 48); else { circle(OW / 2 - 28, OH / 2, 47); circle(OW / 2 + 28, OH / 2, 47); }
     ctx.drawImage(mk, 0, 0);
-    if (kind === 'scope') { ctx.fillStyle = '#0a0806'; ctx.fillRect(SW / 2 - 60, SH / 2, 50, 1); ctx.fillRect(SW / 2 + 10, SH / 2, 50, 1); ctx.fillRect(SW / 2, SH / 2 - 60, 1, 50); ctx.fillRect(SW / 2, SH / 2 + 10, 1, 50); ctx.fillRect(SW / 2 - 60, SH / 2 - 1, 22, 3); ctx.fillRect(SW / 2 + 38, SH / 2 - 1, 22, 3); }
-    if (target && target.m.read) {
-      ctx.font = '6px "Press Start 2P", monospace'; ctx.textAlign = 'center';
-      const txt = target.m.read.label || target.m.read.text.split(',')[0];
-      const tw = ctx.measureText(txt).width;
-      ctx.fillStyle = 'rgba(10,8,6,.85)'; ctx.fillRect(SW / 2 - tw / 2 - 4, SH - 14, tw + 8, 11);
-      ctx.fillStyle = '#EFE3D3'; ctx.fillText(txt.toUpperCase(), SW / 2, SH - 6);
-    }
-    if (!target) { ctx.fillStyle = '#EFE3D3'; ctx.font = '8px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.fillText('NOTHING IN VIEW', SW / 2, SH / 2); }
+    if (kind === 'scope') { ctx.fillStyle = '#0a0806'; ctx.fillRect(OW / 2 - 48, OH / 2, 40, 1); ctx.fillRect(OW / 2 + 8, OH / 2, 40, 1); ctx.fillRect(OW / 2, OH / 2 - 48, 1, 40); ctx.fillRect(OW / 2, OH / 2 + 8, 1, 40); ctx.fillRect(OW / 2 - 48, OH / 2 - 1, 16, 3); ctx.fillRect(OW / 2 + 32, OH / 2 - 1, 16, 3); }
+    if (!target) { ctx.fillStyle = '#EFE3D3'; ctx.font = '8px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.fillText('NOTHING IN VIEW', OW / 2, OH / 2); }
   }
 
   UI.screens.hunt = function (el) {

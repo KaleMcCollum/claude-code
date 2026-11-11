@@ -1,7 +1,15 @@
 # Art reference
 
-Drop the owner's reference image here as `style-reference.png` (the front-facing pixel-art whitetail head).
-The art spec asks every gallery regeneration to be compared side by side with it. It was shared in chat,
-not as a file, so it isn't checked in yet.
+The owner's style reference is a front-facing pixel-art buck (about 61 x 82 pixels): light left edges on the
+tines, dark undersides on the beams, white ear insides with a dark outline, cream eye rings, a lavender muzzle
+and a cream throat patch.
 
-The palette from the art spec lives in `render.js` (`PAL`). Gallery images: `node tests/gallery.js` writes to `tests/gallery/`.
+That image is another artist's work, so it is **not checked in**. To compare against it, save it here as
+`art/style-reference.png` (git ignores it). The game's deer are drawn fresh in that style by `deerart.js`;
+the palette there was sampled from the reference.
+
+`node tests/gallery.js` writes comparison sheets to `tests/gallery/`:
+
+- `vs-reference.png`: the reference next to generated bucks at the same scale (only when the reference is present; also ignored by git)
+- `racks.png`: random bucks by age, labelled with points and gross score
+- `non-typicals.png`, `bodies.png`, `levels-of-detail.png`, `same-buck-by-age.png`

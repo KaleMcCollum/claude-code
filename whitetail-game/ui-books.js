@@ -8,25 +8,37 @@
   /* ---------------------------------------------------------------- image helpers */
   const canvasHtml = (id, w, h) => `<canvas class="pix" data-img="${id}" width="${w}" height="${h}"></canvas>`;
   function paint(root, id, img) { const c = root.querySelector(`[data-img="${id}"]`); if (c) UI.imgToCanvas(img, c); }
-  UI.mountImg = (snap, w = 70, h = 76) => WT.renderMount(WT.snapDeer(snap), w, h);
+  // Every picture of a deer is the same front-facing art; the mount is the full-size bust.
+  UI.mountImg = (snap) => WT.deerSprite(WT.snapDeer(snap), { lod: 0, frame: 'bust', day: snap.d });
 
-  // Trail camera photo: images only. Night = IR grayscale; quality from camera tier and distance.
+  // Trail camera photo: images only. Night = infrared gray; clarity from camera tier and distance.
   UI.photoImg = function (ph, W = 160, H = 90) {
     const deer = WT.snapDeer(ph.snap);
-    const ppi = Math.min(1.9, 17 / Math.max(5, ph.dist));
-    const res = ppi * (0.35 + ph.q * 0.65);
-    const view = { W, H, yaw: ph.yaw, elev: 3, center: [0, 28, 0], pose: { head: ph.pose }, day: ph.d, mode: ph.night ? 'ir' : 'day' };
-    const img = WT.renderDeerLimited(deer, view, res, ppi);
+    const close = ph.dist <= 13;
+    let lod = close ? 1 : 2, k = 1;
+    if (ph.q < 0.45) { lod++; k = 2; } // a blurry photo is a coarser picture blown up
+    const pose = ph.pose === 'down' ? 'down' : ph.pose === 'walk' ? 'walk' : 'alert';
+    let spr = WT.deerSprite(deer, { lod, frame: 'full', pose, day: ph.d, mode: ph.night ? 'ir' : 'day' });
+    const ax = spr.anchor.x * k, ay = spr.anchor.y * k;
+    if (k > 1) spr = WT.scaleSprite(spr, k);
     const out = new Uint8ClampedArray(W * H * 4);
+    const horizon = Math.round(H * 0.42);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const o = (y * W + x) * 4;
       let r, g, b;
-      if (img.data[o + 3]) { r = img.data[o]; g = img.data[o + 1]; b = img.data[o + 2]; }
-      else if (ph.night) { const v = y < H * 0.45 ? 18 : 40 + (y - H * 0.45) * 0.6; r = g = b = v; }
-      else { const sky = y < H * 0.4; r = sky ? 168 : 150; g = sky ? 172 : 130; b = sky ? 180 : 92; if (!sky && y < H * 0.48) { r = 70; g = 58; b = 42; } }
-      const n = (WT.hash2(x, y, ph.d * 31 + ph.hour) - 0.5) * (ph.night ? 26 : 12) * (1.4 - ph.q);
-      out[o] = r + n; out[o + 1] = g + n; out[o + 2] = b + n; out[o + 3] = 255;
+      if (ph.night) { const v = y < horizon ? 14 : 34 + (y - horizon) * 0.7; r = g = b = v; }
+      else { const sky = y < horizon; r = sky ? 176 : 156; g = sky ? 182 : 136; b = sky ? 190 : 96; if (!sky && y < horizon + 5) { r = 74; g = 62; b = 46; } }
+      out[o] = r; out[o + 1] = g; out[o + 2] = b; out[o + 3] = 255;
     }
+    // close deer fill the frame (legs run off the bottom); farther deer stand in it
+    const gx = Math.round(W * (0.3 + 0.4 * WT.hash2(ph.snap.k, ph.d, ph.hour)));
+    const gy = close && pose !== 'down' ? H + Math.round(18 * k) : H - 6;
+    for (let y = 0; y < spr.H; y++) for (let x = 0; x < spr.W; x++) {
+      const si = (y * spr.W + x) * 4; if (!spr.data[si + 3]) continue;
+      const X = gx - ax + x, Y = gy - ay + y; if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+      const o = (Y * W + X) * 4; out[o] = spr.data[si]; out[o + 1] = spr.data[si + 1]; out[o + 2] = spr.data[si + 2];
+    }
+    for (let i = 0; i < W * H; i++) { const n = (WT.hash2(i % W, (i / W) | 0, ph.d * 31 + ph.hour) - 0.5) * (ph.night ? 26 : 10) * (1.4 - ph.q); const o = i * 4; out[o] += n; out[o + 1] += n; out[o + 2] += n; }
     return { data: out, W, H };
   };
   function photoHtml(ph, id) {
@@ -42,7 +54,7 @@
     if (!sh) return '';
     const names = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6'].filter((n) => sh.sides.some((s) => s.tines[n] != null));
     const R = sh.sides[0], L = sh.sides[1];
-    const f = (v) => (v == null ? '-' : (Math.round(v * 8) / 8).toFixed(3).replace(/\.?0+$/, '').replace(/\.125$/, ' 1/8').replace(/\.25$/, ' 2/8').replace(/\.375$/, ' 3/8').replace(/\.5$/, ' 4/8').replace(/\.625$/, ' 5/8').replace(/\.75$/, ' 6/8').replace(/\.875$/, ' 7/8'));
+    const f = (v) => (v == null ? '-' : (Math.round(v * 8) / 8).toFixed(3).replace(/\.?0+$/, '').replace(/\.125$/, ' 1/8').replace(/\.25$/, ' 2/8').replace(/\.375$/, ' 3/8').replace(/\.5$/, ' 4/8').replace(/\.625$/, ' 5/8').replace(/\.75$/, ' 6/8').replace(/\.875$/, ' 7/8').replace(/^(-?)0 (\d\/8)$/, '$1$2'));
     const row = (name, a, b) => `<tr><td>${name}</td><td>${f(a)}</td><td>${f(b)}</td><td>${f(Math.abs((a || 0) - (b || 0)))}</td></tr>`;
     const abn = (s) => s.abn.map((a) => `${a.type} ${f(a.len)}`).join(', ') || 'none';
     return `<div class="sheet"><table>
@@ -65,12 +77,11 @@
   UI.trophyDetail = function (rec, el, opts = {}) {
     const deer = WT.snapDeer(rec.snap);
     const isBuck = !!rec.sheet;
-    const views = WT.TROPHY_VIEWS.map((v) => `<figure>${canvasHtml('v' + v.id, 128, 112)}<figcaption>${v.name}</figcaption></figure>`).join('');
+    const views = `<figure class="hero">${canvasHtml('vfront', 88, 92)}</figure>`;
     const hit = rec.hit;
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>${esc(rec.hit && rec.hit.name ? `"${rec.hit.name}", ` : '')}${esc(rec.label)}${rec.legal ? '' : ' <span class="tag">Confiscated</span>'}</h2><button class="btn small" id="back">${opts.backLabel || 'Back'}</button></div>
-      <div class="views">${views}</div>
-      <div class="cols" style="margin-top:10px">
-        <div><dl class="kv">
+      <div class="cols">
+        <div>${views}<dl class="kv" style="margin-top:10px">
           <dt>Age</dt><dd>${rec.age} years${hit ? ` <span class="dim">(you guessed ${hit.estAge})</span>` : ''}</dd>
           <dt>Weight</dt><dd>${rec.lw} lb live, ${rec.dw} lb dressed</dd>
           ${isBuck ? `<dt>Points</dt><dd>${rec.sheet.pointsR} × ${rec.sheet.pointsL}</dd><dt>Gross</dt><dd>${rec.sheet.gross}"</dd><dt>Net</dt><dd>${rec.sheet.net}" ${rec.sheet.isNT ? 'non-typical' : 'typical'}</dd>` : ''}
@@ -82,8 +93,7 @@
         ${hit ? `<h3>Your hit list history</h3>${hit.log.slice(0, 6).map((l) => `<p class="dim">${WT.dateLabel(l.d)} Yr ${l.y}: ${esc(l.kind === 'photo' ? 'trail cam' : 'seen')}, ${esc(l.where)}</p>`).join('')}` : ''}</div>
         <div>${isBuck ? sheetHtml(rec) : '<p class="dim">Antlerless deer. Good meat, and one less mouth on your land this winter.</p>'}</div>
       </div></section>`;
-    const ppi = WT.MOUNT_PPI;
-    WT.TROPHY_VIEWS.forEach((v) => paint(el, 'v' + v.id, WT.renderTrophy(deer, v.id, 128, 112, v.id === 'top' ? ppi * 1.6 : ppi, 40)));
+    paint(el, 'vfront', UI.mountImg(rec.snap));
     $('#back', el).addEventListener('click', opts.onBack || (() => UI.go('trophies')));
     const w = $('#wall', el); if (w) w.addEventListener('click', () => { rec.wall = !rec.wall; WT.save(); UI.trophyDetail(rec, el, opts); });
     const p = $('#pin', el); if (p) p.addEventListener('click', () => { S().journal.forEach((r) => { if (r !== rec) r.pin = false; }); rec.pin = !rec.pin; rec.wall = true; WT.save(); UI.trophyDetail(rec, el, opts); });
@@ -94,7 +104,7 @@
     if (!rec) return UI.go('lodge');
     if (!rec.sheet || rec.guessed) return UI.trophyDetail(rec, el, { backLabel: 'Back to the lodge', onBack: () => UI.go('lodge') });
     el.innerHTML = `<section class="panel"><h2>Walk up on him</h2>
-      <div style="max-width:280px;margin:0 auto">${canvasHtml('m', 70, 76)}</div>
+      <div style="max-width:280px;margin:0 auto">${canvasHtml('m', 88, 92)}</div>
       <p>Before the tape comes out: what does he score? Guess within 5 inches of the gross score for a ${WT.money(50)} bragging-rights bonus from the guys at the café.</p>
       <div class="row"><input type="number" id="guess" min="20" max="260" step="1" inputmode="numeric" placeholder="Gross inches"><button class="btn blaze" id="lock">Lock it in</button><button class="btn ghost" id="skip">Skip</button></div></section>`;
     paint(el, 'm', UI.mountImg(rec.snap));
@@ -119,7 +129,7 @@
     const recs = st.journal;
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Trophy room</h2><button class="btn small" id="back">Back to lodge</button></div>
       ${recs.length ? `<p class="dim">${recs.length} deer taken. Biggest gross: ${Math.max(0, ...recs.filter((r) => r.sheet).map((r) => r.sheet.gross)) || '-'}".</p>
-      <div class="tiles">${recs.map((r, k) => `<button class="tile" data-k="${k}">${canvasHtml('t' + k, 70, 76)}<span class="cap">${esc(r.label)}${r.sheet ? ` · ${r.sheet.gross}"` : ''}</span><span class="cap faint">${WT.dateLabel(r.d)}, Yr ${r.y}${r.wall ? ' · on wall' : ''}</span></button>`).join('')}</div>`
+      <div class="tiles">${recs.map((r, k) => `<button class="tile" data-k="${k}">${canvasHtml('t' + k, 88, 92)}<span class="cap">${esc(r.label)}${r.sheet ? ` · ${r.sheet.gross}"` : ''}</span><span class="cap faint">${WT.dateLabel(r.d)}, Yr ${r.y}${r.wall ? ' · on wall' : ''}</span></button>`).join('')}</div>`
       : '<p class="dim">Nothing yet. The wall is waiting.</p>'}</section>`;
     recs.forEach((r, k) => paint(el, 't' + k, UI.mountImg(r.snap)));
     el.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', () => UI.trophyDetail(recs[+b.dataset.k], el, { onBack: () => UI.go('trophies') })));
@@ -144,7 +154,7 @@
       <p class="dim">Every deer you've seen clearly or caught on camera. Pictures show him as he looked the last time you saw him. The game won't tell you if he's still alive.</p>
       <div class="row" style="margin-bottom:8px">${['All', ...STATUSES].map((s) => `<button class="btn small ${hlFilter === s ? 'on' : ''}" data-f="${s}">${s}</button>`).join('')}
         <select id="sort"><option value="last" ${hlSort === 'last' ? 'selected' : ''}>Last seen</option><option value="age" ${hlSort === 'age' ? 'selected' : ''}>Your age guess</option><option value="name" ${hlSort === 'name' ? 'selected' : ''}>Name</option></select></div>
-      ${list.length ? `<div class="tiles">${list.map((e) => `<button class="tile" data-k="${e.k}">${canvasHtml('h' + e.k, 70, 76)}<span class="cap">${esc(e.name || 'Unnamed deer #' + idx(e))} <span class="tag">${esc(e.status)}</span></span>
+      ${list.length ? `<div class="tiles">${list.map((e) => `<button class="tile" data-k="${e.k}">${canvasHtml('h' + e.k, 88, 92)}<span class="cap">${esc(e.name || 'Unnamed deer #' + idx(e))} <span class="tag">${esc(e.status)}</span></span>
         <span class="cap dim">About ${WT.estAgeNow(e)} yrs (your guess)</span><span class="cap faint">Last seen ${e.last ? `${WT.dateLabel(e.last[1])}, Yr ${e.last[0]}` : 'never'}</span></button>`).join('')}</div>`
       : '<p class="faint">Nobody on the list yet. Get a clear look at a buck (close, or through good binoculars) or catch one on a trail camera.</p>'}</section>`;
     list.forEach((e) => { if (e.snap) paint(el, 'h' + e.k, UI.mountImg(e.snap)); });
@@ -161,10 +171,9 @@
     const e = WT.hitEntry(k);
     if (!e) return UI.go('hitlist');
     const ages = []; for (let a = 0.5; a <= 12.5; a += 1) ages.push(a);
-    const lastSide = e.snap ? `<figure style="margin:0;background:#ece7df">${canvasHtml('side', 128, 96)}</figure>` : '';
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>${esc(e.name || 'Unnamed deer')}</h2><button class="btn small" id="back">Back to hit list</button></div>
       <div class="cols">
-        <div><div class="views"><figure>${canvasHtml('mount', 70, 76)}<figcaption>Last clear look (${e.snap ? `${WT.dateLabel(e.snap.d)}, Yr ${e.snap.y}` : '-'})</figcaption></figure>${lastSide ? `<figure>${canvasHtml('side', 128, 96)}<figcaption>From the side</figcaption></figure>` : ''}</div>
+        <div><div class="views"><figure>${canvasHtml('mount', 88, 92)}<figcaption>Last clear look (${e.snap ? `${WT.dateLabel(e.snap.d)}, Yr ${e.snap.y}` : '-'})</figcaption></figure></div>
           ${e.photos.length ? '<h3>Trail camera</h3><div class="views">' + e.photos.map((ph, i) => photoHtml(ph, 'p' + i)).join('') + '</div>' : ''}</div>
         <div>
           <label>Name <input type="text" id="nm" maxlength="30" value="${esc(e.name || '')}" placeholder="Big 10, Split G2..."></label>
@@ -180,7 +189,6 @@
       </div></section>`;
     if (e.snap) {
       paint(el, 'mount', UI.mountImg(e.snap));
-      paint(el, 'side', WT.renderTrophy(WT.snapDeer(e.snap), 'side', 128, 96, 1.2, e.snap.d));
     }
     e.photos.forEach((ph, i) => paint(el, 'p' + i, UI.photoImg(ph)));
     $('#back', el).addEventListener('click', () => UI.go('hitlist'));

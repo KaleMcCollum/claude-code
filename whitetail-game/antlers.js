@@ -82,8 +82,10 @@
   WT.genRackComponents = function (style, age, targetGross, rng) {
     let ntP = age < 4.5 ? 0.025 : age < 6.5 ? 0.07 : 0.15;
     ntP *= 0.25 + 1.5 * style.ntGene;
-    const isNT = targetGross > 95 && rng.chance(ntP);
-    let abnTarget = isNT ? targetGross * rng.range(0.08, targetGross > 170 ? 0.2 : 0.16) : 0;
+    // a buck's junk is his own: once he starts throwing abnormal points he keeps them, in the same places, every year
+    const ar = WT.makeRng((style.seed | 0) + 51);
+    const isNT = targetGross > 95 && ar.next() < ntP;
+    let abnTarget = isNT ? targetGross * ar.range(0.08, targetGross > 170 ? 0.2 : 0.16) : 0;
     let frame = Math.max(10, targetGross - abnTarget);
     const pts = sidePoints(frame, style, age);
     const names = tineNames(pts);
@@ -102,11 +104,16 @@
       beam *= f; mass *= f; spread = Math.min(spread, beam * 0.98);
       budget = (frame - spread) / 2 - beam - mass;
     }
-    const wsum = names.reduce((a, n) => a + TINE_W[n] * (n === 'G1' ? style.brow : 1), 0) || 1;
+    // each buck has his own tine profile (which tines run long), the same every year
+    const prof = WT.makeRng((style.seed | 0) + 29);
+    const TW = { G1: TINE_W.G1 * style.brow, G2: 1, G3: 0.6 + prof.next() * 0.52, G4: 0.3 + prof.next() * 0.42, G5: 0.18 + prof.next() * 0.2, G6: 0.12 + prof.next() * 0.12 };
+    // some bucks carry an odd rack: one side a point short (4x5 nine pointers, 3x4 sevens)
+    const oddRoll = prof.next(), oddSide = prof.next() < 0.5 ? -1 : 1, oddBrow = prof.next() < 0.22;
+    const wsum = names.reduce((a, n) => a + TW[n], 0) || 1;
     const tines = {};
     let leftover = 0;
     for (const n of names) {
-      let len = Math.max(0, budget) * (TINE_W[n] * (n === 'G1' ? style.brow : 1)) / wsum * style.tine;
+      let len = Math.max(0, budget) * TW[n] / wsum * style.tine;
       const cap = LIMITS[n] * (n === 'G1' && style.brow > 1.2 ? 1 : 0.85);
       if (len > cap) { leftover += len - cap; len = cap; }
       tines[n] = len;
@@ -132,6 +139,10 @@
       for (let i = 0; i < 4; i++) s.H.push(Math.min(i === 0 ? H1max : H1max * 0.95, mass * hw[i] * k()));
       for (let i = 1; i < 4; i++) s.H[i] = Math.min(s.H[i], s.H[i - 1] - 0.05); // mass tapers out the beam
       // drop points shorter than 1": they don't count and shouldn't be drawn as points
+      if (oddRoll < 0.24 && sgn === oddSide && s.names.length >= 2) {
+        const drop = oddBrow && s.names.includes('G1') ? 'G1' : s.names[s.names.length - 1];
+        s.names = s.names.filter((n) => n !== drop); delete s.tines[drop];
+      }
       s.names = s.names.filter((n) => s.tines[n] >= 1.05);
       // a small chance of a broken tine on one side
       return s;
@@ -154,22 +165,22 @@
     }
     if (isNT) {
       const kinds = age >= 5.5 ? ['drop', 'sticker', 'kicker', 'split', 'burr', 'extra', 'sticker', 'kicker'] : ['sticker', 'kicker', 'split', 'burr', 'extra', 'sticker'];
-      let count = rng.int(2, 8);
-      if (targetGross > 200 && rng.chance(0.3)) count += rng.int(2, 5);
+      let count = ar.int(2, 8);
+      if (targetGross > 200 && ar.chance(0.3)) count += ar.int(2, 5);
       let have = abn.reduce((a, b) => a + b.len, 0);
       for (let k = 0; k < count && have < abnTarget; k++) {
-        const t = rng.pick(kinds), si = rng.int(0, 1);
+        const t = ar.pick(kinds), si = ar.int(0, 1);
         const room = abnTarget - have;
         const [lo, hi] = LIMITS.abn[t];
-        const len = clamp(rng.range(lo, hi) * (0.5 + rng.next()), lo, Math.max(lo, Math.min(hi, room)));
+        const len = clamp(ar.range(lo, hi) * (0.5 + ar.next()), lo, Math.max(lo, Math.min(hi, room)));
         const s = comp.sides[si];
         const tineFor = (pref) => pref.find((n) => s.names.includes(n));
-        if (t === 'drop') addAbn('drop', si, len, { u: rng.range(0.45, 0.78) });
-        else if (t === 'sticker') { const on = rng.chance(0.5) ? tineFor(['G2', 'G3', 'G1']) : null; addAbn('sticker', si, len, on ? { on, at: rng.range(0.25, 0.6) } : { u: rng.range(0.15, 0.85) }); }
-        else if (t === 'kicker') { const on = tineFor(['G2', 'G3']); if (on) addAbn('kicker', si, len, { on, at: rng.range(0.25, 0.55) }); else addAbn('sticker', si, Math.min(len, 5), { u: rng.range(0.3, 0.7) }); }
-        else if (t === 'split') { const on = tineFor(['G2', 'G1', 'G3']); if (on && !abn.some((a) => a.type === 'split' && a.on === on && a.side === si)) addAbn('split', si, len, { on, at: rng.range(0.65, 0.85) }); }
-        else if (t === 'burr') addAbn('burr', si, len, { ang: rng.range(0, Math.PI * 2) });
-        else if (t === 'extra') addAbn('extra', si, len, { u: rng.range(0.47, 0.72) });
+        if (t === 'drop') addAbn('drop', si, len, { u: ar.range(0.45, 0.78) });
+        else if (t === 'sticker') { const on = ar.chance(0.5) ? tineFor(['G2', 'G3', 'G1']) : null; addAbn('sticker', si, len, on ? { on, at: ar.range(0.25, 0.6) } : { u: ar.range(0.15, 0.85) }); }
+        else if (t === 'kicker') { const on = tineFor(['G2', 'G3']); if (on) addAbn('kicker', si, len, { on, at: ar.range(0.25, 0.55) }); else addAbn('sticker', si, Math.min(len, 5), { u: ar.range(0.3, 0.7) }); }
+        else if (t === 'split') { const on = tineFor(['G2', 'G1', 'G3']); if (on && !abn.some((a) => a.type === 'split' && a.on === on && a.side === si)) addAbn('split', si, len, { on, at: ar.range(0.65, 0.85) }); }
+        else if (t === 'burr') addAbn('burr', si, len, { ang: ar.range(0, Math.PI * 2) });
+        else if (t === 'extra') addAbn('extra', si, len, { u: ar.range(0.47, 0.72) });
         have = abn.reduce((a, b) => a + b.len, 0);
       }
     }
@@ -409,6 +420,18 @@
       sheet = WT.measureRack(geom);
     }
     return { comp, sheet };
+  };
+
+  // 3D geometry for a deer's current rack (cached); the score sheet is measured from this.
+  const geomCache = new Map();
+  WT.rackGeom = function (deer) {
+    if (!deer.rack || !deer.style) return null;
+    const key = deer.id + ':' + deer.age + ':' + deer.rack.t + ':' + deer.rack.s;
+    if (geomCache.has(key)) return geomCache.get(key);
+    const g = WT.buildRack(WT.unpackRack(deer.rack), deer.style);
+    if (geomCache.size > 300) geomCache.clear();
+    geomCache.set(key, g);
+    return g;
   };
 
   // Compact storage: components only (geometry is rebuilt on demand, deterministically).

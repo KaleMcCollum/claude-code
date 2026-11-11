@@ -26,7 +26,7 @@
     const img = make();
     const c = document.createElement('canvas');
     UI.imgToCanvas(img, c);
-    c.bounds = img.bounds;
+    c.bounds = img.bounds; c.anchor = img.anchor;
     if (spriteCache.size > 400) spriteCache.clear();
     spriteCache.set(key, c);
     return c;
@@ -264,9 +264,9 @@
       const rec = wall[k];
       ctx.fillStyle = LP.plaque[0]; ctx.fillRect(cx - 6, cy + 14, 12, 14); ctx.fillStyle = LP.plaque[1]; ctx.fillRect(cx - 5, cy + 15, 10, 12);
       if (!rec) return;
-      const spr = UI.sprite('wall' + rec.id + ':' + rec.y, () => WT.renderMount(WT.snapDeer(rec.snap), 60, 64, 0.9));
-      const by = spr.bounds ? spr.bounds.y1 : 50;
-      ctx.drawImage(spr, cx - 30, cy + 22 - by); // neck sits on the plaque
+      const spr = UI.sprite('wall' + rec.id + ':' + rec.y, () => WT.deerSprite(WT.snapDeer(rec.snap), { lod: 1, frame: 'bust', day: rec.snap.d }));
+      const by = spr.bounds ? spr.bounds.y1 : 40;
+      ctx.drawImage(spr, cx - spr.anchor.x, cy + 26 - by); // neck sits on the plaque
     });
     if (!wall.length) { ctx.fillStyle = '#8C6E55'; ctx.font = '6px "Press Start 2P", monospace'; ctx.fillText('EMPTY WALL', 90, 60); }
     // the player
