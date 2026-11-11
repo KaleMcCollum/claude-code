@@ -160,6 +160,11 @@ a.btn-text {
   white-space: pre-wrap;
 }
 
+/* "This is no longer the current official text of 2.1 Wages." */
+.proposal-superseded {
+  margin: 4px 0 0;
+}
+
 .proposal .page-head h1,
 .decision-list .title {
   overflow-wrap: anywhere;

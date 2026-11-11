@@ -16,6 +16,7 @@ import { can } from "@/lib/permissions";
 import {
   canApproveToo,
   canEndorse,
+  displayTitle,
   listOpenProposalsForSection,
   loadProposal,
   proposalsForNotes,
@@ -166,7 +167,8 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
           <div className="official-notices">
             {waiting.map((proposal) => (
               <p key={proposal.id} className="notice">
-                Waiting for approval: <Link href={`/proposals/${proposal.id}`}>{proposal.title}</Link>
+                Waiting for approval:{" "}
+                <Link href={`/proposals/${proposal.id}`}>{displayTitle(proposal, tree)}</Link>
               </p>
             ))}
           </div>

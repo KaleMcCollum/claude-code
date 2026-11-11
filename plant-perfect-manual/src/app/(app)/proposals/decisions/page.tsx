@@ -166,6 +166,7 @@ export default async function DecisionsLogPage({ searchParams }: { searchParams:
                   {" · "}
                   {PROPOSAL_TYPE_LABELS[view.type]}
                   {view.businessTag && ` · ${BUSINESS_LABELS[view.businessTag]}`}
+                  {view.superseded && " · no longer the current text"}
                 </p>
                 {approved && <p className="approved">{approved}</p>}
                 {view.endorsements.map((endorsement) => (

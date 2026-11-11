@@ -22,6 +22,7 @@ import {
   canApproveToo,
   canEditProposal,
   canEndorse,
+  changesNotApprovedBy,
   describeStructure,
   displayTitle,
   loadProposal,
@@ -33,7 +34,7 @@ import {
   waitingFor,
 } from "@/lib/proposals";
 import { findNode, loadTree } from "@/lib/sections";
-import { formatDateTime } from "@/lib/time";
+import { formatDate, formatDateTime } from "@/lib/time";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -47,12 +48,19 @@ const loadPage = cache(async (id: string) => {
     const notes = (await loadNotesByIds(tx, tree, await sourceNoteIds(tx, id))).filter(
       (note) => note.removedAt === null,
     );
+    const approvers = await activeApprovers(tx);
     return {
       user,
       view,
       tree,
-      approvers: await activeApprovers(tx),
+      approvers,
       change: await loadTextChange(tx, view),
+      // For someone about to approve a change to official text: the changes
+      // already in that text which they have never approved.
+      unapproved:
+        view.type !== "structure" && view.sectionId && approveChoices(view, user, approvers).approve
+          ? await changesNotApprovedBy(tx, view.sectionId, user)
+          : null,
       notes,
       noteProposals: await proposalsForNotes(
         tx,
@@ -79,7 +87,7 @@ const COMPARED_WITH = {
 export default async function ProposalPage({ params }: PageProps) {
   const data = await loadPage((await params).id);
   if (!data) notFound();
-  const { user, view, tree, approvers, change, notes, noteProposals, comments } = data;
+  const { user, view, tree, approvers, change, unapproved, notes, noteProposals, comments } = data;
 
   const open = view.status === "open";
   const approved = view.status === "approved";
@@ -89,6 +97,11 @@ export default async function ProposalPage({ params }: PageProps) {
   const created = view.createdSectionId ? findNode(tree, view.createdSectionId) : null;
   const waiting = waitingFor(view, approvers);
   const sectionGone = open && view.sectionId !== null && section?.node === null;
+  // The newest change to the section's official text that this person never
+  // approved. Versions are numbered from 1 without gaps, so when every one of
+  // them is unapproved, they have never approved this section's text at all.
+  const notApproved = unapproved?.items[0] ?? null;
+  const neverApproved = unapproved !== null && notApproved !== null && unapproved.total >= notApproved.version;
 
   const facts: React.ReactNode[] = [PROPOSAL_TYPE_LABELS[view.type]];
   if (section) {
@@ -112,6 +125,12 @@ export default async function ProposalPage({ params }: PageProps) {
         <p className={approved ? "proposal-status approved" : "proposal-status"}>{statusLine(view)}</p>
         {view.status === "declined" && view.declineReason && (
           <p className="proposal-reason">Reason: {view.declineReason}</p>
+        )}
+        {view.superseded && section && (
+          <p className="muted small proposal-superseded">
+            This is no longer the current official text of{" "}
+            {section.node ? <Link href={`/sections/${section.node.id}`}>{section.text}</Link> : section.text}.
+          </p>
         )}
         <p className="meta">
           {facts.map((fact, index) => (
@@ -138,6 +157,21 @@ export default async function ProposalPage({ params }: PageProps) {
               <p className="notice">
                 The official text of this section has changed since this was proposed. Read the
                 differences again before approving.
+              </p>
+            )}
+            {/* Not for a section that is gone: there the proposal cannot be approved at all. */}
+            {open && unapproved && notApproved && section?.node && (
+              <p className="notice">
+                {neverApproved
+                  ? "You have never approved the official text of this section."
+                  : "You have not approved the current official text of this section."}{" "}
+                It was last changed
+                {notApproved.approvedBy.length > 0 ? ` by ${joinNames(notApproved.approvedBy)}` : ""} on{" "}
+                {formatDate(notApproved.savedAt)}
+                {!neverApproved &&
+                  ` (${unapproved.total} ${unapproved.total === 1 ? "change" : "changes"} since you last approved it)`}
+                . Approving this proposal approves the whole text, not only the differences below. See
+                the <Link href={`/sections/${section.node.id}/history`}>version history</Link>.
               </p>
             )}
             <p className="muted small">{COMPARED_WITH[change.basis]}</p>

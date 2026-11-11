@@ -48,7 +48,13 @@ async function latestEmail(to, afterMs = 0) {
     const files = fs.existsSync(OUTBOX) ? fs.readdirSync(OUTBOX).sort().reverse() : [];
     for (const file of files) {
       if (Number(file.split("-")[0]) < afterMs) break;
-      const email = JSON.parse(fs.readFileSync(path.join(OUTBOX, file), "utf8"));
+      let email;
+      try {
+        email = JSON.parse(fs.readFileSync(path.join(OUTBOX, file), "utf8"));
+      } catch {
+        // The app is still writing this file. Look again in a moment, from the newest.
+        break;
+      }
       if (email.to === to) return email;
     }
     await new Promise((resolve) => setTimeout(resolve, 200));

@@ -45,6 +45,13 @@ const WEEKEND_TEXT = "Weekend shifts pay $1.00/hr more than weekday shifts.";
 const HOURS_V1 = ["Open 9 AM to 6 PM, Monday to Saturday.", "Closed Sunday."];
 const HOURS_V2 = ["Open 9 AM to 7 PM, Monday to Saturday.", "Open 11 AM to 4 PM Sunday."];
 const PHONE_NOTE = "Casey on the phone: ask about the awning quote";
+const BENEFITS_ADDED = [" Seasonal staff get it too.", " It does not cover gift cards."];
+const BENEFITS_NOW = DISCOUNT_TEXT + BENEFITS_ADDED.join("");
+const SEEDS_TITLE = "Staff discount covers seeds as well";
+const SEEDS_ADDED = " Seeds are included.";
+const LIGHTS_TITLE = "Lights on before the gate opens";
+const LIGHTS_ADDED = " Turn the lights on before that.";
+const WARNING_END = "Approving this proposal approves the whole text, not only the differences below. See the version history.";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Rows on one page of the activity log. scripts/run-e2e.sh makes it small,
@@ -87,6 +94,8 @@ const navOf = (page) => page.getByRole("navigation", { name: "Main" });
 const statusOf = (page) => page.locator(".proposal-status");
 const newForm = (page) => page.getByRole("form", { name: "New proposal" });
 const approveButton = (page) => page.getByRole("button", { name: "Approve", exact: true });
+// The notice an Owner gets before approving on top of official text they have not approved.
+const warningOf = (page) => page.locator(".notice").filter({ hasText: "Approving this proposal approves the whole text" });
 // (The sidebar has an "Edit" link of its own, for the sections.)
 const editLink = (page) => page.getByRole("main").getByRole("link", { name: "Edit", exact: true });
 
@@ -771,6 +780,102 @@ async function main() {
   check("an Advisor opening the activity log is sent back to Today", karen.url() === `${BASE_URL}/`);
 
   // ------------------------------------------------------------------
+  section("16. One-person changes stay flagged, and a warning before approving on top of them");
+  await kale.getByRole("link", { name: "Back" }).click();
+  await kale.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  await goToSection(kale, "People", "2.2 Benefits");
+  // Kale saves "Edit official" on Benefits twice in a row. Casey approved the text before these.
+  for (const added of BENEFITS_ADDED) {
+    await kale.getByRole("button", { name: "Edit official" }).click();
+    await kaleOfficial.waitFor();
+    await kaleOfficial.click();
+    await kale.keyboard.press("Control+End");
+    await kale.keyboard.type(added);
+    await kale.getByRole("button", { name: "Save as official" }).click();
+    await kale.locator(".official-box .rich").filter({ hasText: added.trim() }).waitFor();
+  }
+  check("after two direct saves the section shows the newest text, approved by Kale", (await kale.locator(".official-box .rich").innerText()) === BENEFITS_NOW && (await kale.locator(".approval").innerText()) === approvedKale, await kale.locator(".official-box .rich").innerText());
+
+  await goTo(casey, "Today");
+  const benefitRows = flagged.getByRole("listitem").filter({ hasText: "Edited directly: 2.2 Benefits" });
+  const approveToo = (version) => flagged.getByRole("button", { name: `I approve too: Edited directly: 2.2 Benefits, version ${version}` });
+  await eventually(async () => (await benefitRows.count()) === 2);
+  check("Casey's Today lists both of Kale's direct saves under Decided by one person", (await benefitRows.count()) === 2 && (await benefitRows.nth(0).getByText(`Decided by Kale alone, ${today.short}`).isVisible()) && (await benefitRows.nth(1).getByText(`Decided by Kale alone, ${today.short}`).isVisible()), `${await benefitRows.count()} rows`);
+  check("the older one is marked as no longer the current text, the newer one is not", (await benefitRows.nth(1).getByText("No longer the current text", { exact: true }).isVisible()) && (await benefitRows.nth(0).getByText("No longer the current text").count()) === 0);
+  check("she has I approve too on each of them", (await benefitRows.nth(0).getByRole("button", { name: /^I approve too: .*, version 3$/ }).isVisible()) && (await benefitRows.nth(1).getByRole("button", { name: /^I approve too: .*, version 2$/ }).isVisible()));
+  await shot(casey, "p3-desktop-16-today-two-changes", { fullPage: true });
+  await benefitRows.nth(0).getByRole("link", { name: "Edited directly: 2.2 Benefits" }).click();
+  await casey.getByRole("heading", { level: 1, name: "Edited directly: 2.2 Benefits" }).waitFor();
+  check("the newer one's page does not say it was replaced", (await casey.locator(".proposal-superseded").count()) === 0 && (await casey.locator(".diff ins").innerText()).trim() === BENEFITS_ADDED[1].trim(), await casey.locator(".diff ins").innerText());
+
+  await goTo(casey, "Proposals");
+  await casey.getByRole("link", { name: "Decisions Log" }).click();
+  await casey.getByRole("heading", { level: 1, name: "Decisions Log" }).waitFor();
+  const benefitDecisions = decisions(casey).filter({ hasText: "Edited directly: 2.2 Benefits" });
+  check("the Decisions Log marks the older one as no longer the current text", (await benefitDecisions.count()) === 2 && (await benefitDecisions.nth(1).getByText(`${today.short} · 2.2 Benefits · Official text · no longer the current text`).isVisible()) && (await benefitDecisions.nth(0).getByText("no longer the current text").count()) === 0, await benefitDecisions.nth(1).innerText().catch(() => "missing"));
+  check("the Decisions Log marks the text those two replaced as well", await decisions(casey).filter({ hasText: DISCOUNT_TITLE }).getByText("no longer the current text").isVisible());
+  await benefitDecisions.nth(1).getByRole("link", { name: "Edited directly: 2.2 Benefits" }).click();
+  await casey.getByRole("heading", { level: 1, name: "Edited directly: 2.2 Benefits" }).waitFor();
+  const replacedLine = casey.locator(".proposal-superseded");
+  check("the older one's page says it is no longer the current official text", (await replacedLine.innerText()) === "This is no longer the current official text of 2.2 Benefits." && (await casey.locator(".diff ins").innerText()).trim() === BENEFITS_ADDED[0].trim(), await replacedLine.innerText().catch(() => "missing"));
+  const linePlace = await casey.evaluate(() => {
+    const status = document.querySelector(".proposal-status").getBoundingClientRect();
+    const line = document.querySelector(".proposal-superseded");
+    return { under: status.bottom <= line.getBoundingClientRect().top, color: getComputedStyle(line).color, muted: getComputedStyle(document.querySelector(".proposal .page-head .meta")).color };
+  });
+  check("that line sits under the status, in the muted colour", linePlace.under && linePlace.color === linePlace.muted, JSON.stringify(linePlace));
+  await shot(casey, "p3-desktop-17-replaced-decision", { fullPage: true });
+  await replacedLine.getByRole("link", { name: "2.2 Benefits" }).click();
+  await casey.waitForURL(/\/sections\/[0-9a-f-]{36}$/);
+  await casey.getByRole("heading", { level: 1, name: "2.2 Benefits", exact: true }).waitFor();
+  check("the line links to the section, which shows the current text", (await casey.locator(".official-box .rich").innerText()) === BENEFITS_NOW);
+
+  // Kale proposes a further small change on top of his two direct saves.
+  await kale.getByRole("link", { name: "Propose a change" }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  const seedsUrl = await proposeText(kale, { title: SEEDS_TITLE, text: [BENEFITS_NOW + SEEDS_ADDED] });
+  check("the proposer, whose proposal is his approval, gets no warning", (await warningOf(kale).count()) === 0 && (await kale.locator(".diff ins").innerText()).trim() === SEEDS_ADDED.trim());
+  await casey.goto(seedsUrl);
+  await casey.getByRole("heading", { level: 1, name: SEEDS_TITLE }).waitFor();
+  const warningText = async (page) => ((await warningOf(page).count()) === 1 ? warningOf(page).innerText() : `${await warningOf(page).count()} warnings`);
+  check("Casey is warned that the current text holds two changes she has not approved", (await warningText(casey)) === `You have not approved the current official text of this section. It was last changed by Kale on ${today.short} (2 changes since you last approved it). ${WARNING_END}`, await warningText(casey));
+  const above = await casey.evaluate(() => {
+    const notice = [...document.querySelectorAll(".notice")].find((el) => el.textContent.includes("approves the whole text"));
+    return notice.getBoundingClientRect().bottom <= document.querySelector(".diff-box").getBoundingClientRect().top;
+  });
+  check("the warning stands above the differences", above && (await casey.locator(".diff ins").innerText()).trim() === SEEDS_ADDED.trim());
+  await shot(casey, "p3-desktop-18-proposal-warning", { fullPage: true });
+  await warningOf(casey).getByRole("link", { name: "version history" }).click();
+  await casey.getByRole("heading", { level: 1, name: "Version history" }).waitFor();
+  check("the warning links to the section's version history", /\/sections\/[0-9a-f-]{36}\/history$/.test(casey.url()) && (await casey.getByText("2.2 Benefits: official text").isVisible()) && (await casey.locator(".version-list > li").count()) === 3, casey.url());
+  await karen.goto(seedsUrl);
+  await karen.getByRole("heading", { level: 1, name: SEEDS_TITLE }).waitFor();
+  check("an Advisor, who cannot approve, gets no warning and no Owner controls", (await warningOf(karen).count()) === 0 && (await ownerControls(karen)) === 0 && (await karen.getByRole("button", { name: "Endorse" }).isVisible()));
+  await casey.goto(registersUrl);
+  await casey.getByRole("heading", { level: 1, name: REGISTERS_TITLE }).waitFor();
+  check("there is no warning where she approved the current text herself", (await warningOf(casey).count()) === 0 && (await approveButton(casey).isVisible()));
+
+  await goTo(casey, "Today");
+  await approveToo(2).click();
+  check("after I approve too on the older one, only the newer one is left on Today", (await eventually(async () => (await benefitRows.count()) === 1)) && (await approveToo(3).isVisible()) && (await approveToo(2).count()) === 0, `${await benefitRows.count()} rows`);
+  await casey.goto(seedsUrl);
+  await casey.getByRole("heading", { level: 1, name: SEEDS_TITLE }).waitFor();
+  check("the warning now counts the one change she has not approved", (await warningText(casey)) === `You have not approved the current official text of this section. It was last changed by Kale on ${today.short} (1 change since you last approved it). ${WARNING_END}`, await warningText(casey));
+  await approveButton(casey).click();
+  check("she can approve the proposal all the same", await eventually(async () => (await statusOf(casey).innerText()) === approvedBoth), await statusOf(casey).innerText());
+  check("an approved proposal carries no warning", (await warningOf(casey).count()) === 0);
+
+  // The same on a section whose official text Casey never approved (Kale's direct save in part 3).
+  await goToSection(kale, "Hours and Daily Operations", "3.2 Opening Procedures");
+  await kale.getByRole("link", { name: "Propose a change" }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  const lightsUrl = await proposeText(kale, { title: LIGHTS_TITLE, text: [OPENING_TEXT + LIGHTS_ADDED] });
+  await casey.goto(lightsUrl);
+  await casey.getByRole("heading", { level: 1, name: LIGHTS_TITLE }).waitFor();
+  check("where she never approved any of the section's text, the warning says so", (await warningText(casey)) === `You have never approved the official text of this section. It was last changed by Kale on ${today.short}. ${WARNING_END}`, await warningText(casey));
+  check("that warning links to version history too", /\/sections\/[0-9a-f-]{36}\/history$/.test((await warningOf(casey).getByRole("link", { name: "version history" }).getAttribute("href")) ?? ""));
+
+  // ------------------------------------------------------------------
   section("14. Phone");
   const phone = await phoneContext(browser);
   const mobile = await phone.newPage();
@@ -782,6 +887,14 @@ async function main() {
   };
   await shot(mobile, "p3-phone-01-today", { fullPage: true });
   await fits("Today");
+  // Kale's second direct save of Benefits: replaced since by the approved proposal, and still flagged.
+  const mobileFlagged = mobile.getByRole("region", { name: /^Decided by one person/ }).getByRole("listitem");
+  const replacedRow = mobileFlagged.filter({ hasText: "Edited directly: 2.2 Benefits" });
+  const mobileApproveToo = replacedRow.getByRole("button", { name: "I approve too: Edited directly: 2.2 Benefits, version 3" });
+  check("on a phone a one-person change that was replaced since is still flagged, and says so", (await replacedRow.count()) === 1 && (await replacedRow.getByText("No longer the current text", { exact: true }).isVisible()), `${await replacedRow.count()} rows`);
+  check("on a phone I approve too is a full-size button", (await height(mobileApproveToo)) >= 44, String(await height(mobileApproveToo)));
+  await mobileApproveToo.tap();
+  check("on a phone I approve too takes it off the list", await eventually(async () => (await replacedRow.count()) === 0));
   // Today is the page the app opens on: from there it is tap the proposal, read, tap Approve.
   let taps = 0;
   const mobileAwaiting = mobile.getByRole("region", { name: /^Awaiting approval/ });
@@ -804,6 +917,17 @@ async function main() {
   await mobile.evaluate(() => window.scrollTo(0, 0));
   await shot(mobile, "p3-phone-03-proposal-approved", { fullPage: true });
 
+  await mobile.goto(lightsUrl);
+  await mobile.getByRole("heading", { level: 1, name: LIGHTS_TITLE }).waitFor();
+  check("on a phone the warning about unapproved text is shown", (await warningOf(mobile).isVisible()) && (await warningOf(mobile).innerText()).startsWith("You have never approved the official text of this section."));
+  const historyLink = warningOf(mobile).getByRole("link", { name: "version history" });
+  check("on a phone the warning's link to version history is there", await historyLink.isVisible());
+  await shot(mobile, "p3-phone-12-proposal-warning", { fullPage: true });
+  await fits("A proposal with the warning about unapproved text");
+  await approveButton(mobile).scrollIntoViewIfNeeded();
+  await approveButton(mobile).tap();
+  check("on a phone she can approve after reading the warning", await eventually(async () => (await statusOf(mobile).innerText()) === approvedBoth), await statusOf(mobile).innerText());
+
   await mobile.getByRole("button", { name: "Open menu" }).click();
   const mobileNav = navOf(mobile);
   await shot(mobile, "p3-phone-04-menu-count");
@@ -817,6 +941,8 @@ async function main() {
   await mobile.getByRole("heading", { level: 1, name: "Decisions Log" }).waitFor();
   await mobile.getByText("Filters", { exact: true }).tap();
   await mobile.getByRole("button", { name: "Apply" }).waitFor();
+  // Let the browser's own flash on the tapped word fade, so it is not in the picture.
+  await mobile.waitForTimeout(700);
   await shot(mobile, "p3-phone-06-decisions-log", { fullPage: true });
   await fits("The Decisions Log with Filters open");
 
