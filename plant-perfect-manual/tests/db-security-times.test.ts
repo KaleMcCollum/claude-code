@@ -269,10 +269,17 @@ describe("database rules: times are the real time", () => {
       "note_revisions.created_at on insert",
       "note_sections.created_at on insert",
       "notes.created_at on insert",
+      "notes.removed_at on update",
+      "notes.sorted_at on update",
       "official_versions.created_at on insert",
       "proposal_notes.created_at on insert",
       "proposals.created_at on insert",
       "proposals.decided_at on update",
+      "sections.archived_at on update",
+      "sections.created_at on insert",
+      "sections.updated_at on update",
+      "users.created_at on insert",
+      "users.removed_at on update",
     ]);
   });
 });

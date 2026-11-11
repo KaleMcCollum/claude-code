@@ -1,4 +1,4 @@
-import { type SQL, and, asc, count, desc, eq, exists, inArray, isNull, max, ne, notExists, sql } from "drizzle-orm";
+import { type SQL, and, asc, count, desc, eq, exists, inArray, isNull, max, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { type Queryable, type Tx, asUser, sqlState } from "@/db/client";
 import {
@@ -61,8 +61,9 @@ import { addDays, centralDateKey, formatDate } from "./time";
  *    against (`baseVersionId`). When that text changes while the proposal
  *    waits, the proposal is out of date: the proposer's approval was never
  *    given on top of the newer text, so two people cannot approve it until
- *    the proposer has checked it against the new text and saved it again.
- *    One person can still approve it alone, which is flagged.
+ *    the proposer has checked it against the new text and saved it again
+ *    (`editProposal` with the version their page showed). One person can
+ *    still approve it alone, which is flagged like any one-person decision.
  *  - Only the proposer can change or withdraw a proposal, and can change it
  *    only until someone else has approved or endorsed it. Another Owner
  *    declines it instead.
@@ -148,11 +149,40 @@ export type ProposalView = {
    */
   outOfDate: boolean;
   /**
-   * Open proposals: its proposer could still change it. They are still
-   * here, are still allowed to propose, and nobody else has approved or
-   * endorsed it. False for anything that is not open.
+   * Open proposals: its proposer could still change it (and so could still
+   * check it against new official text). They have not been removed, are
+   * still allowed to propose, and nobody else has approved or endorsed it.
+   * False for anything that is not open.
    */
   proposerCanChange: boolean;
+};
+
+/** What an open proposal is waiting for, and for whom. See `waitingOn`. */
+export type Waiting = {
+  /**
+   * approve: waiting for approvals.
+   * check: waiting for the proposer to check it against new official text.
+   * stuck: out of date and its proposer can no longer change it.
+   */
+  step: "approve" | "check" | "stuck";
+  /**
+   * The people it is waiting for.
+   *  - approve: the people who can approve now and have not. When two of
+   *    them have already approved (it only needs one more press of Approve
+   *    to become official): everyone who can approve now.
+   *  - check: the proposer.
+   *  - stuck: everyone who can approve now (any of them can decline it, or
+   *    withdraw it if it is their own).
+   */
+  ids: string[];
+  /** Their names, in the same order. */
+  names: string[];
+  /**
+   * Step "approve": how many more approvals are needed (0, 1 or 2). With a
+   * single Owner one approval is all there can be, so it is never more than
+   * the number of people who can approve. 0 for the other two steps.
+   */
+  needed: number;
 };
 
 /** What the person had on screen when they pressed a button. */
@@ -399,19 +429,18 @@ export async function activeApprovers(q: Queryable): Promise<{ id: string; name:
 
 /**
  * The number shown after "Proposals" in the sidebar: for someone who can
- * approve, the open proposals they have not approved yet; for anyone else,
- * all open proposals.
+ * approve, the open proposals that are waiting for them (`waitingOn`); for
+ * anyone else, all open proposals.
  */
 export async function countAwaiting(q: Queryable, actor: Actor): Promise<number> {
-  const mine = q
-    .select({ one: sql`1` })
-    .from(approvals)
-    .where(and(eq(approvals.proposalId, proposals.id), eq(approvals.userId, actor.id)));
-  const [{ n }] = await q
-    .select({ n: count() })
-    .from(proposals)
-    .where(and(eq(proposals.status, "open"), can(actor, "approve") ? notExists(mine) : undefined));
-  return n;
+  if (!can(actor, "approve")) {
+    const [{ n }] = await q.select({ n: count() }).from(proposals).where(eq(proposals.status, "open"));
+    return n;
+  }
+  const open = await listOpenProposals(q);
+  if (open.length === 0) return 0;
+  const approvers = await activeApprovers(q);
+  return open.filter((view) => waitingOn(view, approvers)?.ids.includes(actor.id)).length;
 }
 
 export type DecisionFilters = {
@@ -575,11 +604,18 @@ export async function changesNotApprovedBy(
 }
 
 /**
- * Which approve buttons an open proposal shows this person.
- *  - `approve`: they have not approved yet ("Approve").
- *  - `alone`: after their approval it would still be waiting for someone
- *    else, so they may also make it official without waiting
- *    ("Approve on my own"). For the proposer this is the only one of the two.
+ * Which approve buttons an open proposal shows this person. `approvers` is
+ * everyone who can approve right now (`activeApprovers`).
+ *  - `approve` ("Approve"): pressing it does something. Either they have
+ *    not approved yet and there is another Owner whose approval it can then
+ *    wait for (or already has); or they have approved and so has another
+ *    Owner, and this press makes it official. Never on a proposal that is
+ *    out of date: two people cannot approve that until its proposer has
+ *    checked it against the new official text.
+ *  - `alone` ("Approve on my own"): nobody else who can approve has
+ *    approved it, so they may make it official without waiting, as a
+ *    one-person decision. For the proposer, and for a single Owner, this is
+ *    the only one of the two.
  */
 export function approveChoices(
   view: ProposalView,
@@ -589,16 +625,82 @@ export function approveChoices(
   if (view.status !== "open" || !can(actor, "approve")) return { approve: false, alone: false };
   const approved = new Set(view.approvals.map((a) => a.userId));
   const mine = approved.has(actor.id);
-  const counted =
-    approvers.filter((owner) => owner.id !== actor.id && approved.has(owner.id)).length + 1;
-  return { approve: !mine, alone: counted < 2 };
+  const otherOwners = approvers.filter((owner) => owner.id !== actor.id);
+  const othersApproved = otherOwners.filter((owner) => approved.has(owner.id)).length;
+  return {
+    approve: !view.outOfDate && (mine ? othersApproved >= 1 : otherOwners.length >= 1),
+    alone: othersApproved === 0,
+  };
 }
 
-/** The people an open proposal is still waiting for. */
-export function waitingFor(view: ProposalView, approvers: { id: string; name: string }[]): string[] {
-  if (view.status !== "open") return [];
+/**
+ * What an open proposal is waiting for, and for whom. Null unless it is
+ * open. `approvers` is everyone who can approve right now.
+ */
+export function waitingOn(view: ProposalView, approvers: { id: string; name: string }[]): Waiting | null {
+  if (view.status !== "open") return null;
+  const people = (list: { id: string; name: string }[]) => ({
+    ids: list.map((person) => person.id),
+    names: list.map((person) => person.name),
+  });
+  if (view.outOfDate) {
+    return view.proposerCanChange && view.proposedById
+      ? { step: "check", ids: [view.proposedById], names: [view.proposedByName ?? "Someone"], needed: 0 }
+      : { step: "stuck", ...people(approvers), needed: 0 };
+  }
   const approved = new Set(view.approvals.map((a) => a.userId));
-  return approvers.filter((owner) => !approved.has(owner.id)).map((owner) => owner.name);
+  const haveApproved = approvers.filter((owner) => approved.has(owner.id));
+  const haveNot = approvers.filter((owner) => !approved.has(owner.id));
+  return {
+    step: "approve",
+    // With two approvals on it already, anyone's press of Approve completes it.
+    ...people(haveApproved.length >= 2 ? approvers : haveNot),
+    needed: Math.max(0, Math.min(2, approvers.length) - haveApproved.length),
+  };
+}
+
+/** "Casey", "Casey or Dana", "Casey, Dana or Sam" */
+function orNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
+}
+
+/**
+ * One line saying who an open proposal is waiting for, as `viewerId` should
+ * read it ("you" for themselves). Null unless it is open.
+ *
+ *  - "Waiting for you" / "Waiting for Casey" / "Waiting for Casey or Dana" /
+ *    "Waiting for you or Dana": one more approval is needed (or one more
+ *    press of Approve), and these are the people who could give it.
+ *  - "Waiting for two Owners": two approvals are needed.
+ *  - "No other Owner to wait for": there is nobody to wait for (a single
+ *    Owner who has approved it; "Approve on my own" is the way forward).
+ *  - "Waiting for you to check it against the new official text" /
+ *    "Waiting for Kale to check ...": it is out of date.
+ *  - "The official text changed and it can no longer be approved. Decline
+ *    it.": it is out of date and its proposer can no longer change it.
+ */
+export function waitingText(
+  view: ProposalView,
+  approvers: { id: string; name: string }[],
+  viewerId: string,
+): string | null {
+  const waiting = waitingOn(view, approvers);
+  if (!waiting) return null;
+  if (waiting.step === "stuck") return "The official text changed and it can no longer be approved. Decline it.";
+  if (waiting.step === "check") {
+    const who = waiting.ids.includes(viewerId) ? "you" : waiting.names[0];
+    return `Waiting for ${who} to check it against the new official text`;
+  }
+  if (waiting.ids.length === 0) return "No other Owner to wait for";
+  if (waiting.needed === 2) return "Waiting for two Owners";
+  const others = waiting.names.filter((_, index) => waiting.ids[index] !== viewerId);
+  return `Waiting for ${orNames(waiting.ids.includes(viewerId) ? ["you", ...others] : others)}`;
+}
+
+/** The names of the people an open proposal is waiting for (`waitingOn(...).names`). */
+export function waitingFor(view: ProposalView, approvers: { id: string; name: string }[]): string[] {
+  return waitingOn(view, approvers)?.names ?? [];
 }
 
 /** True when this person could endorse it: allowed to, and has neither approved nor endorsed it. */
@@ -647,16 +749,22 @@ export function statusLine(view: ProposalView): string {
  *    "Edited directly: 2.1 Wages".
  *  - A structure proposal that is still open is described from what it will
  *    actually do, with the sections' names and numbers as they are right
- *    now, never from its stored title. Once decided it keeps the title it
- *    was decided under.
+ *    now, never from its stored title.
+ *  - An approved structure proposal shows the sentence it was approved
+ *    under (`decidedTitle`): what it said, with the names and numbers of
+ *    that moment, when the approver pressed the button. Section changes
+ *    approved before that sentence was recorded, and declined or withdrawn
+ *    ones, show the title stored when they were proposed or last changed.
  */
 export function displayTitle(
-  view: Pick<ProposalView, "title" | "direct" | "sectionId" | "type" | "status" | "structureChange">,
+  view: Pick<ProposalView, "title" | "direct" | "sectionId" | "type" | "status" | "structureChange"> &
+    Partial<Pick<ProposalView, "decidedTitle">>,
   tree: SectionNode[],
 ): string {
   if (view.direct) return `${view.title}: ${sectionLabel(tree, view.sectionId)}`;
-  if (view.type === "structure" && view.status === "open" && view.structureChange) {
-    return describeStructure(tree, view.sectionId, view.structureChange);
+  if (view.type === "structure") {
+    if (view.status !== "open") return view.decidedTitle ?? view.title;
+    if (view.structureChange) return describeStructure(tree, view.sectionId, view.structureChange);
   }
   return view.title;
 }
@@ -866,12 +974,24 @@ type Prepared = {
   businessTag: BusinessTag | null;
   proposedOfficial: RichDoc | null;
   proposedOfficialText: string | null;
+  /** Text proposals: the section's official version as it is right now (null if it has none). */
   baseVersionId: string | null;
   structureChange: StructureChange | null;
 };
 
-/** Check a new or edited proposal against the sections and official text as they are now. */
-async function prepare(tx: Tx, input: ProposalInput): Promise<Prepared> {
+/**
+ * Check a new or edited proposal against the sections and official text as
+ * they are now.
+ *
+ * `shown` (text proposals): the official version the person's page showed
+ * them. If that is no longer the section's current version, the proposal is
+ * refused with the words in `otherwise`.
+ */
+async function prepare(
+  tx: Tx,
+  input: ProposalInput,
+  shown?: { versionId: string | null; otherwise: string },
+): Promise<Prepared> {
   const tree = await loadTree(tx);
   const { description, descriptionText } = readDescription(input.description);
 
@@ -927,6 +1047,7 @@ async function prepare(tx: Tx, input: ProposalInput): Promise<Prepared> {
   }
   const proposedOfficial = sanitizeDoc(input.proposedOfficial);
   const current = await latestVersionRow(tx, input.sectionId);
+  if (shown && (current?.id ?? null) !== shown.versionId) throw new AppError(shown.otherwise);
   if (current ? sameDoc(current.content as RichDoc, proposedOfficial) : isEmptyDoc(proposedOfficial)) {
     throw new AppError(
       "The proposed official text is the same as the current one. Change the text to what it should say if this is approved.",
@@ -967,11 +1088,29 @@ async function nameOf(tx: Tx, userId: string | null): Promise<string> {
   return row?.name ?? "Someone";
 }
 
-/** What the database answers (SQLSTATE) when an approval or endorsement names an out-of-date revision. */
+/**
+ * The database's own error codes (SQLSTATE) for three of its refusals, so
+ * that each can be told to the person in plain words:
+ *  - an approval or endorsement that names an older revision of the proposal;
+ *  - two people's approval of a proposal that is out of date;
+ *  - an approval or endorsement of a proposal that has just been declined
+ *    or withdrawn.
+ */
 const STALE_REVISION = "PPF01";
+const OUT_OF_DATE = "PPF03";
+const CLOSED_MEANWHILE = "PPF04";
+/** What the database answers when a row breaks one of its permission rules. */
+const BROKE_A_RULE = "42501";
+
+const CLOSED_SO_NOT_ENDORSED = "This proposal was declined or withdrawn, so it can no longer be endorsed.";
+const CLOSED_SO_NOT_APPROVED = "This proposal has already been declined or withdrawn. Reload the page to see it.";
 
 function changedAfterOpening(who: string, verb: string): string {
   return `${who} changed this proposal after you opened it. Reload the page and read it again, then ${verb}.`;
+}
+
+function officialTextChangedAfterOpening(verb: string): string {
+  return `The official text of this section changed after you opened this page. Reload the page and read it again, then ${verb}.`;
 }
 
 /** Refuse to act on a page that no longer shows what would be approved. */
@@ -982,9 +1121,7 @@ async function checkSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Pr
   if (row.type !== "structure" && row.sectionId && seen.currentVersionId !== undefined) {
     const current = await latestVersionRow(tx, row.sectionId);
     if ((current?.id ?? null) !== seen.currentVersionId) {
-      throw new AppError(
-        `The official text of this section changed after you opened this page. Reload the page and read it again, then ${verb}.`,
-      );
+      throw new AppError(officialTextChangedAfterOpening(verb));
     }
   }
 }
@@ -993,19 +1130,74 @@ async function approvalsOf(tx: Tx, proposalId: string): Promise<{ userId: string
   return tx.select({ userId: approvals.userId }).from(approvals).where(eq(approvals.proposalId, proposalId));
 }
 
+/** True when anyone other than `userId` has approved or endorsed this proposal. */
+async function othersHaveSigned(tx: Tx, proposalId: string, userId: string | null): Promise<boolean> {
+  if ((await approvalsOf(tx, proposalId)).some((a) => a.userId !== userId)) return true;
+  const endorsed = await tx
+    .select({ userId: endorsements.userId })
+    .from(endorsements)
+    .where(eq(endorsements.proposalId, proposalId));
+  return endorsed.some((e) => e.userId !== userId);
+}
+
+/**
+ * True when a text proposal is out of date: the official text of its
+ * section is no longer the version it was written against or last checked
+ * against. Call it with the section locked (`lockSectionOf`), so the answer
+ * holds until the transaction ends.
+ */
+async function isOutOfDate(tx: Tx, row: ProposalRow): Promise<boolean> {
+  if (row.type === "structure" || !row.sectionId) return false;
+  const current = await latestVersionRow(tx, row.sectionId);
+  return (current?.id ?? null) !== row.baseVersionId;
+}
+
+/**
+ * What a person is told when they try to approve a proposal that is out of
+ * date. It depends on whether the proposer could still check it against the
+ * new text: they have not been removed, may still propose, and nobody else
+ * has approved or endorsed it (the same test as `proposerCanChange`).
+ *
+ * Worked out before anything is written, because once the database has
+ * refused a row nothing more can be read in that transaction.
+ */
+async function outOfDateWords(tx: Tx, row: ProposalRow): Promise<string> {
+  // (Only a text proposal can be out of date.)
+  if (row.type === "structure") return "";
+  const [who] = row.proposedBy
+    ? await tx
+        .select({ name: users.name, removedAt: users.removedAt, permissions: roles.permissions })
+        .from(users)
+        .innerJoin(roles, eq(roles.key, users.roleKey))
+        .where(eq(users.id, row.proposedBy))
+    : [];
+  const canStillChange =
+    who !== undefined &&
+    who.removedAt === null &&
+    who.permissions.includes("propose") &&
+    !(await othersHaveSigned(tx, row.id, row.proposedBy));
+  return canStillChange
+    ? `The official text of this section has changed since ${who.name} proposed this. ${who.name} needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.`
+    : "The official text of this section has changed since this was proposed, and the person who proposed it can no longer change it. Decline it and make a new proposal.";
+}
+
 /**
  * Record an approval or an endorsement, tied to the proposal revision the
  * person had in front of them. The database checks that number against the
  * proposal while holding a lock on it, so even when the proposer saves a
  * change at the very same moment, nobody's name ends up on words they did
  * not see: whichever of the two comes second is refused.
+ *
+ * Under the same lock the database checks that the proposal has not just
+ * been declined or withdrawn. An Advisor's endorsement cannot take that lock
+ * beforehand, so for them this is the check that counts.
  */
 async function addStamp(
   tx: Tx,
   table: typeof approvals | typeof endorsements,
   row: Pick<ProposalRow, "id" | "proposedBy">,
   stamp: { userId: string; revision: number; now: Date },
-  verb: string,
+  verb: "approve" | "endorse",
 ): Promise<void> {
   // Looked up first: once the database has refused a row, nothing more can
   // be read in this transaction.
@@ -1014,7 +1206,13 @@ async function addStamp(
     .insert(table)
     .values({ proposalId: row.id, userId: stamp.userId, revision: stamp.revision, createdAt: stamp.now })
     .catch((error: unknown) => {
-      if (sqlState(error) === STALE_REVISION) throw new AppError(changedAfterOpening(proposerName, verb));
+      const refusedWith = sqlState(error);
+      if (refusedWith === STALE_REVISION) throw new AppError(changedAfterOpening(proposerName, verb));
+      // Declined or withdrawn at this very moment. (The second code is what
+      // the older rule on these two tables answers for the same thing.)
+      if (refusedWith === CLOSED_MEANWHILE || refusedWith === BROKE_A_RULE) {
+        throw new AppError(verb === "endorse" ? CLOSED_SO_NOT_ENDORSED : CLOSED_SO_NOT_APPROVED);
+      }
       throw error;
     });
 }
@@ -1031,7 +1229,20 @@ export async function createProposal(
   assertCan(actor, "approve");
   const now = options.now ?? new Date();
   return asUser(actor.id, async (tx) => {
-    const prepared = await prepare(tx, input);
+    // A text proposal made from a page: the official text that page started
+    // from must still be the current one, or the person would be proposing
+    // to replace words they have never seen.
+    const prepared = await prepare(
+      tx,
+      input,
+      input.kind !== "structure" && input.baseVersionId !== undefined
+        ? {
+            versionId: input.baseVersionId,
+            otherwise:
+              "The official text of this section changed after you opened this page. Reload the page. What you typed is kept on this device.",
+          }
+        : undefined,
+    );
     const noteIds = [...new Set(input.noteIds ?? [])];
     if (noteIds.length > 50 || !noteIds.every(isUuid)) {
       throw new AppError("The notes for this proposal could not be read. Reload the page and try again.");
@@ -1070,11 +1281,51 @@ export async function createProposal(
 }
 
 /**
+ * True when two structure changes say the same thing. Compared field by
+ * field: the database hands a stored change back with its fields in any
+ * order, so the two can never be compared as text.
+ */
+function sameStructureChange(a: StructureChange | null, storedRaw: unknown): boolean {
+  const nothingStored = storedRaw === null || storedRaw === undefined;
+  if (a === null || nothingStored) return a === null && nothingStored;
+  const b = readStructureChange(storedRaw);
+  if (!b) return false;
+  switch (a.action) {
+    case "add":
+      return b.action === "add" && a.title === b.title;
+    case "rename":
+      return b.action === "rename" && a.title === b.title && a.fromTitle === b.fromTitle;
+    case "move":
+      return b.action === "move" && a.parentId === b.parentId;
+    case "archive":
+      return b.action === "archive";
+  }
+}
+
+/**
  * Change an open proposal. Only its proposer can, and only until someone
  * else has approved or endorsed it (after that: withdraw and propose again,
  * so nobody's approval ends up on words they did not see).
+ *
+ * `seen.currentVersionId` (text proposals) is the section's official version
+ * that the edit page showed the proposer, null if it showed none. Sending
+ * it says "I have checked my proposal against this official text":
+ *  - it must still be the section's current version, or the save is refused;
+ *  - the proposal is then written against that version (`baseVersionId`),
+ *    which is what brings an out-of-date proposal up to date again. That
+ *    counts as a change even when nothing else was changed: the revision
+ *    goes up and the activity log says the proposal was checked.
+ * Without it, what the proposal was written against stays as it is: fixing
+ * a typo in the title does not hide that the official text has moved on.
+ *
+ * A save that changes nothing writes nothing and logs nothing.
  */
-export async function editProposal(actor: Actor, id: string, input: ProposalInput): Promise<void> {
+export async function editProposal(
+  actor: Actor,
+  id: string,
+  input: ProposalInput,
+  seen?: { currentVersionId?: string | null },
+): Promise<void> {
   assertCan(actor, "propose");
   await asUser(actor.id, async (tx) => {
     const row = await lockProposal(tx, id);
@@ -1082,15 +1333,7 @@ export async function editProposal(actor: Actor, id: string, input: ProposalInpu
     if (row.proposedBy !== actor.id) {
       throw new AppError("Only the person who made a proposal can change it. You can comment on it, or decline it.");
     }
-    const others =
-      (await approvalsOf(tx, id)).some((a) => a.userId !== actor.id) ||
-      (
-        await tx
-          .select({ userId: endorsements.userId })
-          .from(endorsements)
-          .where(and(eq(endorsements.proposalId, id), ne(endorsements.userId, actor.id)))
-      ).length > 0;
-    if (others) {
+    if (await othersHaveSigned(tx, id, actor.id)) {
       throw new AppError(
         "Someone has already approved or endorsed this proposal, so it can no longer be changed. Withdraw it and make a new one.",
       );
@@ -1099,28 +1342,38 @@ export async function editProposal(actor: Actor, id: string, input: ProposalInpu
     if (input.kind !== expectedKind) {
       throw new AppError("The kind of a proposal cannot be changed. Withdraw it and make a new one.");
     }
-    const prepared = await prepare(tx, input);
-    if (prepared.type !== "structure" && prepared.sectionId !== row.sectionId) {
+    if (input.kind !== "structure" && input.sectionId !== row.sectionId) {
       throw new AppError("The section of a proposal cannot be changed. Withdraw it and make a new one.");
     }
+    const checkedAgainst = input.kind !== "structure" && seen?.currentVersionId !== undefined;
+    const prepared = await prepare(
+      tx,
+      input,
+      checkedAgainst
+        ? { versionId: seen.currentVersionId as string | null, otherwise: officialTextChangedAfterOpening("save") }
+        : undefined,
+    );
     if (prepared.type === "structure") {
       const before = row.structureChange as StructureChange;
       if (prepared.structureChange!.action !== before.action || prepared.sectionId !== row.sectionId) {
         throw new AppError("What a structure proposal is about cannot be changed. Withdraw it and make a new one.");
       }
     }
-    const same =
+    // Checked against the current official text: written against that
+    // version from now on. Otherwise left exactly as it was.
+    const baseVersionId = checkedAgainst ? prepared.baseVersionId : row.baseVersionId;
+    const sameContent =
       prepared.title === row.title &&
       prepared.descriptionText === row.descriptionText &&
-      JSON.stringify(prepared.structureChange) === JSON.stringify(row.structureChange) &&
+      sameStructureChange(prepared.structureChange, row.structureChange) &&
       prepared.businessTag === row.businessTag &&
       (prepared.description === null
         ? row.description === null
         : row.description !== null && sameDoc(prepared.description, row.description as RichDoc)) &&
       (prepared.proposedOfficial === null ||
         (row.proposedOfficial !== null && sameDoc(prepared.proposedOfficial, row.proposedOfficial as RichDoc)));
-    if (same) return;
-    await tx
+    if (sameContent && baseVersionId === row.baseVersionId) return;
+    const [saved] = await tx
       .update(proposals)
       .set({
         title: prepared.title,
@@ -1129,16 +1382,22 @@ export async function editProposal(actor: Actor, id: string, input: ProposalInpu
         businessTag: prepared.businessTag,
         proposedOfficial: prepared.proposedOfficial,
         proposedOfficialText: prepared.proposedOfficialText,
-        baseVersionId: prepared.baseVersionId,
+        baseVersionId,
         structureChange: prepared.structureChange,
       })
-      .where(eq(proposals.id, id));
+      .where(eq(proposals.id, id))
+      .returning({ revision: proposals.revision });
+    // The database raises the revision whenever a proposal really changes.
+    // If it did not, nothing was changed, and the log must not say so.
+    if (!saved || saved.revision === row.revision) return;
     await logActivity(tx, actor.id, {
-      action: "proposal.edited",
+      action: sameContent ? "proposal.rechecked" : "proposal.edited",
       entityType: "proposal",
       entityId: id,
-      summary: `Changed their proposal: ${prepared.title}`,
-      data: { revision: row.revision + 1 },
+      summary: sameContent
+        ? `Checked their proposal against the new official text: ${prepared.title}`
+        : `Changed their proposal: ${prepared.title}`,
+      data: { revision: saved.revision, baseVersionId },
     });
   });
 }
@@ -1149,19 +1408,32 @@ export async function editProposal(actor: Actor, id: string, input: ProposalInpu
  * Mark the proposal approved and apply its change, in the transaction that
  * is already open. If the change cannot be applied, the error undoes
  * everything, including the approval just recorded.
+ *
+ * `ifOutOfDate` is what to tell the person if the database refuses a text
+ * proposal as out of date (see `outOfDateWords`). The callers check that
+ * themselves first, with the section locked, so the database should never
+ * have to; if it ever does, the person still gets plain words.
  */
-async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date): Promise<void> {
+async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, ifOutOfDate: string): Promise<void> {
   const decided = { status: "approved" as const, decidedAt: now, decidedBy: actor.id };
+  // The title this decision is recorded under in the activity log.
+  let recordedTitle = row.title;
 
   if (row.type === "structure") {
     // Checked, never guessed: a change the app cannot read changes nothing.
     const change = readStructureChange(row.structureChange);
     if (!change) throw new AppError(UNREADABLE_CHANGE);
     const tree = await loadTree(tx);
+    // The sentence the approver was shown: what the change does, with the
+    // sections' names and numbers as they are just before it is carried
+    // out. It is kept with the decision, because the title stored when it
+    // was proposed may no longer say what is being approved.
+    const decidedTitle = describeStructure(tree, row.sectionId, change);
+    recordedTitle = decidedTitle;
     if (change.action === "add") {
       if (row.sectionId && !findNode(tree, row.sectionId)) throw new AppError(SECTION_GONE);
       const createdSectionId = await createSectionIn(tx, actor, { parentId: row.sectionId, title: change.title });
-      await tx.update(proposals).set({ ...decided, createdSectionId }).where(eq(proposals.id, row.id));
+      await tx.update(proposals).set({ ...decided, decidedTitle, createdSectionId }).where(eq(proposals.id, row.id));
     } else {
       if (!row.sectionId || !findNode(tree, row.sectionId)) throw new AppError(SECTION_GONE);
       switch (change.action) {
@@ -1181,14 +1453,21 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date): Prom
           throw new AppError(UNREADABLE_CHANGE);
         }
       }
-      await tx.update(proposals).set(decided).where(eq(proposals.id, row.id));
+      await tx.update(proposals).set({ ...decided, decidedTitle }).where(eq(proposals.id, row.id));
     }
   } else {
     const [section] = await tx.select().from(sections).where(eq(sections.id, row.sectionId!));
     if (!section || section.archivedAt || !findNode(await loadTree(tx), section.id)) {
       throw new AppError(SECTION_GONE);
     }
-    await tx.update(proposals).set(decided).where(eq(proposals.id, row.id));
+    await tx
+      .update(proposals)
+      .set(decided)
+      .where(eq(proposals.id, row.id))
+      .catch((error: unknown) => {
+        if (sqlState(error) === OUT_OF_DATE) throw new AppError(ifOutOfDate);
+        throw error;
+      });
     await addVersion(tx, actor, {
       sectionId: section.id,
       proposalId: row.id,
@@ -1207,7 +1486,7 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date): Prom
     action: "proposal.approved",
     entityType: "proposal",
     entityId: row.id,
-    summary: `Approved by ${joinNames(approvers.map((a) => a.name))}: ${row.title}`,
+    summary: `Approved by ${joinNames(approvers.map((a) => a.name))}: ${recordedTitle}`,
     data: { type: row.type, sectionId: row.sectionId, approvals: approvers.length },
   });
 }
@@ -1244,6 +1523,14 @@ export type ApproveOutcome = { approved: boolean; waitingFor: string[] };
  * "Approve": record this Owner's approval. With the approvals of two people
  * who can approve, the proposal is approved and its change applied.
  * Otherwise it stays open, waiting for the other Owner.
+ *
+ * Refused, with nothing recorded:
+ *  - on a text proposal that is out of date (its section's official text
+ *    changed after it was proposed or last checked): its proposer's approval
+ *    was never given on top of the newer text, so it cannot count as the
+ *    second one. The proposer checks it and saves it again first;
+ *  - when nobody else can approve right now: there would be no one to wait
+ *    for. "Approve on my own" is the way forward then.
  */
 export async function approveProposal(
   actor: Actor,
@@ -1258,12 +1545,17 @@ export async function approveProposal(
     requireOpen(row);
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
-    const added = await recordApproval(tx, actor, row, seen.revision, now);
+    const ifOutOfDate = await outOfDateWords(tx, row);
+    if (await isOutOfDate(tx, row)) throw new AppError(ifOutOfDate);
     const owners = await activeApprovers(tx);
+    if (!owners.some((owner) => owner.id !== actor.id)) {
+      throw new AppError("There is no other Owner to wait for right now. Use Approve on my own.");
+    }
+    const added = await recordApproval(tx, actor, row, seen.revision, now);
     const approvedBy = new Set((await approvalsOf(tx, id)).map((a) => a.userId));
     const counted = owners.filter((owner) => approvedBy.has(owner.id));
     if (counted.length >= 2) {
-      await finalize(tx, actor, row, now);
+      await finalize(tx, actor, row, now, ifOutOfDate);
       return { approved: true, waitingFor: [] };
     }
     const waitingFor = owners.filter((owner) => !approvedBy.has(owner.id)).map((owner) => owner.name);
@@ -1275,7 +1567,8 @@ export async function approveProposal(
         action: "proposal.approval_added",
         entityType: "proposal",
         entityId: id,
-        summary: `Approved, waiting for ${waitingFor.length > 0 ? joinNames(waitingFor) : "another Owner"}: ${row.title}`,
+        // One more approval is needed, and any one of these people can give it.
+        summary: `Approved, waiting for ${waitingFor.length > 0 ? orNames(waitingFor) : "another Owner"}: ${row.title}`,
       });
     }
     return { approved: false, waitingFor };
@@ -1285,6 +1578,11 @@ export async function approveProposal(
 /**
  * "Approve on my own": make it official now with this Owner's approval,
  * without waiting. It is flagged on Today so the other Owner sees it.
+ *
+ * On a proposal that is out of date this is allowed only when the result is
+ * a one-person decision (which is flagged): if someone else who can approve
+ * right now has approved it too, it would be recorded as approved by two
+ * people, one of whom never saw the newer official text, so it is refused.
  */
 export async function approveAlone(
   actor: Actor,
@@ -1299,8 +1597,16 @@ export async function approveAlone(
     requireOpen(row);
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
+    const ifOutOfDate = await outOfDateWords(tx, row);
+    if (await isOutOfDate(tx, row)) {
+      const owners = await activeApprovers(tx);
+      const approvedBy = new Set((await approvalsOf(tx, id)).map((a) => a.userId));
+      // (Counted as it will stand once this person's own approval is on it.)
+      const counted = owners.filter((owner) => owner.id === actor.id || approvedBy.has(owner.id));
+      if (counted.length >= 2) throw new AppError(ifOutOfDate);
+    }
     await recordApproval(tx, actor, row, seen.revision, now);
-    await finalize(tx, actor, row, now);
+    await finalize(tx, actor, row, now, ifOutOfDate);
   });
 }
 

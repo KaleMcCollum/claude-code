@@ -1,10 +1,18 @@
 import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
-import { asSystem, asUser } from "@/db/client";
-import { endorsements, officialVersions, proposals, sections, users } from "@/db/schema";
+import { asSystem, asUser, sqlState } from "@/db/client";
+import { activityLog, approvals, endorsements, officialVersions, proposals, sections, users } from "@/db/schema";
 import { listVersions, loadOfficial, restoreVersion, saveOfficial } from "@/lib/official";
 import { type Actor, AppError } from "@/lib/permissions";
-import { approveAlone, approveProposal, createProposal, editProposal, endorseProposal } from "@/lib/proposals";
+import {
+  approveAlone,
+  approveProposal,
+  createProposal,
+  declineProposal,
+  editProposal,
+  endorseProposal,
+  withdrawProposal,
+} from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
 import { addUser } from "@/lib/users";
 import { actorFor, fakeMailer, insertUser, withTestDatabase } from "./helpers/db";
@@ -110,6 +118,99 @@ describe.skipIf(!onServer)("at the same moment (real Postgres only)", () => {
       }
     }
     console.log(`endorse against edit: the endorsement came first in ${endorsedFirst} of ${rounds} rounds`);
+  });
+
+  for (const how of ["decline", "withdraw"] as const) {
+    const closing = how === "decline" ? "Decline" : "Withdraw";
+    const closed = how === "decline" ? "declined" : "withdrawn";
+
+    it(`Endorse against ${closing}: never an endorsement after the decision, never the general error`, async () => {
+      const equipment = await section("Coffee Equipment");
+      const rounds = 40;
+      let endorsedFirst = 0;
+      for (let i = 0; i < rounds; i += 1) {
+        const id = await createProposal(kale, {
+          kind: "decision",
+          sectionId: equipment,
+          title: `Espresso machine ${how} ${i}`,
+          proposedOfficial: doc(`Espresso machine: two group. (${how} ${i})`),
+        });
+        // Karen presses Endorse; at the same moment the proposal is declined
+        // by Casey (or withdrawn by Kale, who made it).
+        const endorse = () => endorseProposal(karen, id, { revision: 1 });
+        const close = () => (how === "decline" ? declineProposal(casey, id, "") : withdrawProposal(kale, id));
+        const [endorsed, done] =
+          i % 2 === 0 ? await together(endorse, close, i % 4) : ((await together(close, endorse, i % 4)).reverse() as [Settled<void>, Settled<void>]);
+
+        // Declining or withdrawing never waits on an endorsement.
+        expect(done.ok).toBe(true);
+        const [row] = await asSystem((db) => db.select().from(proposals).where(eq(proposals.id, id)));
+        expect(row.status).toBe(closed);
+        const stamps = await asSystem((db) => db.select().from(endorsements).where(eq(endorsements.proposalId, id)));
+        // What happened to this proposal, in the order it happened.
+        const steps = (
+          await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)).orderBy(asc(activityLog.id)))
+        ).map((entry) => entry.action);
+        if (endorsed.ok) {
+          // Karen was first: her endorsement was given while it was still open.
+          endorsedFirst += 1;
+          expect(stamps).toHaveLength(1);
+          expect(steps).toEqual(["proposal.created", "proposal.endorsed", `proposal.${closed}`]);
+        } else {
+          // The decision was first: no endorsement, and Karen is told why in plain words.
+          expect(stamps).toHaveLength(0);
+          expect(shown(endorsed)).toBe("This proposal was declined or withdrawn, so it can no longer be endorsed.");
+          expect(steps).toEqual(["proposal.created", `proposal.${closed}`]);
+        }
+      }
+      console.log(`endorse against ${how}: the endorsement came first in ${endorsedFirst} of ${rounds} rounds`);
+    });
+  }
+
+  it("two people's approval, straight at the database, against a direct save of the same section: never both", async () => {
+    const closing = await section("Closing Procedures");
+    await saveOfficial(kale, closing, doc("Closing text 0."));
+    const rounds = 30;
+    let approvals2 = 0;
+    for (let i = 1; i <= rounds; i += 1) {
+      const start = (await asSystem((db) => loadOfficial(db, closing)))!;
+      const text = `Proposed closing text ${i}.`;
+      const id = await createProposal(kale, { kind: "decision", sectionId: closing, title: `Closing ${i}`, proposedOfficial: doc(text) });
+      // Casey's approval goes straight to the database (approval, decision,
+      // version), without the app's own lock on the section. Only the
+      // database's rule now stands between her approval, which makes it two
+      // people's decision, and the direct save Kale makes at the same moment.
+      const approve = () =>
+        asUser(casey.id, async (tx) => {
+          await tx.insert(approvals).values({ proposalId: id, userId: casey.id, revision: 1 });
+          await tx.update(proposals).set({ status: "approved", decidedBy: casey.id }).where(eq(proposals.id, id));
+          return tx
+            .insert(officialVersions)
+            .values({ sectionId: closing, version: 1, content: doc(text), contentText: text, createdBy: casey.id, proposalId: id })
+            .returning();
+        });
+      const save = () => saveOfficial(kale, closing, doc(`Kale's closing edit ${i}.`), { baseVersionId: start.id });
+      const [approved, saved] =
+        i % 2 === 0 ? await together(approve, save, i % 3) : ((await together(save, approve, i % 3)).reverse() as [Settled<unknown>, Settled<unknown>]);
+
+      expect([approved.ok, saved.ok].filter(Boolean)).toHaveLength(1);
+      const after = (await versionsOf(closing)).filter((v) => v.version > start.version);
+      expect(after).toHaveLength(1);
+      const [row] = await asSystem((db) => db.select().from(proposals).where(eq(proposals.id, id)));
+      if (approved.ok) {
+        approvals2 += 1;
+        expect(after[0].contentText).toBe(text);
+        expect(row).toMatchObject({ status: "approved", decidedAlone: false });
+        expect(shown(saved)).toContain("Someone else changed this official text after you opened it");
+      } else {
+        // The official text changed first, so the proposal was out of date:
+        // the database refused the second person's approval, with its own code for that.
+        expect(sqlState(approved.error)).toBe("PPF03");
+        expect(after[0].contentText).toBe(`Kale's closing edit ${i}.`);
+        expect(row.status).toBe("open");
+      }
+    }
+    console.log(`two-person approval against direct save: the approval came first in ${approvals2} of ${rounds} rounds`);
   });
 
   it("two direct saves started from the same version: exactly one is accepted, every time", async () => {

@@ -1,13 +1,29 @@
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
-import type { Db } from "@/db/client";
+import { type Db, sqlErrorText } from "@/db/client";
 import * as schema from "@/db/schema";
-import { approvalLine, listVersions, loadOfficial } from "@/lib/official";
-import { listDecisions, listOneOwnerDecisions, loadProposal } from "@/lib/proposals";
+import { approvalLine, listVersions, loadOfficial, saveOfficial } from "@/lib/official";
+import type { Actor } from "@/lib/permissions";
+import {
+  type ProposalView,
+  activeApprovers,
+  approveProposal,
+  displayTitle,
+  editProposal,
+  endorseProposal,
+  listDecisions,
+  listOneOwnerDecisions,
+  listOpenProposals,
+  loadProposal,
+  loadTextChange,
+  waitingText,
+} from "@/lib/proposals";
+import { docToText } from "@/lib/richtext";
 import { loadTree } from "@/lib/sections";
+import { addUser, removeUser } from "@/lib/users";
 
 /**
  * Official text saved before proposals existed (Phases 1 and 2) must come
@@ -16,9 +32,11 @@ import { loadTree } from "@/lib/sections";
  * saves text the way Phase 1 did, then applies the newer steps on top.
  *
  * The second test does the same for a database that already had proposals
- * (Phase 3 as first built) and then gets the hardening steps.
+ * (Phase 3 as first built) and then gets the hardening steps. The third
+ * starts from the hardened database (step 0009), with people and proposals
+ * in every state, and applies the steps from the second review.
  *
- * Both write their starting data with full database access, which the rule
+ * All write their starting data with full database access, which the rule
  * against back-dating does not bind, so they need no `allow_set_time` switch.
  */
 
@@ -27,6 +45,8 @@ const REAL_FOLDER = path.join(process.cwd(), "drizzle");
 const LAST_OLD_STEP = "0004_capture_hardening";
 /** The last database step of Phase 3 as it was first built. */
 const LAST_PHASE_3_STEP = "0007_decisions_security";
+/** The last database step of the Phase 3 hardening. */
+const LAST_HARDENING_STEP = "0009_decisions_hardening_security";
 
 type Handle = {
   db: Db;
@@ -89,6 +109,37 @@ async function oldStepsFolder(lastStep: string = LAST_OLD_STEP): Promise<string>
   journal.entries = journal.entries.slice(0, last + 1);
   await writeFile(journalPath, JSON.stringify(journal));
   return folder;
+}
+
+/**
+ * A copy of all the database steps with one more, made-up step after them
+ * (as a later phase might add), so it can be applied the way a deploy does.
+ */
+async function folderWithLaterStep(statements: string[]): Promise<string> {
+  const folder = await mkdtemp(path.join(os.tmpdir(), "ppf-later-step-"));
+  cleanups.push(() => rm(folder, { recursive: true, force: true }));
+  await cp(REAL_FOLDER, folder, { recursive: true });
+  const journalPath = path.join(folder, "meta", "_journal.json");
+  const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+    entries: { idx: number; version: string; when: number; tag: string; breakpoints: boolean }[];
+  };
+  const last = journal.entries.at(-1)!;
+  const tag = "9999_made_up_later_step";
+  journal.entries.push({ idx: last.idx + 1, version: last.version, when: last.when + 60_000, tag, breakpoints: true });
+  await writeFile(journalPath, JSON.stringify(journal));
+  await writeFile(path.join(folder, `${tag}.sql`), statements.join("--> statement-breakpoint\n"));
+  return folder;
+}
+
+/**
+ * Let the app's own functions (which open "the" database themselves) work on
+ * this test's database for the rest of the test file.
+ */
+function useAsTheAppDatabase(handle: Handle): void {
+  globalThis.__ppfDb = Promise.resolve({ db: handle.db, close: async () => {} });
+  cleanups.push(async () => {
+    globalThis.__ppfDb = undefined;
+  });
 }
 
 function rowsOf<T>(result: unknown): T[] {
@@ -352,5 +403,268 @@ describe("proposals made before the hardening steps", () => {
     // A decided proposal still cannot be changed (the rule was switched off only for the carry-over itself).
     await expect(db.execute(sql`update proposals set title = 'Rewritten' where id = ${solo}`)).rejects.toThrow();
     await expect(db.execute(sql`update proposals set decided_alone = false where id = ${solo}`)).rejects.toThrow();
+
+    // A trap for a later database step. Since step 0009 every proposal that
+    // a step touches leaves a check waiting for the end of the transaction,
+    // and the database refuses to alter the table while checks are waiting.
+    // A deploy runs all its steps in one transaction, so a step that fills in
+    // old proposals the way 0008 did (guard off, update, guard on) would stop
+    // the deploy. It only shows on a database that already holds proposals,
+    // like this one: on an empty database every such step passes. (Both the
+    // embedded database and a real Postgres server refuse it here.)
+    const fillIn = (settle: boolean) => [
+      `ALTER TABLE "proposals" ADD COLUMN "made_up_note" text;`,
+      `ALTER TABLE "proposals" DISABLE TRIGGER proposals_guard;`,
+      `UPDATE "proposals" SET "made_up_note" = 'filled in';`,
+      ...(settle ? [`SET CONSTRAINTS ALL IMMEDIATE;`] : []),
+      `ALTER TABLE "proposals" ENABLE TRIGGER proposals_guard;`,
+      `ALTER TABLE "proposals" ALTER COLUMN "made_up_note" SET NOT NULL;`,
+    ];
+    // Written the old way, the step is refused and nothing of it stays.
+    const oldWay = await handle.migrate(await folderWithLaterStep(fillIn(false))).then(
+      () => "It was accepted.",
+      (error: unknown) => sqlErrorText(error),
+    );
+    expect(oldWay).toMatch(/cannot ALTER TABLE "proposals" because it has pending trigger events/);
+    const columns = rowsOf<{ name: string }>(
+      await db.execute(sql`select column_name as name from information_schema.columns where table_name = 'proposals'`),
+    ).map((c) => c.name);
+    expect(columns).not.toContain("made_up_note");
+    // Written as CLAUDE.md says (run the waiting checks before altering the table again), it goes through.
+    await handle.migrate(await folderWithLaterStep(fillIn(true)));
+    const filled = rowsOf<{ note: string }>(await db.execute(sql`select made_up_note as note from proposals`));
+    expect(filled.map((r) => r.note)).toEqual(["filled in", "filled in", "filled in", "filled in"]);
+    // The guard is back on afterwards.
+    await expect(db.execute(sql`update proposals set title = 'Rewritten' where id = ${solo}`)).rejects.toThrow();
+  });
+});
+
+describe("a hardened database that gets the steps from the second review", () => {
+  it("keeps its people and its proposals in every state, cleans up names that only look different, and carries on working", async () => {
+    const handle = await emptyDatabase();
+    cleanups.push(handle.close);
+    const { db } = handle;
+    await handle.migrate(await oldStepsFolder(LAST_HARDENING_STEP));
+
+    const one = async <T>(query: ReturnType<typeof sql>) => rowsOf<T>(await db.execute(query))[0];
+    // (Characters that draw nothing are made from their numbers, never typed.)
+    const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+    const SOFT_HYPHEN = String.fromCodePoint(0x00ad);
+    const person = async (name: string, email: string, role: string, was: { signedIn: boolean; removed?: boolean; minutesLater?: number }) =>
+      (
+        await one<{ id: string }>(sql`
+          insert into users (name, email, role_key, last_active_at, removed_at, created_at)
+          values (${name}, ${email}, ${role},
+                  ${was.signedIn ? sql`now()` : sql`null`},
+                  ${was.removed ? sql`now()` : sql`null`},
+                  now() + ${was.minutesLater ?? 0} * interval '1 minute')
+          returning id`)
+      ).id;
+    const kale = await person("Kale", "kale@example.com", "owner", { signedIn: true });
+    const casey = await person("Casey", "casey@example.com", "owner", { signedIn: true });
+    const karen = await person("Karen", "karen@example.com", "advisor", { signedIn: true });
+    // A second "Casey" that only looked the same (the name ends in a
+    // character that draws nothing). It signed in, proposed something, and was removed.
+    const twin = await person(`Casey${ZERO_WIDTH_SPACE}`, "kale.second@example.com", "owner", { signedIn: true, removed: true, minutesLater: 1 });
+    // Two entries made with a mistyped address and removed again; nobody ever signed in with them.
+    const ghost = await person(`Ka${SOFT_HYPHEN}ren`, "kraen@example.com", "advisor", { signedIn: false, removed: true, minutesLater: 2 });
+    const pat = await person("Pat", "pta@example.com", "advisor", { signedIn: false, removed: true, minutesLater: 3 });
+
+    const sectionRow = async (title: string, position: number, parent: string | null, archived = false) =>
+      (
+        await one<{ id: string }>(sql`
+          insert into sections (title, position, parent_id, created_by, updated_by, archived_at, archived_by)
+          values (${title}, ${position}, ${parent}, ${kale}, ${kale}, ${archived ? sql`now()` : sql`null`}, ${archived ? kale : null})
+          returning id`)
+      ).id;
+    const people = await sectionRow("People", 1, null);
+    const wages = await sectionRow("Wages", 1, people);
+    const benefits = await sectionRow("Benefits", 2, people);
+    const hiring = await sectionRow("Hiring", 3, people);
+    const oldPlans = await sectionRow("Old plans", 2, null, true);
+
+    /** An approved text proposal with its approvals and its version, as the hardened app stored them. */
+    const approvedText = (o: { title: string; text: string; by: string[]; daysAgo: number; alone: boolean; direct?: boolean; base: string | null }) =>
+      db.transaction(async (tx) => {
+        const at = sql`now() - ${o.daysAgo} * interval '1 day'`;
+        const [{ id }] = rowsOf<{ id: string }>(
+          await tx.execute(sql`
+            insert into proposals (type, title, section_id, proposed_official, proposed_official_text, proposed_by, status,
+                                   decided_at, decided_by, decided_alone, direct, base_version_id, created_at)
+            values ('decision', ${o.title}, ${wages}, ${doc(o.text)}::jsonb, ${o.text}, ${o.by[0]}, 'approved',
+                    ${at}, ${o.by.at(-1)!}, ${o.alone}, ${o.direct ?? false}, ${o.base}, ${at})
+            returning id`),
+        );
+        // One minute apart, in the order given.
+        for (const [index, who] of o.by.entries()) {
+          await tx.execute(sql`
+            insert into approvals (proposal_id, user_id, revision, created_at)
+            values (${id}, ${who}, 1, ${at} + ${index} * interval '1 minute')`);
+        }
+        const [{ versionId }] = rowsOf<{ versionId: string }>(
+          await tx.execute(sql`
+            insert into official_versions (section_id, version, content, content_text, created_by, created_at, proposal_id)
+            values (${wages}, 1, ${doc(o.text)}::jsonb, ${o.text}, ${o.by.at(-1)!}, ${at}, ${id})
+            returning id as "versionId"`),
+        );
+        return { id, versionId };
+      });
+    const both = await approvedText({ title: "Start at $14", text: "$14.00/hr", by: [kale, casey], daysAgo: 20, alone: false, base: null });
+    const solo = await approvedText({ title: "Edited directly", text: "$15.00/hr", by: [kale], daysAgo: 3, alone: true, direct: true, base: both.versionId });
+    const withTwin = await approvedText({ title: "Owner draw", text: "$15.00/hr. Kale may draw $5,000.", by: [twin, kale], daysAgo: 2, alone: false, base: solo.versionId });
+
+    /** A proposal that is not approved, with its proposer's approval. */
+    const other = async (o: {
+      title: string;
+      section: string;
+      by: string;
+      text?: string;
+      change?: object;
+      revision?: number;
+      base?: string | null;
+      status?: "open" | "declined" | "withdrawn" | "approved";
+      decidedBy?: string;
+      reason?: string;
+    }) => {
+      const status = o.status ?? "open";
+      const { id } = await one<{ id: string }>(sql`
+        insert into proposals (type, title, section_id, proposed_official, proposed_official_text, structure_change, proposed_by,
+                               revision, base_version_id, status, decided_at, decided_by, decline_reason)
+        values (${o.change ? "structure" : "decision"}::proposal_type, ${o.title}, ${o.section},
+                ${o.text ? doc(o.text) : null}::jsonb, ${o.text ?? null}, ${o.change ? JSON.stringify(o.change) : null}::jsonb, ${o.by},
+                ${o.revision ?? 1}, ${o.base ?? null}, ${status}::proposal_status,
+                ${status === "open" ? sql`null` : sql`now() - interval '1 day'`}, ${o.decidedBy ?? null}, ${o.reason ?? null})
+        returning id`);
+      await db.execute(sql`insert into approvals (proposal_id, user_id, revision) values (${id}, ${o.by}, ${o.revision ?? 1})`);
+      return id;
+    };
+    // Open, written against the current text, changed once by its proposer, endorsed by Karen.
+    const upToDate = await other({ title: "Raise to $16", section: wages, by: casey, text: "$16.00/hr. Kale may draw $5,000.", revision: 2, base: withTwin.versionId });
+    await db.execute(sql`insert into endorsements (proposal_id, user_id, revision) values (${upToDate}, ${karen}, 2)`);
+    // Open, written long ago against the very first text.
+    const stale = await other({ title: "Start at $13", section: wages, by: kale, text: "$13.00/hr", base: both.versionId });
+    const rename = await other({ title: 'Rename 1.2 Benefits to "Perks"', section: benefits, by: kale, change: { action: "rename", title: "Perks", fromTitle: "Benefits" } });
+    const oldStructure = await other({ title: "Archive 2 Old plans", section: oldPlans, by: kale, change: { action: "archive" }, status: "approved", decidedBy: casey });
+    await db.execute(sql`insert into approvals (proposal_id, user_id, revision) values (${oldStructure}, ${casey}, 1)`);
+    const declined = await other({ title: "Start at $11", section: wages, by: kale, text: "$11.00/hr", status: "declined", decidedBy: casey, reason: "Too low." });
+    const withdrawn = await other({ title: "Hire in June", section: hiring, by: casey, text: "We hire in June.", status: "withdrawn", decidedBy: casey });
+    /** Every proposal exactly as stored, leaving out the one field the new steps add. */
+    const stored = async () =>
+      rowsOf<{ row: Record<string, unknown> }>(
+        await db.execute(sql`select to_jsonb(p) - 'decided_title' as row from proposals p order by p.id`),
+      ).map((r) => r.row);
+    const before = await stored();
+    expect(before).toHaveLength(9);
+
+    // Now the steps from the second review.
+    await handle.migrate(REAL_FOLDER);
+
+    // People. The look-alike is cleaned and then told apart; each change is
+    // in the activity log. Entries that never signed in keep a clean name
+    // and no longer hold it.
+    const names = new Map((await db.select().from(schema.users)).map((u) => [u.id, u.name]));
+    expect([kale, casey, karen, twin, ghost, pat].map((id) => names.get(id))).toEqual(["Kale", "Casey", "Karen", "Casey (2)", "Karen", "Pat"]);
+    const renames = (await db.select().from(schema.activityLog).orderBy(schema.activityLog.id)).filter((e) => e.action === "user.renamed");
+    expect(renames.map((e) => [e.entityId, e.summary, e.userId])).toEqual([
+      [twin, "Took characters that cannot be seen out of the name Casey", null],
+      [ghost, "Took characters that cannot be seen out of the name Karen", null],
+      [twin, "Renamed Casey to Casey (2), because two people had the same name", null],
+    ]);
+    expect(renames[0].data).toEqual({ from: `Casey${ZERO_WIDTH_SPACE}`, to: "Casey" });
+
+    // Proposals: every one is still there, as it was.
+    expect(await stored()).toEqual(before);
+    expect((await db.select().from(schema.proposals)).map((p) => p.decidedTitle)).toEqual(Array(9).fill(null));
+    expect((await db.select().from(schema.approvals)).length).toBe(12);
+
+    // The app reads them, with the new answers filled in.
+    const view = async (id: string) => (await loadProposal(db, id)) as ProposalView;
+    const tree = await loadTree(db);
+    expect((await listOpenProposals(db)).map((p) => p.id).sort()).toEqual([upToDate, stale, rename].sort());
+    expect(await view(upToDate)).toMatchObject({ status: "open", revision: 2, outOfDate: false, proposerCanChange: false });
+    expect(await view(stale)).toMatchObject({ status: "open", outOfDate: true, proposerCanChange: true });
+    expect(waitingText(await view(stale), await activeApprovers(db), casey)).toBe("Waiting for Kale to check it against the new official text");
+    expect(waitingText(await view(upToDate), await activeApprovers(db), kale)).toBe("Waiting for you");
+    expect(await view(declined)).toMatchObject({ status: "declined", declineReason: "Too low.", outOfDate: false });
+    expect(await view(withdrawn)).toMatchObject({ status: "withdrawn", decidedByName: "Casey" });
+    // The decision the look-alike took part in now shows which Casey that was.
+    expect(approvalLine((await view(withTwin.id)).approvals)).toMatch(/^Approved by Casey \(2\) and Kale, /);
+    expect(await view(solo.id)).toMatchObject({ decidedAlone: true, soloOpen: true, superseded: true, direct: true });
+    expect((await listOneOwnerDecisions(db)).map((p) => p.id)).toEqual([solo.id]);
+    expect((await listDecisions(db, tree, {}, 50)).map((p) => p.id)).toEqual([oldStructure, withTwin.id, solo.id, both.id]);
+    // A section change approved before its sentence was recorded shows the title it was stored with.
+    expect(displayTitle(await view(oldStructure), tree)).toBe("Archive 2 Old plans");
+    expect((await listVersions(db, wages)).map((v) => [v.version, docToText(v.content)])).toEqual([
+      [3, "$15.00/hr. Kale may draw $5,000."],
+      [2, "$15.00/hr"],
+      [1, "$14.00/hr"],
+    ]);
+
+    // And people carry on using the app on these records.
+    useAsTheAppDatabase(handle);
+    const actor = async (email: string): Promise<Actor> => {
+      const [row] = await db
+        .select({
+          id: schema.users.id,
+          name: schema.users.name,
+          email: schema.users.email,
+          roleKey: schema.users.roleKey,
+          roleName: schema.roles.name,
+          permissions: schema.roles.permissions,
+        })
+        .from(schema.users)
+        .innerJoin(schema.roles, eq(schema.roles.key, schema.users.roleKey))
+        .where(eq(schema.users.email, email));
+      return row;
+    };
+    const [kaleNow, caseyNow, karenNow] = [await actor("kale@example.com"), await actor("casey@example.com"), await actor("karen@example.com")];
+    const page = async (id: string) => {
+      const p = await view(id);
+      const change = await loadTextChange(db, p);
+      return { revision: p.revision, currentVersionId: change?.currentVersionId };
+    };
+    const official = async () => docToText((await loadOfficial(db, wages))!.content);
+
+    // The proposal that is up to date: the other Owner approves, two people decided.
+    expect(await approveProposal(kaleNow, upToDate, await page(upToDate))).toEqual({ approved: true, waitingFor: [] });
+    expect(await view(upToDate)).toMatchObject({ status: "approved", decidedAlone: false });
+    expect(await official()).toBe("$16.00/hr. Kale may draw $5,000.");
+    // The old one is out of date: refused until Kale has checked it against the text as it is now.
+    await expect(approveProposal(caseyNow, stale, await page(stale))).rejects.toThrow(
+      "The official text of this section has changed since Kale proposed this.",
+    );
+    await editProposal(
+      kaleNow,
+      stale,
+      { kind: "decision", sectionId: wages, title: "Start at $13", proposedOfficial: JSON.parse(doc("$13.00/hr")) },
+      { currentVersionId: (await page(stale)).currentVersionId },
+    );
+    expect(await approveProposal(caseyNow, stale, await page(stale))).toEqual({ approved: true, waitingFor: [] });
+    expect(await official()).toBe("$13.00/hr");
+    // The section change: approved, and recorded under the sentence that was approved.
+    expect(await approveProposal(caseyNow, rename, { revision: 1 })).toEqual({ approved: true, waitingFor: [] });
+    expect(await view(rename)).toMatchObject({ status: "approved", decidedTitle: 'Rename 1.2 Benefits to "Perks"' });
+    expect((await loadTree(db))[0].children.map((n) => n.title)).toEqual(["Wages", "Perks", "Hiring"]);
+    // A direct edit, and an endorsement of something long declined.
+    expect(await saveOfficial(kaleNow, hiring, JSON.parse(doc("We hire in March.")))).toEqual({ changed: true, version: 1 });
+    await expect(endorseProposal(karenNow, declined, { revision: 1 })).rejects.toThrow("declined or withdrawn");
+
+    // People: the mistyped Pat no longer holds the name; the removed
+    // look-alike comes back only under the name it now has; Casey's is taken.
+    const mail = { baseUrl: "https://manual.example.com", send: async () => {} };
+    const newPat = await addUser(kaleNow, { name: "Pat", email: "pat@example.com", roleKey: "advisor" }, mail);
+    expect(newPat.userId).not.toBe(pat);
+    await expect(addUser(kaleNow, { name: "casey", email: "another@example.com", roleKey: "advisor" }, mail)).rejects.toThrow("already called Casey");
+    expect(await addUser(kaleNow, { name: "Kale Two", email: "kale.second@example.com", roleKey: "advisor" }, mail)).toMatchObject({
+      userId: twin,
+      keptName: "Casey (2)",
+    });
+    await removeUser(kaleNow, twin);
+    const [removed] = await db.select().from(schema.users).where(eq(schema.users.id, twin));
+    expect(removed).toMatchObject({ name: "Casey (2)", removedBy: kale, updatedBy: kale });
+
+    // What was decided before still cannot be changed.
+    await expect(db.execute(sql`update proposals set title = 'Rewritten' where id = ${solo.id}`)).rejects.toThrow();
+    await expect(db.execute(sql`update proposals set decided_title = 'Rewritten' where id = ${oldStructure}`)).rejects.toThrow();
   });
 });

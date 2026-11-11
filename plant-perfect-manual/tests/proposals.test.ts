@@ -10,7 +10,9 @@ import {
   type StructureProposalInput,
   addApproval,
   addProposalComment,
+  activeApprovers,
   approveAlone,
+  approveChoices,
   approveProposal,
   canApproveToo,
   changesNotApprovedBy,
@@ -29,6 +31,7 @@ import {
   loadProposalComments,
   proposalsForNotes,
   sourceNoteIds,
+  waitingOn,
   withdrawProposal,
 } from "@/lib/proposals";
 import { type RichDoc, docToText } from "@/lib/richtext";
@@ -153,23 +156,43 @@ describe("the normal path: one Owner proposes, the other approves", () => {
 
   it("logs an approval when one is added, and completes a proposal that has both approvals already", async () => {
     const { kale, casey } = await people();
+    const jo = await insertUser("Jo", "jo@example.com", "owner");
     const id = await propose(kale, "Benefits", "Staff discount 15%", "Staff discount: 15%.");
-    // While Kale is not an Owner, Casey's approval is the only one that counts.
+    // While Kale is not an Owner his approval does not count: Casey's is the
+    // first that does, and it waits for the third Owner.
     await changeUserRole(casey, kale.id, "advisor");
-    expect(await approveProposal(casey, id, await seen(id))).toEqual({ approved: false, waitingFor: [] });
+    expect(await approveProposal(casey, id, await seen(id))).toEqual({ approved: false, waitingFor: ["Jo"] });
     const summaries = async () =>
       (await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)))).map((e) => e.summary);
-    expect(await summaries()).toEqual(["Proposed: Staff discount 15%", "Approved, waiting for another Owner: Staff discount 15%"]);
-    // Kale is an Owner again: both approvals are there. Pressing Approve adds
-    // nothing, but two Owners have approved, so it becomes official.
+    expect(await summaries()).toEqual(["Proposed: Staff discount 15%", "Approved, waiting for Jo: Staff discount 15%"]);
+
+    // Kale is an Owner again: both approvals are on it, and it is still open.
+    // Everyone who can approve is offered Approve (never "on my own": it
+    // would not be one person's decision), and it counts as waiting for each.
     await changeUserRole(casey, kale.id, "owner");
+    const owners = await asSystem((db) => activeApprovers(db));
+    const view = await proposal(id);
+    expect(view.status).toBe("open");
+    for (const person of [kale, casey, jo]) {
+      expect(approveChoices(view, person, owners)).toEqual({ approve: true, alone: false });
+      expect(await asSystem((db) => countAwaiting(db, person))).toBe(1);
+    }
+    expect(waitingOn(view, owners)).toEqual({
+      step: "approve",
+      // (In the order people were added; the two starting Owners by name.)
+      ids: [casey.id, kale.id, jo.id],
+      names: ["Casey", "Kale", "Jo"],
+      needed: 0,
+    });
+    // Pressing Approve adds nothing, but two Owners have approved, so it becomes official.
     expect(await approveProposal(casey, id, await seen(id))).toEqual({ approved: true, waitingFor: [] });
     expect(await proposal(id)).toMatchObject({ status: "approved", decidedByName: "Casey", decidedAlone: false, soloOpen: false });
     expect(await summaries()).toEqual([
       "Proposed: Staff discount 15%",
-      "Approved, waiting for another Owner: Staff discount 15%",
+      "Approved, waiting for Jo: Staff discount 15%",
       "Approved by Kale and Casey: Staff discount 15%",
     ]);
+    await removeUser(kale, jo.id);
   });
 
   it("counts what is waiting for each person", async () => {
@@ -296,7 +319,11 @@ describe("approving on your own", () => {
     const { kale, casey } = await people();
     await changeUserRole(kale, casey.id, "advisor");
     const id = await propose(kale, "Training", "Two shadow shifts for new staff", "New staff shadow for two shifts.");
-    expect(await approveProposal(kale, id, await seen(id))).toEqual({ approved: false, waitingFor: [] });
+    // Plain Approve would record nothing and wait for nobody: it says so.
+    await expect(approveProposal(kale, id, await seen(id))).rejects.toThrow(
+      "There is no other Owner to wait for right now. Use Approve on my own.",
+    );
+    expect(approveChoices(await proposal(id), kale, await asSystem((db) => activeApprovers(db)))).toEqual({ approve: false, alone: true });
     await approveAlone(kale, id, await seen(id));
     expect((await proposal(id)).status).toBe("approved");
     expect((await asSystem((db) => listOneOwnerDecisions(db))).map((d) => d.id)).not.toContain(id);
@@ -407,25 +434,42 @@ describe("changing a proposal", () => {
 });
 
 describe("official text that changes while a proposal is open", () => {
-  it("can still be approved, but only by someone who has seen the newer text", async () => {
+  it("is out of date until its proposer has checked it against the newer text; then the other Owner can approve", async () => {
     const { kale, casey } = await people();
     const signage = await sectionId("Signage");
     await saveOfficial(kale, signage, doc("Pylon sign: quote requested."));
     const id = await propose(kale, "Signage", "Go with Holly Lumber for the pylon sign", "Pylon sign: Holly Lumber, $8,400.");
     const before = await seen(id);
+    expect((await proposal(id)).outOfDate).toBe(false);
 
     // Casey fixes the text directly in the meantime.
     await saveOfficial(casey, signage, doc("Pylon sign: two quotes requested."));
     const view = await proposal(id);
     expect(view.status).toBe("open");
     expect(view.baseVersionId).not.toBe(await currentVersionId(signage));
+    expect(view.outOfDate).toBe(true);
 
+    // From her old page she is told to reload; from a fresh page, that Kale
+    // has to look at it again first. Nothing is recorded either time.
     await expect(approveProposal(casey, id, before)).rejects.toThrow("official text of this section changed after you opened");
+    await expect(approveProposal(casey, id, await seen(id))).rejects.toThrow(
+      "The official text of this section has changed since Kale proposed this. Kale needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.",
+    );
     expect((await proposal(id)).approvals).toHaveLength(1);
 
-    await approveProposal(casey, id, await seen(id));
+    // Kale opens his proposal, sees it next to the new text, and saves it again.
+    await editProposal(
+      kale,
+      id,
+      { kind: "decision", sectionId: signage, title: "Go with Holly Lumber for the pylon sign", proposedOfficial: doc("Pylon sign: Holly Lumber, $8,400.") },
+      { currentVersionId: await currentVersionId(signage) },
+    );
+    expect(await proposal(id)).toMatchObject({ outOfDate: false, revision: 2, baseVersionId: await currentVersionId(signage) });
+
+    expect(await approveProposal(casey, id, await seen(id))).toEqual({ approved: true, waitingFor: [] });
     expect(docToText((await official(signage))!.content)).toBe("Pylon sign: Holly Lumber, $8,400.");
     expect((await official(signage))!.version).toBe(3);
+    expect(await proposal(id)).toMatchObject({ status: "approved", decidedAlone: false });
   });
 
   it("refuses a proposal that would change nothing", async () => {

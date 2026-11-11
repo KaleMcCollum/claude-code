@@ -666,18 +666,28 @@ describe("database rules: each permission is looked at on its own", () => {
 });
 
 describe("database rules: people", () => {
-  it("no two people have the same name, capitals and spaces aside, removed people included", async () => {
+  it("no two people have the same name, capitals and spaces aside, removed people who ever signed in included", async () => {
     const add = (name: string, email: string) => asSystem((db) => db.insert(users).values({ name, email, roleKey: "advisor" }).returning());
     const SAME_NAME = /users_name_unique/;
     expect(await refusal(add("Casey", "casey.two@example.com"))).toMatch(SAME_NAME);
     expect(await refusal(add("  cAsEy ", "casey.two@example.com"))).toMatch(SAME_NAME);
     await add("Mary Ann", "mary.ann@example.com");
     expect(await refusal(add("mary   ann", "mary.ann.two@example.com"))).toMatch(SAME_NAME);
-    expect(await refusal(add("Mary\tAnn", "mary.ann.two@example.com"))).toMatch(SAME_NAME);
-    // Gus was removed in an earlier test: his name is still on what he did.
+    expect(await refusal(add(" Mary Ann", "mary.ann.two@example.com"))).toMatch(SAME_NAME);
+    // Gus was removed in an earlier test. He never signed in, so nothing was
+    // ever done under that entry and his name is free again.
     const [gus] = await asSystem((db) => db.select().from(users).where(eq(users.email, "gus@example.com")));
-    expect(gus?.removedAt).not.toBeNull();
-    expect(await refusal(add("Gus", "gus.two@example.com"))).toMatch(SAME_NAME);
+    expect(gus).toMatchObject({ lastActiveAt: null });
+    expect(gus.removedAt).not.toBeNull();
+    const [secondGus] = await add("Gus", "gus.two@example.com");
+    // The second Gus signs in and is removed: his name stays on what he did, so nobody else gets it.
+    await asSystem((db) => db.update(users).set({ lastActiveAt: new Date(), removedAt: new Date() }).where(eq(users.id, secondGus.id)));
+    expect(await refusal(add("gus", "gus.three@example.com"))).toMatch(SAME_NAME);
+    // The first Gus cannot be brought back under that name either.
+    expect(await refusal(asSystem((db) => db.update(users).set({ removedAt: null }).where(eq(users.id, gus.id))))).toMatch(SAME_NAME);
+    // Someone who has not signed in yet, but has not been removed, holds their name like anyone else.
+    expect((await actorFor("karen@example.com")).name).toBe("Karen");
+    expect(await refusal(add("KAREN", "karen.two@example.com"))).toMatch(SAME_NAME);
     // And nobody can be renamed to a name that is taken.
     expect(await refusal(asUser(kale.id, (tx) => tx.update(users).set({ name: "casey" }).where(eq(users.id, karen.id))))).toMatch(SAME_NAME);
     expect(await add("Maryann", "maryann@example.com")).toHaveLength(1);

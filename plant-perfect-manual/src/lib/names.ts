@@ -57,6 +57,35 @@ export const LINE_BREAK_RANGES: readonly Range[] = [
   [0x2028, 0x2029],
 ];
 
+/**
+ * A run of these counts as one space when two names are compared: tab, the
+ * line breaks, the space itself, and the few space characters that the
+ * standard form (NFKC) leaves as they are. Every other kind of space becomes
+ * a plain space in that form. Listed one by one, the same in the database,
+ * because "any space" means different things in different places.
+ */
+export const COMPARED_AS_SPACE_RANGES: readonly Range[] = [
+  [0x0009, 0x000d],
+  [0x0020, 0x0020],
+  [0x0085, 0x0085],
+  [0x1680, 0x1680],
+  [0x2028, 0x2029],
+];
+
+/**
+ * What a typed name may hold between its words: spaces of any kind, tabs
+ * and line breaks. (Not the zero-width no-break space, which draws nothing:
+ * that one is refused, not tidied away.)
+ */
+const TYPED_SPACE_RANGES: readonly Range[] = [
+  ...COMPARED_AS_SPACE_RANGES,
+  [0x00a0, 0x00a0], // no-break space
+  [0x2000, 0x200a], // spaces of set widths
+  [0x202f, 0x202f], // narrow no-break space
+  [0x205f, 0x205f], // mathematical space
+  [0x3000, 0x3000], // ideographic space
+];
+
 const inRanges = (ranges: readonly Range[], codePoint: number) =>
   ranges.some(([first, last]) => codePoint >= first && codePoint <= last);
 
@@ -68,9 +97,25 @@ function leaveOut(text: string, ranges: readonly Range[]): string {
   return kept;
 }
 
+/** Every run of the characters in `ranges` becomes one plain space, with none left at the ends. */
+function squeezeSpaces(text: string, ranges: readonly Range[]): string {
+  let result = "";
+  let pendingSpace = false;
+  for (const character of text) {
+    if (inRanges(ranges, character.codePointAt(0)!)) {
+      pendingSpace = result.length > 0;
+    } else {
+      if (pendingSpace) result += " ";
+      pendingSpace = false;
+      result += character;
+    }
+  }
+  return result;
+}
+
 /** A name as it is stored: a run of spaces, tabs or line breaks becomes one space, none at the ends. */
 export function tidyPersonName(input: string): string {
-  return input.replace(/\s+/g, " ").trim();
+  return squeezeSpaces(input, TYPED_SPACE_RANGES);
 }
 
 /**
@@ -95,10 +140,10 @@ export const UNSEEN_CHARACTER_MESSAGE =
  * full-width letters and no-break spaces count as the plain ones),
  * characters that draw nothing left out, a run of spaces counted as one,
  * capitals not counted. Two names with the same key are the same name.
+ *
+ * (The app asks the database when it adds a person. This copy is for the
+ * one place that runs before any person exists: the starting Owners.)
  */
 export function personNameKey(name: string): string {
-  return leaveOut(name.normalize("NFKC"), UNSEEN_RANGES)
-    .replace(/[\s\u0085]+/g, " ")
-    .replace(/^ +| +$/g, "")
-    .toLowerCase();
+  return squeezeSpaces(leaveOut(name.normalize("NFKC"), UNSEEN_RANGES), COMPARED_AS_SPACE_RANGES).toLowerCase();
 }

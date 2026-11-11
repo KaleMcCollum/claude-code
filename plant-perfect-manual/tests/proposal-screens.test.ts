@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { asSystem } from "@/db/client";
+import { activityLog } from "@/db/schema";
 import { compareDocs } from "@/lib/diff";
 import { loadOfficial, saveOfficial } from "@/lib/official";
 import {
@@ -18,6 +20,7 @@ import {
   declineProposal,
   describeStructure,
   displayTitle,
+  editProposal,
   endorseProposal,
   listDecisions,
   listOneOwnerDecisions,
@@ -28,7 +31,7 @@ import {
   withdrawProposal,
 } from "@/lib/proposals";
 import { type RichDoc, docToLines, docToText, sanitizeDoc, textToDoc } from "@/lib/richtext";
-import { flattenTree, loadTree, moveSection, renameSection } from "@/lib/sections";
+import { flattenTree, loadTree, moveSection, renameSection, restoreSection } from "@/lib/sections";
 import { removeUser } from "@/lib/users";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
@@ -151,14 +154,87 @@ describe("the title of a structure proposal", () => {
     // What was stored when they were proposed is not what is shown.
     expect((await view(archive)).title).toBe("Archive 2.4 Training");
 
-    // Once decided, a proposal keeps the title it was decided under.
+    // A declined or withdrawn proposal goes back to the title stored when it was proposed.
     await declineProposal(casey, archive, "");
     expect(await shown(archive)).toBe("Archive 2.4 Training");
-    await approveProposal(casey, rename, { revision: 1 });
-    expect(await shown(rename)).toBe('Rename 2.4 Training to "Learning"');
     await withdrawProposal(casey, move);
     expect(await shown(move)).toBe("Move 2.4 Training under 8 Finance");
+    // An approved one keeps the sentence the approver was shown when she
+    // pressed Approve, whatever the sections are called afterwards.
+    await approveProposal(casey, rename, { revision: 1 });
+    expect(await shown(rename)).toBe('Rename 2.3 Training and Shadowing to "Learning"');
+    expect(await view(rename)).toMatchObject({
+      title: 'Rename 2.4 Training to "Learning"',
+      decidedTitle: 'Rename 2.3 Training and Shadowing to "Learning"',
+    });
+    await renameSection(kale, training.id, "Coaching");
+    expect(await shown(rename)).toBe('Rename 2.3 Training and Shadowing to "Learning"');
+    // Only an approved section change has such a sentence.
+    expect((await view(archive)).decidedTitle).toBeNull();
+    expect((await view(move)).decidedTitle).toBeNull();
     await renameSection(kale, await sectionId("Money"), "Finance");
+  });
+
+  it("an approved section change is recorded as what the approver was shown, not as it was first proposed", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const perennials = await sectionId("Perennials");
+    const annuals = await sectionId("Annuals");
+    const shown = async (id: string) => displayTitle(await view(id), await tree());
+    const logged = async (id: string) =>
+      (await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)).orderBy(activityLog.id))).map((e) => e.summary);
+
+    // Kale proposes to archive Perennials, then swaps the names of the two sections.
+    const archive = await createProposal(kale, { kind: "structure", change: { action: "archive", sectionId: perennials } });
+    expect(await shown(archive)).toBe("Archive 4.3 Perennials");
+    await renameSection(kale, perennials, "Old stock list");
+    await renameSection(kale, annuals, "Perennials");
+    await renameSection(kale, perennials, "Annuals");
+    // Casey is shown what it will really do, and approves that.
+    expect(await shown(archive)).toBe("Archive 4.3 Annuals");
+    await approveProposal(casey, archive, { revision: 1 });
+    // The record says what she approved: in lists, in the Decisions Log and in the activity log.
+    expect(await shown(archive)).toBe("Archive 4.3 Annuals");
+    const decisions = await asSystem(async (db) => listDecisions(db, await loadTree(db)));
+    expect(displayTitle(decisions.find((d) => d.id === archive)!, await tree())).toBe("Archive 4.3 Annuals");
+    expect(await logged(archive)).toEqual(["Proposed: Archive 4.3 Perennials", "Approved by Kale and Casey: Archive 4.3 Annuals"]);
+    // The section called Perennials today is still there.
+    expect(flattenTree(await tree()).map((n) => n.id)).toContain(annuals);
+    expect(flattenTree(await tree()).map((n) => n.id)).not.toContain(perennials);
+    await restoreSection(kale, perennials);
+
+    // A rename, when the section was renamed and moved up while the proposal waited.
+    const deadlines = await sectionId("Order Deadlines");
+    const rename = await createProposal(kale, { kind: "structure", change: { action: "rename", sectionId: deadlines, title: "Cut-off dates" } });
+    expect((await view(rename)).title).toBe('Rename 7.2 Order Deadlines to "Cut-off dates"');
+    await renameSection(casey, deadlines, "Ordering deadlines");
+    await moveSection(casey, deadlines, "up");
+    expect(await shown(rename)).toBe('Rename 7.1 Ordering deadlines to "Cut-off dates"');
+    await approveProposal(casey, rename, { revision: 1 });
+    expect(await shown(rename)).toBe('Rename 7.1 Ordering deadlines to "Cut-off dates"');
+    expect((await logged(rename)).at(-1)).toBe('Approved by Kale and Casey: Rename 7.1 Ordering deadlines to "Cut-off dates"');
+
+    // An added section: the sentence names the parent as it was just before.
+    const vendors = await sectionId("Vendors and Purchasing");
+    const add = await createProposal(casey, { kind: "structure", change: { action: "add", parentId: vendors, title: "Returns" } });
+    await renameSection(kale, vendors, "Suppliers");
+    await approveAlone(casey, add, { revision: 1 });
+    expect(await view(add)).toMatchObject({
+      title: 'Add a section "Returns" under 7 Vendors and Purchasing',
+      decidedTitle: 'Add a section "Returns" under 7 Suppliers',
+    });
+    // A text proposal has no such sentence: its title is its own.
+    const text = await createProposal(kale, { kind: "decision", sectionId: vendors, title: "Pay suppliers in 30 days", proposedOfficial: doc("Suppliers are paid within 30 days.") });
+    await approveProposal(casey, text, { revision: 1, currentVersionId: null });
+    expect(await view(text)).toMatchObject({ status: "approved", decidedTitle: null });
+    expect(await shown(text)).toBe("Pay suppliers in 30 days");
+    // And a section change decided before the sentence was recorded shows its stored title.
+    expect(
+      displayTitle({ title: "Archive 9 Old", direct: false, sectionId: null, type: "structure", status: "approved", structureChange: { action: "archive" } }, await tree()),
+    ).toBe("Archive 9 Old");
+    expect(
+      displayTitle({ title: "Archive 9 Old", decidedTitle: null, direct: false, sectionId: null, type: "structure", status: "approved", structureChange: { action: "archive" } }, await tree()),
+    ).toBe("Archive 9 Old");
   });
 
   it("says so plainly when a change is not one the app knows", async () => {
@@ -262,8 +338,34 @@ describe("what a text proposal is compared with", () => {
     expect(c).toMatchObject({ basis: "now", changedSince: true, currentVersionId: second.id });
     expect(docToText(c.before!)).toBe("Open 8 to 6.");
 
+    // The proposal is now out of date. Kale is offered neither button: with
+    // Casey's approval on it, his would make it a two-person decision, and
+    // hers was never given on top of the new text. A press of either is
+    // refused. Casey herself could still go ahead on her own (flagged).
+    let p = await view(id);
+    expect(p.outOfDate).toBe(true);
+    expect(approveChoices(p, kale, await approvers())).toEqual({ approve: false, alone: false });
+    expect(approveChoices(p, casey, await approvers())).toEqual({ approve: false, alone: true });
+    const sinceCasey =
+      "The official text of this section has changed since Casey proposed this. Casey needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.";
+    await expect(approveProposal(kale, id, { revision: 1, currentVersionId: second.id })).rejects.toThrow(sinceCasey);
+    await expect(approveAlone(kale, id, { revision: 1, currentVersionId: second.id })).rejects.toThrow(sinceCasey);
+    expect((await view(id)).approvals.map((a) => a.name)).toEqual(["Casey"]);
+    // Casey checks her proposal against the new text (her edit page showed
+    // the current version) and saves it again.
+    await editProposal(
+      casey,
+      id,
+      { kind: "official_text", sectionId: hours, title: "Sunday hours", proposedOfficial: doc("Open 9 to 6.", "Closed Sundays.") },
+      { currentVersionId: second.id },
+    );
+    p = await view(id);
+    expect(p).toMatchObject({ outOfDate: false, revision: 2, baseVersionId: second.id });
+    expect(await change(id)).toMatchObject({ basis: "now", changedSince: false, currentVersionId: second.id });
+    expect(approveChoices(p, kale, await approvers())).toEqual({ approve: true, alone: false });
+
     // Approved: compared with the text it actually replaced.
-    await approveProposal(kale, id, { revision: 1, currentVersionId: second.id });
+    await approveProposal(kale, id, { revision: 2, currentVersionId: second.id });
     c = (await change(id))!;
     expect(c).toMatchObject({ basis: "replaced", changedSince: false });
     expect(docToText(c.before!)).toBe("Open 8 to 6.");

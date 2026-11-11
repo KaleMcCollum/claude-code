@@ -13,6 +13,9 @@
 --  * the name of someone who has signed in cannot be changed;
 --  * who and when on people, sections and notes are the signed-in person
 --    and the real time.
+--
+-- (This file is plain ASCII on purpose. Every unusual character is written
+-- as its number, like \u200B, so that nothing in here is invisible.)
 
 -- ---------------------------------------------------------------- people
 
@@ -32,16 +35,19 @@ CREATE FUNCTION public.unseen_characters() RETURNS text
 LANGUAGE sql IMMUTABLE PARALLEL SAFE
 AS $$
   SELECT '\u0001-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F'
-      || '­͏؜ᅟᅠ឴឵᠋-᠏'
-      || '​-‏‪-‮⁠-⁯⠀ㅤ'
-      || '︀-️﻿ﾠ￰-￻'
+      || '\u00AD\u034F\u061C\u115F-\u1160\u17B4-\u17B5\u180B-\u180F'
+      || '\u200B-\u200F\u202A-\u202E\u2060-\u206F\u2800\u3164'
+      || '\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB'
       || '\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF'
 $$;
 --> statement-breakpoint
 -- How two names are compared. As before: capitals do not count, and a run
 -- of spaces counts as one space. New: the name is first brought to one
--- standard form (so full-width letters, or a no-break space, are the same
--- as the plain ones) and characters that draw nothing are left out.
+-- standard form (Unicode NFKC, so full-width letters, or a no-break space,
+-- are the same as the plain ones) and characters that draw nothing are left
+-- out. The spaces are listed one by one (tab, line breaks, space, and the
+-- few space characters the standard form leaves alone), because what the
+-- shorthand for "any space" covers differs from one database to the next.
 -- (If this function or the list above ever changes again, drop and re-create
 -- the index users_name_unique around the change, as this step does.)
 CREATE OR REPLACE FUNCTION public.user_name_key(text) RETURNS text
@@ -49,8 +55,8 @@ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
 AS $$
   SELECT lower(btrim(regexp_replace(
     regexp_replace(normalize($1, NFKC), '[' || public.unseen_characters() || ']', '', 'g'),
-    '[\s\u0085   ]+', ' ', 'g'
-  )))
+    '[\u0009-\u000D \u0085\u1680\u2028\u2029]+', ' ', 'g'
+  ), ' '))
 $$;
 --> statement-breakpoint
 -- Names already stored with a character in them that cannot be seen (or a
@@ -60,22 +66,19 @@ DO $$
 DECLARE
   person record;
   cleaned text;
+  unseen text := '[' || public.unseen_characters() || ']';
+  breaks text := '[\u0009-\u000D\u0085\u2028\u2029]';
+  spaces text := '[\u0009-\u000D \u0085\u1680\u2028\u2029]+';
 BEGIN
   FOR person IN
     SELECT u.id, u.name, u.email
     FROM public.users u
-    WHERE u.name ~ ('[\u0009-\u000D\u0085  ' || public.unseen_characters() || ']')
+    WHERE u.name ~ unseen OR u.name ~ breaks
     ORDER BY u.created_at, u.id
   LOOP
-    cleaned := btrim(regexp_replace(
-      regexp_replace(person.name, '[' || public.unseen_characters() || ']', '', 'g'),
-      '[\s\u0085   ]+', ' ', 'g'
-    ));
+    cleaned := btrim(regexp_replace(regexp_replace(person.name, unseen, '', 'g'), spaces, ' ', 'g'), ' ');
     IF cleaned = '' THEN
-      cleaned := btrim(regexp_replace(
-        regexp_replace(split_part(person.email, '@', 1), '[' || public.unseen_characters() || ']', '', 'g'),
-        '[\s\u0085   ]+', ' ', 'g'
-      ));
+      cleaned := btrim(regexp_replace(regexp_replace(split_part(person.email, '@', 1), unseen, '', 'g'), spaces, ' ', 'g'), ' ');
     END IF;
     IF cleaned = '' THEN
       cleaned := 'Person';
@@ -141,7 +144,7 @@ CREATE UNIQUE INDEX users_name_unique ON "users" (public.user_name_key("name"))
   WHERE "removed_at" IS NULL OR "last_active_at" IS NOT NULL;--> statement-breakpoint
 -- A name holds no character that cannot be seen, and no tab or line break.
 ALTER TABLE "users" ADD CONSTRAINT users_name_can_be_seen CHECK (
-  "name" !~ ('[\u0009-\u000D\u0085  ' || public.unseen_characters() || ']')
+  "name" !~ ('[\u0009-\u000D\u0085\u2028\u2029' || public.unseen_characters() || ']')
 );--> statement-breakpoint
 
 -- Who and when on a person, for the app's limited role. (These functions
@@ -155,6 +158,8 @@ ALTER TABLE "users" ADD CONSTRAINT users_name_can_be_seen CHECK (
 --  * A person is removed in your own name; when they are brought back, who
 --    removed them is cleared with it.
 --  * "Last changed by / at" is stamped here, whatever is sent.
+-- (When and by whom a person was added, and when they last signed in, are
+-- already out of the app's reach: see the column list in 0009.)
 CREATE FUNCTION public.users_who_and_when() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp
@@ -185,6 +190,9 @@ BEGIN
   IF NEW.removed_at IS NULL THEN
     NEW.removed_by := NULL;
   ELSIF NEW.removed_at IS DISTINCT FROM OLD.removed_at THEN
+    IF NEW.removed_by IS NULL THEN
+      NEW.removed_by := acting_user;
+    END IF;
     IF NEW.removed_by IS DISTINCT FROM acting_user THEN
       RAISE EXCEPTION 'A person can only be removed in your own name' USING ERRCODE = '42501';
     END IF;
@@ -212,9 +220,11 @@ CREATE TRIGGER users_recent_removed_time BEFORE UPDATE ON "users"
 --  * When and by whom it was added never change.
 --  * A section is archived in your own name; when it is restored, who
 --    archived it is cleared with it.
---  * "Last updated by" is you whenever the section's name or its "last
---    updated" time changes. (Reordering, moving and archiving are not
---    content changes and leave "last updated" alone, as the app intends.)
+--  * "Last updated by" is you whenever the section's name, its "last
+--    updated" time or its "last updated by" changes. (Reordering, moving
+--    and archiving are not content changes: the app leaves "last updated"
+--    alone for those, so this does too. Otherwise the section page would
+--    read "Last updated <an old date> by <whoever reordered it today>".)
 CREATE FUNCTION public.sections_who_and_when() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp
@@ -244,6 +254,9 @@ BEGIN
   IF NEW.archived_at IS NULL THEN
     NEW.archived_by := NULL;
   ELSIF NEW.archived_at IS DISTINCT FROM OLD.archived_at THEN
+    IF NEW.archived_by IS NULL THEN
+      NEW.archived_by := acting_user;
+    END IF;
     IF NEW.archived_by IS DISTINCT FROM acting_user THEN
       RAISE EXCEPTION 'A section can only be archived in your own name' USING ERRCODE = '42501';
     END IF;
@@ -476,7 +489,7 @@ BEGIN
   END IF;
 
   -- (A proposal that is not open never gets this far, so "approved" here
-  -- means: being approved in this very step.)
+  -- means: being approved in this very step, by the person acting.)
   IF NEW.decided_title IS DISTINCT FROM OLD.decided_title
      AND NOT (NEW.status = 'approved' AND OLD.type = 'structure') THEN
     RAISE EXCEPTION 'The sentence a section change was approved under is recorded only when that change is approved'

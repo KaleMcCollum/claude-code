@@ -104,9 +104,13 @@ async function requireFreeName(tx: Tx, name: string, exceptUserId: string | null
   if (taken) throw new AppError(nameTaken(taken.name, taken.removedAt !== null));
 }
 
+/**
+ * (The first sentence is only ever said about a removed person who signed
+ * in at least once: one who never did no longer holds their name.)
+ */
 function nameTaken(name: string, removed: boolean): string {
   return removed
-    ? `Someone who was removed earlier was also called ${name}, and that name stays on what they wrote, approved or endorsed. Add a last initial so the two can be told apart.`
+    ? `Someone who was removed earlier was also called ${name}. Their name stays on anything they wrote, approved or endorsed, so nobody else can have it. Add a last initial so the two can be told apart.`
     : `Someone here is already called ${name}. Add a last initial so the two can be told apart.`;
 }
 
