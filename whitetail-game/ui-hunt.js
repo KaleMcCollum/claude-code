@@ -270,6 +270,24 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
       const dw = Math.max(1, Math.round(spr.width * sc2)), dh = Math.max(1, Math.round(spr.height * sc2));
       const dx = Math.round(x - spr.anchor.x * sc2), dy = Math.round(gy - spr.anchor.y * sc2);
       ctx.drawImage(spr, 0, 0, spr.width, spr.height, dx, dy, dw, dh);
+      // ground cover right where the deer stands, in front of its legs. How tall depends on the ground:
+      // cattails to the neck in swamp, standing crops the same, a few inches of yellow grass on prairie, green in the woods.
+      {
+        const inCrop = info.cropKind && !WT.cropsOff() && !snow && gy <= base + 9;
+        const kind = inCrop ? info.cropKind : swampy ? 'swamp' : woodsy ? 'woods' : 'prairie';
+        const tall = { swamp: 38, corn: 40, soy: 16, woods: 6, prairie: 5 }[kind] ?? 5;   // inches
+        const cols = snow ? ['#d8d0b4', '#c2b894'] : kind === 'swamp' ? (bare ? ['#a89868', '#8e8054'] : ['#9a9450', '#847e42']) : kind === 'corn' ? ['#c4aa5c', '#a48c44'] : kind === 'soy' ? ['#a8884a', '#8e7240']
+          : kind === 'woods' ? (bare ? ['#7c8648', '#6a7440'] : ['#6f9a48', '#5c843c']) : ['#d6bc66', '#bca252'];
+        const hMax = Math.max(1, tall * ppi), sw = Math.max(1, Math.round(ppi * 0.9)), half = it.w * 0.85 + sw * 2;
+        const n = Math.max(3, Math.round(half * 2 / (sw * (tall > 20 ? 1.6 : 2.4))));
+        for (let q = 0; q < n; q++) {
+          const hv = WT.hash2(m.deer.id, q, 71), sx = Math.round(x - half + (q + hv * 0.7) * (half * 2 / n));
+          const hh = Math.max(1, Math.round(hMax * (0.55 + 0.45 * WT.hash2(q, m.deer.id, 72))));
+          ctx.fillStyle = cols[q % 2]; ctx.fillRect(sx, gy - hh + 1, sw, hh);
+          if (kind === 'swamp' && hh > 4 && hv < 0.4) { ctx.fillStyle = '#4a3020'; ctx.fillRect(sx, gy - hh - Math.max(1, Math.round(3 * ppi)) + 1, sw, Math.max(2, Math.round(5 * ppi))); } // cattail head
+          if (kind === 'corn' && hh > 5 && hv < 0.5) { ctx.fillStyle = cols[1]; ctx.fillRect(sx - sw, gy - Math.round(hh * 0.6), sw * 3, Math.max(1, Math.round(ppi))); }               // a leaf
+        }
+      }
       // brush between you and the deer: no clean shot
       if (!g.clear) { ctx.fillStyle = gc[0]; const bw = Math.max(1, Math.round(4 * ppi)); for (let k = -3; k <= 3; k++) ctx.fillRect(x + k * bw * 2, gy - Math.round((12 + (k & 1) * 4) * ppi), bw, Math.round(16 * ppi) + 1); }
       const box = { id: m.deer.id, x0: dx + b.x0 * sc2, y0: dy + b.y0 * sc2, x1: dx + (b.x1 + 1) * sc2, y1: dy + (b.y1 + 1) * sc2 };
