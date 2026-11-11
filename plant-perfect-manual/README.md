@@ -43,8 +43,11 @@ online needs the owner to create a few accounts (hosting, database, email).
   if the page closes.
 - **Search** over section names and official text (notes and the rest join in
   later phases).
-- **Phone home screen.** The app can be added to a phone's home screen and
-  opens on Today.
+- **Phone home screen.** The app can be added to a phone's home screen with
+  the Plant Perfect icon and opens on Today. (The icon is drawn from the
+  logo in `assets/brand/` by `scripts/make-icons.cjs`. The screens
+  themselves stay plain; the logo and brand colours are for the icon and,
+  later, for exported documents.)
 
 ### What Phase 2 added
 
@@ -126,8 +129,6 @@ until their phase.
   (Phase 6). Until then the sidebar count and Today show them.
 - There is no single Trash page yet: removed notes are restored from the
   Daily Log, archived sections from Edit sections.
-- The home screen icon is a placeholder ("PP" on dark teal) until the real
-  logo is supplied.
 
 ## Rules the app is built around
 
