@@ -180,6 +180,8 @@
       tineCurve: r.range(-2, 5),                                            // extra inward bend along each tine (deg)
       fan: r.range(-1, 1.2),                                                // outer tines lean a little more or less
       browLean: r.range(-5, 9), browOut: 0.45 + r.next() * 0.7, cluster: r.next(), jit,
+      arc: 8 + r.next() * 10,          // how far the upper beam and the tines curve in toward their tips (deg)
+      tineArc: r.range(0.75, 1.1),     // tines arc a little more or less than the beam
     };
   };
 
@@ -208,22 +210,29 @@
     for (let i = 0; i <= NA; i++) pts.push([X0 + ux[i] * lenA, uy[i] * lenA]);
     const LB = Math.max(L2 - lenA, L2 * 0.22, 0.8);
     // small racks (spikes, forks) stand up and a little out; bigger frames lean back in
-    let lean = look.curl - Math.max(0, 2.6 - run) * 9;
+    let lean = look.curl * 0.55 - Math.max(0, 2.6 - run) * 9;
+    let arc = (look.arc ?? 14) * (run < 2.6 ? 0.55 : 1);
     const top = pts[NA];
-    // never let the tips cross toward the middle
-    const maxLean = Math.atan2(Math.max(0, top[0] - Math.max(X0 * 0.9, halfW * 0.62)), LB) / RAD;
-    lean = Math.min(lean, maxLean);
-    let p = top;
-    for (let i = 0; i < NB; i++) {
-      const s = (i + 0.5) / NB;
-      const a = (90 + lean * smooth(s / 0.4) + 5 * Math.max(0, s - 0.6) * Math.sign(lean || 1)) * RAD;
-      p = [p[0] + Math.cos(a) * LB / NB, p[1] + Math.sin(a) * LB / NB];
-      pts.push(p);
+    // rises close to vertical, then arcs in toward the tip; never so far that the tips cross
+    const minX = Math.max(X0 * 0.9, halfW * 0.6);
+    let rise = [];
+    for (let attempt = 0; attempt < 6; attempt++) {
+      rise = [];
+      let p = top;
+      for (let i = 0; i < NB; i++) {
+        const s = (i + 0.5) / NB;
+        const a = (90 + lean * smooth(s / 0.5) + arc * Math.pow(s, 1.7)) * RAD;
+        p = [p[0] + Math.cos(a) * LB / NB, p[1] + Math.sin(a) * LB / NB];
+        rise.push(p);
+      }
+      if (rise[NB - 1][0] >= minX) break;
+      lean *= 0.55; arc *= 0.72;
     }
+    pts.push(...rise);
     const heading = [];
     for (let i = 0; i < pts.length - 1; i++) heading.push(Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0]));
     heading.push(heading[heading.length - 1]);
-    return { pts, heading, len: lenA + LB, lenA, lean, run };
+    return { pts, heading, len: lenA + LB, lenA, lean, arc, run };
   }
   const plen = (pts) => { let l = 0; for (let i = 1; i < pts.length; i++) l += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return l; };
   function pointAt(path, dist) {
@@ -248,11 +257,11 @@
     return acc;
   }
   // A point (tine, brow, sticker...) as a gently curving line: angle in degrees from "straight out", 90 = straight up.
-  function spur(base, ang0, curve, len, n = 8) {
+  function spur(base, ang0, curve, len, n = 10, ease = 1.6) {
     const pts = [base];
     let p = base;
     for (let k = 0; k < n; k++) {
-      const a = (ang0 + curve * (k + 0.5) / n) * RAD;
+      const a = (ang0 + curve * Math.pow((k + 0.5) / n, ease)) * RAD;
       p = [p[0] + Math.cos(a) * len / n, p[1] + Math.sin(a) * len / n];
       pts.push(p);
     }
@@ -284,7 +293,7 @@
     if (list.typical.includes('G1')) {
       const len = S.tines.G1;
       const a0 = 90 + look.browLean + jit(0) * 3;
-      const make = (dOut, dAng) => { const at = pointAt(beam, clamp(look.browOut + dOut, 0.15, beam.len * 0.25)); return spur([at.p[0], at.p[1] + beamW[0] * 0.3], a0 + dAng, 6, len); };
+      const make = (dOut, dAng) => { const at = pointAt(beam, clamp(look.browOut + dOut, 0.15, beam.len * 0.25)); return spur([at.p[0], at.p[1] + beamW[0] * 0.3], a0 + dAng - 3, 11 * clamp(len / 5, 0.4, 1.2), len); };
       els.push({ kind: 'brow', name: 'G1', w0: clamp(0.62 + len * 0.06, 0.7, 1.15) * massF, len, candidates: () => [[0, 0], [0, 6], [-0.25, 4], [0, 12], [-0.25, 12], [0, -6], [0, 18], [-0.3, 20], [0.4, 0], [-0.35, 26]].map(([o, a]) => make(o, a)) });
     }
     // the other typical tines, plus "extra" upright abnormal points, stand along the outer sweep of the beam
@@ -313,15 +322,15 @@
     for (let j = n - 1; j >= 0; j--) {
       const u = order[j];
       const thick = thickOf(u) * (squeeze < 1 ? 0.5 + squeeze * 0.5 : 1);
-      const lean0 = clamp(beam.lean + clamp(look.tineDelta, -1.5, 3) + look.fan * (j - (n - 1) / 2) + jit(j + 1) * 1.2, -4, 13); // near parallel to the upper beam
-      const curve = look.tineCurve + jit(j + 5) * 1.2;
+      const lean0 = clamp(beam.lean * 0.6 + clamp(look.tineDelta, -1.5, 3) + look.fan * (j - (n - 1) / 2) + jit(j + 1) * 1.2, -5, 9); // the base of a tine stands near parallel to the beam's rise
+      const curve = (beam.arc * (look.tineArc ?? 1) + jit(j + 5) * 1.5) * clamp(u.len / 9, 0.35, 1); // long tines show the arc most
       const make = (dIn, dAng) => {
         let dist;
         if (steepRack) dist = beam.len * clamp(0.4 + 0.36 * (n === 1 ? 0.4 : j / (n - 1)) - dIn * 0.05, 0.25, 0.82);
         else dist = distAtX(beam, Math.max(X0 + 0.7, xs[n - 1] - (xs[n - 1] - xs[j]) * (squeeze < 1 ? squeeze : 1) - dIn));
         const at = pointAt(beam, dist);
         const hd = at.h / RAD;
-        let ang = 90 + lean0 + dAng - curve * 0.4;
+        let ang = 90 + lean0 + dAng;
         if (hd > 58) ang = Math.max(ang, Math.min(90 + lean0 + 16 + dAng, hd + 20)); // branch inward off a rising beam
         return spur([at.p[0], at.p[1] + beamW[1] * 0.25], ang, curve, u.len);
       };
@@ -340,16 +349,16 @@
           const out = [];
           const fs = a.type === 'split' ? [a.at, a.at - 0.1, a.at + 0.08] : [a.at, a.at + 0.15, a.at - 0.12, a.at + 0.3];
           const spread = a.type === 'split' ? 36 : a.type === 'kicker' ? 55 : 70;
-          for (const f of fs) { const q = at(clamp(f, 0.15, 0.9)); for (const sg of [-flip, flip]) out.push(spur(q.p, q.ang + spread * sg, 12 * -sg, a.len, 6)); }
+          for (const f of fs) { const q = at(clamp(f, 0.15, 0.9)); for (const sg of [-flip, flip]) out.push(spur(q.p, q.ang + spread * sg, (a.type === 'split' ? 24 : 16) * -sg, a.len, 7, 1)); }
           return out;
         };
       } else if (a.type === 'burr') {
-        el.candidates = () => { const at = pointAt(beam, Math.min(0.5, beam.len * 0.08)); return [150 + jit(k) * 10, 125, 60, -25, -50].map((ang) => spur(at.p, ang, 10, a.len, 6)); };
+        el.candidates = () => { const at = pointAt(beam, Math.min(0.5, beam.len * 0.08)); return [150 + jit(k) * 10, 125, 60, -25, -50].map((ang) => spur(at.p, ang, 16, a.len, 6, 1)); };
       } else if (a.type === 'drop') {
         el.blunt = true; el.w0 = clamp(0.8 + a.len * 0.05, 0.9, 1.3) * massF;
-        el.candidates = () => [0, 0.12, -0.12, 0.22, -0.2].map((d) => { const at = pointAt(beam, distAtX(beam, X0 + beam.run * clamp(0.78 + (a.u - 0.45) * 0.5 + d, 0.6, 0.98))); return spur([at.p[0], at.p[1] - beamW[1] * 0.3], -84 + jit(k) * 5, 18, a.len, 7); });
+        el.candidates = () => [0, 0.12, -0.12, 0.22, -0.2].map((d) => { const at = pointAt(beam, distAtX(beam, X0 + beam.run * clamp(0.78 + (a.u - 0.45) * 0.5 + d, 0.6, 0.98))); return spur([at.p[0], at.p[1] - beamW[1] * 0.3], -92 + jit(k) * 5, 30, a.len, 8, 1.3); });
       } else { // sticker off the beam: a short point angled up and out
-        el.candidates = () => [0, 0.1, -0.1, 0.2].flatMap((d) => { const at = pointAt(beam, beam.len * clamp(a.u + d, 0.2, 0.92)); const hd = at.h / RAD; return [hd - 55, hd + 60, hd - 85].map((ang) => spur(at.p, ang, 14, a.len, 6)); });
+        el.candidates = () => [0, 0.1, -0.1, 0.2].flatMap((d) => { const at = pointAt(beam, beam.len * clamp(a.u + d, 0.2, 0.92)); const hd = at.h / RAD; return [hd - 55, hd + 60, hd - 85].map((ang) => spur(at.p, ang, 20, a.len, 6, 1)); });
       }
       els.push(el);
     });
