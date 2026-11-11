@@ -196,7 +196,12 @@
     }
     if (info.plot || info.newPlot) {
       const grown = info.plot, c1 = snow ? (grown ? '#c2d0b0' : '#cfc8bc') : grown ? '#5e9a3e' : '#6e5038', c2 = snow ? (grown ? '#b0c09e' : '#bdb6aa') : grown ? '#4f8a34' : '#5e4430';
-      const y0 = Math.max(base + 9, 76); R(c1, 0, y0, SW, 12); R(c2, 0, y0 + 3, SW, 2); R(c2, 0, y0 + 8, SW, 2);
+      // the plot takes up about half of the ground, with a short clipped texture: one-pixel flecks, nothing tall
+      const gh = SH - base, ph = Math.round(gh * 0.5), y0 = base + Math.round(gh * 0.14);
+      R(c1, 0, y0, SW, ph);
+      for (let yy = y0 + 2, band = 0; yy < y0 + ph - 1; yy += 3 + Math.floor(band / 3), band++) R(c2, 0, yy, SW, 1);
+      const f1 = snow ? (grown ? '#d2dcc4' : '#dcd6cc') : grown ? '#7fba56' : '#84634a', f2 = snow ? (grown ? '#a4b492' : '#b0a89c') : grown ? '#3f7a2c' : '#4a3626';
+      for (let n = 0; n < 260; n++) { const fx = Math.floor(hs(n, 41) * SW), fy = y0 + 1 + Math.floor(hs(n, 42) * (ph - 2)); R(n % 3 ? f1 : f2, fx, fy, fy > y0 + ph * 0.5 ? 2 : 1, 1); }
     }
     // nothing stands on the ground where deer walk: the scenery stays up on the horizon
     if (st.weather.precip === 'snow') { ctx.fillStyle = '#ffffff'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 90)) % SW, (n * 23 + Math.floor(t / 60)) % SH, 1, 1); }
