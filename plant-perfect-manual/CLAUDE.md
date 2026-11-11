@@ -68,6 +68,40 @@ These hold whatever the app code does (see `drizzle/0003` and `0004`):
 - Comments and earlier wordings can never be changed. Nothing can be deleted.
 - Stored text must be a document (`type: "doc"` with a `content` array).
 
+## What the database guarantees for decisions (Phase 3)
+
+These hold whatever the app code does (see `drizzle/0007`):
+
+- A proposal is made in your own name, open, at revision 1. Only its
+  proposer can change its content, only while it is open and nobody else
+  has approved or endorsed it; the revision number then goes up by itself.
+- Deciding happens in your own name. Approving needs the `approve`
+  permission and your own approval row. Withdrawing is for the proposer,
+  declining for another Owner. A decided proposal never changes again, not
+  even for the system role.
+- Approvals and endorsements are add-only, in your own name, and cannot be
+  added to a declined or withdrawn proposal.
+- An official version can only be added for an approved, non-structure
+  proposal of the same section with the same words, by the person who
+  decided it, and each proposal produces at most one version.
+- A comment is on a note or on a proposal, never both or neither.
+
+How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
+
+- Every change to official text or to the section structure made through a
+  proposal goes: lock the proposal row, check what the person saw (`Seen`:
+  revision and current official version), record the approval, then apply
+  the change in the same transaction (`finalize`). If applying fails,
+  everything is undone, including the approval.
+- "Edit official" and "Restore" call `saveDirectly`, which creates a
+  proposal with `direct = true` and approves it at once. Never write an
+  official version any other way.
+- Screens ask the helpers which buttons to show (`approveChoices`,
+  `canApproveToo`, `canEndorse`, `canEditProposal`) and send back exactly
+  the `seen` values they rendered.
+- Lists outside a section show `displayTitle(view, tree)`, because direct
+  edits have no written title.
+
 ## When you add a database table
 
 1. Add it to `src/db/schema.ts` with `created_at`, `created_by`, `updated_at`,

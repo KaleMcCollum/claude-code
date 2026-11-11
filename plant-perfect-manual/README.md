@@ -12,8 +12,8 @@ confirmed with the owner before the next one starts.
 | Phase | What it covers | Status |
 | --- | --- | --- |
 | 1. Foundation | Sign-in by email link, users and roles, Settings and Add user, the sidebar layout, the starting sections, section pages with Official and Discussion, the text editor | Built and tested. |
-| 2. Capture | Daily Log, notes, sorting notes into sections, search, Today page | Built and tested. Waiting for the owner's approval. |
-| 3. Decisions | Proposals, approvals by one or both owners, endorsements, Decisions Log, version history screens | Not started |
+| 2. Capture | Daily Log, notes, sorting notes into sections, search, Today page | Built and tested. |
+| 3. Decisions | Proposals, approvals by one or both owners, endorsements, Decisions Log, version history | Built and tested. Waiting for the owner's approval. |
 | 4. Operations records | To-dos, order deadlines, quotes, payments, vendors, timeline, documents | Not started |
 | 5. AI | Automatic sorting, to-do extraction, proposals from notes, Draft with AI, Suggest wording, undo | Not started |
 | 6. Output and safety | Word and PDF export, handbook builder, notifications, backups, full export | Not started |
@@ -74,22 +74,60 @@ online needs the owner to create a few accounts (hosting, database, email).
   Every word must appear, in any order. Filters: date range, section,
   business, author.
 
-Proposals, To-do and Documents appear in the sidebar but show a "not built
-yet" page until their phase.
+### What Phase 3 added
+
+- **Proposals.** An Owner proposes a change instead of making it: new or
+  changed official text for a section (a decision, or wording only), or a
+  change to the sections themselves (add, rename, move, archive). A proposal
+  has a title, an optional "why", a business tag, the notes it came from,
+  comments, and shows exactly what would change: removed words struck
+  through, added words underlined.
+- **Approving.** Proposing counts as the proposer's approval. When the other
+  Owner approves, the change is applied and the section shows a bold
+  "Approved by Kale and Casey" with the date. An Owner can also "Approve on
+  my own": it becomes official with one name, and is flagged on Today for
+  14 days so the other Owner sees it and can add "I approve too".
+- **Decline and withdraw.** Another Owner can decline (with an optional
+  reason); the proposer can withdraw. Nothing changes in either case. Only
+  the proposer can change a proposal, and only until someone else has
+  approved or endorsed it. Nobody can approve wording that changed after
+  they opened the page.
+- **Endorsements.** Advisors (and Owners who have not approved) can endorse.
+  It shows as a faint italic line under the approval and never changes a
+  proposal's status.
+- **"Edit official" is a decision too.** A direct edit is recorded as a
+  change approved by the Owner who made it, so it is flagged for the other
+  Owner and listed in the Decisions Log like any other one-person decision.
+- **Decisions Log.** Every approved change, newest first, with who approved
+  and endorsed it, filtered by section, business, approver and dates. It is
+  not a separate list: it shows the approved proposals themselves.
+- **Version history.** Every version of a section's official text, with
+  the dates it was official, who approved it, where it came from, and what
+  changed from the version before. An Owner can restore an old version,
+  which adds a new version; nothing is erased.
+- **Today** shows what is waiting for approval and what one person decided.
+  The sidebar shows how many proposals are waiting for you.
+- **Notes** can start a proposal ("Propose") and show the proposals made
+  from them. **Search** finds proposals. **Settings** has the activity log:
+  every change, who made it and when.
+
+To-do and Documents appear in the sidebar but show a "not built yet" page
+until their phase.
 
 ### Known gaps
 
 - Pictures and attachments are not available yet. They need file storage,
   which arrives with the Documents library in Phase 4.
 - Notes are sorted by hand. Sorting with AI is Phase 5.
-- To-dos, deadlines and approvals are not on the Today page yet (Phases 3
-  and 4).
-- Sections can be reordered within their group but not yet moved to a
-  different parent section.
+- To-dos and deadlines are not on the Today page yet (Phase 4).
+- Moving a section to a different parent section is done through a
+  proposal ("Move a section"), not yet from the Edit sections page.
+- Emails about proposals waiting for approval are part of notifications
+  (Phase 6). Until then the sidebar count and Today show them.
+- There is no single Trash page yet: removed notes are restored from the
+  Daily Log, archived sections from Edit sections.
 - The home screen icon is a placeholder ("PP" on dark teal) until the real
   logo is supplied.
-- Old versions of official text are stored, but the screen for browsing and
-  restoring them is part of Phase 3.
 
 ## Rules the app is built around
 
@@ -100,7 +138,10 @@ These come from the owner's build spec and are enforced in code:
    database itself refuses a change to a note's wording by anyone but its
    author.
 2. **Official and Discussion are always separate.**
-3. **Nothing is official without a recorded approval** (who and when).
+3. **Nothing is official without a recorded approval** (who and when). The
+   database itself only accepts official text that comes from an approved
+   proposal with the same words, approved in the approver's own name, and
+   a decided proposal can never be changed afterwards.
 4. **Nothing is ever hard-deleted.** Sections are archived, users are removed
    but kept on record, and old versions stay forever. The database itself
    refuses deletes.
@@ -133,7 +174,7 @@ printed in the terminal and saved in `.data/outbox/`.
 | `npm run dev` | Start the app for development |
 | `npm run build` / `npm start` | Production build and server |
 | `npm run lint` / `npm run typecheck` | Code checks |
-| `npm test` | Automated tests of the rules (sign-in, permissions, sections, official text, users, notes, search, Today) on the built-in database |
+| `npm test` | Automated tests of the rules (sign-in, permissions, sections, official text, users, notes, search, Today, proposals and approvals) on the built-in database |
 | `TEST_DATABASE_URL=postgres://... npm test` | The same tests on a real Postgres server |
 | `scripts/run-e2e.sh` | Browser tests: for each phase, starts the app on a fresh database and clicks through everything on computer and phone sizes. `scripts/run-e2e.sh start` tests a production build; add names (`phase1 phase2`) to run only some. Needs Playwright with Chromium. |
 | `npm run db:generate` | Create a migration after changing `src/db/schema.ts` |
@@ -171,17 +212,23 @@ settings, never in files.
 - **Notes** (`src/lib/notes.ts`) belong to the Daily Log of the US Central
   day they were written. Filing a note under a section is a link, never a
   copy. Removing is a mark on the note, never a delete.
+- **Proposals** (`src/lib/proposals.ts`) are the single record of every
+  change to official text and to the section structure. A direct "Edit
+  official" save and a restore are proposals approved on the spot. An
+  official version always points at the proposal that produced it, and
+  approvals and endorsements hang off the proposal. The Decisions Log and
+  the "decided by one person" list are views of these records, not copies.
 - **Dates** are always shown in US Central time (`src/lib/time.ts`).
 
 ```
 src/app/            pages and actions (login, the signed-in pages, settings)
 src/components/     sidebar, editor, section manager, rich text, notes
-src/lib/            the rules: auth, sections, official text, users, notes,
-                    settings, Today, search
+src/lib/            the rules: auth, sections, official text, proposals,
+                    users, notes, settings, Today, search, activity
 src/db/             schema, database connection, first-time data
 drizzle/            SQL migrations
 tests/              automated tests of the rules
-e2e/                browser test
+e2e/                browser tests, one per phase
 ```
 
 ### Going online (not done yet)
