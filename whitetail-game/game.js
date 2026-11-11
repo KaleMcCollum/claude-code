@@ -94,7 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
-      journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', pubHerds: true, bowHerds: true, fineRefund: true },
+      journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
     };
@@ -245,6 +245,7 @@
     prop.huntingPressure = d.pressure ?? 0.05;
     prop.sanct = WT.sanctuaryInfo(pid).counted;
     prop.bowOnly = !!d.bowOnly;
+    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
     if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
@@ -325,14 +326,14 @@
       st.settings.bowHerds = true;
     }
     // older saves: regular public land was hunted down to yearlings. Restock it once, keeping any deer on your hit list.
-    if (!st.settings.pubHerds) {
+    if (!st.settings.pubCrowd) {
       for (const p of G.world.parcels) {
         const d = st.parcels[p.id]; if (d.owner !== 'public' || d.bowOnly) continue;
         const keep = (d.herd || []).filter((x) => st.hitList.some((e) => e.k === x.id));
         initParcelHerd(p.id);
         st.parcels[p.id].herd.push(...keep);
       }
-      st.settings.pubHerds = true;
+      st.settings.pubHerds = true; st.settings.pubCrowd = true;
     }
     // older saves: untagged deer used to cost a $500 ticket. Pay those back once.
     st.settings = st.settings || {};
@@ -1088,11 +1089,20 @@
   };
 
   // Public land: other hunters
+  // How hard a public area gets hunted. Fixed for the life of the map.
+  WT.crowd = function (pid) {
+    const cfg = C().publicCrowd, d = S().parcels[pid];
+    if (d.owner !== 'public') return null;
+    if (d.bowOnly) return { id: 'bow', name: 'Bow only', floor: C().deer.pressure.bowOnlyFloor, company: 0.03, note: 'few hunters, short range. The oldest bucks on public ground' };
+    const h = WT.hash2(pid, 7, G.world.seed + 311);
+    const id = h < cfg.crowded.share ? 'crowded' : h < cfg.crowded.share + cfg.average.share ? 'average' : 'quiet';
+    return Object.assign({ id }, cfg[id]);
+  };
   WT.publicCompetition = function (pid) {
     const st = S(), d = st.parcels[pid];
     if (d.owner !== 'public') return null;
     const weekend = st.day % 7 >= 5;
-    const p = 0.12 + (weekend ? 0.15 : 0) + (/Seek|Peak/.test(WT.rutPhase(st.day).name) ? 0.1 : 0);
+    const p = WT.crowd(pid).company + (weekend ? 0.15 : 0) + (/Seek|Peak/.test(WT.rutPhase(st.day).name) ? 0.1 : 0);
     const h = WT.hash2(pid, st.year * 1000 + st.day * 2 + (st.slot === 'evening' ? 1 : 0), 17);
     return h < p ? 'Another truck is already parked at the access. Someone is hunting near your spot.' : null;
   };
@@ -1191,6 +1201,18 @@
     if (/Seek|Peak/.test(rut.name)) for (const sg of sched) if (sg.members[0].sex === 'd' && rng.chance(0.25)) {
       const b = herd.find((x) => x.sex === 'b' && x.age >= 1.5 && !sched.some((q) => q.members.includes(x)) && rng.chance(0.3 * x.tOP));
       if (b) sg.members.push(b);
+    }
+    // public land: now and then a big buck from somewhere else is passing through. You can't plan on him.
+    if (d.owner === 'public') {
+      const tv = cfg.traveler, cr = WT.crowd(setup.pid);
+      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'quiet' || cr.id === 'bow' ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
+      if (rng.chance(pT)) {
+        const big = WT.makeDeer(rng, 'b', rng.pick([4.5, 5.5, 5.5, 6.5].filter((a) => a >= tv.age[0] && a <= tv.age[1])), prop);
+        big.gp = rng.range(tv.gp[0], tv.gp[1]); big.w = clamp(big.w + 0.2, 0.05, 0.95); big.traveler = true;
+        WT.growDeer(big, prop, rng, 1);
+        if (rng.chance(tv.stays)) herd.push(big); // sometimes he likes it here and stays
+        sched.push({ t: pickTime(big), members: [big] });
+      }
     }
     // walking in can bump deer, but only ones that were already close (due within the hour)
     const nearby = sched.filter((g) => g.t < start + 1);
@@ -1467,7 +1489,7 @@
       if (rng.chance(recover)) harvest(H, g, deer, dist, 'after a long blood trail, you find it piled up in the cattails');
       else {
         H.wounded.push(deer); st.stats.wounded++;
-        H.prop.herd.splice(H.prop.herd.indexOf(deer), 1); // a lost deer is a dead deer
+        { const hi = H.prop.herd.indexOf(deer); if (hi >= 0) H.prop.herd.splice(hi, 1); } // a traveler isn't in the herd // a lost deer is a dead deer
         const antlered = deer.sex === 'b' && deer.age >= 1.5;
         if (antlered && st.tags.buck > 0) { st.tags.buck--; st.tags.buckFilled++; } else if (st.tags.doe > 0) { st.tags.doe--; st.tags.doeFilled++; } else { st.tags.buck--; st.tags.buckFilled++; }
         H.log.push({ t: H.now, kind: 'bad', text: "You track until the blood runs out. Never found. You tag it anyway. It's the right thing to do." });
@@ -1482,7 +1504,7 @@
 
   function harvest(H, g, deer, dist, how) {
     const st = S(), rng = G.rng, cfg = C(), P = cfg.progression;
-    H.prop.herd.splice(H.prop.herd.indexOf(deer), 1);
+    { const hi = H.prop.herd.indexOf(deer); if (hi >= 0) H.prop.herd.splice(hi, 1); } // a traveler isn't in the herd
     const antlered = deer.sex === 'b' && deer.age >= 1.5;
     // legal check: antlered deer need a buck tag; antlerless deer (does, fawns, button bucks) a doe tag
     let legal = true, tagUsed;
@@ -1690,7 +1712,7 @@
     const decay = cfg.deer.pressure.decay;
     for (const p of G.world.parcels) {
       const d = st.parcels[p.id];
-      const floor = d.owner === 'public' ? (d.bowOnly ? cfg.deer.pressure.bowOnlyFloor : cfg.deer.pressure.publicFloor) : 0.02;
+      const floor = d.owner === 'public' ? WT.crowd(p.id).floor : 0.02;
       d.pressure = Math.max(floor, (d.pressure || 0) * decay);
       for (const s of [...d.stands, ...(d.spots || [])]) s.pressure = (s.pressure || 0) * decay; // marked public spots rest too
       // neighbors and other hunters

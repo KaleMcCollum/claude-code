@@ -726,7 +726,7 @@
   function initHerd(prop, rng) {
     prop.capacity = carryingCapacity(prop);
     prop.herd = [];
-    prop.huntingPressure = prop.type === 'public' ? (prop.bowOnly ? D().pressure.bowOnlyFloor : D().pressure.publicFloor) : 0.05;
+    prop.huntingPressure = prop.type === 'public' ? (prop.bowOnly ? D().pressure.bowOnlyFloor : prop.pressFloor ?? D().pressure.publicFloor) : 0.05;
     const n = prop.capacity;
     for (let k = 0; k < n; k++) {
       const r = rng.next();
@@ -748,7 +748,8 @@
     if (prop.type === 'public' && prop.bowOnly && d.age >= 1.5) {
       if (d.sex === 'b') base *= D().bowOnlyBuckSurvival; // few hunters, short range: bucks grow old here
     } else if (prop.type === 'public' && d.age >= 1.5) {
-      if (d.sex === 'b') base = (m.publicBuck[0] + m.publicBuck[1]) / 2 + (d.age >= 4.5 ? 0.04 : 0);
+      const pb = prop.publicBuck || m.publicBuck;
+      if (d.sex === 'b') base = (pb[0] + pb[1]) / 2 + (d.age >= 4.5 ? 0.04 : 0);
       else base *= 1.6;
     }
     let mult = prop.harvestAdj || 1;
@@ -870,7 +871,7 @@
       if (d.hist.length > 10) d.hist.shift();
     }
     // pressure relaxes over the off-season
-    prop.huntingPressure = prop.type === 'public' ? (prop.bowOnly ? D().pressure.bowOnlyFloor : D().pressure.publicFloor) : 0.05;
+    prop.huntingPressure = prop.type === 'public' ? (prop.bowOnly ? D().pressure.bowOnlyFloor : prop.pressFloor ?? D().pressure.publicFloor) : 0.05;
     return log;
   }
   WT.yearCycle = yearCycle;

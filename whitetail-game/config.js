@@ -228,6 +228,15 @@
     home: { near: 2.0, far: 0.55, doeReach: 0.5, buckReach: 0.7 },
     // Sanctuary: cover you never hunt. It only counts in cover, away from your stands, and up to a share of the land.
     sanctuary: { maxShare: 0.25, standTiles: 3, holdBucks: 1.2, capacity: 0.6 }, // at the cap: 30% fewer young bucks leave, 15% more deer fit
+    /* Public land comes in three kinds (bow-only areas are their own thing). buckDeaths is the share of adult bucks
+       killed each year; floor is the pressure it never drops below; company is the base chance someone beat you there. */
+    publicCrowd: {
+      crowded: { name: 'Crowded',  share: 0.35, buckDeaths: [0.52, 0.62], floor: 0.45, company: 0.28, note: 'trucks at every access. Lots of pressure, mostly young bucks' },
+      average: { name: 'Average',  share: 0.40, buckDeaths: [0.38, 0.46], floor: 0.3,  company: 0.12, note: 'hunted, but there is room. A decent buck now and then' },
+      quiet:   { name: 'Quiet',    share: 0.25, buckDeaths: [0.27, 0.33], floor: 0.15, company: 0.04, note: 'hard to get to and lightly hunted. Close to private-land deer' },
+    },
+    // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
+    traveler: { chance: 0.035, rut: 2.2, quiet: 1.5, crowded: 0.7, gp: [170, 200], age: [4.5, 6.5], stays: 0.3 },
     mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards
 
     /* ------------------------------------------------------------ trail cameras */

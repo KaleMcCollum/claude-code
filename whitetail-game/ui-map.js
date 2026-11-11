@@ -527,7 +527,7 @@
         const scouted = sc >= 3 ? Math.max(1, Math.min(5, Math.round(1 + q * 5 + (WT.hash2(pid, 1, 2) - 0.5) * 2 / sc))) : 0;
         if (standObj) html += standBlock();
         html += `<p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
-          <dl class="kv"><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
+          <dl class="kv"><dt>How busy</dt><dd><b>${WT.crowd(pid).name}</b> <span class="faint">${WT.crowd(pid).note}</span></dd><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
           ${state.cid ? camBlock(d.cams.find((c) => c.cid === state.cid)) : ''}
           ${state.tile && !standObj ? `<div class="row" style="margin-top:6px"><button class="btn" id="markHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark ${state.cid ? 'this camera spot' : 'the spot you tapped'} to hunt</button></div>` : !state.tile ? '<p><b>Tap the map inside this area</b> to mark a spot to sit or hang a camera.</p>' : ''}
