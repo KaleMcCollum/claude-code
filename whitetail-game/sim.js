@@ -98,7 +98,7 @@
   COVER[T.PLOT] =      { f: 1.1,  b: 0,    w: 0,   c: 0.1, name: 'Food plot' };
   COVER[T.YOUNGTREES] ={ f: 0.15, b: 0.35, w: 0,   c: 0.4, name: 'Young tree planting' };
   COVER[T.POND] =      { f: 0,    b: 0,    w: 1,   c: 0,   name: 'Pond' };
-  COVER[T.PLOT_NEW] =  { f: 0.1,  b: 0,    w: 0,   c: 0,   name: 'New food plot (grows in next year)' };
+  COVER[T.PLOT_NEW] =  { f: 0.1,  b: 0,    w: 0,   c: 0,   name: 'Bare food plot (dirt until planted)' };
   WT.COVER = COVER;
   const isWater = (t) => t === T.WATER || t === T.CREEK || t === T.POND;
   WT.isWater = isWater;

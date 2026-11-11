@@ -210,7 +210,7 @@
         name: 'Food plot', perAcre: true,
         types: [
           { id: 'rye',     name: 'Winter rye / oats',  cost: 90,  food: 0.7, late: 0.8 },
-          { id: 'clover',  name: 'Clover',              cost: 160, food: 0.8, late: 0.5, perennial: 4 },
+          { id: 'clover',  name: 'Clover',              cost: 160, food: 0.8, late: 0.5 },
           { id: 'brassica',name: 'Brassicas / turnips', cost: 140, food: 0.75, late: 1.2 },
           { id: 'soy',     name: 'Soybeans',            cost: 170, food: 0.8, late: 0.9 },
           { id: 'corn',    name: 'Standing corn',       cost: 220, food: 0.9, late: 1.3 },

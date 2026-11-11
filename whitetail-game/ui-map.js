@@ -40,12 +40,12 @@
   // The map shows the four kinds of ground, plus water, roads and your own food plots.
   const SIMPLE = {
     prairie: ['#b9a868', '#b2a160'], timber: ['#4f6b3a', '#56733f'], farm: ['#d9b24a', '#d2aa42'], farmOff: ['#a8875c', '#a07f54'],
-    swamp: ['#5d6f6a', '#667a70'], plot: ['#6fb04a', '#68a644'], water: ['#4a78a8', '#4a78a8'], people: ['#8a8076', '#8a8076'],
+    swamp: ['#5d6f6a', '#667a70'], plot: ['#6fb04a', '#68a644'], plotDirt: ['#7d4f3a', '#754834'], water: ['#4a78a8', '#4a78a8'], people: ['#8a8076', '#8a8076'],
   };
   // harvested fields are bare dirt and stubble: each field its own shade of brown
   const OFF = [['#a8875c', '#a07f54'], ['#8f6f4a', '#876744'], ['#b89a70', '#b09268'], ['#9c7a50', '#94724a']];
   const offShade = (w, i) => OFF[(w.fieldId && w.fieldId[i] >= 0 ? w.fieldId[i] : Math.floor(WT.hash2((i % w.W) >> 3, ((i / w.W) | 0) >> 3, 5) * 97)) % OFF.length];
-  const catOf = (c) => { const lt = WT.landType(c); return c === T.PLOT || c === T.PLOT_NEW ? 'plot' : lt === 'road' ? 'people' : lt === 'farm' && WT.cropsOff() ? 'farmOff' : lt; };
+  const catOf = (c) => { const lt = WT.landType(c); return c === T.PLOT ? 'plot' : c === T.PLOT_NEW ? 'plotDirt' : lt === 'road' ? 'people' : lt === 'farm' && WT.cropsOff() ? 'farmOff' : lt; };
   UI.MAP_SIMPLE = SIMPLE;
   function huntable(d) { return d.owner === 'player' || d.owner === 'public' || d.permBought; }
   function buildBase(huntMode) {
@@ -354,7 +354,7 @@
       for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera on this stand</span>: ${WT.camRate(c) != null ? WT.camRate(c).toFixed(1) + ' deer a week, ' : ''}${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
       if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera on this stand. Hang one on this same tile to learn what walks past it.</span>');
     }
-    if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot touching this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot touching this stand</span>: it grows in next season and the rating goes up then');
+    if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot touching this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">Bare food plot touching this stand</span>: no bonus until it is planted in spring');
     if (s.r.shore > 0.2) out.push('<span class="good">On the bank</span>: deer walk the shoreline instead of crossing, so this stand sits on a funnel (counted in its rating)');
     if (info.nearWater || (s.r.water || 0) > 0.3) out.push(`<span class="good">Water at this stand</span>: counted in its rating, and on warm days deer stay close to it${WT.warmWater(s) > 1.02 ? ' <b>(today is one)</b>' : ''}`);
     if (d.owner === 'player') { const cfg = WT.CONFIG.sanctuary, w2 = Wd(); const n = (d.sanctuary || []).filter((i) => Math.hypot(i % w2.W - s.x, ((i / w2.W) | 0) - s.y) <= cfg.standTiles).length; if (n) out.push(`<span class="bad">Too close to your sanctuary</span>: ${n} sanctuary tile${n === 1 ? '' : 's'} within 100 yards of this stand ${n === 1 ? "doesn't" : "don't"} count while it's here`); }
@@ -488,9 +488,10 @@
       const cams = Object.entries(inv.cameras).filter(([, n]) => n > 0);
       const pending = d.cams.reduce((a, c) => a + (c.queue ? c.queue.length : 0), 0);
       let html = `<p>${p.acres} acres${WT.contiguousAcres(pid) > p.acres ? ` (${WT.contiguousAcres(pid)} with your adjoining land)` : ''}. ${esc(flavor(p.habitat))}</p>
-        <p class="dim">Stands ${d.stands.length}/${lim.stands} · Cameras ${d.cams.length}/${lim.cams} · Food plots ${WT.plotAcresUsed(pid)}/${lim.plotAcres} ac · Water holes ${d.waterholes.length}/${lim.waterholes}</p>
+        <p class="dim">Stands ${d.stands.length}/${lim.stands} · Cameras ${d.cams.length}/${lim.cams} · Food plots ${d.plots.filter((q) => q.planted).length} planted${d.plots.some((q) => !q.planted) ? `, ${d.plots.filter((q) => !q.planted).length} bare` : ''} · Water holes ${d.waterholes.length}/${lim.waterholes}</p>
         <p class="dim">${mixLine(pid)}</p>${(() => { const ce = WT.cropEffect(pid); return ce.note ? `<p class="${ce.phase === 'rush' ? 'good' : ce.phase === 'off' && ce.f < 0.97 ? 'warn' : 'dim'}">${ce.phase === 'rush' ? 'Hunt it now: ' : ''}${esc(ce.note)}${ce.phase === 'rush' ? ` (${ce.left} more day${ce.left === 1 ? '' : 's'})` : ''}.</p>` : ''; })()}
         ${landMeters(pid)}
+        ${WT.plantingOpen() && d.plots.some((q) => !q.planted) ? '<div class="row" style="margin:6px 0"><button class="btn blaze" data-planting>Spring planting: choose your crops</button></div>' : ''}
         <div class="row" style="margin:6px 0"><button class="btn" id="advice">Help: how do I make this land better?</button></div>`;
       if (!t) {
         html += `<p><b>Tap any spot on this land</b> to see what's there, build on it, or move and pick up what you've placed.</p>
@@ -506,7 +507,7 @@
           <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
           ${UI.knowledgeHtml(s, UI.stackHtml(pid, s))}</div>`;
       if (c) html += camBlock(c);
-      if (info.plot) { const pt = WT.plotType(info.plot.type); html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">${esc(pt.name)} food plot</span> <span class="dim">${info.plot.acres} ac · ${info.plot.year === st.year ? 'planted this year, deer start using it next season' : 'growing: deer feed here'}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Plow it under</button></div></div>`; }
+      if (info.plot) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Food plot</span> <span class="dim">${info.plot.planted ? `${esc(WT.plotType(info.plot.type).name)}, came in ${esc(info.plot.quality || 'fair')}. Feeding deer all season; it goes back to dirt when the season ends.` : WT.plantingOpen() ? 'Bare dirt. Spring planting is open: choose a crop for it now.' : 'Bare dirt this season. You choose its crop in spring, after the season ends.'}</span><div class="row" style="margin-top:6px">${!info.plot.planted && WT.plantingOpen() ? '<button class="btn small blaze" data-planting>Spring planting</button>' : ''}<button class="btn small" id="unbuild">Take the plot out</button></div></div>`;
       if (info.trees) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Tree row</span> <span class="dim">${info.trees.mature ? 'grown into cover' : `planted year ${info.trees.year}, becomes cover after ${WT.CONFIG.improvements.trees.matureYears} years`}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Pull the row</button></div></div>`;
       if (info.waterhole) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Water hole</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Fill it in</button></div></div>`;
       // add to this exact spot
@@ -516,10 +517,8 @@
       else if (!s) html += `<div class="row">${truck.length ? `<select id="standSel">${truck.map(([id, n]) => `<option value="${id}" ${state.standType === id ? 'selected' : ''}>${esc(WT.standType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addStand">Put up stand</button>` : '<span class="faint">No stands in your truck. Buy one at the Shop.</span>'}</div>`;
       if (noCam) html += addCamRow(!!s);
       void noStand;
-      if (!info.plot && !info.waterhole) html += `<div class="row" style="margin-top:6px">
-          <select id="plotSel">${WT.CONFIG.improvements.foodplot.types.map((x) => `<option value="${x.id}" ${state.plot.type === x.id ? 'selected' : ''}>${esc(x.name)} (${WT.money(x.cost)})</option>`).join('')}</select>
-          <button class="btn small" id="addPlot">Plant food plot (${WT.money(Math.round(WT.plotType(state.plot.type).cost * WT.PLOT_ACRES))})</button></div>
-<p class="faint" style="margin:2px 0 0">Every plot is 2 × 2 tiles (one acre), with the tile you picked as its top-left corner. Each crop costs a different amount. Stands go on a tile touching the plot, not in it. <button class="btn small ghost" id="plotShow">${state.plotPreview ? 'Hide' : 'Show'} where it goes</button></p>
+      if (!info.plot && !info.waterhole) html += `<div class="row" style="margin-top:6px"><button class="btn small" id="addPlot">Lay out a food plot here (free)</button><button class="btn small ghost" id="plotShow">${state.plotPreview ? 'Hide' : 'Show'} where it goes</button></div>
+        <p class="faint" style="margin:2px 0 0">A plot is 2 × 2 tiles of prairie, with this tile as its top-left corner. It's bare dirt until you plant it: you pick the crop and pay each spring, after the season ends. Stands go on a tile touching it.</p>
         <div class="row" style="margin-top:6px">
           <button class="btn small" id="addWater">Dig water hole (${WT.money(WT.CONFIG.improvements.waterhole.cost)})</button>
           <button class="btn small" id="addTreesH">Tree row → (${WT.money(WT.CONFIG.improvements.trees.cost)})</button>
@@ -622,7 +621,8 @@
       on('unbuild', () => { const b = $('#unbuild', card); if (!armed) { armed = true; b.textContent = 'Press again (no refund)'; return; } if (UI.err(WT.removeImprovement(pid, t.x, t.y))) return; done('Removed.', true); });
       on('addStand', () => { state.standType = $('#standSel', card).value; if (UI.err(WT.placeStand(pid, state.standType, t.x, t.y))) return; done('Stand is up. Sit it once to learn the spot.'); });
       on('addCam', () => { state.camType = $('#camSel', card).value; if (UI.err(WT.placeCamera(pid, state.camType, t.x, t.y))) return; done(standObj ? 'Camera is on the stand.' : 'Camera is up.'); });
-      on('addPlot', () => { if (UI.err(WT.plantPlot(pid, state.plot.type, t.x, t.y))) return; done('Planted. Deer start using it next season.', true); });
+      on('addPlot', () => { if (UI.err(WT.plantPlot(pid, null, t.x, t.y))) return; done(WT.plantingOpen() ? 'Plot laid out. Spring planting is open: choose its crop now.' : 'Plot laid out. It stays dirt until you plant it next spring.', true); });
+      card.querySelectorAll('[data-planting]').forEach((b) => b.addEventListener('click', () => UI.planting(() => UI.go('map', { mode: 'land', pid }))));
       on('addWater', () => { if (UI.err(WT.digWaterhole(pid, t.x, t.y))) return; done('Water hole dug.', true); });
       on('addTreesH', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, false))) return; done('Tree row planted.', true); });
       on('addTreesV', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, true))) return; done('Tree row planted.', true); });

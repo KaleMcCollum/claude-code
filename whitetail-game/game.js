@@ -258,7 +258,9 @@
     const near = (a, list, r) => list.some((b) => Math.hypot(a.x - b.x, a.y - b.y) <= r);
     const plotTiles = d.plots.flatMap((q) => q.tiles.map((i) => ({ x: i % w.W, y: (i / w.W) | 0 })));
     // the land
-    if (ls.food < 0.5 && plotLeft >= 0.5) tips.push(['Food is the weak spot', `Deer here have to leave to eat. You can still plant ${plotLeft} acre${plotLeft === 1 ? '' : 's'} of food plot. More food means heavier deer, better antlers, and a reason for deer to be on your side of the fence in the evening. Winter rye is the cheap start (${money(imp.foodplot.types[0].cost)} an acre); corn and brassicas hold deer late in the season.`]);
+    void plotLeft;
+    if (ls.food < 0.5) tips.push(['Food is the weak spot', `Deer here have to leave to eat. Lay out food plot sites on your prairie (free, 2 × 2 tiles each) and plant them in spring after the season. More food means heavier deer, better antlers, and a reason for deer to be on your side of the fence in the evening. Winter rye is the cheap one (${money(imp.foodplot.types[0].cost)} a plot); corn and brassicas hold deer late.`]);
+    { const bare = d.plots.filter((q) => !q.planted).length; if (bare) tips.push([WT.plantingOpen() ? 'Plots waiting to be planted' : 'Bare plots', WT.plantingOpen() ? `${bare} plot site${bare === 1 ? ' is' : 's are'} bare dirt. Spring planting is open now: pick a crop for each before your first hunt.` : `${bare} plot site${bare === 1 ? ' is' : 's are'} bare dirt and feeding nothing this season. You can plant them next spring.`]); }
     if (ls.water < 0.45 && d.waterholes.length < lim.waterholes) tips.push(['Water is scarce', `Dig a water hole (${money(imp.waterhole.cost)}). It helps the herd, and a stand near it is better in early October when it's warm.`]);
     if (ls.bedding < 0.4) tips.push(['Not much cover', `Deer feed here but bed somewhere else, so mornings are slow. Plant tree rows (${money(imp.trees.cost)} each). They take ${imp.trees.matureYears} years to become cover, so start early, and run them between cover and food to make a travel route.`]);
     if (ls.security < 0.55) {
@@ -378,6 +380,8 @@
       for (const deer of d.herd || []) if (deer.sex === 'b' && deer.age >= 1.5 && !deer.rack) WT.growDeer(deer, makeProp(p.id), G.rng, 1);
     }
     if (st.cropDay === undefined) st.cropDay = 9;
+    // older saves: plots paid for under the old rules count as planted for this season
+    for (const p of G.world.parcels) for (const pl of (st.parcels[p.id].plots || [])) if (pl.planted === undefined) { pl.planted = !!pl.type; pl.last = pl.type || null; if (pl.type) pl.tiles.forEach((i) => { G.world.cover[i] = T().PLOT; st.tileMods[i] = T().PLOT; }); }
     for (const k in C().skills) if (st.skills[k] === undefined) st.skills[k] = 0; // skills added since this save
     // older saves: bow-only public land now holds an older, bigger herd. Restock it once.
     if (!st.settings || !st.settings.bowHerds) {
@@ -750,14 +754,41 @@
     st.inv.cameras[c.type] = (st.inv.cameras[c.type] || 0) + 1;
     return null;
   };
+  /* Food plots through the year. A plot is a 2 x 2 site you lay out any time for free; it is bare dirt until it is
+     planted. Planting happens once a year, in spring after shed hunting: you pick a crop for each site and pay for it.
+     A planted plot feeds deer all season. When the season ends every plot goes back to dirt and has to be replanted. */
+  WT.plotSites = function () {
+    const out = [];
+    for (const p of G.world.parcels) { const d = S().parcels[p.id]; if (d.owner !== 'player') continue; d.plots.forEach((pl, k) => out.push({ pid: p.id, k, parcel: p.name, plot: pl })); }
+    return out;
+  };
+  WT.plantingOpen = () => !!S().plantingOpen;
+  // choices: [{ pid, k, type }] (type null = leave it dirt this year)
+  WT.plantPlots = function (choices) {
+    const st = S(), w = G.world, TT = T(), rng = G.rng;
+    if (!WT.plantingOpen()) return 'Planting is done in spring, after the season ends.';
+    const todo = choices.filter((c) => c.type && st.parcels[c.pid] && st.parcels[c.pid].plots[c.k] && !st.parcels[c.pid].plots[c.k].planted);
+    const cost = todo.reduce((a, c) => a + Math.round(WT.plotType(c.type).cost * WT.PLOT_ACRES), 0);
+    if (st.cash < cost) return `That comes to ${WT.money(cost)} and you have ${WT.money(st.cash)}.`;
+    for (const c of todo) {
+      const p = w.parcels[c.pid], pl = st.parcels[c.pid].plots[c.k], pt = WT.plotType(c.type);
+      const q = clamp(0.5 + p.habitat.soil * 0.35 + rng.range(-0.25, 0.25));
+      pl.type = c.type; pl.last = c.type; pl.planted = true; pl.year = st.year;
+      pl.quality = q < 0.3 ? 'poor' : q < 0.55 ? 'fair' : q < 0.8 ? 'good' : 'excellent'; pl.q = q * pt.food;
+      pl.tiles.forEach((i) => setTile(i, TT.PLOT));
+    }
+    if (cost) { st.cash -= cost; ledger('Food plots', -cost); }
+    WT.computeDerivedLayers(w); refreshStands();
+    return null;
+  };
   WT.PLOT_ACRES = 1; // every food plot is 2 x 2 tiles: one acre
   WT.plantPlot = function (pid, typeId, x, y) {
     const acres = WT.PLOT_ACRES;
     const st = S(), d = st.parcels[pid], w = G.world, TT = T();
-    const pt = WT.plotType(typeId);
-    if (d.owner !== 'player') return 'Plant food plots on your own land.';
+    const pt = typeId ? WT.plotType(typeId) : null;
+    if (d.owner !== 'player') return 'Food plots go on your own land.';
     const lim = WT.limits(pid);
-    if (WT.plotAcresUsed(pid) + acres > lim.plotAcres + 1e-6) return `Plots are limited to ${lim.plotAcres} acres here (8% of the property).`;
+    void lim; // no cap: every plot costs you 2 x 2 tiles of prairie
     const side = Math.round(Math.sqrt(acres * 4));
     const tiles = [];
     for (let yy = y; yy < y + side; yy++) for (let xx = x; xx < x + Math.ceil(acres * 4 / side); xx++) {
@@ -769,13 +800,10 @@
       if (d.stands.some((z) => z.y * w.W + z.x === i)) return 'A stand is in the way. Stands sit on the edge of a plot, so plant beside it.';
       tiles.push(i);
     }
-    const cost = Math.round(pt.cost * acres);
-    if (st.cash < cost) return `Seed, fertilizer and equipment rental run ${WT.money(cost)}.`;
-    st.cash -= cost; ledger('Land work', -cost);
+    void pt;
     tiles.forEach((i) => { rememberCover(d, i); setTile(i, TT.PLOT_NEW); });
-    d.plots.push({ type: typeId, acres, tiles, year: st.year, quality: null });
+    d.plots.push({ type: null, last: typeId || null, acres, tiles, year: st.year, quality: null, planted: false });
     WT.computeDerivedLayers(w); refreshStands();
-    news(`Planted ${acres} acre${acres > 1 ? 's' : ''} of ${pt.name.toLowerCase()}. It will be ready next season.`);
     return null;
   };
   WT.digWaterhole = function (pid, x, y) {
@@ -1348,6 +1376,7 @@
     if (setup.competition) log.push({ t: start, kind: 'warn', text: 'You can hear another hunter walking in somewhere off to the east.' });
     if (plan.deficit > 0) log.push({ t: start, kind: 'warn', text: `You're dressed for about ${plan.comfortable}°F. You'll get cold after ${fmtDur(plan.maxHrs)}.` });
     if (plan.hot > 0) log.push({ t: start, kind: 'warn', text: 'You were sweating on the walk in. Your scent is going to carry.' });
+    st.plantingOpen = false; // the season has started: what's planted is planted
     G.hunt = H;
     st.stats.hunts++;
     st.seasonLog.hunts++;
@@ -1816,6 +1845,7 @@
   }
   function nextDay() {
     const st = S(), cfg = C(), rng = G.rng;
+    st.plantingOpen = false;
     st.day++;
     st.slot = 'morning';
     const decay = cfg.deer.pressure.decay;
@@ -1961,24 +1991,8 @@
     const TT = T();
     for (const p of w.parcels) {
       const d = st.parcels[p.id];
-      for (const pl of d.plots) {
-        if (pl.quality === null || pl.year === st.year) {
-          const pt = WT.plotType(pl.type);
-          const shade = pl.tiles.reduce((a, i) => a + (G.world.distWater[i] < 3 ? 0.05 : 0), 0) / pl.tiles.length;
-          const q = clamp(0.45 + p.habitat.soil * 0.35 + rng.range(-0.25, 0.25) - shade - (pl.acres < 1 ? 0.15 : 0) + (pl.acres >= 2 ? 0.05 : 0));
-          pl.quality = q < 0.3 ? 'poor' : q < 0.55 ? 'fair' : q < 0.8 ? 'good' : 'excellent';
-          pl.q = q * pt.food;
-          pl.tiles.forEach((i) => setTile(i, TT.PLOT));
-          summary.events.push(`Your ${pt.name.toLowerCase()} plot on ${p.name} came in ${pl.quality}.`);
-        }
-      }
-      // annual plots need replanting; clover lasts several years
-      d.plots = d.plots.filter((pl) => {
-        const pt = WT.plotType(pl.type);
-        const life = pt.perennial || 1;
-        if (st.year + 1 - pl.year >= life + 1) { pl.tiles.forEach((i) => setTile(i, TT.PASTURE)); summary.events.push(`A ${pt.name.toLowerCase()} plot on ${p.name} ran its course. Replant it.`); return false; }
-        return true;
-      });
+      // the season is over: every plot is bare dirt again until you replant it this spring
+      for (const pl of d.plots) { if (pl.type) pl.last = pl.type; pl.type = null; pl.planted = false; pl.quality = null; pl.tiles.forEach((i) => setTile(i, TT.PLOT_NEW)); }
       for (const tr of d.trees) {
         if (!tr.mature && st.year + 1 - tr.year >= cfg.improvements.trees.matureYears) { tr.mature = true; tr.tiles.forEach((i) => setTile(i, TT.BELT)); summary.events.push(`A shelterbelt row on ${p.name} has grown into real cover.`); }
       }
@@ -2019,6 +2033,7 @@
     }
     if (st.sheds.length > 120) st.sheds.length = 120;
     // reset season
+    st.plantingOpen = true; // spring: choose what goes in each plot before the first hunt
     st.year++; st.day = WT.ownsBow() ? -(cfg.calendar.earlyBowDays || 0) : 0; st.slot = 'morning';
     st.tags = { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 };
     st.seasonLog = { hunts: 0, harvest: [] };

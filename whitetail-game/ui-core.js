@@ -154,7 +154,7 @@
           ${sum.sheds && sum.sheds.length ? `<h3>Shed hunting</h3><p>You walked your land in March and found ${sum.sheds.length} shed${sum.sheds.length === 1 ? '' : 's'}. Each one is a buck that made it through the winter:</p>${sum.sheds.map((sh) => `<p class="dim">• ${sh.name ? `"${esc(sh.name)}": ` : ''}${sh.side === 'both' ? 'a matched set' : 'one side'}, ${sh.pts} points, off a ${sh.age}-year-old on ${esc(sh.parcel)}</p>`).join('')}<p class="faint">They're in the Trophy Room.</p>` : sum.sheds ? '<h3>Shed hunting</h3><p class="dim">You walked your land in March and came back empty-handed.</p>' : ''}
           ${sum.events.length ? '<h3>On your land</h3>' + sum.events.map((e) => `<p>${esc(e)}</p>`).join('') : ''}
           <p class="dim">New tags are on sale at the shop. Your hit list entries are a year older.</p>
-          <div class="row"><button class="btn blaze" id="ok">Back to the lodge</button></div>`, (m2) => $('#ok', m2).addEventListener('click', () => UI.go('lodge')));
+          <div class="row"><button class="btn blaze" id="ok">${WT.plotSites().length ? 'On to spring planting' : 'Back to the lodge'}</button></div>`, (m2) => $('#ok', m2).addEventListener('click', () => { UI.go('lodge'); if (WT.plantingOpen() && WT.plotSites().some((x) => !x.plot.planted)) UI.planting(); }));
       });
     });
   };
@@ -301,12 +301,14 @@
       <section class="panel news" style="margin-top:22px">
         <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
         ${st.day < 0 ? `<p class="good">Early archery season: bow only until Oct 1. ${WT.hasBow() ? 'Your bow is equipped.' : 'Equip your bow under Gear to hunt, or press Wait.'}</p>` : ''}
+        ${WT.plantingOpen() && WT.plotSites().some((x) => !x.plot.planted) ? '<p class="good">Spring planting is open until your first hunt. <button class="btn small" data-planting>Choose your crops</button></p>' : ''}
         ${needTag ? '<p class="warn">You need a buck tag before you can shoot a buck. Get one at the Shop.</p>' : ''}
         ${st.news.slice(0, 3).map((n) => `<p class="${n.kind}"><span class="faint">${WT.dateLabel(Math.min(n.d, 91))}:</span> ${esc(n.text)}</p>`).join('')}
       </section>`;
     el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => UI.go(b.dataset.go, b.dataset.go === 'map' ? { mode: 'hunt' } : undefined)));
     el.querySelectorAll('[data-menu]').forEach((b) => b.addEventListener('click', UI.menu));
     el.querySelectorAll('[data-guide]').forEach((b) => b.addEventListener('click', () => UI.guide()));
+    el.querySelectorAll('[data-planting]').forEach((b) => b.addEventListener('click', () => UI.planting()));
     const canvas = $('canvas', el);
     let raf, last = 0;
     const loop = (t) => { if (t - last > 140) { drawLodge(canvas, t); last = t; } raf = requestAnimationFrame(loop); };
@@ -358,10 +360,10 @@
     ['land', 'Your land and stacking', () => `
       <p>On the <b>Land</b> map, tap any spot on your ground. The card shows what's on that spot and what you can add to it. Tap a stand or camera to move it or pick it up.</p>
       <p><b>Where a stand is</b> comes from the tile it stands on and the 8 tiles that touch it. On a timber tile it's <b>in the timber</b>. On prairie touching timber it's a <b>tree line</b>. On prairie touching nothing it's <b>open prairie</b>. On a swamp tile it's <b>in the swamp</b> with the full big-buck effect; on a tile only touching swamp it's a <b>swamp edge</b> with half of it, but any stand can go there, including a box blind. Touching a crop field is a <b>field edge</b>, touching water is the <b>water's edge</b>. The setting decides how far you see and adds to the part of the rating it's good for. Pick any tile and the card tells you what a stand there would be.</p>
-      <p><b>Food plots</b> are always 2 × 2 tiles (one acre), and each crop has its own price. Stands can't go inside a plot: put the stand on a tile touching it, and once the plot has grown in the stand gets the evening bonus.</p>
+      <p><b>Food plots</b> are 2 × 2 tiles of prairie. Laying one out is free and you can do it any time, but it's bare dirt until it's planted. Planting happens once a year, in spring after shed hunting: you pick a crop for each plot and pay for it (each crop has its own price). A planted plot feeds deer all season, then goes back to dirt and has to be replanted. There's no limit on plots; every one costs you four tiles of prairie. Stands go on a tile touching a plot, not in it, and get the evening bonus while it's planted.</p>
       <p><b>Cameras cover a stand only from the stand's own tile.</b> Hang it on the same tile and its photos are tagged with that stand. A camera anywhere else stands alone as its own tile and just watches the ground it's on.</p>
       <p>• <b>Stand</b>: where you hunt. Its rating reads the ground within about 250 yards, closest ground counting most.</p>
-      <p>• <b>Food plot</b>: deer start using it the season after you plant. A stand gets an evening bonus when a grown plot tile touches its tile. It also makes that ground food, which lifts stands within a couple hundred yards a little and feeds the whole herd: heavier deer and better antlers. Clover lasts 4 years, the rest are replanted yearly. Corn and brassicas are best late in the season.</p>
+      <p>• <b>Food plot</b>: planted in spring, up all season. A stand gets an evening bonus when a planted plot tile touches its tile. It also makes that ground food, which lifts stands within a couple hundred yards a little and feeds the whole herd: heavier deer and better antlers. Every plot is replanted each spring. Corn and brassicas are best late in the season.</p>
       <p>• <b>Trail camera</b>: goes on your land or on public land (up to ${WT.CONFIG.publicCamsPerArea} per public area). It photographs deer that walk past, and it sees what a hunter sitting on that spot would see: a camera on a good spot fills up, a camera on a dead spot stays empty. That makes cheap cameras a scouting tool. Scatter them, see which one gets the most deer (and the most in daylight), then put a stand or mark a spot right on the winner.</p>
       <p>&nbsp;&nbsp;Each camera has a <b>clear range</b> (how far out you can tell what the deer is) and a <b>reach</b> (past that it never triggers). The cheapest is clear to ${WT.CONFIG.cameras[0].clear} yards and blind past ${WT.CONFIG.cameras[0].reach}; the best is clear to ${WT.CONFIG.cameras[WT.CONFIG.cameras.length - 1].clear} and reaches ${WT.CONFIG.cameras[WT.CONFIG.cameras.length - 1].reach}. Thick timber cuts both down. A camera on a stand's tile tags its photos with that stand; one touching a food plot or a standing crop field gets more pictures. Checking a card leaves scent; cellular cameras send photos by themselves.</p>
       <p>• <b>Water hole</b>: adds water to the spot. Raises nearby stand ratings (most in early October) and helps the herd.</p>
@@ -391,6 +393,29 @@
       m.querySelectorAll('[data-gn]').forEach((b) => b.addEventListener('click', () => { k += +b.dataset.gn; show(); }));
       $('#gclose', m).addEventListener('click', UI.closeModal);
     });
+    show();
+  };
+
+  /* Spring planting: once a year, after shed hunting. One row per plot site; pick a crop or leave it dirt. */
+  UI.planting = function (after) {
+    const st = S(), sites = WT.plotSites().filter((x) => !x.plot.planted), types = C().improvements.foodplot.types;
+    const done = after || (() => UI.go('lodge'));
+    if (!sites.length || !WT.plantingOpen()) return done();
+    const pick = sites.map((x) => x.plot.last || '');
+    const show = () => {
+      const cost = pick.reduce((a, id) => a + (id ? Math.round(WT.plotType(id).cost * WT.PLOT_ACRES) : 0), 0);
+      UI.modal(`<h2>Spring planting</h2>
+        <p class="dim">Every plot went back to dirt over the winter. Pick what goes in each one for the coming season, or leave it bare. This is the only time of year you can plant.</p>
+        <div class="list" style="max-height:46vh;overflow:auto">${sites.map((x, i) => `<div class="item" style="display:block"><span class="nm">${esc(x.parcel)}</span> <span class="dim">plot ${x.k + 1}${x.plot.last ? ` · last year: ${esc(WT.plotType(x.plot.last).name)}` : ' · new site'}</span>
+          <div class="row" style="margin-top:4px"><select data-pl="${i}"><option value="">Leave it dirt</option>${types.map((t) => `<option value="${t.id}" ${pick[i] === t.id ? 'selected' : ''}>${esc(t.name)} · ${money(t.cost)}${t.late >= 1.1 ? ' · best late season' : ''}</option>`).join('')}</select></div></div>`).join('')}</div>
+        <p style="margin-top:8px">Total <b>${money(cost)}</b> · you have ${money(st.cash)}${cost > st.cash ? ' <span class="bad">Not enough.</span>' : ''}</p>
+        <div class="row"><button class="btn blaze" id="plGo" ${cost > st.cash ? 'disabled' : ''}>${cost ? 'Plant them' : 'Leave them all bare'}</button><button class="btn ghost" id="plLater">Decide later</button></div>
+        <p class="faint">"Decide later" keeps planting open until your first hunt or the first day you wait.</p>`, (m) => {
+        m.querySelectorAll('[data-pl]').forEach((sel) => sel.addEventListener('change', () => { pick[+sel.dataset.pl] = sel.value; show(); }));
+        $('#plGo', m).addEventListener('click', () => { if (UI.err(WT.plantPlots(sites.map((x, i) => ({ pid: x.pid, k: x.k, type: pick[i] || null }))))) return; WT.save(); UI.closeModal(); UI.toast(cost ? 'Planted. They will be up all season.' : 'Left bare this year.', 'good'); UI.topbar(); done(); });
+        $('#plLater', m).addEventListener('click', () => { UI.closeModal(); done(); });
+      });
+    };
     show();
   };
 
