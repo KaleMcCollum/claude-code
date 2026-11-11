@@ -173,8 +173,14 @@
           case 'tripod': r(3, 1, 3, 1, bg); r(3, 2, 3, 1, L); r(4, 3, 1, 6, L); r(3, 4, 1, 2, L); r(2, 6, 1, 2, L); r(1, 8, 1, 1, L); r(5, 4, 1, 2, L); r(6, 6, 1, 2, L); r(7, 8, 1, 1, L); break;
           case 'popup': r(3, 2, 3, 1, bg); r(2, 3, 5, 1, bg); r(1, 4, 7, 4, bg); r(4, 5, 1, 3, D); r(1, 8, 7, 1, L); break;
           case 'tree': r(3, 0, 2, 9, W); r(5, 4, 3, 1, L); r(5, 2, 2, 1, bg); r(7, 5, 1, 2, L); break;
-          case 'cam': r(2, 2, 5, 5, bg); r(3, 3, 3, 3, D); r(4, 4, 1, 1, L); r(1, 4, 1, 1, L); r(7, 4, 1, 1, L); break;
-          case 'camNew': r(2, 2, 5, 5, '#ffe08a'); r(3, 3, 3, 3, D); r(4, 4, 1, 1, '#ffe08a'); r(1, 4, 1, 1, L); r(7, 4, 1, 1, L); break;
+          case 'cam': case 'camNew': { // a movie camera from the side: two film reels on top, the body, a lens out the front
+            const body = kind === 'camNew' ? '#ffe08a' : bg;
+            r(0, 0, 3, 3, L); r(1, 1, 1, 1, D); r(4, 0, 3, 3, L); r(5, 1, 1, 1, D);   // two reels with a gap between them
+            r(1, 3, 6, 4, body); r(2, 4, 2, 1, D);                                     // body and its little window
+            r(7, 4, 1, 2, L); r(8, 3, 1, 4, L);                                         // lens, flaring out
+            r(3, 7, 1, 2, L); r(2, 8, 3, 1, L);                                         // a short stand
+            break;
+          }
           default: r(3, 1, 1, 8, L); r(4, 1, 4, 3, bg); break; // flag: a marked public spot
         }
       };
@@ -330,7 +336,7 @@
        <p><b>Timber or open?</b> In timber deer show at 20 to 200 yards, an easy shot for a starter rifle. Open country shows more ground but deer are 150 to 500 yards out, which takes a real rifle and scope.</p>
        <p><b>Rating:</b> sit a spot once and you learn its rating out of 100. That number never changes, and great spots are rare. The stars are today's sit: 5 means the stand is at its best, fewer means wind, time of day or pressure is holding it back. A sit can never beat the stand's rating.</p>
        <p><b>Pressure:</b> hunting the same stand every day fills its pressure meter. Rest it a few days.</p>
-       <p class="dim">Stands and cameras show as tiny pictures on their tiles (a ladder, a box on legs, a camera); a flag is a spot you marked on public land.</p>`,
+       <p class="dim">Stands and cameras show as tiny pictures on their tiles (a ladder, a box on legs, a little movie camera); a flag is a spot you marked on public land.</p>`,
     ];
     UI.modal(`${pages[page]}<div class="row" style="margin-top:10px">${page > 0 ? '<button class="btn ghost" data-tp="-1">Back</button>' : ''}${page < pages.length - 1 ? '<button class="btn blaze" data-tp="1">Next</button>' : '<button class="btn blaze" data-tdone>Got it</button><button class="btn" data-tguide>Full guide</button>'}<button class="btn ghost small" data-tdone>Skip</button></div>`, (m) => {
       m.querySelectorAll('[data-tp]').forEach((b) => b.addEventListener('click', () => UI.mapTutorial(page + +b.dataset.tp)));
@@ -392,7 +398,7 @@
     el.querySelector('[data-help]').addEventListener('click', () => UI.mapTutorial());
     if (!st.settings.tutMap) setTimeout(() => UI.mapTutorial(), 50);
     if (state.pid != null) view.focus(state.pid); else view.focus(w.starterId, 6);
-    if (state.pid != null && state.sid) { const d0 = st.parcels[state.pid], s0 = [...(d0.stands || []), ...(d0.spots || [])].find((z) => z.sid === state.sid); if (s0) selectTile(state.pid, s0.x, s0.y); }
+    if (state.pid != null && state.sid) { const d0 = st.parcels[state.pid], s0 = [...(d0.stands || []), ...(d0.spots || [])].find((z) => z.sid === state.sid); if (s0) { selectTile(state.pid, s0.x, s0.y); view.centerOn(s0.x, s0.y, 12); } } // opened on a stand: show it up close
 
     function setBanner() {
       banner.hidden = !state.move;
