@@ -641,7 +641,8 @@
       const i = yy * W + xx, c = COVER[cover[i]], wgt = 1 / (1 + d * 0.5);
       fW += c.f * wgt; bW += c.b * wgt; wW += c.w * wgt; tot += wgt;
       if (d <= 4) { open += 1 - c.c; openN++; }
-      if (d <= 2.5) { tv += travel[i]; tvN++; if (cover[i] === T.PLOT) plotN++; }
+      if (d <= 2.5) { tv += travel[i]; tvN++; }
+      if (d <= 1.5 && cover[i] === T.PLOT) plotN++; // a grown plot on this tile or one touching it
       if (d <= 4) { swN++; if (cover[i] === T.SLOUGH) swamp++; }
       if (d <= 3) { shN++; if (isWater(cover[i])) shW++; }
       if (d > 0) { const pull = (c.f + c.b) * wgt; vx += (dx / d) * pull; vy += (dy / d) * pull; }
@@ -655,7 +656,7 @@
     const jit = (k) => (hash2(x, y, world.seed + k) - 0.5) * 0.18;
     const r = {
       morning: clamp(0.38 * bed + 0.34 * trav + 0.18 * depth + 0.1 * wat - 0.12 * Math.max(0, food - 0.7) + 0.08 + jit(1) + LW.shore * shore),
-      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2) + 0.08 * Math.min(1, plotN / 4) + LW.shore * shore), // a grown food plot right at the stand is a destination
+      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2) + 0.08 * Math.min(1, plotN / 3) + LW.shore * shore), // a grown food plot right at the stand is a destination
       rut: clamp(0.5 * trav + 0.3 * bed + 0.15 * food + 0.08 + jit(3) + LW.shore * shore),
       mature: clamp(0.45 * trav + 0.3 * depth + 0.2 * bed - 0.15 * Math.max(0, vis - 0.7) + jit(4) + 0.3 * Math.min(1, swamp / Math.max(1, swN) * 2) + LW.shoreMature * shore), // a stand in or beside a swamp is where the old ones are
       water: wat,

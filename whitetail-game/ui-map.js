@@ -155,33 +155,49 @@
         ctx.fillText(txt, Math.round(X), Math.round(Y));
       }
       // markers: stands, spots, cameras, plots
-      const mark = (x, y, letter, fg, bg) => {
-        const [X, Y] = toScreen(x + 0.5, y + 0.5);
-        const s = v.z >= 8 ? 11 : 8;
-        ctx.fillStyle = '#1c1410'; ctx.fillRect(Math.round(X - s / 2) - 1, Math.round(Y - s / 2) - 1, s + 2, s + 2);
-        ctx.fillStyle = bg; ctx.fillRect(Math.round(X - s / 2), Math.round(Y - s / 2), s, s);
-        if (s >= 10) { ctx.fillStyle = fg; ctx.font = '8px "Press Start 2P", monospace'; ctx.fillText(letter, Math.round(X) + 1, Math.round(Y) + 4); }
+      // Tiny pictures instead of letters. Each sits on its own tile: a ladder, a box blind on legs, a tripod, a pop-up
+      // dome, a platform on a trunk, a camera, a flag for a marked spot. Zoomed far out they shrink to a coloured dot.
+      const ICON = { ladder: 'ladder', box: 'box', house: 'house', tripod: 'tripod', popup: 'popup', hangon: 'tree', climber: 'tree', saddle: 'tree', ground: 'flag' };
+      const mark = (x, y, kind, fg, bg) => {
+        const [cx0, cy0] = toScreen(x + 0.5, y + 0.5);
+        if (v.z < 6.5) { const s = 6; ctx.fillStyle = '#1c1410'; ctx.fillRect(Math.round(cx0 - s / 2) - 1, Math.round(cy0 - s / 2) - 1, s + 2, s + 2); ctx.fillStyle = bg; ctx.fillRect(Math.round(cx0 - s / 2), Math.round(cy0 - s / 2), s, s); return; }
+        const s = Math.max(9, Math.round(v.z)), u = s / 9, X = Math.round(cx0 - s / 2), Y = Math.round(cy0 - s / 2);
+        const r = (gx, gy, gw, gh, c) => { ctx.fillStyle = c; ctx.fillRect(X + Math.round(gx * u), Y + Math.round(gy * u), Math.max(1, Math.round(gw * u)), Math.max(1, Math.round(gh * u))); };
+        ctx.fillStyle = bg; ctx.fillRect(X - 1, Y - 1, s + 2, s + 2);            // coloured rim: whose it is
+        ctx.fillStyle = '#241812'; ctx.fillRect(X, Y, s, s);
+        const L = '#EFE3D3', D = '#241812', W = '#a8784a';
+        switch (ICON[kind] || kind) {
+          case 'ladder': r(2, 1, 5, 1, L); r(2, 2, 1, 1, L); r(6, 2, 1, 1, L); r(2, 3, 5, 1, bg); r(3, 4, 1, 5, L); r(5, 4, 1, 5, L); r(4, 5, 1, 1, L); r(4, 7, 1, 1, L); break;
+          case 'box': r(2, 1, 5, 4, bg); r(3, 2, 3, 1, D); r(2, 5, 1, 4, L); r(6, 5, 1, 4, L); r(3, 6, 3, 1, L); break;
+          case 'house': r(2, 0, 5, 1, L); r(1, 1, 7, 1, L); r(2, 2, 5, 4, bg); r(3, 3, 1, 1, D); r(5, 3, 1, 1, D); r(2, 6, 1, 3, L); r(6, 6, 1, 3, L); break;
+          case 'tripod': r(3, 1, 3, 1, bg); r(3, 2, 3, 1, L); r(4, 3, 1, 6, L); r(3, 4, 1, 2, L); r(2, 6, 1, 2, L); r(1, 8, 1, 1, L); r(5, 4, 1, 2, L); r(6, 6, 1, 2, L); r(7, 8, 1, 1, L); break;
+          case 'popup': r(3, 2, 3, 1, bg); r(2, 3, 5, 1, bg); r(1, 4, 7, 4, bg); r(4, 5, 1, 3, D); r(1, 8, 7, 1, L); break;
+          case 'tree': r(3, 0, 2, 9, W); r(5, 4, 3, 1, L); r(5, 2, 2, 1, bg); r(7, 5, 1, 2, L); break;
+          case 'cam': r(2, 2, 5, 5, bg); r(3, 3, 3, 3, D); r(4, 4, 1, 1, L); r(1, 4, 1, 1, L); r(7, 4, 1, 1, L); break;
+          case 'camNew': r(2, 2, 5, 5, '#ffe08a'); r(3, 3, 3, 3, D); r(4, 4, 1, 1, '#ffe08a'); r(1, 4, 1, 1, L); r(7, 4, 1, 1, L); break;
+          default: r(3, 1, 1, 8, L); r(4, 1, 4, 3, bg); break; // flag: a marked public spot
+        }
       };
       ctx.textAlign = 'center';
       for (const p of w.parcels) {
         const d = st.parcels[p.id];
         if (d.owner === 'player') {
-          for (const s of d.stands) mark(s.x, s.y, STAND_LETTER[s.type] || '?', '#1c1410', '#C4A688');
+          for (const s of d.stands) mark(s.x, s.y, s.type, '#1c1410', '#C4A688');
           for (const c of d.cams) {
             // a camera on a stand's own tile rides on the stand marker as a corner badge
             if (d.stands.some((s) => s.x === c.x && s.y === c.y)) {
               const [X, Y] = toScreen(c.x + 0.5, c.y + 0.5), s = v.z >= 8 ? 11 : 8;
               ctx.fillStyle = '#1c1410'; ctx.fillRect(Math.round(X + s / 2) - 3, Math.round(Y - s / 2) - 4, 7, 7);
               ctx.fillStyle = c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8'; ctx.fillRect(Math.round(X + s / 2) - 2, Math.round(Y - s / 2) - 3, 5, 5);
-            } else mark(c.x, c.y, c.queue && c.queue.length ? '!' : '▪', '#1c1410', c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8');
+            } else mark(c.x, c.y, c.queue && c.queue.length ? 'camNew' : 'cam', '#1c1410', '#B8B4C8');
           }
         } else if (d.owner === 'npc' && (d.permBought || (p.id === v.sel && d.permission))) {
-          for (const s of d.stands) mark(s.x, s.y, STAND_LETTER[s.type] || '?', '#1c1410', d.permBought ? '#d6a84a' : '#6a5a4a');
+          for (const s of d.stands) mark(s.x, s.y, s.type, '#1c1410', d.permBought ? '#d6a84a' : '#6a5a4a');
         } else if (d.owner === 'public') {
-          for (const s of d.spots || []) mark(s.x, s.y, '✚', '#1c1410', '#b6e08a');
+          for (const s of d.spots || []) mark(s.x, s.y, 'flag', '#1c1410', '#b6e08a');
           for (const c of d.cams || []) {
             if ((d.spots || []).some((s) => s.x === c.x && s.y === c.y)) { const [X, Y] = toScreen(c.x + 0.5, c.y + 0.5), s = v.z >= 8 ? 11 : 8; ctx.fillStyle = '#1c1410'; ctx.fillRect(Math.round(X + s / 2) - 3, Math.round(Y - s / 2) - 4, 7, 7); ctx.fillStyle = c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8'; ctx.fillRect(Math.round(X + s / 2) - 2, Math.round(Y - s / 2) - 3, 5, 5); }
-            else mark(c.x, c.y, c.queue && c.queue.length ? '!' : '▪', '#1c1410', c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8');
+            else mark(c.x, c.y, c.queue && c.queue.length ? 'camNew' : 'cam', '#1c1410', '#B8B4C8');
           }
         }
       }
@@ -314,7 +330,7 @@
        <p><b>Timber or open?</b> In timber deer show at 20 to 200 yards, an easy shot for a starter rifle. Open country shows more ground but deer are 150 to 500 yards out, which takes a real rifle and scope.</p>
        <p><b>Rating:</b> sit a spot once and you learn its rating out of 100. That number never changes, and great spots are rare. The stars are today's sit: 5 means the stand is at its best, fewer means wind, time of day or pressure is holding it back. A sit can never beat the stand's rating.</p>
        <p><b>Pressure:</b> hunting the same stand every day fills its pressure meter. Rest it a few days.</p>
-       <p class="dim">Markers: letters are stands (L ladder, B box blind, H hang-on...), ✚ is a public spot.</p>`,
+       <p class="dim">Stands and cameras show as tiny pictures on their tiles (a ladder, a box on legs, a camera); a flag is a spot you marked on public land.</p>`,
     ];
     UI.modal(`${pages[page]}<div class="row" style="margin-top:10px">${page > 0 ? '<button class="btn ghost" data-tp="-1">Back</button>' : ''}${page < pages.length - 1 ? '<button class="btn blaze" data-tp="1">Next</button>' : '<button class="btn blaze" data-tdone>Got it</button><button class="btn" data-tguide>Full guide</button>'}<button class="btn ghost small" data-tdone>Skip</button></div>`, (m) => {
       m.querySelectorAll('[data-tp]').forEach((b) => b.addEventListener('click', () => UI.mapTutorial(page + +b.dataset.tp)));
@@ -328,10 +344,10 @@
   UI.stackHtml = function (pid, s) {
     const d = S().parcels[pid], info = WT.tileInfo(pid, s.x, s.y), out = [];
     if (d.owner === 'player' || d.owner === 'public') {
-      for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera on this stand</span>: ${WT.camRate(c) != null ? WT.camRate(c).toFixed(1) + ' deer a week, ' : ''}${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
-      if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera here. Hang one on this spot to learn what walks past this stand.</span>');
+      for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera ${c.x === s.x && c.y === s.y ? 'on' : 'touching'} this stand</span>: ${WT.camRate(c) != null ? WT.camRate(c).toFixed(1) + ' deer a week, ' : ''}${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
+      if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera here. Hang one on this tile or one touching it to learn what walks past this stand.</span>');
     }
-    if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot at this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot at this stand</span>: it grows in next season and the rating goes up then');
+    if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot touching this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot touching this stand</span>: it grows in next season and the rating goes up then');
     if (s.r.shore > 0.2) out.push('<span class="good">On the bank</span>: deer walk the shoreline instead of crossing, so this stand sits on a funnel (counted in its rating)');
     if (info.nearWater || (s.r.water || 0) > 0.3) out.push(`<span class="good">Water at this stand</span>: counted in its rating, and on warm days deer stay close to it${WT.warmWater(s) > 1.02 ? ' <b>(today is one)</b>' : ''}`);
     if (d.owner === 'player') { const cfg = WT.CONFIG.sanctuary, w2 = Wd(); const n = (d.sanctuary || []).filter((i) => Math.hypot(i % w2.W - s.x, ((i / w2.W) | 0) - s.y) <= cfg.standTiles).length; if (n) out.push(`<span class="bad">Too close to your sanctuary</span>: ${n} sanctuary tile${n === 1 ? '' : 's'} within 100 yards of this stand ${n === 1 ? "doesn't" : "don't"} count while it's here`); }
@@ -364,6 +380,7 @@
         const box = (x, y, wd, hg, col) => { const [X, Y] = v.toScreen(x, y); const W2 = Math.round(wd * v.z), H2 = Math.round(hg * v.z), X0 = Math.round(X), Y0 = Math.round(Y); ctx.fillStyle = col; ctx.fillRect(X0 - 1, Y0 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 + H2 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 - 1, 2, H2 + 2); ctx.fillRect(X0 + W2 - 1, Y0 - 1, 2, H2 + 2); };
         // where a plot would go if you planted it from this corner
         if (land && state.plotPreview && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player') { const [pw, ph] = plotDims(state.plot.acres); box(t.x, t.y, pw, ph, '#8fe06a'); }
+        if (land && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player' && v.z >= 7) box(t.x - 1, t.y - 1, 3, 3, 'rgba(239,227,211,.45)'); // the 8 tiles that touch it: what's there counts together
         box(t.x, t.y, 1, 1, '#ffe08a'); // exactly the one tile you picked
       },
     });
@@ -427,6 +444,7 @@
       const ct = WT.camType(c.type), sg = WT.camSight(c);
       return `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(ct.name)}</span><span class="dim">${ct.cell ? 'sends photos by itself' : c.queue && c.queue.length ? `<b>${c.queue.length} photos waiting on the card</b>` : 'nothing new on the card'}</span></div>
           <dl class="kv"><dt>Activity</dt><dd><b>${rateTxt(c)}</b></dd><dt>Photos</dt><dd>${c.total || 0}${c.total ? ` · ${c.dayN || 0} in daylight · ${c.bucks || 0} of bucks` : ''}</dd>
+          <dt>Watching</dt><dd>${(() => { const tw = WT.touching(WT.game.world.parcelOf[c.y * WT.game.world.W + c.x], c.x, c.y); const l = [tw.stand ? esc(tw.stand.name || (tw.stand.kind === 'spot' ? 'your marked spot' : WT.standType(tw.stand.type).name)) : null, tw.plot ? 'a food plot' : null, tw.field ? 'a crop field' : null, tw.water ? 'water' : null].filter(Boolean); return l.length ? l.join(', ') + ' <span class="faint">(touching this tile)</span>' : '<span class="faint">nothing touching this tile: just the ground it is on</span>'; })()}</dd>
           <dt>Sees here</dt><dd>clear to ${sg.clear} yd, nothing past ${sg.reach} yd${sg.limited ? ' <span class="faint">(cover is cutting it short)</span>' : ''}</dd><dt>Up for</dt><dd>${c.days || 0} day${c.days === 1 ? '' : 's'}</dd></dl>
           <div class="row" style="margin-top:6px">${ct.cell ? '' : '<button class="btn small" id="ccheck">Check card</button>'}<button class="btn small" id="cmove">Move</button><button class="btn small" id="cpick">Pick up</button><button class="btn small" id="cphotos">Photos</button></div></div>`;
     }

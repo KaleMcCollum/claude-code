@@ -672,7 +672,7 @@
     const cam = d.owner === 'player' || d.owner === 'public' ? pick(d.cams) : null;
     const plotOf = (k) => (d.plots || []).find((q) => q.tiles.includes(k));
     let nearPlot = null, nearWater = false;
-    for (let dy = -2; dy <= 2 && i >= 0; dy++) for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -1; dy <= 1 && i >= 0; dy++) for (let dx = -1; dx <= 1; dx++) { // this tile and the 8 touching it
       const k = tileAt(x + dx, y + dy); if (k < 0) continue;
       const c = w.cover[k];
       if (c === TT.PLOT || c === TT.PLOT_NEW) nearPlot = nearPlot && nearPlot.ready ? nearPlot : { ready: c === TT.PLOT, plot: plotOf(k) };
@@ -683,6 +683,22 @@
       plot: plotOf(i), trees: (d.trees || []).find((q) => q.tiles.includes(i)), waterhole: (d.waterholes || []).includes(i),
       sanctuary: (d.sanctuary || []).includes(i), nearPlot, nearWater, buildable: i >= 0 && w.parcelOf[i] === pid && standableTile(w.cover[i]),
     };
+  };
+  // What touches a tile: the tile itself and its 8 neighbours. This is the whole stacking rule.
+  WT.touching = function (pid, x, y) {
+    const st = S(), d = st.parcels[pid], w = G.world, TT = T(), out = { stand: null, cams: [], plot: false, newPlot: false, field: false, water: false };
+    if (!d) return out;
+    const near = (a) => Math.abs(a.x - x) <= 1 && Math.abs(a.y - y) <= 1;
+    out.stand = [...(d.stands || []), ...(d.spots || [])].find(near) || null;
+    out.cams = (d.cams || []).filter(near);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const i = tileAt(x + dx, y + dy); if (i < 0) continue;
+      const c = w.cover[i];
+      if (c === TT.PLOT) out.plot = true; if (c === TT.PLOT_NEW) out.newPlot = true;
+      if (WT.landType(c) === 'farm') out.field = true;
+      if (WT.isWater(c)) out.water = true;
+    }
+    return out;
   };
   WT.camLimit = (pid) => (S().parcels[pid].owner === 'public' ? C().publicCamsPerArea : WT.limits(pid).cams);
   // What a camera can really see where it hangs: its own reach, cut down by the cover around it.
@@ -1817,7 +1833,7 @@
         cam.days = (cam.days || 0) + 1;
         // a camera sees what a hunter sitting on that spot would: the better the spot, the more deer walk past it
         const sight = WT.camSight(cam), r = sight.r;
-        const onFood = WT.COVER[G.world.cover[i]].f >= 0.6 ? 0.3 : 0; // on a plot or crop edge
+        const tw = WT.touching(p.id, cam.x, cam.y), onFood = tw.plot ? 0.35 : tw.field && !WT.cropsOff() ? 0.3 : 0; // touching a grown plot or a standing crop
         const traffic = 0.15 + 1.3 * Math.max(r.morning, r.evening, r.rut * 0.8) + onFood;
         const watched = Math.pow(sight.reach / 60, 0.7); // more ground in view, more deer caught
         const spotOf = d.owner === 'public' ? d.spots || [] : d.stands;
