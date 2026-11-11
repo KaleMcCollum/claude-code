@@ -123,7 +123,18 @@
     }
     // starter land gets one cheap ladder stand at a decent spot
     const home = world.parcels[world.starterId];
-    const hs = pickGoodTile(home.id, rng);
+    // ...tucked in the tightest cover on the place, so a beginner's deer are close enough for the starter rifle
+    let hs = pickGoodTile(home.id, rng);
+    {
+      const w = world; let best = null;
+      for (let y = home.minY; y <= home.maxY; y++) for (let x = home.minX; x <= home.maxX; x++) {
+        const i = y * w.W + x;
+        if (w.parcelOf[i] !== home.id || !standableTile(w.cover[i])) continue;
+        const r = WT.spotRatings(w, x, y), score = -r.visibility - Math.abs(spotPercentile(peakOf(r)) - 0.6); // tight cover, a decent (not great) spot
+        if (!best || score > best.score) best = { x, y, score };
+      }
+      if (best) hs = best;
+    }
     st.parcels[home.id].stands.push(makeStand('ladder', hs.x, hs.y, 'Old ladder'));
     rotateListings();
     st.weather = rollWeather(0, null, rng);
@@ -813,6 +824,57 @@
     return clamp(base * (1 - rutW) + r.rut * rutW + late + early);
   }
 
+  /* A stand's numbers never change: a rating (its percentile among every spot on the map, and the best it can
+     ever hunt), a consistency, its winds and how far you see. What changes sit to sit is "today": wind, time of
+     day, pressure and luck can only pull a sit DOWN from the stand's best, never above it. */
+  const peakOf = (r) => clamp(Math.max(r.morning, r.evening, r.rut) * 0.8 + r.mature * 0.2);
+  function spotPercentile(v) {
+    const w = G.world;
+    if (!w._peaks) {
+      const a = [];
+      for (let y = 1; y < w.H; y += 3) for (let x = 1; x < w.W; x += 3) a.push(peakOf(WT.spotRatings(w, x, y)));
+      w._peaks = a.sort((p, q) => p - q);
+    }
+    let lo = 0, hi = w._peaks.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (w._peaks[mid] < v) lo = mid + 1; else hi = mid; }
+    return lo / w._peaks.length;
+  }
+  const CONSIST = {
+    steady: { name: 'Steady', span: 2, swing: 0.1, note: 'hunts near its best most days' },
+    average: { name: 'Average', span: 1, swing: 0.25, note: 'needs the right wind' },
+    fickle: { name: 'Fickle', span: 0, swing: 0.45, note: 'only at its best on one wind, and not every day' },
+  };
+  WT.standTraits = function (s) {
+    if (s._traits) return s._traits;
+    const h = WT.hash2(s.x, s.y, G.world.seed + 77);
+    const kind = h < 0.3 ? 'steady' : h < 0.75 ? 'average' : 'fickle';
+    const c = CONSIST[kind], D = WT.DIRS, ci = Math.max(0, D.indexOf(s.r.goodWinds[1]));
+    const winds = [], near = [];
+    for (let k = -c.span; k <= c.span; k++) winds.push(D[(ci + k + 8) % 8]);
+    near.push(D[(ci - c.span - 1 + 8) % 8], D[(ci + c.span + 1) % 8]);
+    const t = { kind, name: c.name, note: c.note, swing: c.swing, winds, near, rating: Math.max(1, Math.min(99, Math.round(spotPercentile(peakOf(s.r)) * 100))) };
+    Object.defineProperty(s, '_traits', { value: t, enumerable: false, configurable: true }); // not saved
+    return t;
+  };
+  // How good is this sit compared with the stand's best? factor 0..1, stars 1..5 (5 = the stand at its peak).
+  WT.sitToday = function (s, session, day, windDir) {
+    const st = S(), t = WT.standTraits(s), r = s.r;
+    day = day ?? st.day; windDir = windDir || st.weather.windDir;
+    const windOk = t.winds.includes(windDir), windNear = t.near.includes(windDir);
+    const windF = windOk ? 1 : windNear ? 0.75 : 0.5;
+    const dayF = 1 - t.swing * WT.hash2(s.x * 31 + day, s.y * 17 + (session === 'evening' ? 1 : 0), G.world.seed + 913);
+    const sesF = Math.min(1, standRatingFor(r, session, day) / Math.max(0.05, r.morning, r.evening, r.rut));
+    const presF = 1 - Math.min(0.5, (s.pressure || 0) * 1.1);
+    const factor = windF * dayF * sesF * presF;
+    return { factor, stars: Math.max(1, Math.min(5, Math.floor(factor / 0.18))), windOk, windNear, windF, dayF, sesF, presF };
+  };
+  // How far out deer show from a stand: timber is 20 to 200 yards, open country 150 to 500.
+  WT.standView = function (s, typeId) {
+    const sType = WT.standType(typeId || s.type);
+    const vis = clamp(s.r.visibility * 0.85 + sType.visibility / 100 * 0.15);
+    return { vis, near: Math.round((20 + Math.pow(vis, 1.5) * 130) / 5) * 5, far: Math.round((110 + vis * 390) / 10) * 10 };
+  };
+
   // Public land: other hunters
   WT.publicCompetition = function (pid) {
     const st = S(), d = st.parcels[pid];
@@ -853,8 +915,9 @@
     if (setup.session === 'evening') start = Math.max(start, Math.min(end, plan.sun.set) - plan.maxHrs + 0.25);
     const endEarly = !hasLight && setup.session !== 'morning' ? plan.sun.set : end; // no light: walk out before dark
     const sitEnd = Math.min(endEarly, start + plan.maxHrs);
-    const rating = standRatingFor(stand.r, setup.session, st.day);
-    const goodWind = stand.r.goodWinds.includes(st.weather.windDir);
+    const today = WT.sitToday(stand, setup.session, st.day);
+    const rating = standRatingFor(stand.r, setup.session, st.day) * today.dayF;
+    const goodWind = today.windOk;
     const rut = WT.rutPhase(st.day);
 
     const ozon = eq.scentdevice ? eq.scentdevice.scentCut : 0;
@@ -872,13 +935,13 @@
     const pPerSit = cfg.deer.pressure.perSit * (goodWind ? 1 : 1.8) * (0.6 + walkNoise) + competition;
     const pressureCtx = clamp((d.pressure || 0) * 0.4 + (stand.pressure || 0) * 0.45 + competition);
     // how far you can see from here: timber stands see 60 yd, a field-edge box blind 500
-    const vis = clamp(stand.r.visibility * 0.65 + sType.visibility / 100 * 0.35);
-    const maxView = Math.round(45 + vis * vis * 455);
+    const view = WT.standView(stand, standTypeId);
+    const maxView = view.far, minView = view.near;
 
     const ctx = {
       pressure: pressureCtx, rut, weather: st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
       tod: setup.session === 'allday' ? 1.15 : 1, place: rating, matureRating: stand.r.mature,
-      hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.7 + stand.r.visibility * 0.5),
+      hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
     const herd = d.herd;
     const sched = [];
@@ -929,7 +992,7 @@
     const closeF = clamp(0.2 + rating * 0.35 + (goodWind ? 0.15 : -0.1) + conceal * 0.12 + quiet * 0.08 + scentCtl * 0.1);
 
     const H = {
-      setup, plan, rifle, scope, eq, used, prop, parcel, stand, sType, rating, goodWind, rut, maxView, closeF,
+      setup, plan, rifle, scope, eq, used, prop, parcel, stand, sType, rating, goodWind, rut, maxView, minView, today, closeF,
       start, end, sitEnd, now: start, sched, log, visible: [], seenIds: new Set(), unknown: 0, calls: 0,
       scentCtl, conceal, quiet, walkNoise, pPerSit, ctx, hasLight, over: false, endReason: null,
       rounds: rifle.mag, harvested: [], wounded: [], shots: 0, misses: 0, xp: 0, groupSeq: 1, selected: null, ranged: {},
@@ -968,29 +1031,35 @@
     const x = g.x0 + (g.x1 - g.x0) * p;
     const edge = p < 0.5 ? g.d0 : g.d1;
     const dist = g.dmin + (edge - g.dmin) * Math.pow(2 * p - 1, 2);
-    return { x, dist: Math.max(5, Math.round(dist)) };
+    return { x, dist: Math.max(15, Math.round(dist)) };
   }
   WT.groupPos = pathPos;
+
+  // deer in a group stand apart, more yards apart the farther out they are
+  function spreadMembers(g) { for (const m of g.members) m.dd = Math.round((m.df || 0) * g.dist); }
 
   function spawnGroup(H, sg) {
     const rng = G.rng;
     const fromCall = !!sg.fromCall;
     const mature = sg.members.some((m) => m.sex === 'b' && m.age >= 3.5);
     const close = clamp(H.closeF + (fromCall ? 0.25 : 0) - (mature ? 0.12 : 0) + rng.range(-0.25, 0.25));
-    const d0 = Math.round(H.maxView * rng.range(0.55, 1));
-    const d1 = Math.round(H.maxView * rng.range(0.5, 1));
-    const dmin = Math.max(6, Math.round(Math.min(d0, d1) * (1 - close) * rng.range(0.55, 1)));
+    // deer show somewhere between the stand's near and far range and work in toward the near end
+    const span = H.maxView - H.minView;
+    const d0 = Math.round(H.minView + span * rng.range(0.55, 1));
+    const d1 = Math.round(H.minView + span * rng.range(0.45, 1));
+    const dmin = Math.max(20, Math.round(H.minView + (Math.min(d0, d1) - H.minView) * (1 - close) * rng.range(0.25, 1)));
     const left = rng.chance(0.5);
     const feeding = !mature && rng.chance(H.cover === T().PLOT || COVER_FOOD(H) ? 0.55 : 0.3);
     const quick = rng.chance(mature ? 0.4 : 0.2);
     const g = {
-      gid: H.groupSeq++, members: sg.members.map((deer, k) => ({ deer, dx: (k ? rng.range(-0.18, 0.18) : 0), dd: (k ? rng.range(-6, 10) : 0), lag: k * 0.06 })),
+      gid: H.groupSeq++, members: sg.members.map((deer, k) => ({ deer, dx: (k ? rng.range(-0.3, 0.3) : 0), df: (k ? rng.range(-0.1, 0.22) : 0), dd: 0, lag: k * 0.06 })),
       x0: left ? -0.95 : 0.95, x1: (left ? 1 : -1) * rng.range(0.5, 1.1), d0, d1, dmin, p: 0,
       stay: quick ? rng.int(2, 3) : feeding ? rng.int(5, 10) : rng.int(3, 6), feeding, alert: 0, gone: false, fromCall,
       offersShot: rng.chance(clamp((mature ? 0.32 : 0.55) + H.sType.accuracy / 400 + (fromCall ? 0.15 : 0))), clear: false, pose: 'walk', step: 0,
     };
     g.lead = g.members[0].deer;
     const p0 = pathPos(g, 0); g.dist = p0.dist; g.x = p0.x;
+    spreadMembers(g);
     H.visible.push(g);
     const n = g.members.length;
     const fromWhere = FROM[H.cover] || rng.pick(['the timber', 'the cattails', 'the shelterbelt', 'the CRP']);
@@ -1047,6 +1116,7 @@
       g.p = Math.min(1, g.p + 1 / g.stay);
       const pos = pathPos(g, g.p);
       g.x = pos.x; g.dist = pos.dist;
+      spreadMembers(g);
       g.step = (g.step + 0.5) % 1;
       g.pose = g.alert ? 'alert' : g.feeding && rng.chance(0.6) ? 'down' : rng.chance(0.2) ? 'up' : 'walk';
       g.clear = g.offersShot ? rng.chance(g.pose === 'walk' ? 0.55 : 0.8) : rng.chance(0.15);
@@ -1131,7 +1201,10 @@
     if (H.plan.cold > 8) acc -= Math.min(15, (H.plan.cold - 8) * 0.8) * clamp((H.now - H.start) / Math.max(0.5, H.plan.maxHrs));
     if (m.deer.sex === 'b' && m.deer.gross > 130) acc -= Math.max(0, 14 - st.skills.shooting * 0.5); // buck fever
     if (g.alert) acc -= 5;
-    return clamp(acc / 100, 0.05, 0.97);
+    // close deer are hard to miss with a rifle: full bonus inside 40 yards, fading out by 100
+    acc += dist <= 40 ? 40 : dist < 100 ? 40 * (100 - dist) / 60 : 0;
+    const floor = dist <= 40 ? (g.clear ? 0.95 : 0.7) : 0.05;
+    return clamp(acc / 100, floor, 0.98);
   }
 
   WT.shoot = function (deerId) {
@@ -1158,7 +1231,7 @@
       cleanup(H); return;
     }
     const effRange = r.range * 3;
-    const vital = clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2));
+    const vital = clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) + (dist <= 40 ? 0.2 : dist < 100 ? 0.2 * (100 - dist) / 60 : 0));
     g.gone = true;
     if (rng.chance(vital)) harvest(H, g, deer, dist, rng.chance(0.5) ? 'drops in its tracks' : `runs ${rng.int(30, 90)} yards and piles up`);
     else {
@@ -1330,22 +1403,18 @@
   };
 
   // What you've learned about a stand or spot: revealed by sitting it (stars), never the raw numbers.
+  // What you know about a stand. One sit tells you what it is; after that the numbers never move.
   WT.standKnowledge = function (s) {
-    const sits = s.sits || 0, ses = s.sessions || {};
-    const conf = (n) => (n >= 4 ? 'sure' : n >= 2 ? 'getting a feel' : n >= 1 ? 'first impression' : 'unknown');
-    const stars = (v, n, salt) => {
-      if (!n) return null;
-      const noise = (WT.hash2(s.x, s.y, salt) - 0.5) * 2 * (1.6 / n);
-      return Math.max(1, Math.min(5, Math.round(1 + v * 4 + noise)));
-    };
+    const sits = s.sits || 0, known = sits >= 1, t = WT.standTraits(s), v = WT.standView(s);
+    const stars = (x) => (known ? Math.max(1, Math.min(5, Math.round(1 + x * 4))) : null);
+    const conf = known ? '' : 'unknown';
     return {
-      morning: { stars: stars(s.r.morning, (ses.morning || 0) + (ses.allday || 0), 1), conf: conf((ses.morning || 0) + (ses.allday || 0)) },
-      evening: { stars: stars(s.r.evening, (ses.evening || 0) + (ses.allday || 0), 2), conf: conf((ses.evening || 0) + (ses.allday || 0)) },
-      rut: { stars: stars(s.r.rut, sits >= 3 ? sits - 1 : 0, 3), conf: conf(sits - 1) },
-      mature: { stars: stars(s.r.mature, sits >= 4 ? sits - 2 : 0, 4), conf: conf(sits - 2) },
-      winds: sits >= 2 ? s.r.goodWinds.slice(0, Math.min(4, sits)) : null,
-      view: sits >= 1 ? (s.r.visibility > 0.7 ? 'Long views' : s.r.visibility > 0.4 ? 'Medium views' : 'Tight cover, short views') : null,
-      sits,
+      known, sits, rating: known ? t.rating : null, consistency: known ? t : null,
+      morning: { stars: stars(s.r.morning), conf }, evening: { stars: stars(s.r.evening), conf },
+      rut: { stars: stars(s.r.rut), conf }, mature: { stars: stars(s.r.mature), conf },
+      winds: known ? t.winds : null,
+      view: known ? `${v.vis > 0.7 ? 'Open country' : v.vis > 0.4 ? 'Mixed cover' : 'Timber'}: deer show at ${v.near} to ${v.far} yards` : null,
+      pressure: s.pressure || 0,
     };
   };
 

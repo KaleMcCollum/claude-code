@@ -7,7 +7,10 @@
   const T = WT.T;
   const SW = 240, SH = 135; // scene pixels
   const HORIZON = 60;
-  const groundY = (d) => HORIZON + 1500 / (d + 12);
+  // One perspective rule for both size and height on screen: 1 at 20 yards, shrinking with distance.
+  // Far deer sit up by the horizon and are small; near deer are low and big. Never one without the other.
+  const persp = (d) => 32 / (Math.max(15, d) + 12);
+  const groundY = (d) => HORIZON + 4 + 61 * persp(d);
 
   function findStand(pid, sid) {
     const d = S().parcels[pid];
@@ -99,7 +102,6 @@
     return ['#8a9ab0', '#a6b2c2', '#c4ccd4'];
   }
   // Deer are always drawn facing the hunter. Distance picks the sprite size (each step is half the last).
-  const lodFor = (dist) => (dist <= 22 ? 1 : dist <= 55 ? 2 : dist <= 130 ? 3 : 4);
   const poseFor = (g) => (g.pose === 'down' ? 'down' : g.pose === 'walk' ? 'walk' : 'alert');
 
   function drawScene(canvas, H, t) {
@@ -127,24 +129,39 @@
     if (st.weather.precip === 'rain') { ctx.fillStyle = '#9fb3c8'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 40)) % SW, (n * 23 + Math.floor(t / 25) * 3) % SH, 1, 3); }
     // deer, far to near
     const items = [];
-    for (const g of H.visible) for (const m of g.members) { if (m.fled) continue; items.push({ g, m, dist: Math.max(5, g.dist + m.dd) }); }
-    items.sort((a, b) => b.dist - a.dist);
     const lf = WT.lightFactor(H);
-    const hits = [];
-    for (const it of items) {
-      const { g, m, dist } = it;
-      const lod = lodFor(dist), ppi = WT.ART_PPI / Math.pow(2, lod);
-      const x = Math.round(SW / 2 + (g.x + m.dx) * (SW / 2 - 14));
-      const gy = Math.round(groundY(dist));
+    for (const g of H.visible) for (const m of g.members) {
+      if (m.fled) continue;
+      const dist = Math.max(15, g.dist + m.dd);
+      const ppiT = Math.max(0.13, Math.min(1.3, 1.3 * persp(dist)));
+      const lod = Math.max(1, Math.min(4, Math.round(Math.log2(WT.ART_PPI / ppiT))));
+      const sc = ppiT / (WT.ART_PPI / Math.pow(2, lod));
       const pose = poseFor(g);
       const step = pose === 'walk' ? Math.floor(t / 300) % 2 : 0;
       const spr = UI.sprite(`hv${m.deer.id}:${m.deer.age}:${lod}:${pose}:${step}:${lf < 1 ? 'l' : 'd'}`, () => WT.deerSprite(m.deer, { lod, frame: 'full', pose, step, day: st.day, mode: lf < 1 ? 'low' : 'day' }));
-      const dx = x - spr.anchor.x, dy = gy - spr.anchor.y;
-      ctx.drawImage(spr, dx, dy);
+      const b = spr.bounds || { x0: 0, y0: 0, x1: spr.width, y1: spr.height };
+      items.push({ g, m, dist, ppiT, sc, spr, b, w: Math.max(3, (b.x1 - b.x0 + 1) * sc), x: SW / 2 + (g.x + m.dx) * (SW / 2 - 14) });
+    }
+    // spread them out: no deer drawn on top of another
+    items.sort((p, q) => p.x - q.x || p.m.deer.id - q.m.deer.id);
+    for (let pass = 0; pass < 8; pass++) {
+      for (let i = 0; i + 1 < items.length; i++) {
+        const A = items[i], B = items[i + 1], need = (A.w + B.w) / 2 + 2, gap = B.x - A.x;
+        if (gap < need) { const push = (need - gap) / 2; A.x -= push; B.x += push; }
+      }
+      for (const it of items) it.x = Math.max(16 + it.w / 2, Math.min(SW - 16 - it.w / 2, it.x));
+    }
+    items.sort((p, q) => q.dist - p.dist);
+    const hits = [];
+    for (const it of items) {
+      const { g, m, dist, ppiT: ppi, sc, spr, b } = it;
+      const x = Math.round(it.x), gy = Math.round(groundY(dist));
+      const dw = Math.max(1, Math.round(spr.width * sc)), dh = Math.max(1, Math.round(spr.height * sc));
+      const dx = Math.round(x - spr.anchor.x * sc), dy = Math.round(gy - spr.anchor.y * sc);
+      ctx.drawImage(spr, 0, 0, spr.width, spr.height, dx, dy, dw, dh);
       // brush between you and the deer: no clean shot
       if (!g.clear) { ctx.fillStyle = gc[0]; const bw = Math.max(1, Math.round(4 * ppi)); for (let k = -3; k <= 3; k++) ctx.fillRect(x + k * bw * 2, gy - Math.round((12 + (k & 1) * 4) * ppi), bw, Math.round(16 * ppi) + 1); }
-      const b = spr.bounds || { x0: 0, y0: 0, x1: spr.width, y1: spr.height };
-      const box = { id: m.deer.id, x0: dx + b.x0, y0: dy + b.y0, x1: dx + b.x1 + 1, y1: dy + b.y1 + 1 };
+      const box = { id: m.deer.id, x0: dx + b.x0 * sc, y0: dy + b.y0 * sc, x1: dx + (b.x1 + 1) * sc, y1: dy + (b.y1 + 1) * sc };
       hits.push(box);
       if (H.selected === m.deer.id) {
         ctx.fillStyle = '#ff6a1a';

@@ -200,13 +200,21 @@
 
   /* ---------------------------------------------------------------- helpers for cards */
   const stars = (n) => (n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '?????');
+  const pressureHtml = (v) => { const n = Math.min(5, Math.round(v * 10)); return `<span class="${n >= 4 ? 'bad' : n >= 2 ? 'warn' : 'good'}">${'■'.repeat(n)}${'□'.repeat(5 - n)}</span> <span class="faint">${n >= 4 ? 'burned, rest it' : n >= 2 ? 'getting hunted' : 'fresh'}</span>`; };
   UI.knowledgeHtml = function (s) {
-    const k = WT.standKnowledge(s);
-    const line = (name, o) => `<dt>${name}</dt><dd><span class="stars">${stars(o.stars)}</span> <span class="faint">${o.conf}</span></dd>`;
+    const st = S(), k = WT.standKnowledge(s);
     const rec = (s.recent || []).slice(0, 4).map((r) => `<p class="dim">${WT.dateLabel(r.d)} ${r.s}: ${r.seen ? r.seen + ' deer seen' : 'nothing'} (wind ${r.wind})</p>`).join('');
-    return `<dl class="kv">${line('Mornings', k.morning)}${line('Evenings', k.evening)}${line('Rut', k.rut)}${line('Big bucks', k.mature)}
-      <dt>Good winds</dt><dd>${k.winds ? k.winds.join(', ') : '<span class="faint">sit it a couple times to learn</span>'}</dd>
-      <dt>View</dt><dd>${k.view || '<span class="faint">unknown</span>'}</dd><dt>Sits</dt><dd>${k.sits}</dd></dl>${rec ? '<h3>Recent sits</h3>' + rec : ''}`;
+    if (!k.known) return `<p class="dim">You haven't sat here yet. One sit tells you what this spot is: its rating, its winds and how far you can see. Those never change.</p><dl class="kv"><dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd></dl>`;
+    const b = UI.betScore(s);
+    const line = (name, o) => `<dt>${name}</dt><dd><span class="stars">${stars(o.stars)}</span></dd>`;
+    return `<dl class="kv"><dt>Stand rating</dt><dd><b>${k.rating}</b> / 100 <span class="faint">better than ${k.rating}% of spots</span></dd>
+      <dt>This ${st.slot}</dt><dd><span class="stars">${stars(b.stars)}</span> <span class="faint">of its best · ${b.notes.join(', ')}</span></dd>
+      <dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd>
+      <dt>Consistency</dt><dd>${k.consistency.name} <span class="faint">${k.consistency.note}</span></dd>
+      <dt>Best winds</dt><dd>${k.winds.join(', ')}</dd>
+      <dt>View</dt><dd>${k.view}</dd>
+      ${line('Mornings', k.morning)}${line('Evenings', k.evening)}${line('Rut', k.rut)}${line('Big bucks', k.mature)}
+      <dt>Sits</dt><dd>${k.sits}</dd></dl>${rec ? '<h3>Recent sits</h3>' + rec : ''}`;
   };
   function listingHtml(p) {
     const st = S(), w = Wd(), h = p.habitat;
@@ -239,19 +247,16 @@
     return (simple ? [sw(SIMPLE.cover[0], 'cover'), sw(SIMPLE.food[0], 'food'), sw(SIMPLE.water[0], 'water')] : []).concat(land).join('');
   };
   // Ranks a stand using only what the player has learned plus today's wind. Hidden values stay hidden.
+  // Today's sit: stars are how close this sit is to the stand's own best (5 = as good as this stand gets).
   UI.betScore = function (s) {
     const st = S(), k = WT.standKnowledge(s);
-    const ses = st.slot === 'morning' ? k.morning : k.evening;
-    const rut = /Seek|Peak/.test(WT.rutPhase(Math.min(st.day, 91)).name);
-    let stars = ses.stars;
-    if (rut && k.rut.stars) stars = Math.max(stars || 0, k.rut.stars);
-    const notes = [];
-    let score = stars || 2.5;
-    if (k.winds) { if (k.winds.includes(st.weather.windDir)) { score += 1.5; notes.push('<span class="good">wind is right</span>'); } else { score -= 2; notes.push('<span class="bad">wrong wind today</span>'); } }
-    else notes.push('wind: hunt it to learn');
-    if ((s.pressure || 0) > 0.35) { score -= 2; notes.push('<span class="warn">pressured, rest it</span>'); }
-    if (!stars) notes.push('never sat here' + (s.sits ? ' this time of day' : ''));
-    return { stars, score, notes };
+    if (!k.known) return { stars: null, rating: null, score: 30, notes: ['never sat here'] };
+    const d = WT.sitToday(s, st.slot === 'morning' ? 'morning' : 'evening');
+    const notes = [d.windOk ? '<span class="good">wind is right</span>' : d.windNear ? '<span class="warn">wind is close</span>' : '<span class="bad">wrong wind</span>'];
+    if (d.sesF < 0.75) notes.push(`better in the ${s.r.morning > s.r.evening ? 'morning' : 'evening'}`);
+    if (d.presF < 0.8) notes.push('<span class="warn">pressured</span>');
+    if (d.dayF < 0.8) notes.push('deer are off it today');
+    return { stars: d.stars, rating: k.rating, score: k.rating * d.factor, notes };
   };
   UI.mapTutorial = function (page = 0) {
     const st = S();
@@ -275,9 +280,11 @@
       `<h2>Reading the map (3/3): where to sit</h2>
        <p><b>Edges are best.</b> Deer travel between cover and food. A stand where green meets gold, or in a tree row or creek that connects them, sees the most deer.</p>
        <p><b>Mornings:</b> sit near cover and catch deer going back to bed. <b>Evenings:</b> sit near food as they come out to feed. <b>The rut</b> (early to mid November): travel routes between cover are best all day.</p>
-       <p><b>Wind:</b> deer smell you downwind. Each spot has winds that work. Hunt it a couple of times to learn them, then the Best bets list warns you on a wrong-wind day.</p>
-       <p><b>Pressure:</b> hunting the same stand every day burns it. Rest it a few days.</p>
-       <p class="dim">You never see how good a spot is up front. Stars fill in as you hunt it. Markers: letters are stands (L ladder, B box blind, H hang-on...), ✚ is a public spot.</p>`,
+       <p><b>Wind:</b> deer smell you downwind. Each spot has winds that work; steady spots work on many winds, fickle ones on just one.</p>
+       <p><b>Timber or open?</b> In timber deer show at 20 to 200 yards, an easy shot for a starter rifle. Open country shows more ground but deer are 150 to 500 yards out, which takes a real rifle and scope.</p>
+       <p><b>Rating:</b> sit a spot once and you learn its rating out of 100. That number never changes, and great spots are rare. The stars are today's sit: 5 means the stand is at its best, fewer means wind, time of day or pressure is holding it back. A sit can never beat the stand's rating.</p>
+       <p><b>Pressure:</b> hunting the same stand every day fills its pressure meter. Rest it a few days.</p>
+       <p class="dim">Markers: letters are stands (L ladder, B box blind, H hang-on...), ✚ is a public spot.</p>`,
     ];
     UI.modal(`${pages[page]}<div class="row" style="margin-top:10px">${page > 0 ? '<button class="btn ghost" data-tp="-1">Back</button>' : ''}${page < pages.length - 1 ? '<button class="btn blaze" data-tp="1">Next</button>' : '<button class="btn blaze" data-tdone>Got it</button>'}<button class="btn ghost small" data-tdone>Skip</button></div>`, (m) => {
       m.querySelectorAll('[data-tp]').forEach((b) => b.addEventListener('click', () => UI.mapTutorial(page + +b.dataset.tp)));
@@ -362,8 +369,8 @@
         const spots = WT.huntSpots();
         const ranked = spots.map((x) => Object.assign(x, UI.betScore(x.stand))).sort((a, b) => b.score - a.score);
         card.innerHTML = args.mode === 'hunt'
-          ? `<h2>Best bets this ${st.slot}</h2><p class="dim">Ranked by what you've learned sitting each spot and today's ${st.weather.windDir} wind. Tap one, or tap a marker on the map.</p>
-             <div class="list">${ranked.map((x) => `<button class="item" style="text-align:left;border:0" data-pick="${x.pid}:${x.stand.sid}"><span><span class="nm">${esc(x.stand.name || WT.standType(x.stand.type).name)}</span> <span class="dim">${esc(w.parcels[x.pid].name)}</span></span><span class="stars">${x.stars ? '★'.repeat(x.stars) + '☆'.repeat(5 - x.stars) : '?????'}</span><span class="st">${x.notes.join(' · ')}</span></button>`).join('') || '<p class="faint">No stands or spots yet.</p>'}</div>
+          ? `<h2>Best bets this ${st.slot}</h2><p class="dim">Each stand has a fixed rating out of 100. Stars are how close this sit comes to that stand's best with today's ${st.weather.windDir} wind. Tap one, or tap a marker on the map.</p>
+             <div class="list">${ranked.map((x) => `<button class="item" style="text-align:left;border:0" data-pick="${x.pid}:${x.stand.sid}"><span><span class="nm">${esc(x.stand.name || WT.standType(x.stand.type).name)}</span> <span class="dim">${esc(w.parcels[x.pid].name)}</span></span><span class="stars">${x.stars ? '★'.repeat(x.stars) + '☆'.repeat(5 - x.stars) : '?????'}</span><span class="st">${x.rating ? `Rating ${x.rating} · ` : ''}${x.notes.join(' · ')}</span></button>`).join('') || '<p class="faint">No stands or spots yet.</p>'}</div>
              <p class="faint">Want somewhere new? Tap a green public area and mark a spot.</p>`
           : `<h2>Land</h2><p class="dim">Tap any parcel to see it. Orange borders are for sale. You can buy permission to hunt some neighbors' stands.</p>
              <div class="row">${w.parcels.filter((p) => st.parcels[p.id].owner === 'player').map((p) => `<button class="btn small" data-jump="${p.id}">${esc(p.name)}</button>`).join('')}
