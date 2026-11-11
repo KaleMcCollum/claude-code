@@ -386,7 +386,7 @@
         const t = state.tile; if (!t) return;
         const box = (x, y, wd, hg, col) => { const [X, Y] = v.toScreen(x, y); const W2 = Math.round(wd * v.z), H2 = Math.round(hg * v.z), X0 = Math.round(X), Y0 = Math.round(Y); ctx.fillStyle = col; ctx.fillRect(X0 - 1, Y0 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 + H2 - 1, W2 + 2, 2); ctx.fillRect(X0 - 1, Y0 - 1, 2, H2 + 2); ctx.fillRect(X0 + W2 - 1, Y0 - 1, 2, H2 + 2); };
         // where a plot would go if you planted it from this corner
-        if (land && state.plotPreview && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player') { const [pw, ph] = plotDims(state.plot.acres); box(t.x, t.y, pw, ph, '#8fe06a'); }
+        if (land && state.plotPreview && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player') { box(t.x, t.y, 2, 2, '#8fe06a'); }
         if (land && st.parcels[state.pid] && st.parcels[state.pid].owner === 'player' && v.z >= 7) box(t.x - 1, t.y - 1, 3, 3, 'rgba(239,227,211,.45)'); // the 8 tiles that touch it: what's there counts together
         box(t.x, t.y, 1, 1, '#ffe08a'); // exactly the one tile you picked
       },
@@ -512,14 +512,14 @@
       // add to this exact spot
       const noStand = !s || !(s.x === t.x && s.y === t.y), noCam = !c || !(c.x === t.x && c.y === t.y);
       html += `<h3>Add to this spot</h3>`;
-      if (!s) html += `<div class="row">${truck.length ? `<select id="standSel">${truck.map(([id, n]) => `<option value="${id}" ${state.standType === id ? 'selected' : ''}>${esc(WT.standType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addStand">Put up stand</button>` : '<span class="faint">No stands in your truck. Buy one at the Shop.</span>'}</div>`;
+      if (!s && info.plot) html += '<p class="faint">Stands go on the edge of a food plot: pick a tile touching it.</p>';
+      else if (!s) html += `<div class="row">${truck.length ? `<select id="standSel">${truck.map(([id, n]) => `<option value="${id}" ${state.standType === id ? 'selected' : ''}>${esc(WT.standType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addStand">Put up stand</button>` : '<span class="faint">No stands in your truck. Buy one at the Shop.</span>'}</div>`;
       if (noCam) html += addCamRow(!!s);
       void noStand;
       if (!info.plot && !info.waterhole) html += `<div class="row" style="margin-top:6px">
-          <select id="plotSel">${WT.CONFIG.improvements.foodplot.types.map((x) => `<option value="${x.id}" ${state.plot.type === x.id ? 'selected' : ''}>${esc(x.name)} (${WT.money(x.cost)}/ac)</option>`).join('')}</select>
-          <select id="plotAc">${[[0.5, '½ acre'], [1, '1 acre'], [2, '2 acres'], [4, '4 acres']].map(([v, n]) => `<option value="${v}" ${state.plot.acres === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
-          <button class="btn small" id="addPlot">Plant food plot (${WT.money(Math.round(WT.plotType(state.plot.type).cost * state.plot.acres))})</button></div>
-        <p class="faint" style="margin:2px 0 0">A plot is bigger than one tile: ${state.plot.acres} acre${state.plot.acres === 1 ? '' : 's'} is ${plotDims(state.plot.acres).join(' × ')} tiles, with the tile you picked as its top-left corner. <button class="btn small ghost" id="plotShow">${state.plotPreview ? 'Hide' : 'Show'} where it goes</button></p>
+          <select id="plotSel">${WT.CONFIG.improvements.foodplot.types.map((x) => `<option value="${x.id}" ${state.plot.type === x.id ? 'selected' : ''}>${esc(x.name)} (${WT.money(x.cost)})</option>`).join('')}</select>
+          <button class="btn small" id="addPlot">Plant food plot (${WT.money(Math.round(WT.plotType(state.plot.type).cost * WT.PLOT_ACRES))})</button></div>
+<p class="faint" style="margin:2px 0 0">Every plot is 2 × 2 tiles (one acre), with the tile you picked as its top-left corner. Each crop costs a different amount. Stands go on a tile touching the plot, not in it. <button class="btn small ghost" id="plotShow">${state.plotPreview ? 'Hide' : 'Show'} where it goes</button></p>
         <div class="row" style="margin-top:6px">
           <button class="btn small" id="addWater">Dig water hole (${WT.money(WT.CONFIG.improvements.waterhole.cost)})</button>
           <button class="btn small" id="addTreesH">Tree row → (${WT.money(WT.CONFIG.improvements.trees.cost)})</button>
@@ -622,7 +622,7 @@
       on('unbuild', () => { const b = $('#unbuild', card); if (!armed) { armed = true; b.textContent = 'Press again (no refund)'; return; } if (UI.err(WT.removeImprovement(pid, t.x, t.y))) return; done('Removed.', true); });
       on('addStand', () => { state.standType = $('#standSel', card).value; if (UI.err(WT.placeStand(pid, state.standType, t.x, t.y))) return; done('Stand is up. Sit it once to learn the spot.'); });
       on('addCam', () => { state.camType = $('#camSel', card).value; if (UI.err(WT.placeCamera(pid, state.camType, t.x, t.y))) return; done(standObj ? 'Camera is on the stand.' : 'Camera is up.'); });
-      on('addPlot', () => { if (UI.err(WT.plantPlot(pid, state.plot.type, t.x, t.y, state.plot.acres))) return; done('Planted. Deer start using it next season.', true); });
+      on('addPlot', () => { if (UI.err(WT.plantPlot(pid, state.plot.type, t.x, t.y))) return; done('Planted. Deer start using it next season.', true); });
       on('addWater', () => { if (UI.err(WT.digWaterhole(pid, t.x, t.y))) return; done('Water hole dug.', true); });
       on('addTreesH', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, false))) return; done('Tree row planted.', true); });
       on('addTreesV', () => { if (UI.err(WT.plantTrees(pid, t.x, t.y, true))) return; done('Tree row planted.', true); });
@@ -631,7 +631,6 @@
       on('sanct', () => { if (UI.err(WT.toggleSanctuary(pid, t.x, t.y, 0))) return; const sa = WT.sanctuaryInfo(pid); done(sa.nearStand ? 'Marked, but tiles within 100 yards of a stand do not count (red on the map).' : sa.full ? 'Marked. You are at the cap: more sanctuary adds nothing.' : 'Sanctuary updated.'); });
       const ps = $('#plotSel', card), pa = $('#plotAc', card);
       if (ps) ps.addEventListener('change', () => { state.plot.type = ps.value; renderCard(); });
-      if (pa) pa.addEventListener('change', () => { state.plot.acres = +pa.value; state.plotPreview = true; renderCard(); });
       on('plotShow', () => { state.plotPreview = !state.plotPreview; renderCard(); });
       let sellArmed = false;
       on('sell', () => { if (!sellArmed) { sellArmed = true; $('#sellq', card).innerHTML = '<span class="warn">Press again to sell.</span>'; return; } if (UI.err(WT.sellLand(pid))) return; WT.save(); state.pid = null; state.tile = null; view.rebuild(); renderCard(); UI.topbar(); });

@@ -621,6 +621,7 @@
     if (i < 0 || w.parcelOf[i] !== pid) return 'Pick a spot inside your property line.';
     if (!standableTile(w.cover[i])) return "Can't put a stand there.";
     if (!st.inv.stands[type]) return 'You do not have one of those in your truck. Buy it at the shop.';
+    if (w.cover[i] === T().PLOT || w.cover[i] === T().PLOT_NEW) return 'Stands go on the edge of a food plot, not in it. Pick a tile touching the plot.';
     { const lt = WT.landType(w.cover[i]); if (lt === 'farm') return "That's a crop field. Nothing can go up in it; put the stand on the edge."; if (lt === 'swamp' && !C().land.swampStands.includes(type)) return 'Only a ladder stand can go up in the swamp: no blinds, tripods or box stands.'; }
     if (type === 'ground' || WT.standType(type).kind === 'mobile') return 'That one is carried, not left up. Equip it under Gear to hunt public land; on your own land put up a ladder, tripod, pop-up or box blind.';
     if (d.stands.length >= WT.limits(pid).stands) return `Stand limit reached (${WT.limits(pid).stands} for this acreage).`;
@@ -647,6 +648,7 @@
     if (i < 0 || w.parcelOf[i] !== pid) return 'Pick a spot inside your property line.';
     if (!standableTile(w.cover[i])) return "Can't put a stand there.";
     if (d.stands.some((z) => z !== s && Math.abs(z.x - x) + Math.abs(z.y - y) < 3)) return 'Too close to another stand.';
+    if (w.cover[i] === T().PLOT || w.cover[i] === T().PLOT_NEW) return 'Stands go on the edge of a food plot, not in it. Pick a tile touching the plot.';
     { const lt = WT.landType(w.cover[i]); if (lt === 'farm') return "That's a crop field. Nothing can go up in it."; if (lt === 'swamp' && !C().land.swampStands.includes(s.type)) return 'Only a ladder stand can go up in the swamp.'; }
     if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
     if (WT.standType(s.type).kind === 'permanent') { if (st.cash < 50) return 'Moving a permanent stand costs $50 in labor.'; st.cash -= 50; ledger('Land work', -50); }
@@ -748,7 +750,9 @@
     st.inv.cameras[c.type] = (st.inv.cameras[c.type] || 0) + 1;
     return null;
   };
-  WT.plantPlot = function (pid, typeId, x, y, acres) {
+  WT.PLOT_ACRES = 1; // every food plot is 2 x 2 tiles: one acre
+  WT.plantPlot = function (pid, typeId, x, y) {
+    const acres = WT.PLOT_ACRES;
     const st = S(), d = st.parcels[pid], w = G.world, TT = T();
     const pt = WT.plotType(typeId);
     if (d.owner !== 'player') return 'Plant food plots on your own land.';
@@ -762,6 +766,7 @@
       const c = w.cover[i];
       if (!standableTile(c) || WT.landType(c) !== 'prairie' || c === TT.PLOT || c === TT.PLOT_NEW) return 'Food plots go on prairie: open grass, hay or stubble. Not timber, swamp, crop fields or water.';
       if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
+      if (d.stands.some((z) => z.y * w.W + z.x === i)) return 'A stand is in the way. Stands sit on the edge of a plot, so plant beside it.';
       tiles.push(i);
     }
     const cost = Math.round(pt.cost * acres);
