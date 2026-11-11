@@ -5,12 +5,22 @@
   const S = () => WT.game.state;
   const Wd = () => WT.game.world;
   const T = WT.T;
-  const SW = 240, SH = 135; // scene pixels
+  // Scene pixels. The view is tall: on a phone it is narrower and much taller, so deer are drawn big.
+  let SW = 240, SH = 170, SHIFT = 8, GRD = 86, BIG = 1.4;
+  let OW = 176, OH = 125;
+  function setSceneSize() {
+    const phone = typeof window !== 'undefined' && window.innerWidth < 700;
+    SW = phone ? 180 : 240; SH = phone ? 232 : 170;
+    SHIFT = Math.round(SH * 0.4) - 60;           // the backdrop is designed with its horizon at y = 60; slide it down
+    GRD = SH - SHIFT - 60 - 16;                  // rows of ground between the horizon and a deer at 20 yards
+    BIG = Math.min(1.5, GRD / 61);               // deer grow with the taller view
+    OH = Math.round(OW * SH / SW);
+  }
   const HORIZON = 60;
   // One perspective rule for both size and height on screen: 1 at 20 yards, shrinking with distance.
   // Far deer sit up by the horizon and are small; near deer are low and big. Never one without the other.
   const persp = (d) => 32 / (Math.max(15, d) + 12);
-  const groundY = (d) => HORIZON + 4 + 61 * persp(d);
+  const groundY = (d) => HORIZON + 4 + GRD * persp(d);
 
   function findStand(pid, sid) {
     const d = S().parcels[pid];
@@ -123,7 +133,7 @@
   }
 
   function drawScene(canvas, H, t) {
-    if (canvas.width !== SW) { canvas.width = SW; canvas.height = SH; }
+    if (canvas.width !== SW || canvas.height !== SH) { canvas.width = SW; canvas.height = SH; }
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     const st = S();
@@ -132,7 +142,9 @@
     const R = (c, x, y, wd, hg) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(wd)), Math.max(1, Math.round(hg))); };
     const hs = (a, b) => WT.hash2(a, b, seed);
     const sky = skyColors(H);
-    R(sky[0], 0, 0, SW, 22); R(sky[1], 0, 22, SW, 20); R(sky[2], 0, 42, SW, HORIZON - 42);
+    const SHd = SH - SHIFT; // everything below is drawn in backdrop coordinates (horizon at 60), slid down by SHIFT
+    ctx.save(); ctx.translate(0, SHIFT);
+    R(sky[0], 0, -SHIFT, SW, 22 + SHIFT); R(sky[1], 0, 22, SW, 20); R(sky[2], 0, 42, SW, HORIZON - 42);
     const night = H.now < H.plan.sun.rise - 0.6 || H.now > H.plan.sun.set + 0.6;
     if (night) { for (let n = 0; n < 26; n++) R('#d8dcf0', (n * 53 + seed * 7) % SW, (n * 29 + seed * 3) % 44, 1, 1); }
     else {
@@ -158,12 +170,12 @@
       // near trunks: big, dark, running off the top of the picture
       for (let n = 0; n < 13; n++) {
         const x = Math.round((n + hs(n, 26) * 0.8) * SW / 13), tw = 3 + Math.floor(hs(n, 27) * 4), by = base + Math.floor(hs(n, 28) * 2);
-        R(nearT, x, 0, tw, by); R(nearS, x + tw - 1, 0, 1, by);
+        R(nearT, x, -SHIFT, tw, by + SHIFT); R(nearS, x + tw - 1, -SHIFT, 1, by + SHIFT);
         if (bare) { for (let q = 0; q < 3; q++) { const yy = 6 + q * 9 + (n % 4), dir = (n + q) % 2 ? 1 : -1; for (let m = 0; m < 7; m++) R(nearT, x + (dir > 0 ? tw : 0) + dir * m, yy - Math.floor(m * 0.6), 1, 1); if (snow) R('#e8e4dc', x + (dir > 0 ? tw : -6), yy - 4, 6, 1); } }
         if (snow) R('#e8e4dc', x, by - 1, tw, 1);
       }
       // the canopy overhead in October
-      if (!bare) for (let n = 0; n < 34; n++) { const lc = leaf[n % 3]; R(lc[1], Math.floor(hs(n, 29) * SW) - 6, Math.floor(hs(n, 30) * 12) - 2, 14 + (n % 5), 6); R(lc[0], Math.floor(hs(n, 29) * SW) - 3, Math.floor(hs(n, 30) * 12) - 3, 8, 4); }
+      if (!bare) for (let n = 0; n < 34; n++) { const lc = leaf[n % 3]; R(lc[1], Math.floor(hs(n, 29) * SW) - 6, Math.floor(hs(n, 30) * (12 + SHIFT)) - 2 - SHIFT, 14 + (n % 5), 6); R(lc[0], Math.floor(hs(n, 29) * SW) - 3, Math.floor(hs(n, 30) * (12 + SHIFT)) - 3 - SHIFT, 8, 4); }
     } else {
       /* ---- open country: rolling hills, a tree or two, grass ---- */
       const hill = snow ? ['#c4c8d0', '#d4d6da', '#e2e0da'] : bare ? ['#8e8a74', '#9a8c60', '#a48e5e'] : ['#93966e', '#a39a5c', '#b49a5a'];
@@ -181,14 +193,14 @@
       }
       // grass on the near hill
       for (let n = 0; n < 40; n++) { const x = Math.floor(hs(n, 33) * SW), yy = crest(x, 2) + 2 + Math.floor(hs(n, 34) * Math.max(1, HORIZON - crest(x, 2) - 3)); R(snow ? '#c8bc98' : bare ? '#8a7a4c' : '#8c7a3e', x, yy - 2, 1, 3); }
-      if (info.farm) { const fx = 150 + (seed % 50), fy = crest(fx, 1) + 2; R('#7a2e22', fx, fy - 11, 18, 11); R(snow ? '#e8e4dc' : '#4a3a34', fx - 1, fy - 14, 20, 4); R('#b0b0b4', fx + 21, fy - 13, 6, 13); R(snow ? '#e8e4dc' : '#7a7a80', fx + 21, fy - 15, 6, 2); }
+      if (info.farm) { const fx = Math.round(SW * 0.55) + (seed % 40), fy = crest(fx, 1) + 2; R('#7a2e22', fx, fy - 11, 18, 11); R(snow ? '#e8e4dc' : '#4a3a34', fx - 1, fy - 14, 20, 4); R('#b0b0b4', fx + 21, fy - 13, 6, 13); R(snow ? '#e8e4dc' : '#7a7a80', fx + 21, fy - 15, 6, 2); }
       // water at the foot of the hills
       if (info.water) { const wc = snow ? ['#b8c4cc', '#d0d8dd'] : ['#5f7f9c', '#86a4bc']; R(wc[0], 0, HORIZON - 5, SW, 6); for (let n = 0; n < 16; n++) R(wc[1], Math.floor(hs(n, 35) * SW), HORIZON - 4 + (n % 4), 6 + (n % 5), 1); R(snow ? '#e8e4dc' : '#7c7040', 0, HORIZON, SW, 1); }
       if (info.slough && !info.water) { R(snow ? '#c8bc98' : '#8a8048', 0, HORIZON - 3, SW, 4); for (let x = 2; x < SW; x += 5) R(snow ? '#b8a878' : '#6e6238', x, HORIZON - 5 - Math.floor(hs(x, 36) * 2), 1, 3); }
     }
     // ground bands, nearer = taller bands
     let y = base, k = 0;
-    while (y < SH) { const bh = Math.max(1, Math.floor((y - base) / 6) + 1); R(gc[k % 2], 0, y, SW, bh); y += bh; k++; }
+    while (y < SHd) { const bh = Math.max(1, Math.floor((y - base) / 6) + 1); R(gc[k % 2], 0, y, SW, bh); y += bh; k++; }
     // fields and plots are strips of ground colour: a crop field far out, your food plot in the middle distance
     if (info.cropKind && gc !== SCENE.corn && gc !== SCENE.soy) {
       const cc = snow ? ['#d8cfb4', '#cabfa2'] : info.cropKind === 'corn' ? ['#c4aa5c', '#a48c44'] : info.cropKind === 'soy' ? ['#a8884a', '#8e7240'] : ['#d0ba76', '#bca866'];
@@ -197,23 +209,23 @@
     if (info.plot || info.newPlot) {
       const grown = info.plot, c1 = snow ? (grown ? '#c2d0b0' : '#cfc8bc') : grown ? '#5e9a3e' : '#6e5038', c2 = snow ? (grown ? '#b0c09e' : '#bdb6aa') : grown ? '#4f8a34' : '#5e4430';
       // the plot takes up about half of the ground, with a short clipped texture: one-pixel flecks, nothing tall
-      const gh = SH - base, ph = Math.round(gh * 0.5), y0 = base + Math.round(gh * 0.14);
+      const gh = SHd - base, ph = Math.round(gh * 0.5), y0 = base + Math.round(gh * 0.14);
       R(c1, 0, y0, SW, ph);
       for (let yy = y0 + 2, band = 0; yy < y0 + ph - 1; yy += 3 + Math.floor(band / 3), band++) R(c2, 0, yy, SW, 1);
       const f1 = snow ? (grown ? '#d2dcc4' : '#dcd6cc') : grown ? '#7fba56' : '#84634a', f2 = snow ? (grown ? '#a4b492' : '#b0a89c') : grown ? '#3f7a2c' : '#4a3626';
       for (let n = 0; n < 260; n++) { const fx = Math.floor(hs(n, 41) * SW), fy = y0 + 1 + Math.floor(hs(n, 42) * (ph - 2)); R(n % 3 ? f1 : f2, fx, fy, fy > y0 + ph * 0.5 ? 2 : 1, 1); }
     }
     // nothing stands on the ground where deer walk: the scenery stays up on the horizon
-    if (st.weather.precip === 'snow') { ctx.fillStyle = '#ffffff'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 90)) % SW, (n * 23 + Math.floor(t / 60)) % SH, 1, 1); }
-    if (st.weather.precip === 'rain') { ctx.fillStyle = '#9fb3c8'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 40)) % SW, (n * 23 + Math.floor(t / 25) * 3) % SH, 1, 3); }
+    if (st.weather.precip === 'snow') { ctx.fillStyle = '#ffffff'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 90)) % SW, (n * 23 + Math.floor(t / 60)) % SH - SHIFT, 1, 1); }
+    if (st.weather.precip === 'rain') { ctx.fillStyle = '#9fb3c8'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 40)) % SW, (n * 23 + Math.floor(t / 25) * 3) % SH - SHIFT, 1, 3); }
     // deer, far to near
     const items = [];
     const lf = WT.lightFactor(H);
     for (const g of H.visible) for (const m of g.members) {
       if (m.fled) continue;
       const dist = Math.max(15, g.dist + m.dd);
-      const ppiT = Math.max(0.13, Math.min(1.3, 1.3 * persp(dist)));
-      const lod = Math.max(1, Math.min(4, Math.round(Math.log2(WT.ART_PPI / ppiT))));
+      const ppiT = Math.max(0.13 * BIG, Math.min(1.3 * BIG, 1.3 * BIG * persp(dist)));
+      const lod = Math.max(0, Math.min(4, Math.round(Math.log2(WT.ART_PPI / ppiT))));
       const sc = ppiT / (WT.ART_PPI / Math.pow(2, lod));
       const pose = poseFor(g);
       const step = pose === 'walk' ? Math.floor(t / 300) % 2 : 0;
@@ -242,7 +254,7 @@
       // brush between you and the deer: no clean shot
       if (!g.clear) { ctx.fillStyle = gc[0]; const bw = Math.max(1, Math.round(4 * ppi)); for (let k = -3; k <= 3; k++) ctx.fillRect(x + k * bw * 2, gy - Math.round((12 + (k & 1) * 4) * ppi), bw, Math.round(16 * ppi) + 1); }
       const box = { id: m.deer.id, x0: dx + b.x0 * sc2, y0: dy + b.y0 * sc2, x1: dx + (b.x1 + 1) * sc2, y1: dy + (b.y1 + 1) * sc2 };
-      hits.push(box);
+      hits.push({ id: box.id, x0: box.x0, x1: box.x1, y0: box.y0 + SHIFT, y1: box.y1 + SHIFT }); // taps come in screen rows
       if (H.selected === m.deer.id) {
         ctx.fillStyle = '#ff6a1a';
         const X0 = Math.round(box.x0) - 2, Y0 = Math.round(box.y0) - 2, X1 = Math.round(box.x1) + 1, Y1 = Math.round(box.y1) + 1;
@@ -250,6 +262,7 @@
         ctx.fillRect(X0, Y1, 3, 1); ctx.fillRect(X0, Y1 - 2, 1, 3); ctx.fillRect(X1 - 2, Y1, 3, 1); ctx.fillRect(X1, Y1 - 2, 1, 3);
       }
     }
+    ctx.restore();
     // foreground: what you're sitting in
     const fg = st.day > 62 ? '#4a4038' : '#2e2418';
     const sid = H.sType.id;
@@ -268,15 +281,14 @@
   }
 
   // Binoculars (two circles) or scope (one circle + crosshair) framed on head, neck and chest
-  const OW = 176, OH = 99; // the optics view is drawn bigger: the full-size head fills the lens
   function drawOptic(canvas, H, kind, optic, t) {
-    if (canvas.width !== OW) { canvas.width = OW; canvas.height = OH; }
+    if (canvas.width !== OW || canvas.height !== OH) { canvas.width = OW; canvas.height = OH; }
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     const st = S();
     const gc = groundColors(H), sky = skyColors(H);
     ctx.fillStyle = gc[0]; ctx.fillRect(0, 0, OW, OH);
-    ctx.fillStyle = sky[2]; ctx.fillRect(0, 0, OW, 26);
+    ctx.fillStyle = sky[2]; ctx.fillRect(0, 0, OW, Math.round(OH * 0.26));
     const target = (() => {
       if (H.selected) { const f = WT.findTarget(H, H.selected); if (f) return f; }
       const g = H.visible.find((x) => !x.gone); return g ? { g, m: g.members[0] } : null;
@@ -311,13 +323,16 @@
     if (!H) return UI.go('lodge');
     const st = S();
     let optic = null, opticKind = null, auto = false, autoTimer = null, hits = [], raf;
+    setSceneSize();
     el.innerHTML = UI.stage(SW, SH, `<div class="ov" style="left:6px;top:6px;font-size:18px;background:rgba(28,20,16,.75);padding:2px 6px" id="clock"></div>
-      <div class="ov" style="right:6px;top:6px;font-size:18px;background:rgba(28,20,16,.75);padding:2px 6px" id="hud"></div>`) + `
+      <div class="ov" style="right:6px;bottom:6px;font-size:18px;background:rgba(28,20,16,.75);padding:2px 6px" id="hud"></div>`) + `
       <section class="panel" style="margin-top:10px">
         <div class="row" id="ctl"></div>
         <div class="log" id="log" style="margin-top:10px" aria-live="polite"></div>
       </section>`;
     const canvas = $('canvas', el);
+    // a tall view that fills the screen; the buttons and the log sit below it
+    Object.assign(el.querySelector('.stage').style, { aspectRatio: `${SW} / ${SH}`, width: `min(100%, calc(86vh * ${SW} / ${SH}))`, margin: '0 auto' });
     const logEl = $('#log', el);
     let shown = 0;
     const renderLog = () => {
