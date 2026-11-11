@@ -325,6 +325,7 @@
       <p>Every deer is its own animal with an age, a body and antlers that grow from its own genes. Nothing is rolled when you pull the trigger: the buck you see is the buck you get.</p>
       <p><b>Age is everything.</b> A buck adds antler every year until about 5½ to 6½. A 1½ year old with a small rack may be a giant in four years if he lives. Passing young bucks is how you grow big ones.</p>
       <p><b>They can die or leave.</b> Neighbors shoot deer, winters kill some, and young bucks move to other properties. Bigger, safer land keeps more of them.</p>
+      <p><b>Home areas:</b> each deer lives around one spot on its property, usually in cover. He can turn up at any stand, but about twice as often near home and half as often at the far end. Does stay tight, bucks roam wider, and in the rut bucks go anywhere. This is why two stands on the same land see different deer, and why a camera on one end won't show you the buck living on the other. Spread stands and cameras out.</p>
       <p><b>What you see:</b> does and fawns move in daylight. Old bucks mostly move at night, except in the rut (early to mid November), when they chase does all day.</p>
       <p><b>What your land does for them:</b> more food and water grows heavier, healthier deer. More cover and sanctuary means more deer live there, survive, and move in daylight.</p>`],
     ['stands', 'Stands and ratings', () => `

@@ -152,6 +152,29 @@
     d.herd = prop.herd; d.capacity = prop.capacity; d.pressure = prop.huntingPressure;
   }
 
+  /* Home areas. Every deer lives around one spot on its property, picked from the deer itself so it never moves
+     (unless he changes properties). Homes favour cover three to one. A deer can show at any stand, but about twice
+     as often near home and half as often at the far end. Bucks roam wider than does, and in the rut bucks go anywhere. */
+  function parcelTiles(pid) {
+    const w = G.world; w._ptiles = w._ptiles || {};
+    if (w._ptiles[pid]) return w._ptiles[pid];
+    const p = w.parcels[pid], list = [];
+    for (let y = p.minY; y <= p.maxY; y++) for (let x = p.minX; x <= p.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] !== pid) continue; const n = WT.COVER[w.cover[i]].b >= 0.5 ? 3 : WT.COVER[w.cover[i]].w ? 0 : 1; for (let k = 0; k < n; k++) list.push(i); }
+    return (w._ptiles[pid] = list.length ? list : [p.labelY * w.W + p.labelX]);
+  }
+  WT.deerHome = function (pid, deer) {
+    const w = G.world, list = parcelTiles(pid), home = deer.mom && S().parcels[pid].herd.some((m) => m.id === deer.mom) ? deer.mom : deer.id; // a fawn lives where its mother does
+    const i = list[Math.floor(WT.hash2(home, pid, 91) * list.length) % list.length];
+    return { x: i % w.W, y: (i / w.W) | 0 };
+  };
+  WT.homeFactor = function (pid, deer, x, y, rut) {
+    const cfg = C().home, antlered = deer.sex === 'b' && deer.age >= 1.5;
+    if (antlered && rut) return 1;
+    const h = WT.deerHome(pid, deer), size = Math.sqrt(G.world.parcels[pid].acres * 4);
+    const reach = size * (antlered ? cfg.buckReach : cfg.doeReach);
+    return cfg.far + (cfg.near - cfg.far) * Math.exp(-Math.pow(Math.hypot(h.x - x, h.y - y) / reach, 2));
+  };
+
   /* Sanctuary is ground you give up. A marked tile only works if it is cover (timber, tree rows, brush, slough,
      CRP grass, young trees) and no stand of yours is within about 100 yards. The bonus stops at 25% of the land. */
   const SANCT_COVER = () => [T().TIMBER, T().BELT, T().BRUSH, T().PRAIRIE, T().SLOUGH, T().YOUNGTREES];
@@ -790,7 +813,7 @@
   // The mobile stand on your back (saddle, hang-on, climber or pop-up). Public land can't be hunted without one.
   WT.mobileStand = function () { const st = S(), id = st.loadout.mobile; return id && (st.inv.stands[id] || 0) > 0 ? id : null; };
   WT.setMobile = function (id) { const st = S(); if (id && !(st.inv.stands[id] > 0)) return 'You do not own that one.'; st.loadout.mobile = id || null; return null; };
-  WT.SPOT_LIMITS = { perArea: 3, total: 10 };
+  WT.SPOT_LIMITS = { perArea: 5, total: 16 };
   WT.markSpot = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'public') return 'Spots are marked on public land. On your own land, put up a stand.';
@@ -1123,11 +1146,11 @@
       if (rng.chance(midday)) return 10.5 + rng.range(0, 3.5);
       return rng.chance(0.5) ? plan.legalStart + Math.pow(rng.next(), 1.6) * 3 : plan.legalEnd - Math.pow(rng.next(), 1.6) * 3;
     };
-    const S2 = cfg.deer.sighting, out = new Set();
+    const S2 = cfg.deer.sighting, out = new Set(), rutOn = /Seek|Peak/.test(rut.name);
     const hasMom = (deer) => deer.mom && herd.some((m) => m.id === deer.mom);
     for (const deer of herd) {
       if (hasMom(deer) || out.has(deer.id)) continue; // fawns follow mom
-      if (!rng.chance(WT.sightingChance(deer, ctx))) continue;
+      if (!rng.chance(WT.sightingChance(deer, ctx) * WT.homeFactor(setup.pid, deer, stand.x, stand.y, rutOn))) continue;
       const members = [deer, ...(byMom[deer.id] || []).filter(() => rng.chance(0.85))];
       // does often travel together: a second doe and her fawns may come along
       if (deer.sex === 'd' && deer.age >= 1 && rng.chance(S2.doeGroup || 0)) {
@@ -1140,7 +1163,7 @@
     // a fawn whose mother stayed hidden can still wander out by itself
     for (const deer of herd) {
       if (!hasMom(deer) || out.has(deer.id)) continue;
-      if (rng.chance(WT.sightingChance(deer, ctx) * (S2.fawnAlone || 0))) { out.add(deer.id); sched.push({ t: pickTime(deer), members: [deer] }); }
+      if (rng.chance(WT.sightingChance(deer, ctx) * (S2.fawnAlone || 0) * WT.homeFactor(setup.pid, deer, stand.x, stand.y, rutOn))) { out.add(deer.id); sched.push({ t: pickTime(deer), members: [deer] }); }
     }
     // rut: a buck sometimes trails a doe group
     if (/Seek|Peak/.test(rut.name)) for (const sg of sched) if (sg.members[0].sex === 'd' && rng.chance(0.25)) {
@@ -1679,10 +1702,11 @@
         const traffic = 0.15 + 1.3 * Math.max(r.morning, r.evening, r.rut * 0.8) + onFood;
         const watched = Math.pow(sight.reach / 60, 0.7); // more ground in view, more deer caught
         const spotOf = d.owner === 'public' ? d.spots || [] : d.stands;
+        const rutCam = /Seek|Peak/.test(WT.rutPhase(Math.min(st.day, 91)).name);
         const at = spotOf.find((z) => Math.abs(z.x - cam.x) <= 1 && Math.abs(z.y - cam.y) <= 1);
         for (const deer of d.herd) {
           if (deer.age < 1 && rng.chance(0.6)) continue;
-          const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6;
+          const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6 * WT.homeFactor(p.id, deer, cam.x, cam.y, rutCam);
           if (!rng.chance(p0)) continue;
           const night = deer.sex === 'b' && deer.age >= 3.5 ? rng.chance(0.85) : rng.chance(0.45);
           const dist = Math.round(4 + (sight.reach - 4) * Math.pow(rng.next(), 1.4));

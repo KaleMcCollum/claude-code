@@ -217,9 +217,12 @@
       waterhole: { name: 'Water hole', cost: 900, per100: 2 },
       trees: { name: 'Shelterbelt planting (row of 6)', cost: 240, matureYears: 3 },
       sanctuary: { name: 'Sanctuary tile', cost: 0 },
-      camera: { per100: 5 },
+      camera: { per100: 15 },
     },
-    standLimitPer100: 4,
+    standLimitPer100: 8,
+    // Home areas: each deer lives around one spot on its property. It can turn up anywhere, but about twice as often
+    // near home and half as often at the far end. reach is in units of the property's own size.
+    home: { near: 2.0, far: 0.55, doeReach: 0.5, buckReach: 0.7 },
     // Sanctuary: cover you never hunt. It only counts in cover, away from your stands, and up to a share of the land.
     sanctuary: { maxShare: 0.25, standTiles: 3, holdBucks: 1.2, capacity: 0.6 }, // at the cap: 30% fewer young bucks leave, 15% more deer fit
     mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards
@@ -234,7 +237,7 @@
       { id: 'spypoint',   name: 'Spypoint Flex G-36 (cell)',price: 280, detect: 0.65, night: 0.75, clear: 50, reach: 150, cell: true, plan: 0 },
       { id: 'reconyx',    name: 'Reconyx HyperFire 2',      price: 450, detect: 0.8,  night: 0.9,  clear: 65, reach: 200, cell: false },
     ],
-    publicCamsPerArea: 4,
+    publicCamsPerArea: 10,
 
     /* ------------------------------------------------------------ clothing */
     // Stats: w warmth, wd wind, wa water, c cooling, q quiet, s scent, cn concealment
