@@ -37,15 +37,16 @@
     lo.pack = lo.pack || {};
     const isSpot = stand.kind === 'spot';
     const sessions = st.slot === 'morning' ? ['morning', 'allday'] : ['evening'];
-    const sel = { session: sessions.includes(args.session) ? args.session : sessions[0], carry: args.carry || (isSpot ? (WT.mobileOptions(stand).filter((o) => o.ok).slice(-1)[0] || { id: 'ground' }).id : null) };
+    const sel = { session: sessions.includes(args.session) ? args.session : sessions[0], carry: isSpot ? WT.mobileStand() : null };
+    const block = WT.spotBlock(args.pid, stand);
     const state = { edit: false };
     const render = () => {
-      const standType = sel.carry || stand.type;
+      const standType = sel.carry || (isSpot ? 'hangon' : stand.type);
       // keep the pack within what you own
       for (const id in lo.pack) { const have = id === 'propane' ? st.inv.propane : st.inv.consum[id] || 0; if (lo.pack[id] > have) lo.pack[id] = have; }
       const plan = WT.sitPlan({ session: sel.session, standType, clothing: lo.clothing, equip: lo.equip, pack: lo.pack });
       const warns = [];
-      if (!plan.blazeOk) warns.push('<span class="bad">Rifle season: blaze orange required.</span>');
+      if (block) warns.unshift(`<span class="bad">${esc(block)}</span>`);
       if (plan.hot > 0) warns.push('<span class="warn">You\'ll likely overheat and sweat.</span>');
       if (!plan.allDayOk) warns.push(`<span class="warn">You can only sit about ${WT.fmtDur(plan.maxHrs)}. An all-day sit needs about ${WT.fmtDur(plan.windowHrs)}.</span>`);
       if (plan.heaterNote) warns.push(`<span class="warn">${esc(plan.heaterNote)}</span>`);
@@ -57,9 +58,10 @@
       const outfitLine = Object.values(lo.clothing).filter(Boolean).map((id) => WT.cloth(id).name).join(', ');
       const beltLine = Object.values(lo.equip).filter(Boolean).map((id) => WT.equip(id).name).join(', ');
       const r = WT.rifle(lo.rifle);
-      el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>${esc(stand.name || WT.standType(stand.type).name)} · ${esc(p.name)}</h2><button class="btn small" id="back">Back to map</button></div>
+      el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>${esc(stand.name || (isSpot ? 'Marked spot' : WT.standType(stand.type).name))} · ${esc(p.name)}</h2><button class="btn small" id="back">Back to map</button></div>
+        <div class="row" style="margin-bottom:8px"><button class="btn blaze big" id="go" style="flex:1" ${block ? 'disabled' : ''}>Start the hunt</button>${block ? '<button class="btn" id="toGear">Gear</button>' : ''}</div>
         <div class="row">${sessions.map((s) => `<button class="btn ${sel.session === s ? 'on' : ''}" data-ses="${s}">${WT.CONFIG.sessions[s].name}</button>`).join('')}
-          ${isSpot ? WT.mobileOptions(stand).filter((o) => o.ok).map((o) => `<button class="btn small ${sel.carry === o.id ? 'on' : ''}" data-carry="${o.id}">${esc(WT.standType(o.id).name.replace(/ \(.*\)/, ''))}</button>`).join('') : ''}</div>
+${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carry).name)}</span>` : ''}</div>
         <p class="dim">${esc(WT.CONFIG.sessions[sel.session].note)}</p>
         <div class="item" style="margin-top:8px"><div><span class="nm">${esc(r.name)}</span> <span class="dim">${esc(r.cal)}</span></div><button class="btn small" id="chg">${state.edit ? 'Done' : 'Change gear'}</button>
           <div class="st">${esc(outfitLine)}${beltLine ? '<br>' + esc(beltLine) : ''}</div></div>
@@ -72,14 +74,15 @@
           <p style="margin:0">Feels like <b>${plan.effTemp}°F</b>. Dressed for <b>${plan.comfortable}°F</b>. You can sit <b>${WT.fmtDur(plan.maxHrs)}</b> of ${WT.fmtDur(plan.windowHrs)}.</p>
           ${warns.length ? `<p style="margin:4px 0 0">${warns.join('<br>')}</p>` : ''}
         </div>
-        <div class="row" style="margin-top:10px"><button class="btn blaze big" id="go">Start the hunt</button></div></section>`;
+        </section>`;
       $('#back', el).addEventListener('click', () => UI.go('map', { mode: 'hunt', pid: args.pid, sid: args.sid }));
+      { const tg = $('#toGear', el); if (tg) tg.addEventListener('click', () => UI.go('inventory')); }
       $('#chg', el).addEventListener('click', () => { state.edit = !state.edit; render(); });
       el.querySelectorAll('[data-ses]').forEach((b) => b.addEventListener('click', () => { sel.session = b.dataset.ses; render(); }));
-      el.querySelectorAll('[data-carry]').forEach((b) => b.addEventListener('click', () => { sel.carry = b.dataset.carry; render(); }));
       el.querySelectorAll('[data-pk]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.pk; lo.pack[id] = Math.max(0, (lo.pack[id] || 0) + +b.dataset.d); render(); }));
       UI.bindOutfit(el, lo, () => render());
       $('#go', el).addEventListener('click', () => {
+        if (block) return UI.toast(block, 'bad');
         WT.save();
         WT.startHunt({ pid: args.pid, stand, carry: sel.carry, session: sel.session, rifle: lo.rifle, clothing: Object.assign({}, lo.clothing), equip: Object.assign({}, lo.equip), pack: Object.assign({}, lo.pack), competition: !!args.competition });
         UI.go('hunt');
@@ -327,9 +330,10 @@
     el.innerHTML = UI.stage(SW, SH, `<div class="ov" style="left:6px;top:6px;font-size:18px;background:rgba(28,20,16,.75);padding:2px 6px" id="clock"></div>
       <div class="ov" style="right:6px;bottom:6px;font-size:18px;background:rgba(28,20,16,.75);padding:2px 6px" id="hud"></div>`) + `
       <section class="panel" style="margin-top:10px">
-        <div class="row" id="ctl"></div>
-        <div class="log" id="log" style="margin-top:10px" aria-live="polite"></div>
+        <div class="log" id="log" aria-live="polite"></div>
       </section>`;
+    // the buttons live above the view so Shoot is never a scroll away
+    el.insertAdjacentHTML('afterbegin', '<section class="panel" style="margin-bottom:8px;padding:8px"><div class="row" id="ctl" style="gap:6px"></div></section>');
     const canvas = $('canvas', el);
     // a tall view that fills the screen; the buttons and the log sit below it
     Object.assign(el.querySelector('.stage').style, { aspectRatio: `${SW} / ${SH}`, width: `min(100%, calc(86vh * ${SW} / ${SH}))`, margin: '0 auto' });
@@ -351,14 +355,14 @@
       const any = H.visible.length > 0;
       const chk = H.selected ? WT.shotCheck(H, H.selected) : { ok: false, reason: 'Tap a deer in the view to pick your target.' };
       $('#ctl', el).innerHTML = `
+        <button class="btn blaze" id="shoot" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason || '')}">Shoot</button>
         <button class="btn" id="sit">${any ? 'Watch' : 'Sit'} ▸</button>
         <button class="btn ${auto ? 'on' : ''}" id="auto">${auto ? 'Stop' : 'Fast-forward'} ▸▸</button>
         ${H.eq.binoculars ? `<button class="btn ${opticKind === 'bino' ? 'on' : ''}" id="bino">Binos</button>` : ''}
-        <button class="btn ${opticKind === 'scope' ? 'on' : ''}" id="scope">Scope</button>
+        ${H.rifle.bow ? '' : `<button class="btn ${opticKind === 'scope' ? 'on' : ''}" id="scope">Scope</button>`}
         ${H.eq.rangefinder ? '<button class="btn" id="rng" ' + (H.selected ? '' : 'disabled') + '>Range</button>' : ''}
         ${H.eq.grunt ? '<button class="btn" data-call="grunt">Grunt</button>' : ''}${H.eq.rattle ? '<button class="btn" data-call="rattle">Rattle</button>' : ''}${H.eq.snort ? '<button class="btn" data-call="snort">Snort-wheeze</button>' : ''}
         <button class="btn" id="addList" ${H.selected ? '' : 'disabled'}>Add to hit list</button>
-        <button class="btn blaze" id="shoot" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason || '')}">Shoot</button>
         <button class="btn ghost" id="leave">Leave</button>
         <span class="dim" style="flex-basis:100%">${(() => { const f = H.selected && WT.findTarget(H, H.selected); if (!f || !f.m.read) return ''; const kn = WT.knownDeer(f.m); return `${kn ? `<span class="good">Hit list: ${esc(kn.name ? `"${kn.name}"` : 'unnamed deer')} · ${esc(kn.status)}.</span> ` : ''}<span class="deer" style="color:var(--cream)">Your read: ${esc(f.m.read.text)}.</span> `; })()}${chk.ok ? (chk.clear ? 'Clear shot.' : 'Brush in the way. A shot now could wound.') : esc(chk.reason || '')}</span>`;
       const on = (id, fn) => { const b = $('#' + id, el); if (b) b.addEventListener('click', fn); };

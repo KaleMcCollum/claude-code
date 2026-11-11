@@ -719,7 +719,7 @@
     const den = D().density;
     const hq = habitatQuality({ food: prop.food, bedding: prop.bedding, water: prop.water, security: prop.security, soil: prop.soilQuality });
     const per100 = den.poor + (den.elite - den.poor) * clamp((hq - 0.25) / 0.65);
-    return Math.max(2, Math.round((prop.acres / 100) * per100));
+    return Math.max(2, Math.round((prop.acres / 100) * per100 * (1 + C().sanctuary.capacity * (prop.sanct || 0)))); // working sanctuary holds more deer
   }
   WT.carryingCapacity = carryingCapacity;
 
@@ -828,11 +828,11 @@
     }
     prop.herd.push(...newFawns);
     // 7. dispersal and movement
-    const dispP = rng.span(cfg.dispersal.yearlingBuck);
+    const dispP = rng.span(cfg.dispersal.yearlingBuck) * (1 - C().sanctuary.holdBucks * (prop.sanct || 0)); // sanctuary keeps young bucks home
     let leaving = 0;
     prop.herd = prop.herd.filter((d) => {
       if (d.sex === 'b' && Math.abs(d.age - 1.5) < 0.01 && rng.chance(dispP)) { leaving++; log.left++; if (env.emigrants) env.emigrants.push(d); return false; }
-      if (d.age >= 2.5 && prop.huntingPressure > 0.6 && rng.chance((prop.huntingPressure - 0.6) * 0.15)) { log.left++; if (env.emigrants) env.emigrants.push(d); return false; }
+      if (d.age >= 2.5 && prop.huntingPressure > 0.6 && rng.chance((prop.huntingPressure - 0.6) * 0.15 * (1 - 2 * (prop.sanct || 0)))) { log.left++; if (env.emigrants) env.emigrants.push(d); return false; }
       return true;
     });
     // young bucks from surrounding land arrive

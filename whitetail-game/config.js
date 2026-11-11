@@ -16,7 +16,7 @@
         euro: { name: 'European mount', price: 50 },
         cap: { name: 'Felt cap mount', price: 20 },
       },
-      newDeerCash: 25,                 // paid for each new deer added to your hit list
+      newDeerCash: 12,                 // paid for each new deer added to your hit list
       landSellFee: 0.08,               // fee when selling land back
       tags: { buck: 30, doe: 20, maxDoeTags: 3 },
       payouts: [                        // money only comes from deer
@@ -149,6 +149,10 @@
     /* ------------------------------------------------------------ weapons */
     // Bows are coming later. level = level needed to buy. award = only unlocked, not sold.
     rifles: [
+      // bows: quiet and short. Good to about 3 x range yards; needed for bow-only public land.
+      { id: 'bear_cruzer',  level: 1,   name: 'Bear Cruzer G3 compound',     cal: 'compound bow',    bow: true, acc: 56, range: 12, power: 30, recoil: 0, mag: 4, price: 350 },
+      { id: 'ravin_r10',    level: 8,   name: 'Ravin R10 crossbow',          cal: 'crossbow',        bow: true, acc: 68, range: 20, power: 42, recoil: 0, mag: 3, price: 1400 },
+      { id: 'mathews_v3x',  level: 12,  name: 'Mathews V3X compound',        cal: 'compound bow',    bow: true, acc: 70, range: 16, power: 38, recoil: 0, mag: 5, price: 1150 },
       { id: 'ruger_ranch',  level: 1,   name: 'Ruger American Ranch',        cal: '.223 Rem',        acc: 60, range: 35, power: 30, recoil: 10, mag: 5, price: 0 },
       { id: 'mossberg_pat', level: 3,   name: 'Mossberg Patriot',            cal: '.243 Win',        acc: 63, range: 50, power: 45, recoil: 22, mag: 5, price: 380 },
       { id: 'savage_axis',  level: 5,   name: 'Savage Axis II',              cal: '.243 Win',        acc: 68, range: 55, power: 50, recoil: 25, mag: 4, price: 420 },
@@ -187,9 +191,9 @@
     // cover/noise/scent/accuracy/comfort/visibility are 0-100 bonuses; patienceHrs adds sit time.
     stands: [
       { id: 'ground',  name: 'Ground sit (no stand)', kind: 'mobile',    price: 0,    cover: 10, noise: 20, scent: 0,  accuracy: 0,  comfort: 0,  visibility: 30, patienceHrs: -0.5, starter: true, note: 'Sit against a tree. Free and miserable.' },
-      { id: 'saddle',  name: 'Tethrd Phantom saddle',  kind: 'mobile',    price: 380,  cover: 55, noise: 60, scent: 60, accuracy: 10, comfort: 15, visibility: 60, patienceHrs: -0.5, bowOnly: true, note: 'Bow hunting rig. Usable once bows arrive.' },
-      { id: 'hangon',  name: 'Hawk Helium hang-on',    kind: 'portable',  price: 160,  cover: 60, noise: 55, scent: 65, accuracy: 15, comfort: 20, visibility: 55, patienceHrs: 0 },
-      { id: 'climber', name: 'Summit Viper climber',   kind: 'portable',  price: 330,  cover: 55, noise: 45, scent: 65, accuracy: 25, comfort: 40, visibility: 60, patienceHrs: 0.75 },
+      { id: 'saddle',  name: 'Tethrd Phantom saddle',  kind: 'mobile',    price: 380,  cover: 55, noise: 60, scent: 60, accuracy: 10, comfort: 15, visibility: 60, patienceHrs: -0.5, note: 'Light and quiet. Any tree, any weapon.' },
+      { id: 'hangon',  name: 'Hawk Helium hang-on',    kind: 'mobile',    price: 160,  cover: 60, noise: 55, scent: 65, accuracy: 15, comfort: 20, visibility: 55, patienceHrs: 0 },
+      { id: 'climber', name: 'Summit Viper climber',   kind: 'mobile',    price: 330,  cover: 55, noise: 45, scent: 65, accuracy: 25, comfort: 40, visibility: 60, patienceHrs: 0.75 },
       { id: 'popup',   name: 'Primos pop-up blind',    kind: 'portable',  price: 190,  cover: 55, noise: 70, scent: 15, accuracy: 30, comfort: 45, visibility: 35, patienceHrs: 0.75, blind: true },
       { id: 'tripod',  name: 'Big Game 12 ft tripod',  kind: 'permanent', price: 260,  cover: 25, noise: 40, scent: 50, accuracy: 35, comfort: 40, visibility: 80, patienceHrs: 0.5 },
       { id: 'ladder',  name: 'Muddy 16 ft ladder',     kind: 'permanent', price: 240,  cover: 45, noise: 50, scent: 55, accuracy: 30, comfort: 40, visibility: 65, patienceHrs: 0.5 },
@@ -217,7 +221,8 @@
     },
     standLimitPer100: 4,
     // Sanctuary: cover you never hunt. It only counts in cover, away from your stands, and up to a share of the land.
-    sanctuary: { maxShare: 0.25, standTiles: 3 },   // 3 tiles is about 100 yards
+    sanctuary: { maxShare: 0.25, standTiles: 3, holdBucks: 1.2, capacity: 0.6 }, // at the cap: 30% fewer young bucks leave, 15% more deer fit
+    mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards
 
     /* ------------------------------------------------------------ trail cameras */
     // clear: yards out to which a deer can be told apart. reach: yards past which it never triggers.

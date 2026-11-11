@@ -159,6 +159,12 @@
       ${recs.length ? `<p class="dim">${recs.length} deer taken${biggest ? `. Biggest gross: ${biggest}"` : ''}. Tap one to see it or get it mounted.</p>
       <div class="tiles">${recs.map((r, k) => `<button class="tile" data-k="${k}">${canvasHtml('t' + k, 88, 92, boneMount(r))}<span class="cap">${esc(r.label)}${r.sheet ? ` · ${r.sheet.gross}"` : ''}</span><span class="cap faint">${WT.dateLabel(r.d)}, Yr ${r.y}${r.mount ? ' · ' + esc(MOUNTS()[r.mount].name.toLowerCase()) : !r.legal ? ' · taken by DNR' : ''}</span></button>`).join('')}</div>`
       : '<p class="dim">Nothing yet.</p>'}</section>`;
+    const sheds = st.sheds || [];
+    el.insertAdjacentHTML('beforeend', `<section class="panel" style="margin-top:10px"><h3>Shed antlers</h3>
+      ${sheds.length ? `<p class="dim">${sheds.length} found walking your land in spring. A shed means that buck was alive when winter ended.</p>
+      <div class="tiles">${sheds.slice(0, 60).map((sh, k) => `<div class="tile">${canvasHtml('sh' + k, 88, 92, true)}<span class="cap">${sh.name ? `"${esc(sh.name)}" · ` : ''}${sh.side === 'both' ? 'Matched set' : 'One side'} · ${sh.pts} pts</span><span class="cap faint">Spring Yr ${sh.y + 1} · he was ${sh.age} · ${esc(sh.parcel)}</span></div>`).join('')}</div>`
+      : '<p class="dim">None yet. Each spring you walk the land you own; bucks that lived there and made it through winter leave antlers behind.</p>'}</section>`);
+    sheds.slice(0, 60).forEach((sh, k) => paint(el, 'sh' + k, WT.deerSprite(WT.snapDeer(sh.snap), { lod: 0, frame: 'bust', mount: 'shed', side: sh.side, day: 60 })));
     recs.forEach((r, k) => paint(el, 't' + k, UI.mountImg(r.snap, r.mount)));
     el.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', () => UI.trophyDetail(recs[+b.dataset.k], el, { onBack: () => UI.go('trophies') })));
     $('#back', el).addEventListener('click', () => UI.go('lodge'));
@@ -185,32 +191,39 @@
 
   /* ================================================================ HIT LIST */
   const STATUSES = ['Hit list', 'Pass', 'Cull', 'Doe', 'Watch'];
-  let hlFilter = 'All', hlSort = 'last';
+  let hlFilter = 'All', hlSort = 'last', hlProp = 'all';
   UI.screens.hitlist = function (el, arg) {
     const st = S(), w = Wd();
     if (arg && arg.k != null) return hitDetail(el, arg.k);
     if (arg && arg.photos) return photosScreen(el);
     let list = st.hitList.slice();
     if (hlFilter !== 'All') list = list.filter((e) => e.status === hlFilter);
+    const propIds = [...new Set(st.hitList.flatMap((e) => e.places || []))].filter((p) => w.parcels[p]);
+    if (hlProp !== 'all' && !propIds.includes(+hlProp)) hlProp = 'all';
+    if (hlProp !== 'all') list = list.filter((e) => (e.places || []).includes(+hlProp));
+    const whereOf = (e) => (e.log && e.log[0] && e.log[0].where) || (e.places && e.places.length ? w.parcels[e.places[0]].name : 'unknown');
     const lastKey = (e) => (e.last ? e.last[0] * 1000 + e.last[1] : 0);
     if (hlSort === 'last') list.sort((a, b) => lastKey(b) - lastKey(a));
     if (hlSort === 'age') list.sort((a, b) => WT.estAgeNow(b) - WT.estAgeNow(a));
     if (hlSort === 'name') list.sort((a, b) => (a.name || '~').localeCompare(b.name || '~'));
     const idx = (e) => st.hitList.length - st.hitList.indexOf(e);
-    el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Hit list</h2><div class="row"><button class="btn small" id="photos">Camera photos (${st.photos.length})</button><button class="btn small" id="back">Back to lodge</button></div></div>
-      <p class="dim">Every deer you've seen clearly or caught on camera. Pictures show him as he looked the last time you saw him. The game won't tell you if he's still alive.</p>
+    el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Hit list</h2><div class="row"><button class="btn small" id="pull">Pull cameras</button><button class="btn small" id="photos">Camera photos (${st.photos.length})</button><button class="btn small" id="back">Back to lodge</button></div></div>
+      <p class="dim">Deer you chose to keep track of. Add one from the stand after a clear look, or from a camera photo. Pictures show him as he looked the last time you saw him.</p>
       <div class="row" style="margin-bottom:8px">${['All', ...STATUSES].map((s) => `<button class="btn small ${hlFilter === s ? 'on' : ''}" data-f="${s}">${s}</button>`).join('')}
-        <select id="sort"><option value="last" ${hlSort === 'last' ? 'selected' : ''}>Last seen</option><option value="age" ${hlSort === 'age' ? 'selected' : ''}>Your age guess</option><option value="name" ${hlSort === 'name' ? 'selected' : ''}>Name</option></select></div>
-      ${list.length ? `<div class="tiles">${list.map((e) => `<button class="tile" data-k="${e.k}">${canvasHtml('h' + e.k, 88, 92)}<span class="cap">${esc(e.name || 'Unnamed deer #' + idx(e))} <span class="tag">${esc(e.status)}</span></span>
+        <select id="sort"><option value="last" ${hlSort === 'last' ? 'selected' : ''}>Last seen</option><option value="age" ${hlSort === 'age' ? 'selected' : ''}>Your age guess</option><option value="name" ${hlSort === 'name' ? 'selected' : ''}>Name</option></select>
+        ${propIds.length > 1 ? `<select id="prop"><option value="all">All properties</option>${propIds.map((p) => `<option value="${p}" ${+hlProp === p ? 'selected' : ''}>${esc(w.parcels[p].name)}</option>`).join('')}</select>` : ''}</div>
+      ${list.length ? `<div class="tiles">${list.map((e) => `<button class="tile" data-k="${e.k}">${canvasHtml('h' + e.k, 88, 92)}<span class="cap">${esc(e.name || 'Unnamed deer #' + idx(e))} <span class="tag">${esc(e.status)}</span>${e.dead ? ' <span class="tag" style="background:#7a2e22">Killed</span>' : ''}</span>
+        <span class="cap" style="color:var(--cream)">${esc(whereOf(e))}</span>
         <span class="cap dim">About ${WT.estAgeNow(e)} yrs (your guess)</span><span class="cap faint">Last seen ${e.last ? `${WT.dateLabel(e.last[1])}, Yr ${e.last[0]}` : 'never'}</span></button>`).join('')}</div>`
-      : '<p class="faint">Nobody on the list yet. Get a clear look at a buck (close, or through good binoculars) or catch one on a trail camera.</p>'}</section>`;
+      : '<p class="faint">Nobody here. In the stand, tap a deer you have seen clearly and press Add to hit list, or add one from Camera photos.</p>'}</section>`;
     list.forEach((e) => { if (e.snap) paint(el, 'h' + e.k, UI.mountImg(e.snap)); });
     el.querySelectorAll('[data-f]').forEach((b) => b.addEventListener('click', () => { hlFilter = b.dataset.f; UI.refresh(); }));
     $('#sort', el).addEventListener('change', (ev) => { hlSort = ev.target.value; UI.refresh(); });
     el.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', () => hitDetail(el, +b.dataset.k)));
     $('#back', el).addEventListener('click', () => UI.go('lodge'));
     $('#photos', el).addEventListener('click', () => photosScreen(el));
-    void w;
+    $('#pull', el).addEventListener('click', () => { const r = WT.checkAllCameras(); WT.save(); UI.toast(r.places ? `${r.n} new photo${r.n === 1 ? '' : 's'} from ${r.places} propert${r.places === 1 ? 'y' : 'ies'}. Walking in left some scent on each.` : 'No cameras out.', r.n ? 'good' : undefined); UI.refresh(); });
+    const ps = $('#prop', el); if (ps) ps.addEventListener('change', (ev) => { hlProp = ev.target.value; UI.refresh(); });
   };
 
   function hitDetail(el, k) {
@@ -231,6 +244,8 @@
           <div class="row" style="margin-top:6px"><button class="btn" id="save">Save</button><button class="btn ghost" id="rm">Remove from list</button><span id="rmq" class="dim"></span></div>
           ${e.read ? `<p style="margin-top:10px"><b>Your best read:</b> ${esc(e.read)}</p>` : ''}
           <dl class="kv" style="margin-top:10px"><dt>Last seen</dt><dd>${esc(WT.lastSeenText(e))}</dd><dt>Seen on</dt><dd>${e.places.map((p) => esc(w.parcels[p] ? w.parcels[p].name : '?')).join(', ')}</dd><dt>Added</dt><dd>${WT.dateLabel(e.added[1])}, Year ${e.added[0]}</dd></dl>
+          ${e.dead ? `<p class="bad">${esc(e.dead.by)} killed this deer on ${WT.dateLabel(e.dead.d)}, Year ${e.dead.y}.</p>` : ''}
+          ${e.sheds && e.sheds.length ? `<h3>Sheds found</h3>${e.sheds.map((sh) => `<p class="dim">Spring of Year ${sh.y + 1}: ${sh.side === 'both' ? 'matched set' : 'one side'}, ${sh.pts} points, when he was ${sh.age}. Found on ${esc(sh.parcel)}.</p>`).join('')}` : ''}
           <h3>Sighting log</h3>${e.log.map((l) => `<p class="dim">${WT.dateLabel(l.d)} Yr ${l.y}, ${typeof l.t === 'number' && l.t > 24 ? '' : l.kind === 'photo' ? `${l.t}:00` : WT.fmtTime(l.t)}: ${esc(l.kind === 'photo' ? 'trail camera' : l.doing || 'seen')} · ${esc(l.where)}${l.dist ? ` · ${l.dist} yd` : ''}</p>`).join('')}
         </div>
       </div></section>`;
@@ -253,7 +268,7 @@
   function photosScreen(el) {
     const st = S();
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Camera photos</h2><button class="btn small" id="back">Back to hit list</button></div>
-      <p class="dim">Newest first. Clear photos of bucks go on your hit list by themselves. Add anything else you want to keep track of.</p>
+      <p class="dim">Newest first. Nothing goes on your hit list by itself: add the deer you want to keep track of.</p>
       ${st.photos.length ? `<div class="views">${st.photos.slice(0, 40).map((ph, i) => `<div>${photoHtml(ph, 'q' + i)}${!WT.hitEntry(ph.snap.k) && ph.q >= 0.45 ? `<button class="btn small" data-add="${i}" style="margin-top:4px">Add to hit list</button>` : WT.hitEntry(ph.snap.k) ? '<span class="faint">On your list</span>' : '<span class="faint">Too blurry to know him again</span>'}</div>`).join('')}</div>`
       : '<p class="faint">No photos yet. Buy a trail camera, hang it on your land, and check it (or get a cellular one).</p>'}</section>`;
     st.photos.slice(0, 40).forEach((ph, i) => paint(el, 'q' + i, UI.photoImg(ph)));

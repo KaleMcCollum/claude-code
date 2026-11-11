@@ -564,7 +564,7 @@
     const B = L.B;
     const pose = opts.pose || 'alert';
     const bust = opts.frame !== 'full';
-    const mount = bust && (opts.mount === 'euro' || opts.mount === 'cap') ? opts.mount : null; // skull or felt-cap mount: antlers only
+    const mount = bust && (opts.mount === 'euro' || opts.mount === 'cap' || opts.mount === 'shed') ? opts.mount : null; // skull or felt-cap mount: antlers only
     const down = pose === 'down';
     let W, H, cx, skullY, groundY;
     const legLen = B.sh - B.chestH - 0.5;
@@ -648,7 +648,8 @@
         rackInfo = drawRack(ant, WT.unpackRack(deer.rack), deer.style, { cx, top: skullY + F.pedY, ppi, squash: down ? 0.5 : 1 });
         for (let i = 0; i < W * H; i++) if (ant.c[i]) buf.c[i] = ant.c[i];
       }
-      if (mount) drawMountHead(buf, mount, cx, skullY + F.pedY, ppi);
+      if (mount === 'shed') { if (opts.side === 'R' || opts.side === 'L') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (opts.side === 'R' ? x >= icx : x < icx) buf.c[y * W + x] = 0; } // his right antler is on your left
+      else if (mount) drawMountHead(buf, mount, cx, skullY + F.pedY, ppi);
       else for (let r = 0; r < F.rows; r++) for (let i = 0; i < F.hw * 2; i++) { const c = F.face[r][i]; if (c) buf.set(x0 + i, headTop + r, c); }
       if (L.button && lod === 0) { buf.set(icx - 5, skullY, K.TUFT); buf.set(icx + 4, skullY, K.TUFT); }
     } else {

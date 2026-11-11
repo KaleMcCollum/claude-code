@@ -31,7 +31,7 @@
   #app { max-width: 1080px; margin: 0 auto; padding-block: 10px 28px; padding-inline: 16px; display: flex; flex-direction: column; gap: 10px; }
 
   /* top bar */
-  #top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px; background: var(--wood-1); border: 3px solid var(--wood-3); box-shadow: inset 0 0 0 2px var(--wood-0); }
+  #top { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px; background: var(--wood-1); border: 3px solid var(--wood-3); box-shadow: inset 0 0 0 2px var(--wood-0); }
   #top .brand { font-family: var(--display); font-size: 11px; color: var(--bone); letter-spacing: 1px; white-space: nowrap; }
   #top .chips { display: flex; flex-wrap: wrap; gap: 4px 14px; flex: 1; justify-content: center; min-width: 0; }
   .chip { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-dim); }
@@ -137,6 +137,7 @@
   <header id="top">
     <span class="brand">WHITETAIL COUNTRY</span>
     <div class="chips" id="chips"></div>
+    <button class="btn small blaze" id="huntBtn" type="button">Hunt</button>
     <button class="btn small" id="waitBtn" type="button">Wait ▸</button>
   </header>
   <main id="screen"></main>

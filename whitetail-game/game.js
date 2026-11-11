@@ -77,6 +77,7 @@
   WT.newGame = function (seed) {
     seed = seed || ((Math.random() * 1e9) | 0);
     const world = WT.genWorld(seed);
+    captureNatural(world);
     G.world = world;
     const rng = WT.makeRng(seed ^ 0x5eed);
     G.rng = rng;
@@ -139,7 +140,7 @@
     rotateListings();
     st.weather = rollWeather(0, null, rng);
     news(`Welcome to the Home Place: ${home.acres} acres of your own. Buy a buck tag at the shop, check your gear, then press HUNT.`);
-    news('Rifle season runs Oct 1 to Dec 31 this year. Blaze orange is required.');
+    news('Rifle season runs Oct 1 to Dec 31 this year.');
     news('Tip: the first week of October is mild, so your starter clothes are fine for now. After the first cold front (around Oct 8) you will need a jacket, bibs, boots and a hat to sit more than a few minutes.');
     return st;
   };
@@ -219,6 +220,7 @@
     prop.effectiveAcres = contiguousAcres(pid);
     prop.herd = d.herd || [];
     prop.huntingPressure = d.pressure ?? 0.05;
+    prop.sanct = WT.sanctuaryInfo(pid).counted;
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
     return prop;
@@ -277,6 +279,7 @@
     if (!st) { try { st = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { st = null; } }
     if (!st || st.v !== 1) return null;
     G.world = WT.genWorld(st.seed);
+    captureNatural(G.world);
     G.state = st;
     G.rng = WT.makeRng(1); G.rng.setState(st.rngState);
     WT.setDeerSeq(st.deerSeq || 1);
@@ -343,6 +346,12 @@
   WT.news = news;
 
   /* ================================================================ money ledger (shown at season end) */
+  // this season's running tally, used for the end-of-season recap
+  function slog() {
+    const L = S().seasonLog;
+    L.byStand = L.byStand || {}; L.bySes = L.bySes || {}; L.bucks = L.bucks || {}; L.hours = L.hours || 0; L.shots = L.shots || 0; L.misses = L.misses || 0; L.busted = L.busted || 0; L.neighbors = L.neighbors || [];
+    return L;
+  }
   function ledger(cat, amt) {
     const st = S(); if (!st || !amt) return;
     const L = (st.seasonLog.money = st.seasonLog.money || {});
@@ -497,7 +506,7 @@
     if (i < 0 || w.parcelOf[i] !== pid) return 'Pick a spot inside your property line.';
     if (!standableTile(w.cover[i])) return "Can't put a stand there.";
     if (!st.inv.stands[type]) return 'You do not have one of those in your truck. Buy it at the shop.';
-    if (type === 'ground') return 'Ground sits are free on public land. On your land, put up a real stand.';
+    if (type === 'ground' || WT.standType(type).kind === 'mobile') return 'That one is carried, not left up. Equip it under Gear to hunt public land; on your own land put up a ladder, tripod, pop-up or box blind.';
     if (d.stands.length >= WT.limits(pid).stands) return `Stand limit reached (${WT.limits(pid).stands} for this acreage).`;
     if (d.stands.some((s) => Math.abs(s.x - x) + Math.abs(s.y - y) < 3)) return 'Too close to another stand.';
     if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
@@ -588,7 +597,7 @@
   WT.placeCamera = function (pid, type, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'player' && d.owner !== 'public') return 'Cameras go on your own land or on public land.';
-    if (d.owner === 'public' && d.bowOnly && !WT.hasBow()) return 'This area is bow only. Bows are coming in a later update.';
+    if (d.owner === 'public' && d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return d.owner === 'public' ? 'Pick a spot inside the public area.' : 'Pick a spot inside your property.';
     if (!st.inv.cameras[type]) return 'Buy a camera at the shop first.';
     const camLim = WT.camLimit(pid);
@@ -776,12 +785,16 @@
     return out;
   };
   WT.publicAreas = () => G.world.parcels.filter((p) => S().parcels[p.id].owner === 'public');
-  WT.hasBow = () => false; // bows arrive in a later update
+  WT.isBow = (id) => !!(WT.rifle(id) || {}).bow;
+  WT.hasBow = () => WT.isBow(S().loadout.rifle); // a bow in your hands, not just in the closet
+  // The mobile stand on your back (saddle, hang-on, climber or pop-up). Public land can't be hunted without one.
+  WT.mobileStand = function () { const st = S(), id = st.loadout.mobile; return id && (st.inv.stands[id] || 0) > 0 ? id : null; };
+  WT.setMobile = function (id) { const st = S(); if (id && !(st.inv.stands[id] > 0)) return 'You do not own that one.'; st.loadout.mobile = id || null; return null; };
   WT.SPOT_LIMITS = { perArea: 3, total: 10 };
   WT.markSpot = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'public') return 'Spots are marked on public land. On your own land, put up a stand.';
-    if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Bows are coming in a later update.';
+    if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a tree or ground spot inside the public area.';
     d.spots = d.spots || [];
     const total = WT.publicAreas().reduce((a, p) => a + (st.parcels[p.id].spots || []).length, 0);
@@ -798,15 +811,20 @@
   WT.renameStand = function (stand, name) { stand.name = String(name || '').slice(0, 28) || null; };
   // Portable gear you can carry to a public spot (or hang at it)
   WT.mobileOptions = function (spot) {
-    const inv = S().inv, out = [{ id: 'ground', ok: true }];
-    for (const id of ['climber', 'hangon', 'saddle', 'popup']) {
-      if (!inv.stands[id]) continue;
-      const t = WT.standType(id);
-      if (t.bowOnly && !WT.hasBow()) { out.push({ id, ok: false, why: 'bow only' }); continue; }
-      if (id !== 'popup' && spot && !spot.tree) { out.push({ id, ok: false, why: 'needs a tree' }); continue; }
-      out.push({ id, ok: true });
-    }
-    return out;
+    const id = WT.mobileStand();
+    if (!id) return [];
+    if (id !== 'popup' && spot && !spot.tree) return [{ id, ok: false, why: 'needs a tree' }];
+    return [{ id, ok: true }];
+  };
+  // Can you hunt this public spot right now? Returns null, or the reason you can't.
+  WT.spotBlock = function (pid, spot) {
+    const d = S().parcels[pid];
+    if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
+    if (spot.kind !== 'spot') return null;
+    const id = WT.mobileStand();
+    if (!id) return 'You need a mobile stand to hunt public land. Buy a hang-on, climber, saddle or pop-up blind at the Shop and equip it under Gear.';
+    if (id !== 'popup' && !spot.tree) return `A ${WT.standType(id).name} needs a tree, and this spot is in the open. Equip a pop-up blind, or mark a spot in the trees.`;
+    return null;
   };
 
   /* ================================================================ detail levels (hunt view spec) */
@@ -929,7 +947,7 @@
     const clear = info.level >= 3;
     const antlered = deer.sex === 'b' && deer.age >= 1.5;
     if (!e) {
-      if (!clear || (!antlered && !info.force)) return null;
+      if (!clear || !info.force) return null; // you decide who goes on the list
       e = {
         k: deer.id, name: info.name || null, status: antlered ? 'Watch' : deer.sex === 'd' && deer.age >= 1 ? 'Doe' : 'Watch',
         estAge: suggestAge(deer, info.level), estYear: st.year, notes: '', places: [], log: [], snap: null, photos: [], added: [st.year, st.day],
@@ -972,12 +990,16 @@
   /* A stand's numbers never change: a rating (its percentile among every spot on the map, and the best it can
      ever hunt), a consistency, its winds and how far you see. What changes sit to sit is "today": wind, time of
      day, pressure and luck can only pull a sit DOWN from the stand's best, never above it. */
+  // The ground as it was before you changed anything: ratings are ranked against it, and your improvements
+  // can move a stand's rating by at most 15 points either way.
+  function captureNatural(w) { w._nat = { W: w.W, H: w.H, seed: w.seed, cover: w.cover.slice(), travel: w.travel.slice(), distRoad: w.distRoad.slice() }; delete w._peaks; }
+  WT.captureNatural = captureNatural;
   const peakOf = (r) => clamp(Math.max(r.morning, r.evening, r.rut) * 0.8 + r.mature * 0.2);
   function spotPercentile(v) {
     const w = G.world;
     if (!w._peaks) {
       const a = [];
-      for (let y = 1; y < w.H; y += 3) for (let x = 1; x < w.W; x += 3) a.push(peakOf(WT.spotRatings(w, x, y)));
+      for (let y = 1; y < w.H; y += 3) for (let x = 1; x < w.W; x += 3) a.push(peakOf(WT.spotRatings(w._nat || w, x, y)));
       w._peaks = a.sort((p, q) => p - q);
     }
     let lo = 0, hi = w._peaks.length;
@@ -997,7 +1019,7 @@
     const winds = [], near = [];
     for (let k = -c.span; k <= c.span; k++) winds.push(D[(ci + k + 8) % 8]);
     near.push(D[(ci - c.span - 1 + 8) % 8], D[(ci + c.span + 1) % 8]);
-    const t = { kind, name: c.name, note: c.note, swing: c.swing, winds, near, rating: Math.max(1, Math.min(99, Math.round(spotPercentile(peakOf(s.r)) * 100))) };
+    const t = { kind, name: c.name, note: c.note, swing: c.swing, winds, near, rating: (() => { const cur = spotPercentile(peakOf(s.r)), w = G.world, nat = w._nat ? spotPercentile(peakOf(WT.spotRatings(w._nat, s.x, s.y))) : cur; return Math.max(1, Math.min(99, Math.round((nat + Math.max(-0.15, Math.min(0.15, cur - nat))) * 100))); })() };
     Object.defineProperty(s, '_traits', { value: t, enumerable: false, configurable: true }); // not saved
     return t;
   };
@@ -1150,7 +1172,6 @@
     if (setup.competition) log.push({ t: start, kind: 'warn', text: 'You can hear another hunter walking in somewhere off to the east.' });
     if (plan.deficit > 0) log.push({ t: start, kind: 'warn', text: `You're dressed for about ${plan.comfortable}°F. You'll get cold after ${fmtDur(plan.maxHrs)}.` });
     if (plan.hot > 0) log.push({ t: start, kind: 'warn', text: 'You were sweating on the walk in. Your scent is going to carry.' });
-    if (!plan.blazeOk) log.push({ t: start, kind: 'bad', text: 'You forgot blaze orange. If the warden checks you it is a $100 ticket.' });
     G.hunt = H;
     st.stats.hunts++;
     st.seasonLog.hunts++;
@@ -1228,6 +1249,7 @@
       if (first) { H.seenIds.add(m.deer.id); H.xp += C().progression.xpPerSighting; }
       if (lvl >= 3) {
         const where = (H.stand.name || WT.standType(H.stand.type).name) + ', ' + H.parcel.name;
+        if (m.deer.sex === 'b' && m.deer.age >= 1.5 && m.read) { const L = slog(), b0 = L.bucks[m.deer.id]; if (!b0 || lvl >= b0.lvl) L.bucks[m.deer.id] = { t: m.read.text, lvl, g: m.deer.gross || 0, where, d: st.day }; }
         const doing = g.feeding ? 'feeding' : g.alert ? 'alert' : 'walking';
         const already = WT.hitEntry(m.deer.id);
         if (!already || !m.logged || (already && m.read && (already.readLvl || 0) < lvl)) {
@@ -1274,7 +1296,7 @@
       const why = detectCheck(H, g);
       if (why) {
         if (g.alert >= 2 || why === 'scent') {
-          g.gone = true; g.busted = true;
+          g.gone = true; g.busted = true; slog().busted++;
           H.prop.huntingPressure = clamp(H.prop.huntingPressure + 0.015);
           H.stand.pressure = clamp((H.stand.pressure || 0) + 0.03);
           const txt = why === 'scent' ? 'A loud snort. One of them winded you. White flags bound away.' : why === 'sight' ? 'One catches your movement. Stomp, stomp, snort, and gone.' : 'A head snaps up at the sound. Then they are gone.';
@@ -1336,6 +1358,17 @@
     const r = H.rifle, sc = H.scope;
     const dist = Math.max(5, g.dist + m.dd);
     const effRange = r.range * 3;
+    if (r.bow) { // an arrow: deadly close, fading fast past 20 yards, hopeless past its range
+      let a = r.acc + st.skills.shooting * 0.8 + H.sType.accuracy * 0.18 + 24;
+      if (dist > 20) a -= (dist - 20) * 1.1;
+      if (dist > effRange) a -= (dist - effRange) * 2.5;
+      if (WT.lightFactor(H) < 1) a -= 10;
+      if (!g.clear) a -= 30;
+      if (g.pose === 'walk') a -= 12;
+      if (g.alert) a -= 12; // a wound-up deer jumps the string
+      if (m.deer.sex === 'b' && m.deer.gross > 130) a -= Math.max(0, 14 - st.skills.shooting * 0.5);
+      return clamp(a / 100, 0.02, 0.95);
+    }
     let acc = r.acc * 0.55 + sc.acc + st.skills.shooting * 0.8 + H.sType.accuracy * 0.18 + 25;
     acc -= r.recoil * 0.15 * (1 - st.skills.shooting / 60);
     if (dist > effRange) acc -= (dist - effRange) * 0.45;
@@ -1362,9 +1395,9 @@
     H.rounds--; H.shots++; st.stats.shots++;
     const p = hitChance(H, g, m);
     const r = H.rifle;
-    H.log.push({ t: H.now, kind: 'shot', text: `BOOM. The ${r.name} (${r.cal}) barks${g.clear ? '' : ' through the brush'}.` });
-    H.prop.huntingPressure = clamp(H.prop.huntingPressure + 0.03);
-    H.stand.pressure = clamp((H.stand.pressure || 0) + 0.04);
+    H.log.push({ t: H.now, kind: 'shot', text: r.bow ? `Thwack. The ${r.name} sends an arrow${g.clear ? '' : ' through the brush'}.` : `BOOM. The ${r.name} (${r.cal}) barks${g.clear ? '' : ' through the brush'}.` });
+    H.prop.huntingPressure = clamp(H.prop.huntingPressure + (r.bow ? 0.008 : 0.03)); // a bow doesn't wake the county
+    H.stand.pressure = clamp((H.stand.pressure || 0) + (r.bow ? 0.012 : 0.04));
     // everyone else in the group bolts
     g.members.forEach((x) => { if (x !== m) x.fled = true; });
     if (!rng.chance(p)) {
@@ -1376,7 +1409,7 @@
       cleanup(H); return;
     }
     const effRange = r.range * 3;
-    const vital = clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) + (dist <= 40 ? 0.2 : dist < 100 ? 0.2 * (100 - dist) / 60 : 0));
+    const vital = r.bow ? clamp(0.72 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) - Math.max(0, dist - 25) * 0.008) : clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) + (dist <= 40 ? 0.2 : dist < 100 ? 0.2 * (100 - dist) / 60 : 0));
     g.gone = true;
     if (rng.chance(vital)) harvest(H, g, deer, dist, rng.chance(0.5) ? 'drops in its tracks' : `runs ${rng.int(30, 90)} yards and piles up`);
     else {
@@ -1534,13 +1567,19 @@
     H.stand.sessions[H.setup.session] = (H.stand.sessions[H.setup.session] || 0) + 1;
     H.stand.recent = H.stand.recent || [];
     H.stand.recent.unshift({ y: st.year, d: st.day, s: H.setup.session, seen: H.seenIds.size, wind: st.weather.windDir });
+    {
+      const L = slog(), key = H.stand.sid, ses = H.setup.session;
+      const bs = (L.byStand[key] = L.byStand[key] || { name: H.stand.name || (H.stand.kind === 'spot' ? 'Marked spot' : WT.standType(H.stand.type).name), parcel: H.parcel.name, sits: 0, seen: 0, wind: {} });
+      bs.sits++; bs.seen += H.seenIds.size; bs.wind[st.weather.windDir] = (bs.wind[st.weather.windDir] || 0) + H.seenIds.size;
+      const ss = (L.bySes[ses] = L.bySes[ses] || { sits: 0, seen: 0 }); ss.sits++; ss.seen += H.seenIds.size;
+      L.hours += hours; L.shots += H.shots; L.misses += H.misses;
+    }
     if (H.stand.recent.length > 8) H.stand.recent.length = 8;
     if (d.owner === 'public') d.scoutSits = (d.scoutSits || 0) + 1;
     const P = cfg.progression;
     H.xp += hours * P.xpPerHourSat;
     st.stats.hours += hours; st.stats.seen += H.seenIds.size;
     H.levelUps = WT.addXp(H.xp);
-    if (!H.plan.blazeOk && G.rng.chance(0.15)) { st.cash -= 100; ledger('Fines', -100); news('A game warden checked you without blaze orange. $100 fine.', 'bad'); H.log.push({ t: H.now, kind: 'bad', text: 'A game warden is waiting at your truck. No blaze orange: $100 fine.' }); }
     st.lastHunt = { pid: H.setup.pid, sid: H.stand.sid, session: H.setup.session, seen: H.seenIds.size, harvested: H.harvested.length };
     advanceAfterHunt(H.setup.session);
     WT.save();
@@ -1577,6 +1616,24 @@
     WT.save();
   };
 
+  // Somebody else killed a deer. You always hear about a hit list deer; other good bucks only if they died on or next to your land.
+  function neighborKill(p, d, deer) {
+    const st = S(), rng = G.rng, w = G.world;
+    const e = WT.hitEntry(deer.id);
+    const antlered = deer.sex === 'b' && deer.age >= 1.5 && deer.gross;
+    const mine = d.owner === 'player', nextDoor = [...p.neighbors].some((q) => st.parcels[q].owner === 'player');
+    if (!e && !(antlered && deer.gross >= 125 && (mine || nextDoor) && rng.chance(0.6))) return;
+    let who;
+    if (d.owner === 'npc') who = `The ${p.ownerName}s`;
+    else if (d.owner === 'public') who = `A hunter on ${p.name}`;
+    else { const nb = [...p.neighbors].map((q) => w.parcels[q]).filter((q) => st.parcels[q.id].owner === 'npc' && q.ownerName); who = nb.length ? `The ${rng.pick(nb).ownerName}s` : 'A neighbor'; }
+    const cls = antlered ? `${Math.floor(deer.gross / 10) * 10}-class buck` : deer.sex === 'd' ? 'doe' : 'young deer';
+    if (e) {
+      e.dead = { y: st.year, d: st.day, by: who };
+      news(`${who} killed ${e.name ? `"${e.name}"` : `an unnamed ${antlered ? 'buck' : 'deer'}`}, one of your hit list deer${antlered ? ` (a ${cls})` : ''}.`, 'bad');
+    } else news(`${who} killed a ${cls}${mine ? ' that lived on your land' : ' next door'}.`, 'warn');
+    slog().neighbors.push({ who, cls, hit: e ? e.name || 'unnamed' : null });
+  }
   function nextDay() {
     const st = S(), cfg = C(), rng = G.rng;
     st.day++;
@@ -1591,6 +1648,7 @@
       const prop = makeProp(p.id);
       const died = WT.inSeasonDailyMortality(prop, rng, cfg.calendar.seasonDays);
       d.herd = prop.herd;
+      for (const deer of died) neighborKill(p, d, deer);
     }
     cameraDay();
     if (st.day >= cfg.calendar.seasonDays) { G.seasonOver = true; return; }
@@ -1667,7 +1725,40 @@
     return n;
   };
 
+  WT.checkAllCameras = function () {
+    let n = 0, places = 0;
+    for (const p of G.world.parcels) { const d = S().parcels[p.id]; if ((d.cams || []).some((c) => c.queue && c.queue.length) || (d.cams || []).some((c) => !WT.camType(c.type).cell)) { if ((d.cams || []).length) { n += WT.checkCameras(p.id); places++; } } }
+    return { n, places };
+  };
+
   /* ================================================================ season end */
+  // A plain look back at the season: what worked, so next year's plan writes itself.
+  function buildRecap() {
+    const st = S(), L = slog(), out = { hours: Math.round(L.hours), hunts: L.hunts || 0, shots: L.shots, misses: L.misses, busted: L.busted, tips: [] };
+    const stands = Object.values(L.byStand).map((b) => Object.assign({ rate: b.seen / Math.max(1, b.sits) }, b));
+    out.seen = stands.reduce((a, b) => a + b.seen, 0);
+    const tried = stands.filter((b) => b.sits >= 2).sort((a, b) => b.rate - a.rate);
+    out.best = tried[0] || stands.slice().sort((a, b) => b.rate - a.rate)[0] || null;
+    out.worst = tried.length > 1 ? tried[tried.length - 1] : null;
+    if (out.best) { const wn = Object.entries(out.best.wind).sort((a, b) => b[1] - a[1])[0]; out.bestWind = wn && wn[1] > 0 ? wn[0] : null; }
+    const m = L.bySes.morning, e = L.bySes.evening;
+    out.morning = m ? m.seen / m.sits : null; out.evening = e ? e.seen / e.sits : null;
+    const bucks = Object.entries(L.bucks).map(([id, b]) => Object.assign({ id: +id }, b)).sort((a, b) => b.g - a.g);
+    out.bucks = bucks.length;
+    const taken = new Set(L.harvest.map((r) => r.id));
+    if (bucks[0]) { const he = WT.hitEntry(bucks[0].id); out.biggest = { text: bucks[0].t, where: bucks[0].where, d: bucks[0].d, name: he ? he.name : null, taken: taken.has(bucks[0].id) }; }
+    out.passed = bucks.filter((b) => !taken.has(b.id)).length;
+    out.neighbors = L.neighbors.slice(0, 6);
+    // next year's plan
+    if (out.best && out.best.sits >= 2) out.tips.push(`${out.best.name} was your best stand: ${out.best.rate.toFixed(1)} deer a sit over ${out.best.sits} sits${out.bestWind ? `, best on a ${out.bestWind} wind` : ''}. Build next year around it.`);
+    if (out.worst && out.worst.rate < (out.best ? out.best.rate * 0.5 : 0)) out.tips.push(`${out.worst.name} saw ${out.worst.rate.toFixed(1)} deer a sit. Move it, or put a camera there first to see if it's worth keeping.`);
+    if (out.morning != null && out.evening != null && Math.abs(out.morning - out.evening) > 0.4) out.tips.push(`${out.morning > out.evening ? 'Mornings' : 'Evenings'} were better for you (${Math.max(out.morning, out.evening).toFixed(1)} deer a sit against ${Math.min(out.morning, out.evening).toFixed(1)}).`);
+    if (out.busted >= 4) out.tips.push(`Deer caught you ${out.busted} times. Check the wind before you pick a stand, and look at quieter, better-hiding clothes.`);
+    if (out.shots >= 3 && out.misses / out.shots > 0.5) out.tips.push(`You missed ${out.misses} of ${out.shots} shots. Wait for closer deer and clear shots, or put skill points in Marksmanship.`);
+    if (out.hunts && out.hunts < 20) out.tips.push(`You hunted ${out.hunts} time${out.hunts === 1 ? '' : 's'} in a 92-day season. Warmer clothes let you sit longer and later into the year.`);
+    if (out.biggest && !out.biggest.taken) out.tips.push(`The biggest buck you saw got away${out.biggest.name ? ` ("${out.biggest.name}")` : ''}. If the sheds turn up this spring, he's still out there.`);
+    return out;
+  }
   WT.endSeason = function () {
     const st = S(), cfg = C(), rng = G.rng, w = G.world;
     const summary = { year: st.year, harvest: st.seasonLog.harvest.slice(), hunts: st.seasonLog.hunts, tax: 0, events: [], money: Object.assign({}, st.seasonLog.money || {}) };
@@ -1713,6 +1804,10 @@
     const yearFactor = 1 + rng.range(-cfg.deer.yearlyVariance, cfg.deer.yearlyVariance);
     summary.winter = winter > 0.65 ? 'a brutal winter' : winter > 0.45 ? 'a typical North Dakota winter' : 'a mild winter';
     summary.growing = yearFactor > 1.03 ? 'a wet summer with great growing conditions' : yearFactor < 0.97 ? 'a dry summer' : 'an average summer';
+    // what every buck on your land was carrying this fall (he drops it in late winter if he lives)
+    const carried = [];
+    for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
+    summary.recap = buildRecap();
     // whole-map year: every parcel's cycle, dispersal between real parcels, population stabilizer
     const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; return pr; });
     const res = WT.worldYear(props, rng, { winter, yearFactor, seasonMortalityApplied: true }, st.worldSim);
@@ -1724,6 +1819,20 @@
       for (const s2 of d.spots || []) s2.pressure = 0;
       if (res.logs[k].disease && d.owner === 'player') summary.events.push(`EHD hit ${p.name} in late summer. You found dead deer near the water.`);
     });
+    // shed hunting: walk your land in March. A shed means he made it through the winter and is still yours.
+    st.sheds = st.sheds || [];
+    summary.sheds = [];
+    const findP = clamp(0.5 + (st.skills.woodcraft || 0) * 0.012, 0.5, 0.9);
+    for (const c of carried) {
+      const d = st.parcels[c.pid];
+      if (d.owner !== 'player' || !d.herd.some((x) => x.id === c.id) || !rng.chance(findP)) continue;
+      const side = rng.chance(0.3) ? 'both' : rng.chance(0.5) ? 'R' : 'L';
+      const e = WT.hitEntry(c.id);
+      const shed = { k: c.id, y: st.year, age: c.age, side, pts: side === 'both' ? c.pR + c.pL : side === 'R' ? c.pR : c.pL, parcel: w.parcels[c.pid].name, snap: c.snap, name: e ? e.name || null : null };
+      st.sheds.unshift(shed); summary.sheds.push(shed);
+      if (e) { (e.sheds = e.sheds || []).unshift({ y: st.year, age: c.age, side, pts: shed.pts, parcel: shed.parcel }); e.last = [st.year + 1, 0]; }
+    }
+    if (st.sheds.length > 120) st.sheds.length = 120;
     // reset season
     st.year++; st.day = 0; st.slot = 'morning';
     st.tags = { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 };

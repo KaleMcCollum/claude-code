@@ -218,20 +218,23 @@
   /* ---------------------------------------------------------------- helpers for cards */
   const stars = (n) => (n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '?????');
   const pressureHtml = (v) => { const n = Math.min(5, Math.round(v * 10)); return `<span class="${n >= 4 ? 'bad' : n >= 2 ? 'warn' : 'good'}">${'■'.repeat(n)}${'□'.repeat(5 - n)}</span> <span class="faint">${n >= 4 ? 'burned, rest it' : n >= 2 ? 'getting hunted' : 'fresh'}</span>`; };
-  UI.knowledgeHtml = function (s) {
+  // The four things that decide a sit up top; everything else folds under More info.
+  UI.knowledgeHtml = function (s, extra = '') {
     const st = S(), k = WT.standKnowledge(s);
     const rec = (s.recent || []).slice(0, 4).map((r) => `<p class="dim">${WT.dateLabel(r.d)} ${r.s}: ${r.seen ? r.seen + ' deer seen' : 'nothing'} (wind ${r.wind})</p>`).join('');
-    if (!k.known) return `<p class="dim">You haven't sat here yet. One sit tells you what this spot is: its rating, its winds and how far you can see. Those never change.</p><dl class="kv"><dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd></dl>`;
+    if (!k.known) return `<p class="dim">You haven't sat here yet. One sit tells you its rating, its winds and how far you can see.</p><dl class="kv"><dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd></dl>${extra}`;
     const b = UI.betScore(s);
     const line = (name, o) => `<dt>${name}</dt><dd><span class="stars">${stars(o.stars)}</span></dd>`;
-    return `<dl class="kv"><dt>Stand rating</dt><dd><b>${k.rating}</b> / 100 <span class="faint">better than ${k.rating}% of spots</span></dd>
-      <dt>This ${st.slot}</dt><dd><span class="stars">${stars(b.stars)}</span> <span class="faint">of its best · ${b.notes.join(', ')}</span></dd>
-      <dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd>
+    return `<dl class="kv"><dt>Stand rating</dt><dd><b>${k.rating}</b> / 100</dd>
+      <dt>This ${st.slot}</dt><dd><span class="stars">${stars(b.stars)}</span> <span class="faint">${b.notes.join(', ')}</span></dd>
+      <dt>Wind</dt><dd>${st.weather.windDir} today · best on ${k.winds.join(', ')}</dd>
+      <dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd></dl>
+      <details style="margin-top:6px"><summary class="btn small" style="display:inline-block;cursor:pointer">More info</summary>
+      <dl class="kv" style="margin-top:6px"><dt>Rating means</dt><dd><span class="faint">better than ${k.rating}% of spots on the map</span></dd>
       <dt>Consistency</dt><dd>${k.consistency.name} <span class="faint">${k.consistency.note}</span></dd>
-      <dt>Best winds</dt><dd>${k.winds.join(', ')}</dd>
       <dt>View</dt><dd>${k.view}</dd>
       ${line('Mornings', k.morning)}${line('Evenings', k.evening)}${line('Rut', k.rut)}${line('Big bucks', k.mature)}
-      <dt>Sits</dt><dd>${k.sits}</dd></dl>${rec ? '<h3>Recent sits</h3>' + rec : ''}`;
+      <dt>Sits</dt><dd>${k.sits}</dd></dl>${extra}${rec ? '<h3>Recent sits</h3>' + rec : ''}</details>`;
   };
   function listingHtml(p) {
     const st = S(), w = Wd(), h = p.habitat;
@@ -286,11 +289,11 @@
        <p>${swatch(SIMPLE.food[0])}<b>Food</b>: crop fields, hay, pasture and your food plots. Deer feed here at dawn and dusk.</p>
        <p>${swatch(SIMPLE.water[0])}<b>Water</b>: rivers, creeks and ponds.</p>
        <p>${swatch(SIMPLE.people[0])}<b>Roads, farms and town</b>: people. Deer avoid them, and stands near roads get bumped walking in.</p>
-       <p class="dim">Tap Detail on the map to see every crop and tree row instead.</p>`,
+       `,
       `<h2>Reading the map (2/3): whose land</h2>
        <p>${box('#7fb0ff')}<b>Blue outline</b>: your land. Hunt any stand you put up. Bow or rifle.</p>
-       <p>${box('#b6e08a')}<b>Green outline</b>: public land. Free, but crowded and pressured. Mark up to 3 spots per area and bring a climber or hang-on (or sit on the ground).</p>
-       <p>${box('#2f6a3e')}<b>Dark green</b>: bow-only public land. Locked until bows arrive.</p>
+       <p>${box('#b6e08a')}<b>Green outline</b>: public land. Free, but crowded and pressured. Mark up to 3 spots per area. You need a mobile stand equipped under Gear: a hang-on, climber or saddle for a tree, or a pop-up blind for open ground.</p>
+       <p>${box('#2f6a3e')}<b>Dark green</b>: bow-only public land. You need a bow equipped to hunt it.</p>
        <p>${box('#e2b04a')}<b>Gold outline</b>: a neighbor gave you permission. Hunt only their stands.</p>
        <p>${box('#ff8a3a')}<b>Orange outline</b> (Land screen): for sale.</p>
        <p class="dim">When you're picking a hunt, land you can't hunt is darkened so your spots stand out.</p>`,
@@ -333,7 +336,7 @@
     el.innerHTML = UI.stage(LW, LH, `
       <div class="ov" style="right:8px;top:8px;flex-direction:column"><button class="btn ghost small" data-z="in">+</button><button class="btn ghost small" data-z="out">−</button><button class="btn ghost small" data-z="home">Home</button></div>
       <div class="ov" style="left:8px;top:8px"><button class="btn ghost small" data-back>Lodge</button><button class="btn ghost small ${land ? '' : 'on'}" data-mode="hunt">Hunt</button><button class="btn ghost small ${land ? 'on' : ''}" data-mode="land">Land</button></div>
-      <div class="ov" style="right:8px;bottom:8px;flex-direction:column"><button class="btn ghost small" data-style>${(st.settings.mapStyle || 'simple') === 'simple' ? 'Detail' : 'Simple'}</button><button class="btn ghost small" data-help aria-label="How to read the map">?</button></div>`) +
+      <div class="ov" style="right:8px;bottom:8px;flex-direction:column"><button class="btn ghost small" data-help aria-label="How to read the map">?</button></div>`) +
       `<div class="row" id="banner" style="margin-top:6px;padding:4px 8px;border:2px solid #ffe08a;align-items:center;justify-content:space-between" hidden></div>
       <div class="row dim" style="font-size:15px;gap:4px 12px;margin-top:6px">${UI.mapLegend(args.mode)}<span class="faint">Drag to move, pinch or +/− to zoom</span></div>
       <section class="panel" id="card" style="margin-top:8px"></section>`;
@@ -356,7 +359,7 @@
     el.querySelectorAll('[data-z]').forEach((b) => b.addEventListener('click', () => { const z = b.dataset.z; if (z === 'in') view.zoomBy(1.4); else if (z === 'out') view.zoomBy(1 / 1.4); else view.focus(w.starterId); }));
     el.querySelector('[data-back]').addEventListener('click', () => UI.go('lodge'));
     el.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { if (b.dataset.mode !== args.mode) UI.go('map', { mode: b.dataset.mode, pid: state.pid, sid: state.sid }); }));
-    el.querySelector('[data-style]').addEventListener('click', () => { st.settings.mapStyle = (st.settings.mapStyle || 'simple') === 'simple' ? 'detail' : 'simple'; WT.save(); UI.go('map', Object.assign({}, args, { pid: state.pid, sid: state.sid })); });
+    st.settings.mapStyle = 'simple';
     el.querySelector('[data-help]').addEventListener('click', () => UI.mapTutorial());
     if (!st.settings.tutMap) setTimeout(() => UI.mapTutorial(), 50);
     if (state.pid != null) view.focus(state.pid); else view.focus(w.starterId, 6);
@@ -439,7 +442,7 @@
     }
     function playerCard(p, d, pid) {
       const lim = WT.limits(pid), inv = st.inv, t = state.tile;
-      const truck = Object.entries(inv.stands).filter(([id, n]) => n > 0 && id !== 'ground');
+      const truck = Object.entries(inv.stands).filter(([id, n]) => n > 0 && WT.standType(id).kind !== 'mobile');
       const cams = Object.entries(inv.cameras).filter(([, n]) => n > 0);
       const pending = d.cams.reduce((a, c) => a + (c.queue ? c.queue.length : 0), 0);
       let html = `<p>${p.acres} acres${WT.contiguousAcres(pid) > p.acres ? ` (${WT.contiguousAcres(pid)} with your adjoining land)` : ''}. ${esc(flavor(p.habitat))}</p>
@@ -458,7 +461,7 @@
       html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${esc(info.cover)}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div>`;
       if (s) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.standType(s.type).name)}</span><input type="text" id="sname" maxlength="28" value="${esc(s.name || '')}" placeholder="Name it" style="flex:1;min-width:90px"><button class="btn small" id="srename">Rename</button></div>
           <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
-          ${UI.stackHtml(pid, s)}${UI.knowledgeHtml(s)}</div>`;
+          ${UI.knowledgeHtml(s, UI.stackHtml(pid, s))}</div>`;
       if (c) html += camBlock(c);
       if (info.plot) { const pt = WT.plotType(info.plot.type); html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">${esc(pt.name)} food plot</span> <span class="dim">${info.plot.acres} ac · ${info.plot.year === st.year ? 'planted this year, deer start using it next season' : 'growing: deer feed here'}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Plow it under</button></div></div>`; }
       if (info.trees) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Tree row</span> <span class="dim">${info.trees.mature ? 'grown into cover' : `planted year ${info.trees.year}, becomes cover after ${WT.CONFIG.improvements.trees.matureYears} years`}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Pull the row</button></div></div>`;
@@ -506,11 +509,11 @@
       const standObj = state.sid && ([...(d.stands || []), ...(d.spots || [])].find((s) => s.sid === state.sid));
       const canHunt = d.owner === 'player' || d.permBought || d.owner === 'public';
       let html = `<div class="row" style="justify-content:space-between"><h2>${esc(p.name)}${d.bowOnly ? ' <span class="tag">Bow only</span>' : ''}</h2><button class="btn small" id="clr">All parcels</button></div>`;
-      const standBlock = () => `<div class="cols"><div><h3>${standObj.kind === 'spot' ? 'Marked spot' : esc(WT.standType(standObj.type).name)}</h3>
+      const sBlock = standObj && canHunt ? WT.spotBlock(pid, standObj) : null;
+      const standBlock = () => `${canHunt ? `<div class="row" style="margin-bottom:8px"><button class="btn blaze big" id="huntHere" style="flex:1">Hunt here</button></div>${sBlock ? `<p class="bad">${esc(sBlock)}</p>` : ''}` : ''}<div class="cols"><div><h3>${standObj.kind === 'spot' ? 'Marked spot' : esc(WT.standType(standObj.type).name)}</h3>
           <div class="row"><input type="text" id="sname" maxlength="28" value="${esc(standObj.name || '')}" placeholder="Name it"><button class="btn small" id="srename">Rename</button></div>
-          ${UI.stackHtml(pid, standObj)}${UI.knowledgeHtml(standObj)}</div>
+          ${UI.knowledgeHtml(standObj, UI.stackHtml(pid, standObj))}</div>
           <div><h3>Today</h3><p>${esc(WT.weatherLine(st.weather))}</p><p class="dim">Rut: ${esc(WT.rutPhase(Math.min(st.day, 91)).name)}. Next: ${st.slot}.</p>
-          ${canHunt ? `<button class="btn blaze big" id="huntHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Hunt here</button>` : ''}
           ${standObj.kind === 'spot' ? '<div class="row" style="margin-top:8px"><button class="btn small" id="rmSpot">Remove this spot</button></div>' : ''}</div></div>`;
       if (d.owner === 'player') {
         if (land) html += playerCard(p, d, pid);
@@ -523,14 +526,14 @@
         const q = WT.habitatQuality(p.habitat) * (1 - (d.pressure || 0.5) * 0.4);
         const scouted = sc >= 3 ? Math.max(1, Math.min(5, Math.round(1 + q * 5 + (WT.hash2(pid, 1, 2) - 0.5) * 2 / sc))) : 0;
         if (standObj) html += standBlock();
-        html += `<p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: bows are coming in a later update.</span>' : ''}</p>
+        html += `<p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
           <dl class="kv"><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
           ${state.cid ? camBlock(d.cams.find((c) => c.cid === state.cid)) : ''}
           ${state.tile && !standObj ? `<div class="row" style="margin-top:6px"><button class="btn" id="markHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark ${state.cid ? 'this camera spot' : 'the spot you tapped'} to hunt</button></div>` : !state.tile ? '<p><b>Tap the map inside this area</b> to mark a spot to sit or hang a camera.</p>' : ''}
           ${state.tile && !(state.cid && d.cams.some((c) => c.cid === state.cid && c.x === state.tile.x && c.y === state.tile.y)) ? addCamRow(!!standObj) : ''}
           <p class="dim">Cameras here ${d.cams.length} / ${WT.camLimit(pid)}.</p>
-          <p class="faint">Mark a tree to hunt from a climber or hang-on, or any spot to sit on the ground. Only mobile stands are allowed on public land.</p>`;
+          <p class="faint">Public land takes a mobile stand, equipped under Gear. A hang-on, climber or saddle needs a spot in the trees; a pop-up blind works anywhere.</p>`;
       } else {
         if (standObj && d.permBought) html += standBlock();
         html += `<p>${p.acres} acres owned by the ${esc(p.ownerName)} family.</p>`;
@@ -553,6 +556,7 @@
       on('huntHere', () => {
         const comp = WT.publicCompetition(pid);
         const go = (competition) => UI.go('loadout', { pid, sid: standObj.sid, competition });
+        { const blk = WT.spotBlock(pid, standObj); if (blk && /bow only/i.test(blk)) return UI.toast(blk, 'bad'); }
         if (!comp) return go(false);
         UI.modal(`<h2>Company</h2><p>${esc(comp)}</p><div class="row"><button class="btn" id="anyway">Hunt anyway</button><button class="btn ghost" id="other">Pick another spot</button></div>`, (m) => {
           $('#anyway', m).addEventListener('click', () => go(true));

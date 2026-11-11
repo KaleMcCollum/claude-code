@@ -77,6 +77,7 @@
     const el = $('#screen');
     el.innerHTML = '';
     UI.topbar();
+    const hb = $('#huntBtn'); if (hb) hb.hidden = name === 'hunt' || name === 'map' && (!arg || arg.mode !== 'land');
     const fn = UI.screens[name];
     cleanup = fn(el, arg) || null;
     window.scrollTo(0, 0);
@@ -133,8 +134,24 @@
             if (!rows.length) return '';
             const net = rows.reduce((a, r) => a + r[1], 0);
             return `<h3>Money this season</h3><dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd class="${v >= 0 ? 'good' : 'bad'}">${v >= 0 ? '+' : ''}${money(v)}</dd>`).join('')}<dt><b>Net</b></dt><dd class="${net >= 0 ? 'good' : 'bad'}"><b>${net >= 0 ? '+' : ''}${money(net)}</b></dd></dl>
-              <p class="faint">Nothing is charged just for a year passing. Money only moves when you buy, hunt or get fined.</p>`;
+              <p class="faint">Nothing is charged just for a year passing. Money only moves when you buy or hunt.</p>`;
           })()}
+          ${(() => {
+            const r = sum.recap; if (!r || !r.hunts) return '';
+            const f1 = (v) => (v == null ? '-' : v.toFixed(1));
+            return `<h3>How the season went</h3><dl class="kv">
+              <dt>Time on stand</dt><dd>${r.hours} hours over ${r.hunts} hunts</dd>
+              <dt>Deer seen</dt><dd>${r.seen} · ${r.bucks} different buck${r.bucks === 1 ? '' : 's'} seen clearly</dd>
+              ${r.biggest ? `<dt>Biggest buck seen</dt><dd>${r.biggest.name ? `"${esc(r.biggest.name)}", ` : ''}${esc(r.biggest.text)} <span class="faint">${esc(r.biggest.where)}, ${WT.dateLabel(r.biggest.d)}${r.biggest.taken ? ' · you tagged him' : ''}</span></dd>` : ''}
+              <dt>Bucks you passed</dt><dd>${r.passed}</dd>
+              ${r.best ? `<dt>Best stand</dt><dd>${esc(r.best.name)} <span class="faint">${f1(r.best.rate)} deer a sit, ${r.best.sits} sits${r.bestWind ? ', best wind ' + r.bestWind : ''}</span></dd>` : ''}
+              ${r.worst ? `<dt>Slowest stand</dt><dd>${esc(r.worst.name)} <span class="faint">${f1(r.worst.rate)} deer a sit, ${r.worst.sits} sits</span></dd>` : ''}
+              <dt>Mornings / evenings</dt><dd>${f1(r.morning)} / ${f1(r.evening)} deer a sit</dd>
+              <dt>Shots</dt><dd>${r.shots} taken, ${r.misses} missed · busted ${r.busted} time${r.busted === 1 ? '' : 's'}</dd></dl>
+              ${r.neighbors.length ? `<p class="dim">Killed by others: ${r.neighbors.map((n) => esc(n.hit ? `"${n.hit}" (hit list)` : 'a ' + n.cls)).join(', ')}.</p>` : ''}
+              ${r.tips.length ? `<h3>For next year</h3>${r.tips.map((t) => `<p>• ${esc(t)}</p>`).join('')}` : ''}`;
+          })()}
+          ${sum.sheds && sum.sheds.length ? `<h3>Shed hunting</h3><p>You walked your land in March and found ${sum.sheds.length} shed${sum.sheds.length === 1 ? '' : 's'}. Each one is a buck that made it through the winter:</p>${sum.sheds.map((sh) => `<p class="dim">• ${sh.name ? `"${esc(sh.name)}": ` : ''}${sh.side === 'both' ? 'a matched set' : 'one side'}, ${sh.pts} points, off a ${sh.age}-year-old on ${esc(sh.parcel)}</p>`).join('')}<p class="faint">They're in the Trophy Room.</p>` : sum.sheds ? '<h3>Shed hunting</h3><p class="dim">You walked your land in March and came back empty-handed.</p>' : ''}
           ${sum.events.length ? '<h3>On your land</h3>' + sum.events.map((e) => `<p>${esc(e)}</p>`).join('') : ''}
           <p class="dim">New tags are on sale at the shop. Your hit list entries are a year older.</p>
           <div class="row"><button class="btn blaze" id="ok">Back to the lodge</button></div>`, (m2) => $('#ok', m2).addEventListener('click', () => UI.go('lodge')));
@@ -177,60 +194,100 @@
       default: return h < 0.35 ? '#5a4a32' : h < 0.65 ? '#7a6a48' : h < 0.85 ? '#3e3424' : '#8c7a56';
     }
   }
-  // Player character, 16 x 40 px, wearing exactly what's equipped.
+  // Player character, 32 x 80 px, wearing exactly what's equipped. Blocks are laid out on a 16 x 40 grid and
+  // drawn at double resolution so patterns, shading, the face and the weapon get real detail.
   UI.drawPlayer = function (ctx, ox, oy, loadout, hand, t) {
     const cl = {};
     for (const slot in loadout.clothing) if (loadout.clothing[slot]) cl[slot] = WT.cloth(loadout.clothing[slot]);
     const breathe = Math.floor(t / 900) % 2;
-    const px = (x, y, c) => { if (!c) return; ctx.fillStyle = c; ctx.fillRect(ox + x, oy + y + (y < 25 ? breathe : 0), 1, 1); };
-    const fill = (x0, y0, x1, y1, look) => { if (!look) return; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) px(x, y, typeof look === 'string' ? look : patColor(look, x, y)); };
+    const P = (x, y, c) => { if (!c) return; ctx.fillStyle = c; ctx.fillRect(ox + x, oy + y + (y < 50 ? breathe : 0), 1, 1); };
+    const F = (x0, y0, x1, y1, c) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) P(x, y, c); };
+    // a block in coarse grid cells, patterned per fine pixel
+    const fill = (x0, y0, x1, y1, look) => { if (!look) return; for (let y = y0 * 2; y <= y1 * 2 + 1; y++) for (let x = x0 * 2; x <= x1 * 2 + 1; x++) P(x, y, typeof look === 'string' ? look : patColor(look, x, y)); };
+    const shade = (x0, y0, x1, y1, a = 0.24) => F(x0, y0, x1, y1, `rgba(0,0,0,${a})`);
+    const lite = (x0, y0, x1, y1, a = 0.14) => F(x0, y0, x1, y1, `rgba(255,255,255,${a})`);
     const L = (slot) => lookFor(cl[slot]);
     // boots + legs
     const feet = L('feet') || { t: 'solid', c: ['#2a2420', '#4a3a2e'] };
     const legs = L('bibs') || L('pants') || { t: 'denim' };
     fill(4, 25, 7, 36, legs); fill(8, 25, 11, 36, legs);
+    shade(15, 52, 16, 73, 0.45);                       // between the legs
+    shade(14, 50, 14, 73); shade(23, 50, 23, 73);       // shadow side of each leg
+    lite(8, 50, 8, 73); lite(17, 52, 17, 73);
+    shade(9, 60, 13, 60, 0.16); shade(18, 61, 22, 61, 0.16); // knees
     fill(3, 37, 7, 39, feet); fill(8, 37, 12, 39, feet);
+    F(6, 79, 15, 79, '#15110e'); F(16, 79, 25, 79, '#15110e'); shade(15, 74, 16, 78, 0.5);
+    for (let k = 0; k < 2; k++) { P(10, 75 + k * 2, '#c8b89a'); P(20, 75 + k * 2, '#c8b89a'); } // laces
+    lite(6, 74, 15, 74); lite(16, 74, 25, 74);
     // torso: base -> mid -> jacket
     const top = L('jacket') || L('mid') || L('base') || { t: 'solid', c: ['#e8e6e0', '#cfcac0'] };
     fill(3, 11, 12, 24, top);
     fill(1, 11, 2, 23, top); fill(13, 11, 14, 23, top);
     const under = cl.jacket ? (L('mid') || L('base')) : cl.mid ? L('base') : null;
     if (under) { fill(6, 11, 9, 11, under); fill(1, 23, 2, 23, under); fill(13, 23, 14, 23, under); }
-    if (cl.bibs) { fill(5, 16, 10, 24, L('bibs')); fill(4, 11, 4, 15, L('bibs')); fill(11, 11, 11, 15, L('bibs')); }
-    if (cl.vest) { fill(3, 12, 5, 22, { t: 'blaze' }); fill(10, 12, 12, 22, { t: 'blaze' }); }
+    shade(5, 24, 5, 47, 0.3); shade(26, 24, 26, 47, 0.3);   // where the arms hang against the body
+    shade(24, 24, 25, 49); shade(29, 22, 29, 47); shade(4, 22, 4, 47, 0.12);
+    lite(6, 22, 7, 40); lite(2, 22, 2, 40);
+    F(6, 22, 11, 23, 'rgba(255,255,255,.12)'); F(20, 22, 25, 23, 'rgba(0,0,0,.18)'); // shoulders
+    if (cl.jacket) { shade(15, 24, 16, 49, 0.3); for (let y = 26; y < 48; y += 4) P(15, y, '#c8c0a8'); shade(8, 40, 12, 40, 0.3); shade(19, 40, 23, 40, 0.3); shade(8, 41, 8, 45, 0.2); shade(23, 41, 23, 45, 0.2); F(11, 22, 20, 23, 'rgba(0,0,0,.25)'); }
+    else if (cl.mid) { shade(10, 42, 21, 42, 0.22); shade(10, 43, 10, 46, 0.18); shade(21, 43, 21, 46, 0.18); F(10, 48, 21, 49, 'rgba(0,0,0,.2)'); } // hand-warmer pocket, hem
+    if (cl.bibs) { fill(5, 16, 10, 24, L('bibs')); fill(4, 11, 4, 15, L('bibs')); fill(11, 11, 11, 15, L('bibs')); F(9, 30, 10, 31, '#b8b0a0'); F(21, 30, 22, 31, '#b8b0a0'); shade(10, 32, 21, 32, 0.25); }
+    else { F(6, 48, 25, 49, '#3a2a1c'); F(15, 48, 16, 49, '#c8b060'); } // belt and buckle
+    if (cl.vest) { fill(3, 12, 5, 22, { t: 'blaze' }); fill(10, 12, 12, 22, { t: 'blaze' }); shade(11, 24, 11, 45, 0.2); shade(20, 24, 20, 45, 0.2); }
     // hands
     const gloves = L('hands');
     fill(1, 24, 2, 25, gloves || SKIN[0]); fill(13, 24, 14, 25, gloves || SKIN[0]);
-    if (cl.muff) fill(3, 22, 12, 24, L('muff'));
+    shade(2, 51, 5, 51, 0.3); shade(26, 51, 29, 51, 0.3); shade(3, 49, 3, 50, 0.18); shade(27, 49, 27, 50, 0.18); shade(5, 48, 5, 51, 0.2); shade(29, 48, 29, 51, 0.2);
+    if (cl.muff) { fill(3, 22, 12, 24, L('muff')); shade(6, 44, 25, 44, 0.25); shade(6, 49, 25, 49, 0.3); }
     // head
-    fill(5, 3, 10, 9, SKIN[0]); fill(5, 9, 10, 9, SKIN[1]);
-    px(6, 6, '#2a1d16'); px(9, 6, '#2a1d16'); px(7, 8, SKIN[1]); px(8, 8, SKIN[1]);
-    fill(5, 2, 10, 3, '#4a3020'); px(5, 4, '#4a3020'); px(10, 4, '#4a3020');
-    fill(7, 10, 8, 10, SKIN[1]);
-    if (cl.head) { const hl = L('head'); fill(4, 0, 11, 3, hl); if (/cap/i.test(cl.head.name)) fill(4, 4, 12, 4, hl); }
-    // equipment belt
+    fill(5, 3, 10, 9, SKIN[0]);
+    F(14, 20, 17, 21, SKIN[1]); shade(14, 20, 17, 20, 0.2);                      // neck
+    F(9, 11, 9, 14, SKIN[1]); F(22, 11, 22, 14, SKIN[1]);                         // ears
+    F(10, 4, 21, 7, '#4a3020'); F(10, 8, 10, 10, '#4a3020'); F(21, 8, 21, 10, '#4a3020'); F(12, 4, 17, 4, '#5e4028'); // hair
+    F(12, 10, 14, 10, '#3a2618'); F(17, 10, 19, 10, '#3a2618');                    // brows
+    F(12, 12, 13, 12, '#f2ece2'); F(18, 12, 19, 12, '#f2ece2'); P(13, 12, '#2a1d16'); P(18, 12, '#2a1d16'); // eyes
+    F(15, 12, 16, 14, SKIN[1]); P(16, 15, '#b07c58'); P(15, 15, '#b07c58');        // nose
+    F(13, 17, 18, 17, '#8a4a3a'); P(13, 17, '#a8684e'); P(18, 17, '#a8684e');      // mouth
+    for (let y = 15; y <= 19; y++) for (let x = 10; x <= 21; x++) if ((y >= 18 || x <= 11 || x >= 20) && WT.hash2(x, y, 5) < 0.55) P(x, y, 'rgba(74,48,32,.5)'); // stubble
+    shade(20, 8, 21, 19, 0.14); F(10, 19, 21, 19, 'rgba(0,0,0,.14)');
+    if (cl.head) {
+      const hl = L('head'); fill(4, 0, 11, 3, hl); shade(22, 0, 23, 7); lite(9, 0, 14, 1);
+      if (/cap/i.test(cl.head.name)) { fill(4, 4, 12, 4, hl); shade(8, 9, 25, 9, 0.35); } else { F(8, 6, 23, 7, 'rgba(0,0,0,.22)'); for (let x = 9; x < 23; x += 2) P(x, 4, 'rgba(0,0,0,.2)'); } // brim or knit cuff
+    }
+    // equipment
     const eq = loadout.equip || {};
-    if (eq.light) { fill(5, 2, 10, 2, '#1e1e1e'); px(7, 2, '#fff6c8'); px(8, 2, '#fff6c8'); }
-    if (eq.binoculars) { for (let k = 0; k < 6; k++) { px(4 + k, 12 + Math.floor(k / 2), '#1a1414'); px(11 - k, 12 + Math.floor(k / 2), '#1a1414'); } fill(6, 15, 9, 16, '#1e1e22'); px(6, 15, '#6a7a8a'); px(9, 15, '#6a7a8a'); }
-    if (eq.rangefinder) fill(10, 17, 11, 18, '#2e2e3e');
-    if (eq.grunt || eq.snort) { for (let y = 12; y <= 19; y++) px(y % 2 ? 6 : 9, y, '#1a1414'); fill(7, 19, 8, 20, '#8C6E55'); }
-    // rifle in hand
-    const rx = hand === 'left' ? -1 : 15, gx = hand === 'left' ? 0 : 15;
-    fill(gx, 4, gx, 17, '#2a2a2e'); fill(rx, 10, rx + 1, 11, '#1a1a1e');
-    fill(gx, 18, gx, 30, '#6b4a2e'); px(gx, 31, '#4a3020');
+    if (eq.light) { F(10, 4, 21, 5, '#1e1e1e'); F(14, 3, 17, 6, '#3a3a3e'); F(15, 4, 16, 5, '#fff6c8'); }
+    if (eq.binoculars) { for (let k = 0; k < 12; k++) { P(9 + k, 22 + Math.floor(k / 2), '#1a1414'); P(22 - k, 22 + Math.floor(k / 2), '#1a1414'); } F(11, 29, 20, 33, '#1e1e22'); F(15, 29, 16, 33, '#101014'); F(12, 30, 13, 31, '#6a7a8a'); F(18, 30, 19, 31, '#6a7a8a'); lite(11, 29, 20, 29); }
+    if (eq.rangefinder) { F(20, 34, 23, 38, '#2e2e3e'); P(21, 35, '#8a9aaa'); }
+    if (eq.grunt || eq.snort) { for (let y = 24; y <= 38; y++) P(y % 2 ? 12 : 19, y, '#1a1414'); F(14, 38, 17, 42, '#8C6E55'); F(14, 38, 17, 38, '#5a4634'); }
+    if (WT.mobileStand && WT.mobileStand()) { F(6, 24, 7, 44, '#1e1e1e'); F(24, 24, 25, 44, '#1e1e1e'); } // pack straps for the stand on your back
+    // weapon in hand
+    const right = hand !== 'left', wx = right ? 30 : 0;
+    if (WT.isBow && WT.isBow(loadout.rifle)) {
+      const dir = right ? 1 : -1, bx = right ? 30 : 1;
+      for (let y = 14; y <= 62; y++) { const bend = Math.round(3 * Math.sin((y - 14) / 48 * Math.PI)); P(bx + dir * bend, y, '#2a2a2e'); P(bx + dir * bend - dir, y, '#4a4a52'); }
+      for (let y = 14; y <= 62; y++) P(bx - dir, y, 'rgba(232,228,220,.7)'); // string
+      F(bx + dir * 2, 34, bx + dir * 3, 42, '#6b4a2e'); F(bx - 1, 12, bx + 1, 14, '#1a1a1e'); F(bx - 1, 62, bx + 1, 64, '#1a1a1e'); // grip and cams
+    } else {
+      F(wx, 8, wx + 1, 35, '#2a2a2e'); P(wx, 8, '#4a4a52'); for (let y = 8; y <= 35; y += 1) P(wx + (right ? 0 : 1), y, '#3c3c44'); // barrel
+      F(right ? wx - 2 : wx + 2, 18, right ? wx - 1 : wx + 3, 26, '#1a1a1e'); P(right ? wx - 2 : wx + 3, 18, '#5a6a7a'); P(right ? wx - 2 : wx + 3, 26, '#5a6a7a'); // scope
+      F(wx, 36, wx + 1, 62, '#6b4a2e'); for (let y = 36; y <= 62; y++) P(wx + (right ? 1 : 0), y, '#553a22'); F(wx, 63, wx + 1, 64, '#2a1d16'); // stock and butt pad
+      F(wx, 40, wx + 1, 41, '#1a1a1e'); // bolt
+    }
   };
 
   // The lodge is just you: a plank wall, a floor, and the hunter wearing what's equipped.
   function drawLodge(canvas, t) {
     const st = S();
     const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height, floorY = H - 12;
+    const W = canvas.width, H = canvas.height, floorY = H - 24;
     ctx.imageSmoothingEnabled = false;
-    for (let y = 0; y < floorY; y++) { ctx.fillStyle = y % 8 === 7 ? LP.seam : LP.plank[Math.floor(y / 8) % 3]; ctx.fillRect(0, y, W, 1); }
-    for (let y = floorY; y < H; y++) { ctx.fillStyle = LP.floor[Math.floor((y - floorY) / 4) % 2]; ctx.fillRect(0, y, W, 1); }
-    ctx.fillStyle = LP.trim; ctx.fillRect(0, floorY - 1, W, 2);
-    ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect((W >> 1) - 10, H - 7, 20, 2);
-    UI.drawPlayer(ctx, (W >> 1) - 8, H - 46, st.loadout, st.settings.hand, t);
+    for (let y = 0; y < floorY; y++) { ctx.fillStyle = y % 16 >= 14 ? LP.seam : LP.plank[Math.floor(y / 16) % 3]; ctx.fillRect(0, y, W, 1); }
+    for (let k = 0; k < 40; k++) { ctx.fillStyle = 'rgba(0,0,0,.12)'; ctx.fillRect((k * 53) % W, Math.floor(k / 3) * 16 % floorY + 4 + (k % 3) * 3, 6 + (k % 5) * 3, 1); } // wood grain
+    for (let y = floorY; y < H; y++) { ctx.fillStyle = LP.floor[Math.floor((y - floorY) / 8) % 2]; ctx.fillRect(0, y, W, 1); }
+    ctx.fillStyle = LP.trim; ctx.fillRect(0, floorY - 2, W, 4);
+    ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect((W >> 1) - 20, H - 13, 40, 3);
+    UI.drawPlayer(ctx, (W >> 1) - 16, H - 92, st.loadout, st.settings.hand, t);
   }
 
   UI.screens.lodge = function (el) {
@@ -238,8 +295,8 @@
     const nav = [['shop', 'Shop'], ['inventory', 'Gear' + (st.skillPts ? ' •' : '')], ['land', 'Land'], ['trophies', 'Trophy Room'], ['hitlist', 'Hit List']];
     const sun = WT.sunTimes(st.day);
     const needTag = !st.tags.buck && !st.tags.buckFilled;
-    el.innerHTML = `<div class="lodge-stage">${UI.stage(72, 60)}</div>
-      <div class="row" style="margin-top:10px"><button class="btn blaze big" data-go="map" style="flex:1">Hunt</button><button class="btn ghost" data-menu aria-label="Menu">⋯</button></div>
+    el.innerHTML = `<div class="row" style="margin-bottom:10px"><button class="btn blaze big" data-go="map" style="flex:1">Hunt</button><button class="btn ghost" data-menu aria-label="Menu">⋯</button></div>
+      <div class="lodge-stage">${UI.stage(144, 120)}</div>
       <nav class="lodge-bar">${nav.map(([k, n]) => `<button class="btn" data-go="${k}">${n}</button>`).join('')}<button class="btn" data-guide>Guide</button></nav>
       <section class="panel news" style="margin-top:22px">
         <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
@@ -261,7 +318,7 @@
   const GUIDE = [
     ['start', 'The basics', () => `
       <p>You hunt whitetails from October 1 to December 31, one morning or evening sit at a time. Then winter passes, every deer on the map gets a year older, and you do it again.</p>
-      <p><b>Money</b> comes from deer you tag (bigger antlers pay more, a doe pays ${WT.money(WT.CONFIG.economy.doePayout)}), from leveling up, and ${WT.money(WT.CONFIG.economy.newDeerCash)} for every new deer you get a clear look at. Nothing is charged when a year passes.</p>
+      <p><b>Money</b> comes from deer you tag (bigger antlers pay more, a doe pays ${WT.money(WT.CONFIG.economy.doePayout)}), from leveling up, and ${WT.money(WT.CONFIG.economy.newDeerCash)} for each deer you add to your hit list. Nothing is charged when a year passes.</p>
       <p><b>You need a tag</b> for what you shoot: a buck tag for an antlered deer, a doe tag for anything without antlers. Shoot the wrong one and the DNR takes it (no pay, no mount, no fine).</p>
       <p><b>A turn:</b> Shop if you need something → Hunt → pick a stand → pack → sit. <b>Wait</b> (top right) skips a morning or evening.</p>`],
     ['deer', 'The deer', () => `
@@ -275,6 +332,7 @@
       <p><b>Stars (1 to 5)</b> are today's sit compared with that stand's own best. Five stars means the stand is as good as it gets today. Wrong wind, the wrong time of day, pressure or an off day pull stars down. A sit can never be better than the stand's rating.</p>
       <p><b>Consistency:</b> Steady stands work on five winds, Average on three, Fickle on only one. A fickle 90 is a great spot you can rarely hunt at its best.</p>
       <p><b>Pressure</b> builds every time you sit a stand, miss, or get busted, and drains when you leave it alone. A full meter means rest it.</p>
+      <p><b>Public land</b> needs a mobile stand on your back: a hang-on, climber or saddle (these need a tree) or a pop-up blind (works anywhere). Buy one at the Shop and equip it under Gear. Mobile stands aren't left up on your own land.</p>
       <p><b>Timber or open:</b> in timber deer show at 20 to 200 yards. In open country you see more ground but deer are 150 to 500 yards out.</p>
       <p><b>Stand types</b> add concealment, quiet, a steadier rest, comfort and height. Box blinds and hunting houses hide you best and let you sit all day in the cold.</p>`],
     ['sit', 'On the stand', () => `
@@ -286,6 +344,7 @@
       <p><b>Hit list:</b> a deer you've seen clearly before shows its name and the status you gave it (Hit list, Pass, Cull...) right above your read.</p>`],
     ['shot', 'Taking the shot', () => `
       <p><b>Distance decides it.</b> Inside 40 yards a clear rifle shot almost never misses. The bonus fades out by 100 yards, and past that it's your rifle, scope and Marksmanship skill.</p>
+      <p><b>Bows</b> are short and quiet: deadly inside 20 yards, fading fast, and done past their range. A bow shot barely adds pressure, and you need a bow in hand to hunt bow-only public land.</p>
       <p><b>Each rifle has a reach.</b> The starter .223 is good to about 100 yards and falls off fast after. Better rifles reach farther and hit harder, which means fewer wounded deer. A rangefinder removes the guesswork past 150 yards.</p>
       <p><b>Wait for a clear shot.</b> "Brush in the way" costs a lot of accuracy and wounds deer. Standing deer are easier than walking deer.</p>
       <p><b>Low light</b> hurts unless your scope gathers light well. Big antlers give you buck fever until your Marksmanship is up.</p>
@@ -309,7 +368,8 @@
       <p><b>Levels</b> come from hunting: seeing deer, long sits, and deer you tag. Each level pays cash and gives skill points, and unlocks better rifles.</p>
       <p><b>Skills:</b> Stealth (quieter, less noticed), Marksmanship (accuracy, less buck fever), Calling, Scent Discipline, Patience (longer sits) and Woodcraft (finding hit deer).</p>`],
     ['books', 'Hit list and trophies', () => `
-      <p><b>Hit list:</b> bucks you see clearly or catch on camera are added by themselves. Name them, guess their age, and mark them Hit list, Pass, Cull or Watch. The game never tells you if a deer is still alive; cameras and sightings are how you know.</p>
+      <p><b>Hit list:</b> nothing goes on it by itself. Add a deer from the stand once you've had a clear look, or from a trail camera photo. Each row shows where he was last seen, you can filter by property, and Pull cameras collects every card at once. Name them, guess their age, and mark them Hit list, Pass, Cull or Watch. The game doesn't tell you if a deer is alive, with two exceptions: you hear about it when a neighbor kills one of your hit list deer, and finding his sheds in spring means he made it through the winter.</p>
+      <p><b>Shed hunting</b> happens by itself each March on land you own. Sheds are kept in the Trophy Room, and a hit list deer's page lists the years you found his.</p>
       <p><b>After a harvest</b> you guess the score, then see the real age, weight and the full score sheet.</p>
       <p><b>Mounts</b> cost money: shoulder mount ${WT.money(WT.CONFIG.economy.mounts.shoulder.price)}, European ${WT.money(WT.CONFIG.economy.mounts.euro.price)}, felt cap ${WT.money(WT.CONFIG.economy.mounts.cap.price)}. Mounted deer hang in the Trophy Room.</p>`],
   ];
@@ -347,7 +407,7 @@
   };
 
   /* ================================================================ SHOP */
-  const TABS = [['rifles', 'Rifles'], ['scopes', 'Scopes'], ['stands', 'Stands'], ['clothing', 'Clothing'], ['optics', 'Optics & gear'], ['calls', 'Calls'], ['consum', 'Consumables'], ['cams', 'Trail cams'], ['tags', 'Tags']];
+  const TABS = [['rifles', 'Rifles & bows'], ['scopes', 'Scopes'], ['stands', 'Stands'], ['clothing', 'Clothing'], ['optics', 'Optics & gear'], ['calls', 'Calls'], ['consum', 'Consumables'], ['cams', 'Trail cams'], ['tags', 'Tags']];
   let shopTab = 'tags';
   UI.screens.shop = function (el) {
     const st = S(), inv = st.inv;
@@ -358,15 +418,15 @@
     let body = '';
     if (shopTab === 'rifles') {
       body = C().rifles.filter((r) => !r.award || inv.rifles.includes(r.id)).map((r) => row({
-        name: `${r.name} (${r.cal})`, tags: [`Lv ${r.level}`, r.collect ? 'Collector' : null].filter(Boolean), price: r.price,
-        stats: `Accuracy ${r.acc} · Range ${r.range} (about ${r.range * 3} yd) · Power ${r.power} · Recoil ${r.recoil} · ${r.mag} rounds`,
+        name: `${r.name} (${r.cal})`, tags: [`Lv ${r.level}`, r.bow ? 'Bow' : null, r.collect ? 'Collector' : null].filter(Boolean), price: r.price,
+        stats: r.bow ? `Accuracy ${r.acc} · Good to about ${r.range * 3} yd · Quiet: barely adds pressure · ${r.mag} arrows · opens bow-only public land` : `Accuracy ${r.acc} · Range ${r.range} (about ${r.range * 3} yd) · Power ${r.power} · Recoil ${r.recoil} · ${r.mag} rounds`,
         owned: inv.rifles.includes(r.id) ? 'Owned' : null, buy: inv.rifles.includes(r.id) ? null : 'rifle:' + r.id, locked: r.level > st.level,
       })).join('') + `<p class="faint">Grandpa's Winchester 94 can't be bought. Some rifles are earned.</p>`;
     } else if (shopTab === 'scopes') {
       body = C().scopes.filter((s) => s.id !== 'none').map((s) => row({ name: s.name, price: s.price, stats: `Accuracy +${s.acc} · Low light ${s.low}`, owned: inv.scopes.includes(s.id) ? 'Owned' : null, buy: inv.scopes.includes(s.id) ? null : 'scope:' + s.id })).join('') + '<p class="faint">Mount scopes on your rifles in Inventory.</p>';
     } else if (shopTab === 'stands') {
       body = C().stands.filter((s) => s.id !== 'ground').map((s) => row({
-        name: s.name, tags: [s.kind === 'permanent' ? 'Your land only' : 'Portable', s.bowOnly ? 'Bow only' : null].filter(Boolean), price: s.price,
+        name: s.name, tags: [s.kind === 'permanent' ? 'Your land only' : s.kind === 'mobile' ? 'Carried: equip under Gear' : 'Your land, or carried to public', s.id !== 'popup' && s.kind === 'mobile' ? 'Needs a tree' : null].filter(Boolean), price: s.price,
         stats: `Cover ${s.cover} · Quiet ${s.noise} · Scent ${s.scent} · Steady rest ${s.accuracy} · Comfort ${s.comfort} · View ${s.visibility}${s.patienceHrs ? ` · ${s.patienceHrs > 0 ? '+' : ''}${s.patienceHrs} hr sit` : ''}${s.note ? '. ' + s.note : ''}`,
         owned: inv.stands[s.id] ? `${inv.stands[s.id]} in truck` : null, buy: 'stand:' + s.id,
       })).join('') + '<p class="faint">Stands go in your truck. Put them up from Land, or carry a portable one to a marked spot on public land.</p>';
@@ -444,9 +504,10 @@
     const plan = WT.sitPlan({ session: st.slot, standType: 'ladder', clothing: lo.clothing, equip: lo.equip, pack: {} });
     el.innerHTML = UI.stage(240, 135) + `
       <section class="panel" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h2>Gear</h2><button class="btn small" data-back>Back to lodge</button></div>
-        <p>Total warmth <b>${Math.round(plan.outfit.warmth)}</b>: comfortable down to about <b>${plan.comfortable}°F</b>. This ${st.slot} will feel like <b>${plan.effTemp}°F</b> on a ladder stand.
-          ${plan.blazeOk ? '<span class="good">Blaze orange: OK.</span>' : '<span class="bad">No blaze orange showing. Required in rifle season.</span>'}</p>
+        <p>Total warmth <b>${Math.round(plan.outfit.warmth)}</b>: comfortable down to about <b>${plan.comfortable}°F</b>. This ${st.slot} will feel like <b>${plan.effTemp}°F</b> on a ladder stand.</p>
         <div id="outfit">${UI.outfitEditor(lo)}</div>
+        <h3>Mobile stand <span class="faint">needed to hunt public land</span></h3>
+        <div class="row">${(() => { const own = C().mobileStands.filter((id) => inv.stands[id] > 0); return own.length ? own.map((id) => `<button class="btn small ${lo.mobile === id ? 'on' : ''}" data-mob="${id}">${esc(WT.standType(id).name)}</button>`).join('') + `<button class="btn small ${WT.mobileStand() ? '' : 'on'}" data-mob="">None</button>` : '<span class="faint">You don\'t own one. Hang-ons, climbers, saddles and pop-up blinds are at the Shop. The first three need a tree; a pop-up works anywhere.</span>'; })()}</div>
         <h3>Handedness</h3><div class="row"><button class="btn small ${st.settings.hand === 'right' ? 'on' : ''}" data-hand="right">Right-handed</button><button class="btn small ${st.settings.hand === 'left' ? 'on' : ''}" data-hand="left">Left-handed</button></div>
         <div class="cols" style="margin-top:6px">
           <div><h3>Pack (consumables)</h3>${C().consumables.filter((c) => (c.fuel ? inv.propane : inv.consum[c.id])).map((c) => `<p>${esc(c.name.replace(/ \(1 use\)/, ''))}: ${c.fuel ? inv.propane : inv.consum[c.id]}</p>`).join('') || '<p class="faint">Empty.</p>'}</div>
@@ -456,13 +517,14 @@
         <div class="list">${Object.entries(C().skills).map(([k, sk]) => `<div class="item"><div><span class="nm">${esc(sk.name)}</span> <span class="dim">${st.skills[k]} / ${C().progression.skillMax}</span></div>
           <button class="btn small" data-sk="${k}" ${st.skillPts && st.skills[k] < C().progression.skillMax ? '' : 'disabled'}>+1</button><div class="st">${esc(sk.desc)}</div></div>`).join('')}</div>
       </section>`;
+    el.querySelectorAll('[data-mob]').forEach((b) => b.addEventListener('click', () => { if (UI.err(WT.setMobile(b.dataset.mob))) return; WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); }));
     el.querySelectorAll('[data-sk]').forEach((b) => b.addEventListener('click', () => { WT.spendSkill(b.dataset.sk); WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); }));
     const canvas = $('canvas', el);
     const draw = (t) => {
       const ctx = canvas.getContext('2d'); ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = '#2a1d16'; ctx.fillRect(0, 0, 240, 135);
       for (let y = 0; y < 135; y += 8) { ctx.fillStyle = y % 16 ? '#3a281e' : '#46301f'; ctx.fillRect(0, y, 240, 7); }
-      ctx.save(); ctx.translate(96, 20); ctx.scale(3, 3 * 0.8); UI.drawPlayer(ctx, 0, 0, lo, st.settings.hand, t); ctx.restore();
+      ctx.save(); ctx.translate(96, 20); ctx.scale(1.5, 1.5 * 0.8); UI.drawPlayer(ctx, 0, 0, lo, st.settings.hand, t); ctx.restore();
     };
     let raf, last = 0; const loop = (t) => { if (t - last > 300) { draw(t); last = t; } raf = requestAnimationFrame(loop); }; draw(0); raf = requestAnimationFrame(loop);
     UI.bindOutfit(el, lo, () => { WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); });
@@ -489,6 +551,7 @@
     try { ok = WT.hasSave() && !!WT.load(); } catch (e) { ok = false; }
     if (!ok) { WT.newGame(); WT.save(); }
     $('#waitBtn').addEventListener('click', UI.wait);
+    $('#huntBtn').addEventListener('click', () => UI.go('map', { mode: 'hunt' }));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#modal').hidden) UI.closeModal(); });
     S().settings = S().settings || { hand: 'right' };
     UI.go('lodge');
