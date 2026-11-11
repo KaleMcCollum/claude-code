@@ -76,7 +76,7 @@
   /* ================================================================ new game */
   WT.newGame = function (seed) {
     seed = seed || ((Math.random() * 1e9) | 0);
-    const world = WT.genWorld(seed, 2); // version 2 worlds have rectangular fields
+    const world = WT.genWorld(seed, 3); // version 3 worlds: rectangular fields, 2.5 times the land
     captureNatural(world);
     G.world = world;
     const rng = WT.makeRng(seed ^ 0x5eed);
@@ -94,7 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
-      genV: 2,
+      genV: 3,
       journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
@@ -545,7 +545,7 @@
     const out = [];
     const rng = G.rng;
     const pool = cands.slice();
-    while (out.length < C().world.forSaleCount && pool.length) {
+    while (out.length < Math.round(C().world.forSaleCount * ((G.world.big || 1) > 1 ? 1.7 : 1)) && pool.length) {
       const p = pool.splice(rng.int(0, pool.length - 1), 1)[0];
       // listings nearer your land are a little more likely
       out.push(p.id);

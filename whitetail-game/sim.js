@@ -133,7 +133,7 @@
   /* Fields (worlds made from version 2 on). Row crops are laid out the way they are farmed: rectangles, each one
      crop, never touching another field. They only take open ground, so rivers, creeks, sloughs, woods, roads and
      farmyards cut straight through them and are never moved. Returns a field id per tile (-1 = not a field). */
-  function squareFields(cover, W, H, seed) {
+  function squareFields(cover, W, H, seed, big = 1) {
     const rng = makeRng(seed * 13 + 5), N = W * H;
     const isCrop = (c) => c === T.CORN || c === T.SOY || c === T.SUNFLOWER;
     const open = (c) => c === T.PRAIRIE || c === T.HAY || c === T.PASTURE || c === T.WHEAT || c === T.BRUSH;
@@ -146,7 +146,7 @@
     const field = new Int16Array(N).fill(-1);
     let placed = 0, id = 0;
     target *= 0.8;
-    for (let tries = 0; tries < 6000 && placed < target; tries++) {
+    for (let tries = 0; tries < 6000 * big && placed < target; tries++) {
       const w = rng.int(6, 16), h = rng.int(5, 12), x0 = rng.int(1, W - w - 2), y0 = rng.int(1, H - h - 2);
       let conv = 0, wasC = 0, clash = false; const votes = {};
       for (let y = y0 - 1; y <= y0 + h && !clash; y++) for (let x = x0 - 1; x <= x0 + w; x++) {
@@ -166,7 +166,9 @@
 
   function genWorld(seed, ver = 1) {
     const cfg = C().world;
-    const W = cfg.width, H = cfg.height, N = W * H;
+    // version 3 worlds are 2.5 times the area; everything counted per map scales with it
+    const big = ver >= 3 ? 2.5 : 1, side = Math.sqrt(big);
+    const W = Math.round(cfg.width * side), H = Math.round(cfg.height * side), N = W * H;
     const rng = makeRng(seed * 7 + 13);
     const elev = new Float32Array(N), moist = new Float32Array(N), soil = new Float32Array(N), gen = new Float32Array(N);
     const cover = new Uint8Array(N);
@@ -206,7 +208,7 @@
       }
     }
     // creeks flowing into the river from north and south
-    const creekCount = rng.int(3, 5);
+    const creekCount = Math.round(rng.int(3, 5) * big);
     for (let c = 0; c < creekCount; c++) {
       const fromTop = c % 2 === 0;
       let cx = rng.range(15, W - 15), cy = fromTop ? 0 : H - 1;
@@ -322,7 +324,7 @@
     }
     // --- Farmsteads along roads, with a shelterbelt on the north and west
     const farmsteads = [];
-    for (let k = 0; k < 26; k++) {
+    for (let k = 0; k < Math.round(26 * big); k++) {
       const vertical = rng.chance(0.5);
       const list = vertical ? vRoads : hRoads;
       if (!list.length) break;
@@ -344,8 +346,8 @@
       farmsteads.push({ x: x + 1, y: y + 1 });
     }
 
-    const world = { seed, W, H, cover, elev, soil, gen, moist, towns, farmsteads, riverPath, ver };
-    if (ver >= 2) world.fieldId = squareFields(cover, W, H, seed);
+    const world = { seed, W, H, cover, elev, soil, gen, moist, towns, farmsteads, riverPath, ver, big };
+    if (ver >= 2) world.fieldId = squareFields(cover, W, H, seed, big);
     computeDerivedLayers(world);
     genParcels(world, rng);
     if (ver >= 2) {
@@ -354,6 +356,7 @@
       for (let i = 0; i < N; i++) { const pid = world.parcelOf[i]; if (pid >= 0 && world.fieldId[i] >= 0 && world.parcels[pid].owner === 'public') { cover[i] = T.PRAIRIE; world.fieldId[i] = -1; cut = true; } }
       if (cut) { computeDerivedLayers(world); for (const p of world.parcels) p.habitat = tileHabitat(world, p.id); }
     }
+    world.ready = true; // parcels are final from here on
     return world;
   }
   WT.genWorld = genWorld;
@@ -396,7 +399,7 @@
     const targetTiles = cfg.parcelTargetAcres / cfg.acresPerTile;
     const minD = Math.sqrt(targetTiles) * 0.85;
     const seeds = [];
-    for (let tries = 0; tries < 6000; tries++) {
+    for (let tries = 0; tries < 6000 * (world.big || 1); tries++) {
       const x = rng.int(1, W - 2), y = rng.int(1, H - 2), i = y * W + x;
       if (!passable(i) || isWater(cover[i])) continue;
       const md = minD * rng.range(0.7, 1.35);
@@ -577,7 +580,15 @@
     let n = 0, f = 0, b = 0, wt = 0, dw = 0, dr = 0, so = 0, ge = 0, sanct = 0;
     const counts = {};
     const sanctSet = extra && extra.sanctuary ? extra.sanctuary : null;
-    for (let i = 0; i < W * H; i++) {
+    // once the map is final, each parcel's tiles are listed once so this doesn't scan the whole map every time
+    let list = null;
+    if (world.ready) {
+      if (!world._tilesOf) { world._tilesOf = {}; for (let i = 0; i < W * H; i++) { const q = parcelOf[i]; if (q >= 0) (world._tilesOf[q] = world._tilesOf[q] || []).push(i); } }
+      list = world._tilesOf[pid] || [];
+    }
+    const count = list ? list.length : W * H;
+    for (let k = 0; k < count; k++) {
+      const i = list ? list[k] : k;
       if (parcelOf[i] !== pid) continue;
       const t = cover[i], c = COVER[t];
       n++; f += c.f; b += c.b; if (isWater(t) || t === T.SLOUGH) wt += t === T.SLOUGH ? 0.5 : 1;

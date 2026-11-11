@@ -404,7 +404,8 @@
       let armed = false;
       $('#newg', m).addEventListener('click', () => {
         if (!armed) { armed = true; $('#newq', m).innerHTML = '<span class="warn">This erases your save. Press again to confirm.</span>'; return; }
-        WT.wipeSave(); WT.newGame(); WT.save(); UI.go('lodge'); UI.mapTutorial();
+        UI.closeModal(); $('#screen').innerHTML = BUILDING;
+        setTimeout(() => { WT.wipeSave(); WT.newGame(); WT.save(); UI.go('lodge'); UI.mapTutorial(); }, 60); // let the message paint first
       });
       $('#cl', m).addEventListener('click', UI.closeModal);
       $('#tut', m).addEventListener('click', () => UI.mapTutorial());
@@ -552,10 +553,14 @@
   };
 
   /* ================================================================ BOOT */
+  const BUILDING = '<section class="panel"><h2>Building the countryside</h2><p class="dim">Laying out about 18,000 acres of prairie, timber, fields and swamp, and stocking every property with deer. This takes a few seconds.</p></section>';
   UI.boot = function () {
     let ok = false;
     try { ok = WT.hasSave() && !!WT.load(); } catch (e) { ok = false; }
-    if (!ok) { WT.newGame(); WT.save(); }
+    if (!ok) { $('#screen').innerHTML = BUILDING; return setTimeout(() => { WT.newGame(); WT.save(); UI.boot2(); }, 60); }
+    UI.boot2();
+  };
+  UI.boot2 = function () {
     $('#waitBtn').addEventListener('click', UI.wait);
     $('#huntBtn').addEventListener('click', () => UI.go('map', { mode: 'hunt' }));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#modal').hidden) UI.closeModal(); });
