@@ -55,7 +55,7 @@
       scent:    { name: 'Scent Discipline', desc: 'Less human odor, fewer deer winding you.' },
       patience: { name: 'Patience',       desc: 'Sit longer. 4 pts = +1 hr. All-day sits need ~10 hrs.' },
       archery:  { name: 'Archery',        desc: 'Bow and crossbow accuracy, and clean kills with an arrow. Rifles use Marksmanship.' },
-      woodcraft:{ name: 'Woodcraft',      desc: 'Spot deer sooner, judge age and score better, track wounded deer.' },
+      woodcraft:{ name: 'Woodcraft',      desc: 'Find deer that run off wounded, and get more scouting searches in the off-season (one per 8 points).' },
     },
 
     /* ------------------------------------------------------------ calendar */
@@ -208,12 +208,14 @@
     improvements: {
       foodplot: {
         name: 'Food plot', perAcre: true,
+        // early / late: how hard a stand touching this crop is pulled toward it early in the season (to Oct 25) and
+        // late (from Nov 25). 1.0 is a good draw. What you plant decides when that stand is at its best.
         types: [
-          { id: 'rye',     name: 'Winter rye / oats',  cost: 90,  food: 0.7, late: 0.8 },
-          { id: 'clover',  name: 'Clover',              cost: 160, food: 0.8, late: 0.5 },
-          { id: 'brassica',name: 'Brassicas / turnips', cost: 140, food: 0.75, late: 1.2 },
-          { id: 'soy',     name: 'Soybeans',            cost: 170, food: 0.8, late: 0.9 },
-          { id: 'corn',    name: 'Standing corn',       cost: 220, food: 0.9, late: 1.3 },
+          { id: 'rye',     name: 'Winter rye / oats',  cost: 90,  food: 0.7,  early: 0.9, late: 0.8, note: 'Cheap and steady all season' },
+          { id: 'clover',  name: 'Clover',              cost: 160, food: 0.8,  early: 1.3, late: 0.5, note: 'Best early; gone once it freezes' },
+          { id: 'brassica',name: 'Brassicas / turnips', cost: 140, food: 0.75, early: 0.6, late: 1.3, note: 'Deer ignore it until frost, then pile in' },
+          { id: 'soy',     name: 'Soybeans',            cost: 170, food: 0.8,  early: 1.2, late: 0.9, note: 'Strong early, decent late' },
+          { id: 'corn',    name: 'Standing corn',       cost: 220, food: 0.9,  early: 0.7, late: 1.5, note: 'The best late-season food there is' },
         ],
         maxShare: 0.08,
       },
@@ -270,6 +272,7 @@
     },
     /* What a stand's numbers are worth in deer. A rating of 90 sees about three and a half times the deer of a 10,
        and a 5-star sit about twice a 1-star sit. Old bucks follow the big-buck rating: swamp is where you see them. */
+    plotPull: 0.3,   // a stand touching a planted plot: deer seen x (1 + plotPull * (crop value now - 0.5) * how well it came in)
     sightMult: { ratingBase: 0.45, ratingGain: 1.75, ratingPow: 1.3, starBase: 0.5, starGain: 1.0, norm: 1.15, matureBase: 0.5, matureGain: 3.0, maturePow: 1.5, matureLift: 0.5 },
     // Off-season scouting: 3 x 3 blocks you can search each spring, plus one per this many Woodcraft points.
     scouting: { searches: 5, woodcraftPer: 8, scrapeRut: 1.12,
@@ -397,7 +400,7 @@
       { id: 'snickers', name: 'Snickers bar', price: 2, sitMin: 20, crinkle: 0.06 },
       { id: 'jerky', name: "Jack Link's beef jerky", price: 7, sitMin: 30 },
       { id: 'hamcheese', name: 'Gas station hot ham & cheese', price: 5, sitMin: 40, core: 3 },
-      { id: 'coffee', name: 'Thermos of coffee', price: 3, core: 3, spot: 5 },
+      { id: 'coffee', name: 'Thermos of coffee', price: 3, core: 3 },
       { id: 'gatorade', name: 'Gatorade', price: 2.5, heatMin: 30, sweat: 0.3 },
       { id: 'water', name: 'Bottled water', price: 1, heatMin: 20, sitMin: 5 },
       { id: 'scentkiller', name: 'Scent Killer Gold (1 use)', price: 3, scentCut: 0.25, packOf: 5, packPrice: 15 },

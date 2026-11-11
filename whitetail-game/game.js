@@ -198,6 +198,22 @@
     m.shoreline = bank / Math.max(1, land);
     return (w._mix[pid] = m);
   };
+  // What a planted plot touching the stand is worth right now. Depends on the crop and the date:
+  // clover and beans pull early, corn and brassicas late, rye is steady. A plot that came in well pulls harder.
+  WT.plotPull = function (pid, x, y, day) {
+    const st = S(), d = st.parcels[pid]; if (!d || !d.plots) return { f: 1, plot: null };
+    day = day ?? st.day;
+    const lateW = clamp((day - 25) / 30); // 0 through Oct 25, 1 from Nov 25
+    let best = null;
+    for (const pl of d.plots) {
+      if (!pl.planted || !pl.type || !WT.touchesPlot(pl, { x, y })) continue;
+      const pt = WT.plotType(pl.type), val = pt.early * (1 - lateW) + pt.late * lateW;
+      const qf = { poor: 0.6, fair: 0.85, good: 1, excellent: 1.2 }[pl.quality] || 0.85;
+      const f = 1 + C().plotPull * Math.max(0, val - 0.5) * qf;
+      if (!best || f > best.f) best = { f, plot: pl, val, type: pt };
+    }
+    return best || { f: 1, plot: null };
+  };
   // On a warm day deer stay close to water: a stand near it sees more.
   WT.warmWater = function (s) {
     const cfg = C().land.water, hi = S().weather ? S().weather.high : 0;
@@ -1237,7 +1253,7 @@
     const st = S(), t = WT.standTraits(s), r = s.r;
     day = day ?? st.day; windDir = windDir || st.weather.windDir;
     const windOk = t.winds.includes(windDir), windNear = t.near.includes(windDir);
-    const windF = windOk ? 1 : windNear ? 0.75 : 0.5;
+    const windF = windOk ? 1 : windNear ? 0.85 : 0.65; // a wrong wind already gets you winded; it shouldn't also empty the woods
     const dayF = 1 - t.swing * WT.hash2(s.x * 31 + day, s.y * 17 + (session === 'evening' ? 1 : 0), G.world.seed + 913);
     const sesF = Math.min(1, standRatingFor(r, session, day) / Math.max(0.05, r.morning, r.evening, r.rut));
     const presF = 1 - Math.min(0.4, (s.pressure || 0) * 0.8);
@@ -1246,7 +1262,7 @@
   };
   // Deer multipliers from the stand's rating and today's stars, and for old bucks from the big-buck rating.
   WT.spotMult = function (s, today) {
-    const m = C().sightMult, r = WT.standTraits(s).rating / 100, f = today ? today.factor : 0.6;
+    const m = C().sightMult, r = WT.standTraits(s).rating / 100, f = today ? today.factor / Math.max(0.5, today.presF || 1) : 0.6; // pressure is applied per deer, not here too
     return (m.ratingBase + m.ratingGain * Math.pow(r, m.ratingPow)) * (m.starBase + m.starGain * f) / m.norm;
   };
   WT.matureMult = function (s) { const m = C().sightMult; return (m.matureBase + m.matureGain * Math.pow(clamp(s.r.mature), m.maturePow)) * m.matureLift; };
@@ -1332,14 +1348,14 @@
     if (eq.light && !eq.light.red && setup.session !== 'evening') walkNoise += 0.05;
     walkNoise = clamp(walkNoise, 0.02, 0.9);
     const competition = setup.competition ? 0.12 : 0;
-    const pPerSit = cfg.deer.pressure.perSit * (goodWind ? 1 : 1.8) * (0.6 + walkNoise) + competition;
+    const pPerSit = cfg.deer.pressure.perSit * (goodWind ? 1 : 1.25) * (0.6 + walkNoise) + competition;
     const pressureCtx = clamp((d.pressure || 0) * 0.4 + (stand.pressure || 0) * 0.45 + competition);
     // how far you can see from here: timber stands see 60 yd, a field-edge box blind 500
     const view = WT.standView(stand, standTypeId);
     const maxView = view.far, minView = view.near;
 
     const ctx = {
-      pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * WT.warmWater(stand) * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
+      pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * WT.warmWater(stand) * WT.plotPull(setup.pid, stand.x, stand.y).f * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
       // early archery: deer haven't been hunted yet
       tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1),
       place: 0.5, matureRating: 0.5, // neutral: the stand's worth comes through the two multipliers below

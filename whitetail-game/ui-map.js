@@ -369,7 +369,8 @@
       if (sc) out.push(`<span class="good">${sc === 1 ? 'A scrape touches' : sc + ' scrapes touch'} this stand</span>: the buck that made it shows here about twice as often, more in the rut`);
       if (bd) out.push(`<span class="good">${bd === 1 ? 'A bed touches' : bd + ' beds touch'} this stand</span>: that buck shows here nearly twice as often`);
       if (rb) out.push('<span class="good">A rub touches this stand</span>: a small pull on the buck that made it'); }
-    if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot touching this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">Bare food plot touching this stand</span>: no bonus until it is planted in spring');
+    { const pp = WT.plotPull(pid, s.x, s.y); if (pp.plot) out.push(`<span class="good">${esc(pp.type.name)} plot touching this stand</span> (came in ${esc(pp.plot.quality || 'fair')}): about ${Math.round((pp.f - 1) * 100)}% more deer right now. ${esc(pp.type.note)}`);
+      else if (info.nearPlot) out.push('<span class="warn">Bare food plot touching this stand</span>: no bonus until it is planted in spring'); }
     if (s.r.shore > 0.2) out.push('<span class="good">On the bank</span>: deer walk the shoreline instead of crossing, so this stand sits on a funnel (counted in its rating)');
     if (info.nearWater || (s.r.water || 0) > 0.3) out.push(`<span class="good">Water at this stand</span>: counted in its rating, and on warm days deer stay close to it${WT.warmWater(s) > 1.02 ? ' <b>(today is one)</b>' : ''}`);
     if (d.owner === 'player') { const cfg = WT.CONFIG.sanctuary, w2 = Wd(); const n = (d.sanctuary || []).filter((i) => Math.hypot(i % w2.W - s.x, ((i / w2.W) | 0) - s.y) <= cfg.standTiles).length; if (n) out.push(`<span class="bad">Too close to your sanctuary</span>: ${n} sanctuary tile${n === 1 ? '' : 's'} within 100 yards of this stand ${n === 1 ? "doesn't" : "don't"} count while it's here`); }
