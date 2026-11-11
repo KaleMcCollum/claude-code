@@ -239,6 +239,7 @@
     while (st.level < P.maxLevel && st.xp >= P.xpForLevel(st.level)) {
       st.xp -= P.xpForLevel(st.level);
       st.level++; st.skillPts += P.skillPointsPerLevel;
+      const bonus = C().economy.levelUpCash(st.level); st.cash += bonus; st.levelCashTotal = (st.levelCashTotal || 0) + bonus;
       ups.push(st.level);
       const unlocked = C().rifles.filter((r) => r.level === st.level);
       unlocked.forEach((r) => {
@@ -246,7 +247,7 @@
         else news(`Level ${st.level} unlocked the ${r.name} (${r.cal}) at the shop.`, 'good');
       });
     }
-    if (ups.length) news(`Level up! You're level ${st.level}. +${ups.length * P.skillPointsPerLevel} skill points.`, 'good');
+    if (ups.length) news(`Level up! You're level ${st.level}. +${ups.length * P.skillPointsPerLevel} skill points and ${WT.money(ups.reduce((a, l) => a + C().economy.levelUpCash(l), 0))}.`, 'good');
     return ups;
   };
   WT.spendSkill = function (k) {
@@ -652,10 +653,62 @@
     return (M / Math.max(5, dist)) * (S().weather.precip ? 0.7 : 1);
   };
 
+
+  /* ================================================================ judging a deer by eye (rough reads) */
+  // How good your glass is: 0 naked eye, 1-4 binocular tiers, scopes rank by quality.
+  WT.opticTier = (optic) => !optic ? 0 : optic.kind === 'scope' ? Math.max(1, Math.min(3, Math.round((optic.low || 10) / 30))) : ({ bino_bush: 1, bino_diamond: 2, bino_viper: 3, bino_swaro: 4 }[optic.id] || 1);
+  const PT_NAME = { 1: 'spike', 2: 'spike', 3: 'fork', 4: '4 pointer', 5: '5 pointer', 6: '6 pointer', 7: '7 pointer', 8: '8 pointer', 9: '9 pointer', 10: '10 pointer', 11: '11 pointer', 12: '12 pointer' };
+  const ptName = (n) => PT_NAME[n] || `${n} pointer`;
+  // A rough, honest read: wider ranges far away or through cheap glass, tighter up close with good glass.
+  WT.judgeDeer = function (deer, level, tier) {
+    const h = (k) => WT.hash2(deer.id, Math.floor(S().day / 3) * 7 + tier, k); // steady for a few days, not every glance
+    const lw = deer.lw || 150;
+    const body = lw < 120 ? 'small-bodied' : lw < 180 ? 'medium-bodied' : 'big-bodied';
+    if (level <= 0) return { text: 'a deer, too far or too dark to judge yet', level };
+    if (level === 1) return { text: `a ${body} deer, too far to see antlers`, level };
+    const antlered = deer.sex === 'b' && deer.age >= 1.5;
+    const wRange = (spread) => { const mid = lw + (h(5) - 0.5) * spread; return [Math.round((mid - spread / 2) / 5) * 5, Math.round((mid + spread / 2) / 5) * 5]; };
+    if (!antlered) {
+      if (level === 2) return { text: `no antlers that you can see, ${body}`, level };
+      const who = deer.age < 1 ? (deer.sex === 'b' && level >= 4 ? 'button buck (fawn, no real antlers)' : 'fawn') : deer.age >= 3.5 ? 'big mature doe' : 'doe';
+      if (level === 3) return { text: `looks like a ${who}`, level };
+      const wr = wRange(50 - tier * 6);
+      return { text: `${who}, roughly ${wr[0]}-${wr[1]} lb`, level, weight: wr };
+    }
+    const P = WT.deerPoints(deer), g = deer.gross || 0;
+    const size = g < 60 ? 'small' : g < 100 ? 'medium' : 'big';
+    if (level === 2) return { text: `has antlers, a ${size} rack`, level };
+    const sheet = deer.rack ? WT.unpackRack(deer.rack) : null;
+    const extras = [];
+    if (sheet && sheet.spread >= 16.5) extras.push('outside the ears');
+    else if (sheet && sheet.spread < 13) extras.push('inside the ears');
+    const g2 = sheet ? Math.max(sheet.sides[0].tines.G2 || 0, sheet.sides[1].tines.G2 || 0) : 0;
+    if (g2 >= 9) extras.push('tall tines');
+    if (deer.nt) extras.push('some junk points');
+    if (level === 3) {
+      // point range of 2-3 that always includes the truth
+      const width = tier >= 3 ? 1 : 2;
+      const lo = Math.max(2, P - Math.floor(h(1) * (width + 1)));
+      const hi = lo + width;
+      const an = (n) => (n === 8 || n === 11 || n === 18 ? 'an' : 'a');
+      const txt = lo <= 2 ? `looks like a spike to a small ${hi >= 6 ? '6' : ptName(hi)}` : `looks like ${an(lo)} ${ptName(lo).replace(' pointer', '')} to ${an(hi)} ${ptName(hi)}`;
+      return { text: `${txt}${extras.length ? ', ' + extras.join(', ') : ''}`, level, pts: [lo, hi] };
+    }
+    // detailed: count the points, call it, and give a rough score and weight
+    const adj = g < 85 ? 'small' : g < 115 ? 'decent' : g < 135 ? 'good' : g < 155 ? 'big' : 'giant';
+    const err = [22, 16, 12, 9, 6][tier];
+    const mid = g + (h(2) - 0.5) * err * 0.8;
+    const sc = [Math.max(10, Math.round((mid - err / 2) / 5) * 5), Math.round((mid + err / 2) / 5) * 5];
+    if (sc[1] <= sc[0]) sc[1] = sc[0] + 5;
+    const wr = wRange(Math.max(20, 50 - tier * 7));
+    const label = `${adj} ${P <= 2 ? 'spike' : P}${deer.nt ? ' with stickers' : ''}`;
+    return { text: `${label}${extras.length ? ' (' + extras.filter((x) => x !== 'some junk points').join(', ') + ')' : ''}. Rough guess ${sc[0]}-${sc[1]}", ${wr[0]}-${wr[1]} lb`, level, label, score: sc, weight: wr, pts: [P, P] };
+  };
+
   /* ================================================================ hit list (screens spec) */
   // Frozen look of a deer at a moment: enough to re-render it exactly as it looked then.
   WT.snapshot = function (deer) {
-    return { k: deer.id, sex: deer.sex, age: deer.age, lw: deer.lw, bg: deer.bodyGene, style: deer.style, rack: deer.rack, y: S().year, d: S().day };
+    return { k: deer.id, sex: deer.sex, age: deer.age, lw: deer.lw, bg: deer.bodyGene, style: deer.style, rack: deer.rack, gross: deer.gross, nt: deer.nt, pL: deer.pL, pR: deer.pR, y: S().year, d: S().day };
   };
   WT.snapDeer = (s) => ({ id: s.k, sex: s.sex, age: s.age, lw: s.lw, bodyGene: s.bg, style: s.style, rack: s.rack });
   function suggestAge(deer, level) {
@@ -679,8 +732,10 @@
       };
       st.hitList.unshift(e);
       info.added = true;
+      st.cash += C().economy.newDeerCash;
     }
     if (clear) e.snap = WT.snapshot(deer);
+    if (info.read && (!e.readLvl || info.level >= e.readLvl || e.readYear !== st.year)) { e.read = info.read; e.readLvl = info.level; e.readYear = st.year; }
     e.last = [st.year, st.day];
     if (!e.places.includes(info.pid)) e.places.push(info.pid);
     e.log.unshift({ y: st.year, d: st.day, t: info.time, where: info.where, dist: info.dist, doing: info.doing, kind: info.kind });
@@ -890,15 +945,17 @@
       const dist = Math.max(5, g.dist + m.dd);
       const lvl = WT.detailLevel(H, dist, optic);
       m.level = Math.max(m.level || 0, lvl);
+      const tier = WT.opticTier(optic);
+      if (!m.read || lvl > m.read.level || (lvl === m.read.level && tier > (m.readTier || 0))) { m.read = WT.judgeDeer(m.deer, lvl, tier); m.readTier = tier; }
       const first = !H.seenIds.has(m.deer.id);
       if (first) { H.seenIds.add(m.deer.id); H.xp += C().progression.xpPerSighting; }
       if (lvl >= 3) {
         const where = (H.stand.name || WT.standType(H.stand.type).name) + ', ' + H.parcel.name;
         const doing = g.feeding ? 'feeding' : g.alert ? 'alert' : 'walking';
         const already = WT.hitEntry(m.deer.id);
-        if (!already || !m.logged) {
-          const e = WT.noteDeer(m.deer, { level: lvl, pid: H.setup.pid, time: H.now, where, dist: H.ranged[g.gid] ? dist : null, doing, kind: 'sighting' });
-          if (e) { m.logged = true; if (!already) { H.addedToList.push(e); H.log.push({ t: H.now, kind: 'info', text: 'You got a clear look. Added to your hit list.' }); } }
+        if (!already || !m.logged || (already && m.read && (already.readLvl || 0) < lvl)) {
+          const e = WT.noteDeer(m.deer, { level: lvl, pid: H.setup.pid, time: H.now, where, dist: H.ranged[g.gid] ? dist : null, doing, kind: 'sighting', read: m.read && m.read.text });
+          if (e) { m.logged = true; if (!already) { H.addedToList.push(e); H.log.push({ t: H.now, kind: 'good', text: `You got a clear look. New deer on your hit list. +${WT.money(C().economy.newDeerCash)}` }); } }
         }
       }
     }
@@ -1099,6 +1156,8 @@
     if (!optic) return null;
     H.raised = true;
     for (const g of H.visible) observe(H, g, optic);
+    const tgt = H.selected ? WT.findTarget(H, H.selected) : H.visible[0] ? { g: H.visible[0], m: H.visible[0].members[0] } : null;
+    if (tgt && tgt.m.read) H.log.push({ t: H.now, kind: 'deer', text: `Through the ${kind === 'scope' ? 'scope' : 'binos'}: ${tgt.m.read.text}.` });
     // raising optics at close range is movement
     for (const g of H.visible) {
       if (g.dist > 40 || g.gone) continue;
@@ -1294,7 +1353,12 @@
   }
   function deliverPhoto(photo, deer) {
     const st = S();
+    const d0 = WT.snapDeer(photo.snap);
+    d0.gross = photo.snap.gross; d0.nt = photo.snap.nt; d0.pL = photo.snap.pL; d0.pR = photo.snap.pR;
+    photo.read = WT.judgeDeer(d0, photo.q >= 0.75 && !photo.night ? 4 : photo.q >= 0.45 ? 3 : 2, 1).text;
     st.photos.unshift(photo);
+    const known = WT.hitEntry(photo.snap.k);
+    if (known && known.name && photo.q >= 0.45) news(`Trail camera on ${G.world.parcels[photo.pid].name}: looks like "${known.name}" is still around.`, 'good');
     // a decent photo of a buck puts him on the hit list (images only, never numbers)
     if (deer && photo.q >= 0.45) WT.noteDeer(deer, { level: 3, pid: photo.pid, time: photo.hour, where: 'Trail camera, ' + G.world.parcels[photo.pid].name, dist: null, doing: 'on camera', kind: 'photo', photo });
   }
@@ -1373,7 +1437,7 @@
     st.weather = rollWeather(0, null, rng);
     rotateListings();
     G.seasonOver = false;
-    news(`Year ${st.year}. New season, new tags. Property tax: ${WT.money(tax)}.`);
+    news(`Year ${st.year}. New season, new tags.${tax ? ' Property tax: ' + WT.money(tax) + '.' : ''}`);
     WT.save();
     return summary;
   };

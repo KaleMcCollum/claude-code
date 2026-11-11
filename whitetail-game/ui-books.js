@@ -31,7 +31,9 @@
   };
   function photoHtml(ph, id) {
     const hh = ph.hour % 12 || 12, ap = ph.hour >= 12 ? 'PM' : 'AM';
-    return `<figure class="photo">${canvasHtml(id, 160, 90)}<figcaption class="faint" style="font-size:15px;padding:2px 4px">${WT.dateLabel(ph.d)} Yr ${ph.y} · ${hh}:${String((ph.d * 7 + ph.hour * 13) % 60).padStart(2, '0')} ${ap} · ${esc(WT.camType(ph.camType).name)}</figcaption></figure>`;
+    const known = WT.hitEntry(ph.snap.k);
+    const tag = known && ph.q >= 0.45 ? `<span class="good">Hit list: ${esc(known.name || 'unnamed deer')}</span> · ` : '';
+    return `<figure class="photo">${canvasHtml(id, 160, 90)}<figcaption class="faint" style="font-size:15px;padding:2px 4px">${tag}${ph.read ? `<span class="dim">${esc(ph.read)}</span><br>` : ''}${WT.dateLabel(ph.d)} Yr ${ph.y} · ${hh}:${String((ph.d * 7 + ph.hour * 13) % 60).padStart(2, '0')} ${ap} · ${esc(WT.camType(ph.camType).name)}</figcaption></figure>`;
   }
 
   /* ================================================================ SCORE SHEET */
@@ -171,6 +173,7 @@
           <p class="faint">Your age guess goes up one year every season on its own.</p>
           <label>Notes<textarea id="notes" maxlength="400">${esc(e.notes || '')}</textarea></label>
           <div class="row" style="margin-top:6px"><button class="btn" id="save">Save</button><button class="btn ghost" id="rm">Remove from list</button><span id="rmq" class="dim"></span></div>
+          ${e.read ? `<p style="margin-top:10px"><b>Your best read:</b> ${esc(e.read)}</p>` : ''}
           <dl class="kv" style="margin-top:10px"><dt>Last seen</dt><dd>${esc(WT.lastSeenText(e))}</dd><dt>Seen on</dt><dd>${e.places.map((p) => esc(w.parcels[p] ? w.parcels[p].name : '?')).join(', ')}</dd><dt>Added</dt><dd>${WT.dateLabel(e.added[1])}, Year ${e.added[0]}</dd></dl>
           <h3>Sighting log</h3>${e.log.map((l) => `<p class="dim">${WT.dateLabel(l.d)} Yr ${l.y}, ${typeof l.t === 'number' && l.t > 24 ? '' : l.kind === 'photo' ? `${l.t}:00` : WT.fmtTime(l.t)}: ${esc(l.kind === 'photo' ? 'trail camera' : l.doing || 'seen')} · ${esc(l.where)}${l.dist ? ` · ${l.dist} yd` : ''}</p>`).join('')}
         </div>

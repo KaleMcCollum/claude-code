@@ -9,7 +9,9 @@
     /* ------------------------------------------------------------ economy */
     economy: {
       startingCash: 450,
-      propertyTaxRate: 0.015,          // of land value per year
+      propertyTaxRate: 0,              // no property tax (owner's call); raise to e.g. 0.015 to bring it back
+      levelUpCash: (lvl) => 50 + 5 * lvl, // paid each time you level up
+      newDeerCash: 25,                 // paid for each new deer added to your hit list
       landSellFee: 0.08,               // fee when selling land back
       tags: { buck: 30, doe: 20, maxDoeTags: 3 },
       payouts: [                        // money only comes from deer

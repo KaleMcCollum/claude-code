@@ -32,8 +32,8 @@ for (let h = 0; h < 30 && WT.game.state.day < 92; h++) {
   }
   if (!H.over) WT.endHunt('left');
   seen += H.seenIds.size; kills += H.harvested.length;
-  // make sure the log never names a deer's age, score or sex during the hunt
-  for (const l of H.log) if (/\b(\d+(\.\d)? ?yrs?|\d+")|\bbucks?\b|\bdoes?\b|pointer|spike|fawn/i.test(l.text) && !/buck tag|doe tag/.test(l.text)) console.log('  LEAK?', l.text);
+  // the log only describes a deer through a deliberate look ("Through the binos: ..."), never on its own
+  for (const l of H.log) if (/\b(\d+(\.\d)? ?yrs?|\d+")|\bbucks?\b|\bdoes?\b|pointer|spike|fawn/i.test(l.text) && !/buck tag|doe tag|^Through the/.test(l.text)) console.log('  LEAK?', l.text);
 }
 console.log(`30 hunts: deer seen ${seen}, shots ${shots}, harvested ${kills}, hit list ${WT.game.state.hitList.length}, cash ${Math.round(WT.game.state.cash)}, level ${WT.game.state.level}`);
 for (const r of WT.game.state.journal) console.log('  harvest:', r.label, r.age, r.gross, r.legal ? 'legal' : 'ILLEGAL', '$' + r.pay);

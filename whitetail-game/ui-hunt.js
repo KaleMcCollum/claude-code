@@ -214,6 +214,13 @@
     if (kind === 'scope') circle(SW / 2, SH / 2, 60); else { circle(SW / 2 - 34, SH / 2, 58); circle(SW / 2 + 34, SH / 2, 58); }
     ctx.drawImage(mk, 0, 0);
     if (kind === 'scope') { ctx.fillStyle = '#0a0806'; ctx.fillRect(SW / 2 - 60, SH / 2, 50, 1); ctx.fillRect(SW / 2 + 10, SH / 2, 50, 1); ctx.fillRect(SW / 2, SH / 2 - 60, 1, 50); ctx.fillRect(SW / 2, SH / 2 + 10, 1, 50); ctx.fillRect(SW / 2 - 60, SH / 2 - 1, 22, 3); ctx.fillRect(SW / 2 + 38, SH / 2 - 1, 22, 3); }
+    if (target && target.m.read) {
+      ctx.font = '6px "Press Start 2P", monospace'; ctx.textAlign = 'center';
+      const txt = target.m.read.label || target.m.read.text.split(',')[0];
+      const tw = ctx.measureText(txt).width;
+      ctx.fillStyle = 'rgba(10,8,6,.85)'; ctx.fillRect(SW / 2 - tw / 2 - 4, SH - 14, tw + 8, 11);
+      ctx.fillStyle = '#EFE3D3'; ctx.fillText(txt.toUpperCase(), SW / 2, SH - 6);
+    }
     if (!target) { ctx.fillStyle = '#EFE3D3'; ctx.font = '8px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.fillText('NOTHING IN VIEW', SW / 2, SH / 2); }
   }
 
@@ -256,7 +263,7 @@
         <button class="btn" id="addList" ${H.selected ? '' : 'disabled'}>Add to hit list</button>
         <button class="btn blaze" id="shoot" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason || '')}">Shoot</button>
         <button class="btn ghost" id="leave">Leave</button>
-        <span class="dim" style="flex-basis:100%">${chk.ok ? (chk.clear ? 'Clear shot.' : 'Brush in the way. A shot now could wound.') : esc(chk.reason || '')}</span>`;
+        <span class="dim" style="flex-basis:100%">${(() => { const f = H.selected && WT.findTarget(H, H.selected); return f && f.m.read ? `<span class="deer" style="color:var(--cream)">Your read: ${esc(f.m.read.text)}.</span> ` : ''; })()}${chk.ok ? (chk.clear ? 'Clear shot.' : 'Brush in the way. A shot now could wound.') : esc(chk.reason || '')}</span>`;
       const on = (id, fn) => { const b = $('#' + id, el); if (b) b.addEventListener('click', fn); };
       on('sit', () => { step(); });
       on('auto', () => { auto = !auto; if (auto) runAuto(); else stopAuto(); controls(); });

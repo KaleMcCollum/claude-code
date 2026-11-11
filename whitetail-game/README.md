@@ -11,14 +11,14 @@ An 8-bit, mostly text-based whitetail hunting game set in North Dakota-style cou
    - stands on a neighbor's land once you've paid for permission (gold),
    - spots you mark on public land (green; up to 3 per area and 10 total). Public land takes a mobile setup: a climber or hang-on in a tree, or a ground sit. Some public areas are bow-only and stay locked until bows arrive.
 4. **Gear up**: pick morning, evening or all day and what to pack from what you own. Change clothes and equipment (and spend skill points) under **Gear**. The game tells you how cold it will feel and how long you can sit.
-5. **On stand**, time moves in 10-minute steps (fast-forward through quiet stretches). The game never tells you what a deer is. You judge it by eye: far deer are a few pixels, and binoculars or the scope show more detail depending on the tier, the light and the distance. The rangefinder is the only thing that gives you a yardage.
+5. **On stand**, time moves in 10-minute steps (fast-forward through quiet stretches). Far deer are a few pixels. Tap one to get your read on it, and raise binoculars or the scope for a better one. The read depends on distance, light and how good your glass is: "has antlers, a medium rack" far off, "looks like an 8 to a 10 pointer" closer, and up close with good glass a call like "big 10" with a rough score and weight. The rangefinder is the only thing that gives you a yardage.
 6. Tap a deer to pick it, then **Shoot**. Shooting an antlered deer on a doe tag (or the other way around) costs you a $500 ticket and the deer.
 7. After a harvest, guess the score, then see the full Boone & Crockett score sheet and four trophy views. The real age, weight and score are revealed only here.
-8. **Hit list**: bucks you see clearly or catch on a trail camera are added automatically. You name them, set your own age guess (it goes up a year every season) and tag them Hit list / Pass / Cull / Doe / Watch. The game never tells you whether a deer is still alive.
+8. **Hit list**: bucks you see clearly or catch on a trail camera are added automatically (+$25 for each new deer). Trail cam photos say when the deer is one from your hit list. You name them, set your own age guess (it goes up a year every season) and tag them Hit list / Pass / Cull / Doe / Watch. The game never tells you whether a deer is still alive.
 9. **Land**: buy parcels when they come up for sale, put up stands, hang cameras, plant food plots and tree rows, dig water holes and set aside sanctuary. You don't know how good a spot is until you hunt it; stars fill in as you sit it.
 10. **Wait** passes time. Rifle season runs Oct 1 to Dec 31. At the end of the season every deer on the map goes through winter, fawning, dispersal and antler growth.
 
-The game saves itself in your browser after every hunt and purchase.
+Money comes from harvested deer, leveling up (a little more each level) and new hit list deer. There's no property tax. The game saves itself in your browser after every hunt and purchase.
 
 ## What's simulated
 

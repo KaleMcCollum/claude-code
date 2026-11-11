@@ -125,7 +125,7 @@
             <dt>Deer taken</dt><dd>${h.length ? h.map((r) => esc(r.label)).join(', ') : 'None'}</dd>
             <dt>Winter</dt><dd>${esc(sum.winter)}</dd>
             <dt>Summer</dt><dd>${esc(sum.growing)}</dd>
-            <dt>Property tax</dt><dd>${money(sum.tax)}</dd>
+            ${sum.tax ? `<dt>Property tax</dt><dd>${money(sum.tax)}</dd>` : ''}
             ${sum.plans ? `<dt>Cell plans</dt><dd>${money(sum.plans)}</dd>` : ''}
           </dl>
           ${sum.events.length ? '<h3>On your land</h3>' + sum.events.map((e) => `<p>${esc(e)}</p>`).join('') : ''}
