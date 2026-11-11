@@ -14,6 +14,9 @@
  * This does not catch letters that merely look alike (a capital I for a
  * small l, or a letter from another alphabet). Nothing short of a person
  * looking can.
+ *
+ * Every character in this file is given by its number, never typed, so
+ * that nothing in here is invisible. Keep it that way.
  */
 
 type Range = readonly [first: number, last: number];

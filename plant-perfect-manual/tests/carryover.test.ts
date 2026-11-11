@@ -469,6 +469,15 @@ describe("a hardened database that gets the steps from the second review", () =>
     // Two entries made with a mistyped address and removed again; nobody ever signed in with them.
     const ghost = await person(`Ka${SOFT_HYPHEN}ren`, "kraen@example.com", "advisor", { signedIn: false, removed: true, minutesLater: 2 });
     const pat = await person("Pat", "pta@example.com", "advisor", { signedIn: false, removed: true, minutesLater: 3 });
+    // The real Pat, added afterwards (the name was pasted, with a character that draws nothing), not signed in yet.
+    const WORD_JOINER = String.fromCodePoint(0x2060);
+    const patNow = await person(`Pat${WORD_JOINER}`, "pat@example.com", "advisor", { signedIn: false, minutesLater: 4 });
+    const lee = await person("Lee", "ele@example.com", "advisor", { signedIn: false, removed: true, minutesLater: 5 });
+    // A name with a tab in it; a name that is nothing but a character that
+    // draws nothing; and one where even the email address gives no name.
+    const sam = await person(`Sam${String.fromCodePoint(0x0009)}B`, "sam@example.com", "advisor", { signedIn: true, minutesLater: 6 });
+    const dee = await person(ZERO_WIDTH_SPACE, "dee@example.com", "advisor", { signedIn: false, minutesLater: 7 });
+    const nobody = await person(SOFT_HYPHEN, `${ZERO_WIDTH_SPACE}@example.com`, "advisor", { signedIn: false, removed: true, minutesLater: 8 });
 
     const sectionRow = async (title: string, position: number, parent: string | null, archived = false) =>
       (
@@ -563,13 +572,32 @@ describe("a hardened database that gets the steps from the second review", () =>
     // in the activity log. Entries that never signed in keep a clean name
     // and no longer hold it.
     const names = new Map((await db.select().from(schema.users)).map((u) => [u.id, u.name]));
-    expect([kale, casey, karen, twin, ghost, pat].map((id) => names.get(id))).toEqual(["Kale", "Casey", "Karen", "Casey (2)", "Karen", "Pat"]);
+    expect([kale, casey, karen, twin, ghost, pat, patNow, lee, sam, dee, nobody].map((id) => names.get(id))).toEqual([
+      "Kale",
+      "Casey",
+      "Karen",
+      "Casey (2)",
+      "Karen",
+      "Pat",
+      // The real Pat keeps the name: the earlier entry never signed in, so it does not count.
+      "Pat",
+      "Lee",
+      "Sam B",
+      // With nothing left of the name, the first part of the email address; failing that, "Person".
+      "dee",
+      "Person",
+    ]);
     const renames = (await db.select().from(schema.activityLog).orderBy(schema.activityLog.id)).filter((e) => e.action === "user.renamed");
     expect(renames.map((e) => [e.entityId, e.summary, e.userId])).toEqual([
       [twin, "Took characters that cannot be seen out of the name Casey", null],
       [ghost, "Took characters that cannot be seen out of the name Karen", null],
+      [patNow, "Took characters that cannot be seen out of the name Pat", null],
+      [sam, "Took characters that cannot be seen out of the name Sam B", null],
+      [dee, "Took characters that cannot be seen out of the name dee", null],
+      [nobody, "Took characters that cannot be seen out of the name Person", null],
       [twin, "Renamed Casey to Casey (2), because two people had the same name", null],
     ]);
+    expect(renames.at(-1)?.data).toEqual({ from: "Casey", to: "Casey (2)" });
     expect(renames[0].data).toEqual({ from: `Casey${ZERO_WIDTH_SPACE}`, to: "Casey" });
 
     // Proposals: every one is still there, as it was.
@@ -649,12 +677,13 @@ describe("a hardened database that gets the steps from the second review", () =>
     expect(await saveOfficial(kaleNow, hiring, JSON.parse(doc("We hire in March.")))).toEqual({ changed: true, version: 1 });
     await expect(endorseProposal(karenNow, declined, { revision: 1 })).rejects.toThrow("declined or withdrawn");
 
-    // People: the mistyped Pat no longer holds the name; the removed
-    // look-alike comes back only under the name it now has; Casey's is taken.
+    // People: the mistyped Lee no longer holds that name; the removed
+    // look-alike comes back only under the name it now has; names in use are taken.
     const mail = { baseUrl: "https://manual.example.com", send: async () => {} };
-    const newPat = await addUser(kaleNow, { name: "Pat", email: "pat@example.com", roleKey: "advisor" }, mail);
-    expect(newPat.userId).not.toBe(pat);
+    const newLee = await addUser(kaleNow, { name: "Lee", email: "lee@example.com", roleKey: "advisor" }, mail);
+    expect(newLee.userId).not.toBe(lee);
     await expect(addUser(kaleNow, { name: "casey", email: "another@example.com", roleKey: "advisor" }, mail)).rejects.toThrow("already called Casey");
+    await expect(addUser(kaleNow, { name: "PAT", email: "another@example.com", roleKey: "advisor" }, mail)).rejects.toThrow("already called Pat");
     expect(await addUser(kaleNow, { name: "Kale Two", email: "kale.second@example.com", roleKey: "advisor" }, mail)).toMatchObject({
       userId: twin,
       keptName: "Casey (2)",

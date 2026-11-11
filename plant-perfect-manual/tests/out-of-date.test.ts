@@ -13,9 +13,11 @@ import {
   canApproveToo,
   countAwaiting,
   createProposal,
+  declineProposal,
   editProposal,
   endorseProposal,
   listOneOwnerDecisions,
+  listOpenProposalsForSection,
   loadProposal,
   loadTextChange,
   statusLine,
@@ -25,7 +27,7 @@ import {
 } from "@/lib/proposals";
 import { type RichDoc, docToText } from "@/lib/richtext";
 import { loadToday } from "@/lib/today";
-import { removeUser } from "@/lib/users";
+import { changeUserRole, removeUser } from "@/lib/users";
 import { actorFor, insertUser, refusal, withTestDatabase } from "./helpers/db";
 
 withTestDatabase();
@@ -334,6 +336,54 @@ describe("approving an out-of-date proposal on your own", () => {
     expect((await view(endorsed)).approvals.map((a) => a.name)).toEqual(["Kale"]);
     await withdrawProposal(kale, endorsed);
   });
+
+  it("a proposer who has been made an Advisor can no longer check it either", async () => {
+    const houseplants = await section("Houseplants");
+    const robin = await insertUser("Robin", "robin@example.com", "owner");
+    const id = await createProposal(robin, { kind: "decision", sectionId: houseplants, title: "Water on Mondays", proposedOfficial: doc("Houseplants are watered on Mondays.") });
+    await saveOfficial(kale, houseplants, doc("Houseplants: to be decided."));
+    // While Robin is an Owner, the proposal waits for Robin to check it.
+    expect(await view(id)).toMatchObject({ outOfDate: true, proposerCanChange: true });
+    expect(waitingOn(await view(id), await owners())).toMatchObject({ step: "check", ids: [robin.id] });
+    await expect(approveProposal(casey, id, (await page(id)).seen)).rejects.toThrow(sinceProposed("Robin"));
+
+    await changeUserRole(kale, robin.id, "advisor");
+    expect(await view(id)).toMatchObject({ outOfDate: true, proposerCanChange: false });
+    expect(waitingOn(await view(id), await owners())).toMatchObject({ step: "stuck", ids: [casey.id, kale.id] });
+    await expect(approveProposal(casey, id, (await page(id)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
+    expect((await view(id)).approvals.map((a) => a.name)).toEqual(["Robin"]);
+    await declineProposal(casey, id, "The text has moved on.");
+  });
+
+  it("once another Owner has approved it, its proposer cannot check it any more: it is stuck for everyone", async () => {
+    const hardGoods = await section("Hard Goods");
+    const jo = await insertUser("Jo", "jo@example.com", "owner");
+    const id = await createProposal(kale, { kind: "decision", sectionId: hardGoods, title: "Carry hose reels", proposedOfficial: doc("Hard goods include hose reels.") });
+    // Casey approves while Kale is not an Owner, so it stays open; then Kale is an Owner again.
+    await changeUserRole(casey, kale.id, "advisor");
+    expect(await approveProposal(casey, id, (await page(id)).seen)).toEqual({ approved: false, waitingFor: ["Jo"] });
+    await changeUserRole(casey, kale.id, "owner");
+    expect(approveChoices(await view(id), kale, await owners())).toEqual({ approve: true, alone: false });
+    // Before anyone presses Approve again, Jo changes the official text.
+    await saveOfficial(jo, hardGoods, doc("Hard goods: to be decided."));
+
+    const p = await view(id);
+    expect(p).toMatchObject({ outOfDate: true, proposerCanChange: false });
+    expect(p.approvals.map((a) => a.name)).toEqual(["Kale", "Casey"]);
+    expect(waitingOn(p, await owners())).toMatchObject({ step: "stuck", names: ["Casey", "Kale", "Jo"] });
+    // Two Owners' names are on it already, so nobody can approve it, alone or not.
+    for (const who of [kale, casey, jo]) {
+      expect(approveChoices(p, who, await owners())).toEqual({ approve: false, alone: false });
+      await expect(approveProposal(who, id, (await page(id)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
+      await expect(approveAlone(who, id, (await page(id)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
+    }
+    await expect(
+      editProposal(kale, id, { kind: "decision", sectionId: hardGoods, title: "Carry hose reels", proposedOfficial: doc("Hard goods include hose reels.") }, { currentVersionId: await currentId(hardGoods) }),
+    ).rejects.toThrow("can no longer be changed");
+    expect(await officialText(hardGoods)).toBe("Hard goods: to be decided.");
+    await withdrawProposal(kale, id);
+    await removeUser(kale, jo.id);
+  });
 });
 
 describe("database rules: two people's approval needs the proposal to be up to date", () => {
@@ -368,6 +418,16 @@ describe("database rules: two people's approval needs the proposal to be up to d
     expect(await view(id)).toMatchObject({ status: "approved", decidedAlone: false, revision: 2 });
   });
 
+  it("counts a proposal written when there was no official text as out of date once there is some", async () => {
+    const mission = await section("Mission and Culture");
+    const id = await createProposal(kale, { kind: "decision", sectionId: mission, title: "Mission", proposedOfficial: doc("We grow good plants.") });
+    expect((await view(id)).baseVersionId).toBeNull();
+    await saveOfficial(casey, mission, doc("We sell good plants."));
+    expect(await refusal(approveAt(casey, id, mission, "We grow good plants.", true))).toMatch(OUT_OF_DATE);
+    expect(await view(id)).toMatchObject({ status: "open", outOfDate: true });
+    await withdrawProposal(kale, id);
+  });
+
   it("allows one person to approve an out-of-date proposal, and records that one person decided", async () => {
     const construction = await section("Construction");
     await saveOfficial(kale, construction, doc("Paving: spring."));
@@ -381,8 +441,21 @@ describe("database rules: two people's approval needs the proposal to be up to d
 
   it("does not hold up a section change, or a text proposal for a section that never had official text", async () => {
     // A section with official text, renamed by a proposal that both approve.
+    // A section change is never "out of date": it is not written against any text.
     const construction = await section("Construction");
     const rename = await createProposal(kale, { kind: "structure", change: { action: "rename", sectionId: construction, title: "Building work" } });
+    expect(await currentId(construction)).not.toBeNull();
+    expect(await view(rename)).toMatchObject({ outOfDate: false, baseVersionId: null });
+    // Also when it is listed next to a text proposal about the same section.
+    const text = await createProposal(kale, { kind: "decision", sectionId: construction, title: "Pave in summer", proposedOfficial: doc("Paving: summer.") });
+    const listed = await asSystem((db) => listOpenProposalsForSection(db, construction));
+    expect(listed.map((p) => [p.id, p.outOfDate])).toEqual([
+      [rename, false],
+      [text, false],
+    ]);
+    await withdrawProposal(kale, text);
+    expect(approveChoices(await view(rename), casey, await owners())).toEqual({ approve: true, alone: false });
+    expect(waitingText(await view(rename), await owners(), casey.id)).toBe("Waiting for you");
     expect(await approveProposal(casey, rename, { revision: 1 })).toEqual({ approved: true, waitingFor: [] });
     expect(await view(rename)).toMatchObject({ status: "approved", decidedAlone: false });
     // No official text before or now: "written against nothing" is up to date.

@@ -146,8 +146,25 @@ describe("database rules: who and when on a person", () => {
     expect(await refusal(change(karen.id, { name: "Our accountant", removedAt: null, removedBy: null }))).toMatch(SIGNED_IN);
     // Sending the same name again changes nothing and is fine.
     expect(await change(karen.id, { name: "Karen", removedAt: null, removedBy: null })).toMatchObject([{ name: "Karen", removedAt: null }]);
-    // Code with full database access (setup, sign-in) is not bound.
+  });
+
+  it("code with full database access (setup, sign-in, a database step) is not bound", async () => {
+    // A database step may correct a name, as the step that cleaned up look-alike names did.
+    await asSystem((db) => db.update(users).set({ name: "Karen M" }).where(eq(users.id, karen.id)));
+    expect((await personRow(karen.id)).name).toBe("Karen M");
     await asSystem((db) => db.update(users).set({ name: "Karen" }).where(eq(users.id, karen.id)));
+    // Sign-in stamps "last active" without being anybody.
+    const [signedIn] = await asSystem((db) => db.update(users).set({ lastActiveAt: OLD }).where(eq(users.id, karen.id)).returning());
+    expect(signedIn.lastActiveAt).toEqual(OLD);
+    // First-time setup adds people in nobody's name, and may carry over old records as they were.
+    const [carried] = await asSystem((db) =>
+      db
+        .insert(users)
+        .values({ name: "Old Timer", email: "old.timer@example.com", roleKey: "advisor", createdAt: OLD, updatedAt: OLD, lastActiveAt: OLD, removedAt: OLD, removedBy: casey.id })
+        .returning(),
+    );
+    expect(carried).toMatchObject({ createdBy: null, updatedBy: null, removedBy: casey.id });
+    expect(carried.updatedAt).toEqual(OLD);
   });
 });
 
@@ -250,6 +267,43 @@ describe("database rules: who and when on a section", () => {
     const [dated] = await change(training.id, { archivedAt: OLD, archivedBy: kale.id });
     expect(dated.archivedAt).toEqual(OLD);
     await restoreSection(kale, training.id);
+  });
+});
+
+describe("database rules: who and when on sections and notes, for code with full database access", () => {
+  it("is not bound: setup adds sections in nobody's name, and old records can be carried over as they were", async () => {
+    const [made] = await asSystem((db) =>
+      db
+        .insert(sections)
+        .values({ title: "Carried over", position: 80, createdAt: OLD, updatedAt: OLD, updatedBy: casey.id, archivedAt: OLD, archivedBy: casey.id })
+        .returning(),
+    );
+    expect(made).toMatchObject({ createdBy: null, updatedBy: casey.id, archivedBy: casey.id });
+    expect(made.updatedAt).toEqual(OLD);
+    const [changed] = await asSystem((db) =>
+      db.update(sections).set({ createdBy: kale.id, title: "Carried over, renamed" }).where(eq(sections.id, made.id)).returning(),
+    );
+    expect(changed).toMatchObject({ createdBy: kale.id, updatedBy: casey.id });
+
+    await asSystem((db) => db.insert(dailyLogs).values({ logDate: "2020-01-01", createdAt: OLD, createdBy: kale.id }).onConflictDoNothing());
+    const [note] = await asSystem((db) =>
+      db
+        .insert(notes)
+        .values({
+          logDate: "2020-01-01",
+          body: doc("an old note"),
+          bodyText: "an old note",
+          createdAt: OLD,
+          createdBy: kale.id,
+          updatedAt: new Date("2020-02-01T15:00:00Z"),
+          updatedBy: casey.id,
+          sortedAt: OLD,
+          sortedBy: casey.id,
+        })
+        .returning(),
+    );
+    expect(note).toMatchObject({ updatedBy: casey.id, sortedBy: casey.id });
+    expect(note.updatedAt).toEqual(new Date("2020-02-01T15:00:00Z"));
   });
 });
 

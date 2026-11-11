@@ -61,7 +61,8 @@ $$;
 --> statement-breakpoint
 -- Names already stored with a character in them that cannot be seen (or a
 -- tab or line break) are cleaned, and the change is written to the activity
--- log. A name with nothing left becomes the first part of the email address.
+-- log. A name with nothing left becomes the first part of the email address
+-- (or, failing that too, "Person").
 DO $$
 DECLARE
   person record;
