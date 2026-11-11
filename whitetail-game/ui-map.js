@@ -172,6 +172,10 @@
           for (const s of d.stands) mark(s.x, s.y, STAND_LETTER[s.type] || '?', '#1c1410', d.permBought ? '#d6a84a' : '#6a5a4a');
         } else if (d.owner === 'public') {
           for (const s of d.spots || []) mark(s.x, s.y, '✚', '#1c1410', '#b6e08a');
+          for (const c of d.cams || []) {
+            if ((d.spots || []).some((s) => s.x === c.x && s.y === c.y)) { const [X, Y] = toScreen(c.x + 0.5, c.y + 0.5), s = v.z >= 8 ? 11 : 8; ctx.fillStyle = '#1c1410'; ctx.fillRect(Math.round(X + s / 2) - 3, Math.round(Y - s / 2) - 4, 7, 7); ctx.fillStyle = c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8'; ctx.fillRect(Math.round(X + s / 2) - 2, Math.round(Y - s / 2) - 3, 5, 5); }
+            else mark(c.x, c.y, c.queue && c.queue.length ? '!' : '▪', '#1c1410', c.queue && c.queue.length ? '#ffe08a' : '#B8B4C8');
+          }
         }
       }
       if (opts.overlay) opts.overlay(ctx, v);
@@ -310,8 +314,8 @@
   // What is stacked with a stand: a camera on it, food or water close enough to count.
   UI.stackHtml = function (pid, s) {
     const d = S().parcels[pid], info = WT.tileInfo(pid, s.x, s.y), out = [];
-    if (d.owner === 'player') {
-      for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera on this stand</span>: ${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
+    if (d.owner === 'player' || d.owner === 'public') {
+      for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera on this stand</span>: ${WT.camRate(c) != null ? WT.camRate(c).toFixed(1) + ' deer a week, ' : ''}${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
       if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera here. Hang one on this spot to learn what walks past this stand.</span>');
     }
     if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot at this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot at this stand</span>: it grows in next season and the rating goes up then');
@@ -399,6 +403,23 @@
       refreshMap(); renderCard(); UI.topbar();
     }
 
+    const rateTxt = (c) => { const r = WT.camRate(c); return r == null ? (WT.camType(c.type).cell ? 'no days logged yet' : 'check the card to see') : `${r.toFixed(1)} deer a week`; };
+    function camBlock(c) {
+      const ct = WT.camType(c.type), sg = WT.camSight(c);
+      return `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(ct.name)}</span><span class="dim">${ct.cell ? 'sends photos by itself' : c.queue && c.queue.length ? `<b>${c.queue.length} photos waiting on the card</b>` : 'nothing new on the card'}</span></div>
+          <dl class="kv"><dt>Activity</dt><dd><b>${rateTxt(c)}</b></dd><dt>Photos</dt><dd>${c.total || 0}${c.total ? ` · ${c.dayN || 0} in daylight · ${c.bucks || 0} of bucks` : ''}</dd>
+          <dt>Sees here</dt><dd>clear to ${sg.clear} yd, nothing past ${sg.reach} yd${sg.limited ? ' <span class="faint">(cover is cutting it short)</span>' : ''}</dd><dt>Up for</dt><dd>${c.days || 0} day${c.days === 1 ? '' : 's'}</dd></dl>
+          <div class="row" style="margin-top:6px">${ct.cell ? '' : '<button class="btn small" id="ccheck">Check card</button>'}<button class="btn small" id="cmove">Move</button><button class="btn small" id="cpick">Pick up</button><button class="btn small" id="cphotos">Photos</button></div></div>`;
+    }
+    function addCamRow(onStand) {
+      const cams = Object.entries(st.inv.cameras).filter(([, n]) => n > 0);
+      return `<div class="row" style="margin-top:6px">${cams.length ? `<select id="camSel">${cams.map(([id, n]) => `<option value="${id}" ${state.camType === id ? 'selected' : ''}>${esc(WT.camType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addCam">Hang camera${onStand ? ' on this spot' : ' here'}</button>` : '<span class="faint">No cameras in your truck. Buy one at the Shop.</span>'}</div>`;
+    }
+    // every camera you have out, best first: this is how you find the next place to sit
+    function camReport() {
+      const all = WT.allCameras(); if (!all.length) return '';
+      return `<h3>Camera report</h3><p class="dim">Busiest first. The camera getting the most deer, and the most in daylight, is the spot to hunt. Compare the same model against itself: a camera with more reach catches more deer on the same spot.</p><div class="list">${all.map((a) => `<button class="item" style="text-align:left;border:0" data-cam="${a.pid}:${a.cam.x},${a.cam.y}"><span><span class="nm">${esc(WT.camType(a.cam.type).name)}</span> <span class="dim">${esc(a.parcel)}${a.owner === 'public' ? ' (public)' : ''}</span></span><span>${rateTxt(a.cam)}</span><span class="st">${a.cam.total || 0} photos · ${a.cam.dayN || 0} daylight · ${a.cam.bucks || 0} bucks${a.cam.queue && a.cam.queue.length ? ` · <b>${a.cam.queue.length} on the card</b>` : ''}</span></button>`).join('')}</div>`;
+    }
     function playerCard(p, d, pid) {
       const lim = WT.limits(pid), inv = st.inv, t = state.tile;
       const truck = Object.entries(inv.stands).filter(([id, n]) => n > 0 && id !== 'ground');
@@ -419,8 +440,7 @@
       if (s) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.standType(s.type).name)}</span><input type="text" id="sname" maxlength="28" value="${esc(s.name || '')}" placeholder="Name it" style="flex:1;min-width:90px"><button class="btn small" id="srename">Rename</button></div>
           <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
           ${UI.stackHtml(pid, s)}${UI.knowledgeHtml(s)}</div>`;
-      if (c) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.camType(c.type).name)}</span><span class="dim">${c.total || 0} photos${c.total ? `, ${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks` : ''}${WT.camType(c.type).cell ? ' · sends photos by itself' : c.queue && c.queue.length ? ` · <b>${c.queue.length} waiting</b>` : ' · nothing new'}</span></div>
-          <div class="row" style="margin-top:6px">${WT.camType(c.type).cell ? '' : '<button class="btn small" id="ccheck">Check card</button>'}<button class="btn small" id="cmove">Move</button><button class="btn small" id="cpick">Pick up</button><button class="btn small" id="cphotos">Photos</button></div></div>`;
+      if (c) html += camBlock(c);
       if (info.plot) { const pt = WT.plotType(info.plot.type); html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">${esc(pt.name)} food plot</span> <span class="dim">${info.plot.acres} ac · ${info.plot.year === st.year ? 'planted this year, deer start using it next season' : 'growing: deer feed here'}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Plow it under</button></div></div>`; }
       if (info.trees) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Tree row</span> <span class="dim">${info.trees.mature ? 'grown into cover' : `planted year ${info.trees.year}, becomes cover after ${WT.CONFIG.improvements.trees.matureYears} years`}</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Pull the row</button></div></div>`;
       if (info.waterhole) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Water hole</span><div class="row" style="margin-top:6px"><button class="btn small" id="unbuild">Fill it in</button></div></div>`;
@@ -428,7 +448,7 @@
       const noStand = !s || !(s.x === t.x && s.y === t.y), noCam = !c || !(c.x === t.x && c.y === t.y);
       html += `<h3>Add to this spot</h3>`;
       if (!s) html += `<div class="row">${truck.length ? `<select id="standSel">${truck.map(([id, n]) => `<option value="${id}" ${state.standType === id ? 'selected' : ''}>${esc(WT.standType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addStand">Put up stand</button>` : '<span class="faint">No stands in your truck. Buy one at the Shop.</span>'}</div>`;
-      if (noCam) html += `<div class="row" style="margin-top:6px">${cams.length ? `<select id="camSel">${cams.map(([id, n]) => `<option value="${id}" ${state.camType === id ? 'selected' : ''}>${esc(WT.camType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addCam">Hang camera${s ? ' on this stand' : ''}</button>` : '<span class="faint">No cameras in your truck. Buy one at the Shop.</span>'}</div>`;
+      if (noCam) html += addCamRow(!!s);
       void noStand;
       if (!info.plot && !info.waterhole) html += `<div class="row" style="margin-top:6px">
           <select id="plotSel">${WT.CONFIG.improvements.foodplot.types.map((x) => `<option value="${x.id}" ${state.plot.type === x.id ? 'selected' : ''}>${esc(x.name)} (${WT.money(x.cost)}/ac)</option>`).join('')}</select>
@@ -457,6 +477,8 @@
           : `<h2>Land</h2><p class="dim">Tap your land to build on it. Tap any other parcel to see it. Orange borders are for sale, and some neighbors sell permission to hunt their stands.</p>
              <div class="row">${w.parcels.filter((p) => st.parcels[p.id].owner === 'player').map((p) => `<button class="btn small" data-jump="${p.id}">${esc(p.name)}</button>`).join('')}
              ${st.forSale.map((id) => `<button class="btn small" data-jump="${id}">For sale: ${w.parcels[id].acres} ac</button>`).join('')}</div>`;
+        card.insertAdjacentHTML('beforeend', camReport());
+        card.querySelectorAll('[data-cam]').forEach((b) => b.addEventListener('click', () => { const [pp, xy] = b.dataset.cam.split(':'), [x, y] = xy.split(',').map(Number); selectTile(+pp, x, y); view.focus(+pp); renderCard(); }));
         card.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => { const [p, s] = b.dataset.pick.split(':'); const d = st.parcels[+p], so = [...(d.stands || []), ...(d.spots || [])].find((z) => z.sid === s); selectTile(+p, so.x, so.y); view.focus(+p); renderCard(); }));
         card.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => { state.pid = +b.dataset.jump; state.tile = null; state.sid = null; view.focus(state.pid); renderCard(); }));
         return;
@@ -485,7 +507,10 @@
         html += `<p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: bows are coming in a later update.</span>' : ''}</p>
           <dl class="kv"><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
-          ${state.tile && !standObj ? `<div class="row"><button class="btn" id="markHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark the spot you tapped</button></div>` : !standObj ? '<p><b>Tap the map inside this area</b> where you want to sit, then mark it.</p>' : ''}
+          ${state.cid ? camBlock(d.cams.find((c) => c.cid === state.cid)) : ''}
+          ${state.tile && !standObj ? `<div class="row" style="margin-top:6px"><button class="btn" id="markHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark ${state.cid ? 'this camera spot' : 'the spot you tapped'} to hunt</button></div>` : !state.tile ? '<p><b>Tap the map inside this area</b> to mark a spot to sit or hang a camera.</p>' : ''}
+          ${state.tile && !(state.cid && d.cams.some((c) => c.cid === state.cid && c.x === state.tile.x && c.y === state.tile.y)) ? addCamRow(!!standObj) : ''}
+          <p class="dim">Cameras here ${d.cams.length} / ${WT.camLimit(pid)}.</p>
           <p class="faint">Mark a tree to hunt from a climber or hang-on, or any spot to sit on the ground. Only mobile stands are allowed on public land.</p>`;
       } else {
         if (standObj && d.permBought) html += standBlock();

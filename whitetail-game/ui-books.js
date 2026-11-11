@@ -16,8 +16,8 @@
   UI.photoImg = function (ph, W = 160, H = 90) {
     const deer = WT.snapDeer(ph.snap);
     const close = ph.dist <= 13;
-    let lod = close ? 1 : 2, k = 1;
-    if (ph.q < 0.45) { lod++; k = 2; } // a blurry photo is a coarser picture blown up
+    let lod = close ? 1 : ph.dist > 110 ? 4 : ph.dist > 45 ? 3 : 2, k = 1; // far deer are small in the frame
+    if (ph.q < 0.45 && lod < 4) { lod++; k = 2; } // a blurry photo is a coarser picture blown up
     const pose = ph.pose === 'down' ? 'down' : ph.pose === 'walk' ? 'walk' : 'alert';
     let spr = WT.deerSprite(deer, { lod, frame: 'full', pose, day: ph.d, mode: ph.night ? 'ir' : 'day' });
     const ax = spr.anchor.x * k, ay = spr.anchor.y * k;

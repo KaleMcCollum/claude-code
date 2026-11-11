@@ -498,7 +498,7 @@
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y), TT = T();
     const pick = (list) => (list || []).find((a) => a.x === x && a.y === y) || (list || []).find((a) => NEAR(a, x, y));
     const stand = d.owner === 'public' ? pick(d.spots) : pick(d.stands);
-    const cam = d.owner === 'player' ? pick(d.cams) : null;
+    const cam = d.owner === 'player' || d.owner === 'public' ? pick(d.cams) : null;
     const plotOf = (k) => (d.plots || []).find((q) => q.tiles.includes(k));
     let nearPlot = null, nearWater = false;
     for (let dy = -2; dy <= 2 && i >= 0; dy++) for (let dx = -2; dx <= 2; dx++) {
@@ -513,12 +513,30 @@
       sanctuary: (d.sanctuary || []).includes(i), nearPlot, nearWater, buildable: i >= 0 && w.parcelOf[i] === pid && standableTile(w.cover[i]),
     };
   };
+  WT.camLimit = (pid) => (S().parcels[pid].owner === 'public' ? C().publicCamsPerArea : WT.limits(pid).cams);
+  // What a camera can really see where it hangs: its own reach, cut down by the cover around it.
+  WT.camSight = function (cam) {
+    const ct = WT.camType(cam.type), r = WT.spotRatings(G.world, cam.x, cam.y);
+    const terrain = Math.round(40 + r.visibility * 260); // thick timber about 40 yards, wide open about 300
+    const reach = Math.min(ct.reach, terrain);
+    return { reach, clear: Math.min(ct.clear, Math.round(reach * 0.7)), limited: terrain < ct.reach, r };
+  };
+  // Photos per week over the days you have results for
+  WT.camRate = (cam) => { const days = WT.camType(cam.type).cell ? cam.days : cam.daysChecked; return days ? (cam.total || 0) / days * 7 : null; };
+  WT.allCameras = function () {
+    const out = [];
+    for (const p of G.world.parcels) { const d = S().parcels[p.id]; for (const c of d.cams || []) out.push({ pid: p.id, cam: c, parcel: p.name, owner: d.owner, rate: WT.camRate(c) }); }
+    return out.sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+  };
   WT.placeCamera = function (pid, type, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
-    if (d.owner !== 'player') return 'Cameras go on your own land.';
-    if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a spot inside your property.';
+    if (d.owner !== 'player' && d.owner !== 'public') return 'Cameras go on your own land or on public land.';
+    if (d.owner === 'public' && d.bowOnly && !WT.hasBow()) return 'This area is bow only. Bows are coming in a later update.';
+    if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return d.owner === 'public' ? 'Pick a spot inside the public area.' : 'Pick a spot inside your property.';
     if (!st.inv.cameras[type]) return 'Buy a camera at the shop first.';
-    if (d.cams.length >= WT.limits(pid).cams) return `Camera limit reached (${WT.limits(pid).cams}).`;
+    const camLim = WT.camLimit(pid);
+    if (d.cams.length >= camLim) return `Camera limit reached (${camLim} ${d.owner === 'public' ? 'per public area' : 'for this acreage'}).`;
+    if (d.cams.some((c) => c.x === x && c.y === y)) return 'There is already a camera on this spot.';
     st.inv.cameras[type]--;
     d.cams.push({ cid: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), type, x, y, pending: 0, total: 0 });
     return null;
@@ -1533,22 +1551,29 @@
     const st = S(), rng = G.rng;
     for (const p of G.world.parcels) {
       const d = st.parcels[p.id];
-      if (d.owner !== 'player' || !d.cams.length) continue;
+      if ((d.owner !== 'player' && d.owner !== 'public') || !d.cams.length) continue;
       for (const cam of d.cams) {
         const ct = WT.camType(cam.type);
         const i = cam.y * G.world.W + cam.x;
-        const onFood = WT.COVER[G.world.cover[i]].f >= 0.6 ? 0.35 : 0; // a camera on a plot or crop edge gets more pictures
-        const traffic = 0.25 + G.world.travel[i] * 0.9 + onFood;
-        const at = d.stands.find((z) => Math.abs(z.x - cam.x) <= 1 && Math.abs(z.y - cam.y) <= 1);
+        cam.days = (cam.days || 0) + 1;
+        // a camera sees what a hunter sitting on that spot would: the better the spot, the more deer walk past it
+        const sight = WT.camSight(cam), r = sight.r;
+        const onFood = WT.COVER[G.world.cover[i]].f >= 0.6 ? 0.3 : 0; // on a plot or crop edge
+        const traffic = 0.15 + 1.3 * Math.max(r.morning, r.evening, r.rut * 0.8) + onFood;
+        const watched = Math.pow(sight.reach / 60, 0.7); // more ground in view, more deer caught
+        const spotOf = d.owner === 'public' ? d.spots || [] : d.stands;
+        const at = spotOf.find((z) => Math.abs(z.x - cam.x) <= 1 && Math.abs(z.y - cam.y) <= 1);
         for (const deer of d.herd) {
           if (deer.age < 1 && rng.chance(0.6)) continue;
-          const p0 = 0.09 * ct.detect * traffic * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6;
+          const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6;
           if (!rng.chance(p0)) continue;
           const night = deer.sex === 'b' && deer.age >= 3.5 ? rng.chance(0.85) : rng.chance(0.45);
-          const dist = Math.round(rng.range(6, 28));
+          const dist = Math.round(4 + (sight.reach - 4) * Math.pow(rng.next(), 1.4));
           const photo = { y: st.year, d: st.day, hour: night ? rng.pick([22, 23, 1, 2, 3, 4, 5]) : rng.pick([7, 8, 17, 18]), night, dist, yaw: rng.pick([-90, -60, -30, 30, 60, 90, 150, -150]),
-            pose: rng.pick(['walk', 'down', 'up', 'alert']), cam: cam.cid, camType: cam.type, pid: p.id, snap: WT.snapshot(deer), sid: at ? at.sid : null, at: at ? (at.name || WT.standType(at.type).name) : null };
-          photo.q = clamp((night ? ct.night : 0.95) * (1 - dist / 45));
+            pose: rng.pick(['walk', 'down', 'up', 'alert']), cam: cam.cid, camType: cam.type, pid: p.id, snap: WT.snapshot(deer), sid: at ? at.sid : null, at: at ? (at.name || (at.kind === 'spot' ? 'marked spot' : WT.standType(at.type).name)) : null };
+          // sharp out to the camera's clear range, then fading to nothing at the edge of its reach
+          photo.q = clamp((night ? ct.night : 0.95) * (dist <= sight.clear ? 1 : Math.max(0, 1 - (dist - sight.clear) / Math.max(1, sight.reach - sight.clear)) * 0.8));
+          if (ct.cell) cam.daysChecked = cam.days;
           if (ct.cell) deliverPhoto(photo, deer);
           else { (cam.queue = cam.queue || []).push(photo); cam.pending = cam.queue.length; }
         }
@@ -1573,8 +1598,10 @@
     const st = S(), d = st.parcels[pid];
     let n = 0;
     for (const cam of d.cams) {
-      if (!cam.queue || (cid && cam.cid !== cid)) continue;
+      if (cid && cam.cid !== cid) continue;
+      if (!cam.queue) { cam.daysChecked = cam.days || 0; continue; }
       for (const ph of cam.queue) { const deer = d.herd.find((x) => x.id === ph.snap.k); deliverPhoto(ph, deer); n++; }
+      cam.daysChecked = cam.days || 0;
       cam.queue = []; cam.pending = 0;
     }
     d.pressure = clamp((d.pressure || 0) + 0.04);

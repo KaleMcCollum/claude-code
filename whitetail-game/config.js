@@ -218,12 +218,16 @@
     standLimitPer100: 4,
 
     /* ------------------------------------------------------------ trail cameras */
+    // clear: yards out to which a deer can be told apart. reach: yards past which it never triggers.
+    // Timber cuts both down: a camera in thick cover can't see farther than the trees let it.
     cameras: [
-      { id: 'tasco',      name: 'Tasco 12MP',               price: 80,  detect: 0.35, night: 0.25, cell: false },
-      { id: 'browning',   name: 'Browning Strike Force',    price: 140, detect: 0.5,  night: 0.5,  cell: false },
-      { id: 'reveal',     name: 'Tactacam Reveal X (cell)', price: 150, detect: 0.5,  night: 0.5,  cell: true, plan: 0 },
-      { id: 'spypoint',   name: 'Spypoint Flex G-36 (cell)',price: 280, detect: 0.65, night: 0.75, cell: true, plan: 0 },
+      { id: 'tasco',      name: 'Tasco 12MP',               price: 80,  detect: 0.35, night: 0.25, clear: 15, reach: 45,  cell: false },
+      { id: 'browning',   name: 'Browning Strike Force',    price: 140, detect: 0.5,  night: 0.5,  clear: 30, reach: 90,  cell: false },
+      { id: 'reveal',     name: 'Tactacam Reveal X (cell)', price: 150, detect: 0.5,  night: 0.5,  clear: 30, reach: 90,  cell: true, plan: 0 },
+      { id: 'spypoint',   name: 'Spypoint Flex G-36 (cell)',price: 280, detect: 0.65, night: 0.75, clear: 50, reach: 150, cell: true, plan: 0 },
+      { id: 'reconyx',    name: 'Reconyx HyperFire 2',      price: 450, detect: 0.8,  night: 0.9,  clear: 65, reach: 200, cell: false },
     ],
+    publicCamsPerArea: 4,
 
     /* ------------------------------------------------------------ clothing */
     // Stats: w warmth, wd wind, wa water, c cooling, q quiet, s scent, cn concealment
