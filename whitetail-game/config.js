@@ -11,6 +11,11 @@
       startingCash: 450,
       propertyTaxRate: 0,              // no property tax (owner's call); raise to e.g. 0.015 to bring it back
       levelUpCash: (lvl) => 50 + 5 * lvl, // paid each time you level up
+      mounts: {                         // taxidermy: pay to put a buck in the trophy room
+        shoulder: { name: 'Shoulder mount', price: 200 },
+        euro: { name: 'European mount', price: 50 },
+        cap: { name: 'Felt cap mount', price: 20 },
+      },
       newDeerCash: 25,                 // paid for each new deer added to your hit list
       landSellFee: 0.08,               // fee when selling land back
       tags: { buck: 30, doe: 20, maxDoeTags: 3 },

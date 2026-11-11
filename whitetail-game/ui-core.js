@@ -220,72 +220,28 @@
     fill(gx, 18, gx, 30, '#6b4a2e'); px(gx, 31, '#4a3020');
   };
 
+  // The lodge is just you: a plank wall, a floor, and the hunter wearing what's equipped.
   function drawLodge(canvas, t) {
     const st = S();
     const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
+    const W = canvas.width, H = canvas.height, floorY = H - 12;
     ctx.imageSmoothingEnabled = false;
-    // wall planks
-    for (let y = 0; y < 104; y++) {
-      const band = Math.floor(y / 8);
-      ctx.fillStyle = y % 8 === 7 ? LP.seam : LP.plank[band % 3];
-      ctx.fillRect(0, y, W, 1);
-    }
-    // floor
-    for (let y = 104; y < H; y++) { ctx.fillStyle = LP.floor[Math.floor((y - 104) / 5) % 2]; ctx.fillRect(0, y, W, 1); }
-    ctx.fillStyle = LP.trim; ctx.fillRect(0, 102, W, 3);
-    // window: season + weather outside
-    const wx = 12, wy = 26, ww = 40, wh = 34;
-    const month = st.day < 31 ? 0 : st.day < 61 ? 1 : 2;
-    const sky = st.slot === 'morning' ? '#c9b8a8' : '#7d6f8a';
-    ctx.fillStyle = sky; ctx.fillRect(wx, wy, ww, wh);
-    ctx.fillStyle = ['#b08a3a', '#8a6e48', '#e8e6e6'][month]; ctx.fillRect(wx, wy + 22, ww, 12);
-    ctx.fillStyle = month === 2 ? '#9a9aa6' : '#4a3a28'; for (let k = 0; k < 6; k++) ctx.fillRect(wx + 3 + k * 7, wy + 14 + (k % 2) * 2, 4, 9);
-    const pr = st.weather && st.weather.precip;
-    if (pr) { ctx.fillStyle = pr === 'snow' ? '#ffffff' : '#9fb3c8'; for (let k = 0; k < 18; k++) { const sx = (k * 13 + Math.floor(t / 120) * (pr === 'snow' ? 1 : 3)) % ww, sy = (k * 7 + Math.floor(t / 80) * (pr === 'snow' ? 1 : 4)) % wh; ctx.fillRect(wx + sx, wy + sy, 1, pr === 'snow' ? 1 : 2); } }
-    ctx.fillStyle = '#2a1d16'; ctx.fillRect(wx - 3, wy - 3, ww + 6, 3); ctx.fillRect(wx - 3, wy + wh, ww + 6, 4); ctx.fillRect(wx - 3, wy, 3, wh); ctx.fillRect(wx + ww, wy, 3, wh); ctx.fillRect(wx + ww / 2 - 1, wy, 2, wh); ctx.fillRect(wx, wy + wh / 2 - 1, ww, 2);
-    // wood stove + pipe
-    const sx0 = 196;
-    ctx.fillStyle = LP.stove[0]; ctx.fillRect(sx0 + 12, 0, 6, 74);
-    ctx.fillStyle = LP.stove[1]; ctx.fillRect(sx0, 74, 30, 30); ctx.fillStyle = LP.stove[2]; ctx.fillRect(sx0 + 2, 76, 26, 3);
-    ctx.fillStyle = '#120f10'; ctx.fillRect(sx0 + 6, 84, 18, 14);
-    const fl = Math.floor(t / 150) % 3;
-    ctx.fillStyle = LP.fire[0]; ctx.fillRect(sx0 + 8, 92 - fl, 14, 5 + fl);
-    ctx.fillStyle = LP.fire[1]; ctx.fillRect(sx0 + 11, 94 - fl, 8, 3 + fl);
-    ctx.fillStyle = LP.fire[2]; ctx.fillRect(sx0 + 14, 96 - (fl % 2), 2, 2);
-    ctx.fillStyle = '#1e1b1d'; ctx.fillRect(sx0 + 2, 104, 4, 3); ctx.fillRect(sx0 + 24, 104, 4, 3);
-    // rug
-    ctx.fillStyle = LP.rug[0]; ctx.fillRect(84, 118, 72, 12); ctx.fillStyle = LP.rug[1]; ctx.fillRect(88, 120, 64, 8); ctx.fillStyle = LP.rug[2]; ctx.fillRect(92, 123, 56, 2);
-    // mounts: biggest in the middle
-    const wall = UI.wallMounts();
-    const slots = [125, 88, 162]; // wall space between the window and the stove (more with lodge upgrades later)
-    slots.forEach((_, k) => {
-      const cx = slots[k], cy = 30;
-      const rec = wall[k];
-      ctx.fillStyle = LP.plaque[0]; ctx.fillRect(cx - 6, cy + 14, 12, 14); ctx.fillStyle = LP.plaque[1]; ctx.fillRect(cx - 5, cy + 15, 10, 12);
-      if (!rec) return;
-      const spr = UI.sprite('wall' + rec.id + ':' + rec.y, () => WT.deerSprite(WT.snapDeer(rec.snap), { lod: 1, frame: 'bust', day: rec.snap.d }));
-      const by = spr.bounds ? spr.bounds.y1 : 40;
-      ctx.drawImage(spr, cx - spr.anchor.x, cy + 26 - by); // neck sits on the plaque
-    });
-    if (!wall.length) { ctx.fillStyle = '#8C6E55'; ctx.font = '6px "Press Start 2P", monospace'; ctx.fillText('EMPTY WALL', 90, 60); }
-    // the player
-    UI.drawPlayer(ctx, 112, 80, st.loadout, st.settings.hand, t);
+    for (let y = 0; y < floorY; y++) { ctx.fillStyle = y % 8 === 7 ? LP.seam : LP.plank[Math.floor(y / 8) % 3]; ctx.fillRect(0, y, W, 1); }
+    for (let y = floorY; y < H; y++) { ctx.fillStyle = LP.floor[Math.floor((y - floorY) / 4) % 2]; ctx.fillRect(0, y, W, 1); }
+    ctx.fillStyle = LP.trim; ctx.fillRect(0, floorY - 1, W, 2);
+    ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect((W >> 1) - 10, H - 7, 20, 2);
+    UI.drawPlayer(ctx, (W >> 1) - 8, H - 46, st.loadout, st.settings.hand, t);
   }
-  UI.wallMounts = function () {
-    const st = S();
-    return st.journal.filter((r) => r.wall && r.snap && r.snap.rack).sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || b.gross - a.gross).slice(0, 3);
-  };
 
   UI.screens.lodge = function (el) {
     const st = S();
-    const nav = [['shop', 'Shop'], ['inventory', 'Gear' + (st.skillPts ? ' •' : '')], ['land', 'Land'], ['trophies', 'Trophies'], ['hitlist', 'Hit List']];
+    const nav = [['shop', 'Shop'], ['inventory', 'Gear' + (st.skillPts ? ' •' : '')], ['land', 'Land'], ['trophies', 'Trophy Room'], ['hitlist', 'Hit List']];
     const sun = WT.sunTimes(st.day);
     const needTag = !st.tags.buck && !st.tags.buckFilled;
-    el.innerHTML = UI.stage(240, 135, `
-      <div class="ov" style="left:50%;bottom:8px;transform:translateX(-50%)"><button class="btn blaze big" data-go="map">Hunt</button></div>`) + `
+    el.innerHTML = `<div class="lodge-stage">${UI.stage(72, 60)}</div>
+      <div class="row" style="margin-top:10px"><button class="btn blaze big" data-go="map" style="flex:1">Hunt</button></div>
       <nav class="lodge-bar">${nav.map(([k, n]) => `<button class="btn" data-go="${k}">${n}</button>`).join('')}<button class="btn ghost" data-menu aria-label="Menu">⋯</button></nav>
-      <section class="panel news" style="margin-top:10px">
+      <section class="panel news" style="margin-top:22px">
         <p><b>${esc(WT.rutPhase(Math.min(st.day, 91)).name)}</b> · ${esc(WT.weatherLine(st.weather))} · sun ${WT.fmtTime(sun.rise)} to ${WT.fmtTime(sun.set)}</p>
         ${needTag ? '<p class="warn">You need a buck tag before you can shoot a buck. Get one at the Shop.</p>' : ''}
         ${st.news.slice(0, 3).map((n) => `<p class="${n.kind}"><span class="faint">${WT.dateLabel(Math.min(n.d, 91))}:</span> ${esc(n.text)}</p>`).join('')}
@@ -365,7 +321,7 @@
       const T = C().economy.tags;
       body = row({ name: 'Buck tag (any antlered deer)', price: T.buck, owned: st.tags.buck ? 'In wallet' : st.tags.buckFilled ? 'Filled' : null, buy: st.tags.buck + st.tags.buckFilled >= 1 ? null : 'tag:buck', stats: 'One per season. Antlerless deer (does, fawns, button bucks) need a doe tag.' }) +
         row({ name: 'Doe tag (antlerless)', price: T.doe, owned: st.tags.doe ? `${st.tags.doe} in wallet` : null, buy: st.tags.doe + st.tags.doeFilled >= T.maxDoeTags ? null : 'tag:doe', stats: `Up to ${T.maxDoeTags} per season. Shooting does keeps the herd healthy and puts meat in the freezer.` }) +
-        `<p class="faint">Shoot an antlered deer without a buck tag (or the other way around) and the warden writes you a $500 ticket and takes the deer. Judge before you shoot.</p>`;
+        `<p class="faint">Shoot an antlered deer without a buck tag (or the other way around) and the DNR takes the deer: no money and no mount. Judge before you shoot.</p>`;
     }
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Shop</h2><button class="btn small" data-back>Back to lodge</button></div>
       <p class="dim">You have ${money(st.cash)}. The only way to earn money is to kill deer.</p>

@@ -220,8 +220,29 @@
       const d = st.parcels[p.id];
       for (const deer of d.herd || []) if (deer.sex === 'b' && deer.age >= 1.5 && !deer.rack) WT.growDeer(deer, makeProp(p.id), G.rng, 1);
     }
+    // older saves: untagged deer used to cost a $500 ticket. Pay those back once.
+    st.settings = st.settings || {};
+    if (!st.settings.fineRefund) {
+      const n = (st.journal || []).filter((r) => r.legal === false).length;
+      if (n) { st.cash += 500 * n; st.news.unshift({ d: st.day, kind: 'good', text: `The DNR dropped the no-tag fine${n > 1 ? 's' : ''}. ${WT.money(500 * n)} refunded.` }); }
+      st.settings.fineRefund = true;
+    }
+    // older saves: bucks hung on the wall for free keep their shoulder mounts
+    for (const r of st.journal || []) if (r.mount === undefined) r.mount = r.wall && r.legal && r.sheet ? 'shoulder' : null;
     return st;
   };
+  // Taxidermy: pay to mount a buck you took legally. Changing the mount later costs the new mount's price.
+  WT.mountDeer = function (rec, type) {
+    const m = C().economy.mounts[type], st = S();
+    if (!m) return 'No such mount.';
+    if (!rec || !rec.sheet || !rec.legal) return 'Only a buck you tagged can be mounted.';
+    if (rec.mount === type) return 'Already mounted that way.';
+    if (st.cash < m.price) return `A ${m.name.toLowerCase()} costs ${WT.money(m.price)}. You have ${WT.money(st.cash)}.`;
+    st.cash -= m.price; ledger('Taxidermy', -m.price);
+    rec.mount = type; WT.save();
+    return null;
+  };
+  WT.mountedDeer = () => S().journal.filter((r) => r.mount && r.snap && r.snap.rack).sort((a, b) => b.gross - a.gross);
   WT.wipeSave = function () { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* storage blocked */ } };
 
   function applyTileMods() {
@@ -742,6 +763,8 @@
     return Math.max(0.5, Math.round((deer.age + h * 2 * err) * 2) / 2 - (Math.round((deer.age + h * 2 * err) * 2) % 2 === 0 ? 0.5 : 0));
   }
   WT.hitEntry = (deerId) => S().hitList.find((e) => e.k === deerId);
+  // In the stand you know a hit list deer again once you've had a clear look at it (read level 3+).
+  WT.knownDeer = (m) => (m && m.read && m.read.level >= 3 ? WT.hitEntry(m.deer.id) || null : null);
   WT.estAgeNow = (e) => e.estAge + (S().year - e.estYear);
   // Record a sighting or photo. Adds bucks seen clearly; does only when asked (force).
   WT.noteDeer = function (deer, info) {
@@ -1171,14 +1194,14 @@
     let pay = legal ? WT.payoutFor(deer, rng) : 0;
     let xp = antlered ? P.xpBuckBase + Math.max(0, deer.gross - 100) * P.xpPerInch : P.xpDoe;
     xp += deer.age >= 4.5 ? 40 : 0;
-    if (!legal) { xp = 10; st.cash -= 500; ledger('Fines', -500); }
+    if (!legal) xp = 10; // no tag for it: the DNR takes the deer, but there is no fine
     const entry = WT.hitEntry(deer.id);
     const rec = {
       id: deer.id, y: st.year, d: st.day, sex: deer.sex, age: deer.age, lw: deer.lw, dw: Math.round(deer.lw * cfg.deer.weights.dressed),
       gross: deer.gross || 0, net: deer.net || 0, pL: deer.pL || 0, pR: deer.pR || 0, nt: !!deer.nt, abn: deer.abn || 0, sheet,
       pay, xp: Math.round(xp), parcel: H.parcel.name, rifle: H.rifle.name, cal: H.rifle.cal, dist, label: WT.deerLabel(deer), session: H.setup.session, time: H.now,
       snap: WT.snapshot(deer), legal, tagUsed, hit: entry ? { name: entry.name, estAge: WT.estAgeNow(entry), status: entry.status, log: entry.log.slice(0, 12), photos: entry.photos.slice(0, 3), notes: entry.notes } : null,
-      wall: antlered && legal,
+      mount: null,
     };
     if (entry) WT.removeHit(deer.id);
     st.journal.unshift(rec);
@@ -1187,7 +1210,7 @@
     H.xp += xp;
     H.harvested.push(rec);
     if (legal) H.log.push({ t: H.now, kind: 'good', text: `It ${how}. Deer down! Time to go see what you got.` });
-    else H.log.push({ t: H.now, kind: 'bad', text: `It ${how}. Walking up, your stomach drops: ${antlered ? 'antlers. You only had a doe tag.' : 'no antlers, and you only had a buck tag.'} A warden writes you a $500 ticket and takes the deer.` });
+    else H.log.push({ t: H.now, kind: 'bad', text: `It ${how}. Walking up, your stomach drops: ${antlered ? 'antlers. You only had a doe tag.' : 'no antlers, and you only had a buck tag.'} You call it in, and the DNR takes the deer.` });
     H.lastHarvest = rec;
   }
 
@@ -1199,7 +1222,7 @@
     H.raised = true;
     for (const g of H.visible) observe(H, g, optic);
     const tgt = H.selected ? WT.findTarget(H, H.selected) : H.visible[0] ? { g: H.visible[0], m: H.visible[0].members[0] } : null;
-    if (tgt && tgt.m.read) H.log.push({ t: H.now, kind: 'deer', text: `Through the ${kind === 'scope' ? 'scope' : 'binos'}: ${tgt.m.read.text}.` });
+    if (tgt && tgt.m.read) { const kn = WT.knownDeer(tgt.m); H.log.push({ t: H.now, kind: 'deer', text: `Through the ${kind === 'scope' ? 'scope' : 'binos'}: ${tgt.m.read.text}.${kn ? ` That's ${kn.name ? `"${kn.name}"` : 'an unnamed deer'} from your hit list (${kn.status}).` : ''}` }); }
     // raising optics at close range is movement
     for (const g of H.visible) {
       if (g.dist > 40 || g.gone) continue;

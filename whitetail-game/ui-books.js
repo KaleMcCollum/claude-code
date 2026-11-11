@@ -6,10 +6,11 @@
   const Wd = () => WT.game.world;
 
   /* ---------------------------------------------------------------- image helpers */
-  const canvasHtml = (id, w, h) => `<canvas class="pix" data-img="${id}" width="${w}" height="${h}"></canvas>`;
+  const canvasHtml = (id, w, h, dark) => `<canvas class="pix" data-img="${id}" width="${w}" height="${h}"${dark ? ' style="background:#523a2b"' : ''}></canvas>`;
+  const boneMount = (r) => r.mount === 'euro' || r.mount === 'cap'; // skull and cap need a dark wall behind them
   function paint(root, id, img) { const c = root.querySelector(`[data-img="${id}"]`); if (c) UI.imgToCanvas(img, c); }
   // Every picture of a deer is the same front-facing art; the mount is the full-size bust.
-  UI.mountImg = (snap) => WT.deerSprite(WT.snapDeer(snap), { lod: 0, frame: 'bust', day: snap.d });
+  UI.mountImg = (snap, mount) => WT.deerSprite(WT.snapDeer(snap), { lod: 0, frame: 'bust', day: snap.d, mount });
 
   // Trail camera photo: images only. Night = infrared gray; clarity from camera tier and distance.
   UI.photoImg = function (ph, W = 160, H = 90) {
@@ -74,10 +75,11 @@
     </table></div><p class="dim">Scored ${sh.isNT ? 'non-typical' : 'typical'}: ${f(sh.net)} net. Outside spread ${f(sh.outsideSpread)}.</p>`;
   }
 
+  const MOUNTS = () => WT.CONFIG.economy.mounts;
   UI.trophyDetail = function (rec, el, opts = {}) {
     const deer = WT.snapDeer(rec.snap);
     const isBuck = !!rec.sheet;
-    const views = `<figure class="hero">${canvasHtml('vfront', 88, 92)}</figure>`;
+    const views = `<figure class="hero">${canvasHtml('vfront', 88, 92, boneMount(rec))}</figure>`;
     const hit = rec.hit;
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>${esc(rec.hit && rec.hit.name ? `"${rec.hit.name}", ` : '')}${esc(rec.label)}${rec.legal ? '' : ' <span class="tag">Confiscated</span>'}</h2><button class="btn small" id="back">${opts.backLabel || 'Back'}</button></div>
       <div class="cols">
@@ -89,14 +91,16 @@
           <dt>Where</dt><dd>${esc(rec.parcel)}</dd><dt>Rifle</dt><dd>${esc(rec.rifle)} (${esc(rec.cal)})</dd>
           <dt>Paid</dt><dd>${WT.money(rec.pay)}${rec.guessBonus ? ` + ${WT.money(rec.guessBonus)} guess bonus` : ''}</dd><dt>XP</dt><dd>+${rec.xp}</dd>
         </dl>
-        ${isBuck && rec.legal ? `<div class="row" style="margin-top:8px"><button class="btn small" id="wall">${rec.wall ? 'Take off the wall' : 'Hang on the wall'}</button><button class="btn small" id="pin">${rec.pin ? 'Unpin from center' : 'Pin to center of wall'}</button></div>` : ''}
+        ${isBuck && rec.legal ? `<h3>Taxidermy</h3><p class="dim">${rec.mount ? `${esc(MOUNTS()[rec.mount].name)} in your trophy room.` : 'Not mounted. Pay the taxidermist to put him in your trophy room.'}</p><div class="row">${Object.keys(MOUNTS()).map((k) => `<button class="btn small ${rec.mount === k ? 'on' : ''}" data-mount="${k}" ${rec.mount === k ? 'disabled' : ''}>${esc(MOUNTS()[k].name)} ${rec.mount === k ? '✓' : WT.money(MOUNTS()[k].price)}</button>`).join('')}</div>` : ''}
         ${hit ? `<h3>Your hit list history</h3>${hit.log.slice(0, 6).map((l) => `<p class="dim">${WT.dateLabel(l.d)} Yr ${l.y}: ${esc(l.kind === 'photo' ? 'trail cam' : 'seen')}, ${esc(l.where)}</p>`).join('')}` : ''}</div>
         <div>${isBuck ? sheetHtml(rec) : '<p class="dim">Antlerless deer. Good meat, and one less mouth on your land this winter.</p>'}</div>
       </div></section>`;
-    paint(el, 'vfront', UI.mountImg(rec.snap));
+    paint(el, 'vfront', UI.mountImg(rec.snap, rec.mount));
     $('#back', el).addEventListener('click', opts.onBack || (() => UI.go('trophies')));
-    const w = $('#wall', el); if (w) w.addEventListener('click', () => { rec.wall = !rec.wall; WT.save(); UI.trophyDetail(rec, el, opts); });
-    const p = $('#pin', el); if (p) p.addEventListener('click', () => { S().journal.forEach((r) => { if (r !== rec) r.pin = false; }); rec.pin = !rec.pin; rec.wall = true; WT.save(); UI.trophyDetail(rec, el, opts); });
+    el.querySelectorAll('[data-mount]').forEach((b) => b.addEventListener('click', () => {
+      if (UI.err(WT.mountDeer(rec, b.dataset.mount))) return;
+      UI.toast(`${MOUNTS()[rec.mount].name} ordered. He's in the trophy room.`, 'good'); UI.topbar(); UI.trophyDetail(rec, el, opts);
+    }));
   };
 
   /* ================================================================ REVEAL (after a harvest) */
@@ -124,16 +128,59 @@
   };
 
   /* ================================================================ TROPHIES */
+  // One mount at a time on the wall; arrows, swipe or arrow keys pan to the next.
+  let roomAt = 0;
+  function drawRoom(canvas, rec) {
+    const ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+    ctx.imageSmoothingEnabled = false;
+    const planks = ['#5a4030', '#523a2b', '#4a3426'];
+    for (let y = 0; y < H; y++) { ctx.fillStyle = y % 12 === 11 ? '#2d1c14' : planks[Math.floor(y / 12) % 3]; ctx.fillRect(0, y, W, 1); }
+    if (!rec) return;
+    const spr = UI.sprite('room' + rec.id + ':' + rec.y + ':' + rec.mount, () => UI.mountImg(rec.snap, rec.mount));
+    const cx = W >> 1, b = spr.bounds || { y0: 0, y1: spr.height };
+    const top = Math.round((H - (b.y1 - b.y0)) / 2) - b.y0 - (rec.mount === 'shoulder' ? 2 : 0);
+    // wooden plaque behind the mount
+    const py = top + spr.anchor.y, shield = (x0, y0, w, h, c) => { ctx.fillStyle = c; for (let r = 0; r < h; r++) { const t = r / h, k = t < 0.55 ? 1 : Math.sqrt(Math.max(0, 1 - Math.pow((t - 0.55) / 0.45, 2))); const hw = Math.round(w / 2 * (0.25 + 0.75 * k)); ctx.fillRect(x0 - hw, y0 + r, hw * 2, 1); } };
+    if (rec.mount === 'cap') { shield(cx, py - 8, 34, 32, '#2a1a12'); shield(cx, py - 6, 30, 28, '#7a5234'); }
+    else if (rec.mount === 'euro') { shield(cx, py - 10, 40, 50, '#2a1a12'); shield(cx, py - 8, 36, 46, '#6b4a2e'); }
+    else { shield(cx, py + 6, 44, 40, '#2a1a12'); shield(cx, py + 8, 40, 36, '#6b4a2e'); }
+    ctx.drawImage(spr, cx - spr.anchor.x, top);
+  }
   UI.screens.trophies = function (el) {
     const st = S();
-    const recs = st.journal;
+    const recs = st.journal, mounted = WT.mountedDeer();
+    roomAt = Math.max(0, Math.min(roomAt, mounted.length - 1));
+    const biggest = Math.max(0, ...recs.filter((r) => r.sheet && r.legal).map((r) => r.sheet.gross));
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Trophy room</h2><button class="btn small" id="back">Back to lodge</button></div>
-      ${recs.length ? `<p class="dim">${recs.length} deer taken. Biggest gross: ${Math.max(0, ...recs.filter((r) => r.sheet).map((r) => r.sheet.gross)) || '-'}".</p>
-      <div class="tiles">${recs.map((r, k) => `<button class="tile" data-k="${k}">${canvasHtml('t' + k, 88, 92)}<span class="cap">${esc(r.label)}${r.sheet ? ` · ${r.sheet.gross}"` : ''}</span><span class="cap faint">${WT.dateLabel(r.d)}, Yr ${r.y}${r.wall ? ' · on wall' : ''}</span></button>`).join('')}</div>`
-      : '<p class="dim">Nothing yet. The wall is waiting.</p>'}</section>`;
-    recs.forEach((r, k) => paint(el, 't' + k, UI.mountImg(r.snap)));
+      ${mounted.length ? `<div class="room">${UI.stage(120, 104, `<div class="ov" style="left:6px;top:50%;transform:translateY(-50%)"><button class="btn" id="prev" aria-label="Previous mount">◀</button></div><div class="ov" style="right:6px;top:50%;transform:translateY(-50%)"><button class="btn" id="next" aria-label="Next mount">▶</button></div>`)}
+        <p id="cap" style="text-align:center;margin:8px 0 4px"></p><div class="row" style="justify-content:center"><button class="btn small" id="det">Score sheet</button></div></div>`
+      : `<p class="dim">No mounts yet. After you tag a buck, pay the taxidermist: shoulder mount ${WT.money(MOUNTS().shoulder.price)}, European ${WT.money(MOUNTS().euro.price)}, felt cap ${WT.money(MOUNTS().cap.price)}.</p>`}</section>
+      <section class="panel" style="margin-top:10px"><h3>Every deer you've taken</h3>
+      ${recs.length ? `<p class="dim">${recs.length} deer taken${biggest ? `. Biggest gross: ${biggest}"` : ''}. Tap one to see it or get it mounted.</p>
+      <div class="tiles">${recs.map((r, k) => `<button class="tile" data-k="${k}">${canvasHtml('t' + k, 88, 92, boneMount(r))}<span class="cap">${esc(r.label)}${r.sheet ? ` · ${r.sheet.gross}"` : ''}</span><span class="cap faint">${WT.dateLabel(r.d)}, Yr ${r.y}${r.mount ? ' · ' + esc(MOUNTS()[r.mount].name.toLowerCase()) : !r.legal ? ' · taken by DNR' : ''}</span></button>`).join('')}</div>`
+      : '<p class="dim">Nothing yet.</p>'}</section>`;
+    recs.forEach((r, k) => paint(el, 't' + k, UI.mountImg(r.snap, r.mount)));
     el.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', () => UI.trophyDetail(recs[+b.dataset.k], el, { onBack: () => UI.go('trophies') })));
     $('#back', el).addEventListener('click', () => UI.go('lodge'));
+    if (!mounted.length) return;
+    const canvas = $('.room canvas', el);
+    const show = () => {
+      const r = mounted[roomAt];
+      drawRoom(canvas, r);
+      $('#cap', el).innerHTML = `<b>${esc(r.hit && r.hit.name ? `"${r.hit.name}"` : r.label)}</b> · ${r.sheet.gross}" gross · ${r.sheet.pointsR} × ${r.sheet.pointsL}<br><span class="dim">${esc(MOUNTS()[r.mount].name)} · ${WT.dateLabel(r.d)}, Year ${r.y} · ${esc(r.parcel)}</span><br><span class="faint">${roomAt + 1} of ${mounted.length}</span>`;
+    };
+    const move = (d) => { roomAt = (roomAt + d + mounted.length) % mounted.length; show(); };
+    $('#prev', el).addEventListener('click', () => move(-1));
+    $('#next', el).addEventListener('click', () => move(1));
+    $('#det', el).addEventListener('click', () => UI.trophyDetail(mounted[roomAt], el, { onBack: () => UI.go('trophies') }));
+    if (mounted.length < 2) { $('#prev', el).hidden = true; $('#next', el).hidden = true; }
+    let sx = null;
+    canvas.addEventListener('pointerdown', (e) => { sx = e.clientX; });
+    canvas.addEventListener('pointerup', (e) => { if (sx != null && Math.abs(e.clientX - sx) > 30) move(e.clientX < sx ? 1 : -1); sx = null; });
+    const key = (e) => { if (e.key === 'ArrowLeft') move(-1); else if (e.key === 'ArrowRight') move(1); };
+    window.addEventListener('keydown', key);
+    show();
+    return () => window.removeEventListener('keydown', key);
   };
 
   /* ================================================================ HIT LIST */

@@ -248,7 +248,7 @@
         <button class="btn" id="addList" ${H.selected ? '' : 'disabled'}>Add to hit list</button>
         <button class="btn blaze" id="shoot" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason || '')}">Shoot</button>
         <button class="btn ghost" id="leave">Leave</button>
-        <span class="dim" style="flex-basis:100%">${(() => { const f = H.selected && WT.findTarget(H, H.selected); return f && f.m.read ? `<span class="deer" style="color:var(--cream)">Your read: ${esc(f.m.read.text)}.</span> ` : ''; })()}${chk.ok ? (chk.clear ? 'Clear shot.' : 'Brush in the way. A shot now could wound.') : esc(chk.reason || '')}</span>`;
+        <span class="dim" style="flex-basis:100%">${(() => { const f = H.selected && WT.findTarget(H, H.selected); if (!f || !f.m.read) return ''; const kn = WT.knownDeer(f.m); return `${kn ? `<span class="good">Hit list: ${esc(kn.name ? `"${kn.name}"` : 'unnamed deer')} · ${esc(kn.status)}.</span> ` : ''}<span class="deer" style="color:var(--cream)">Your read: ${esc(f.m.read.text)}.</span> `; })()}${chk.ok ? (chk.clear ? 'Clear shot.' : 'Brush in the way. A shot now could wound.') : esc(chk.reason || '')}</span>`;
       const on = (id, fn) => { const b = $('#' + id, el); if (b) b.addEventListener('click', fn); };
       on('sit', () => { step(); });
       on('auto', () => { auto = !auto; if (auto) runAuto(); else stopAuto(); controls(); });

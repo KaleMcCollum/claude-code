@@ -14,7 +14,7 @@
   WT.ART_PPI = PPI0;
 
   /* ---------------------------------------------------------------- palette (sampled from the reference) */
-  const K = { NONE: 0, HL: 1, HM: 2, HD: 3, HDD: 4, CREAM: 5, CREAMD: 6, EARW: 7, EARP: 8, LINE: 9, CROWN: 10, TUFT: 11, BRIDGE: 12, EYE: 13, RING: 14, MUZ: 15, NOSE: 16, AL: 17, AM: 18, AS: 19, AD: 20, ADD: 21, HOOF: 22, SPOT: 23 };
+  const K = { NONE: 0, HL: 1, HM: 2, HD: 3, HDD: 4, CREAM: 5, CREAMD: 6, EARW: 7, EARP: 8, LINE: 9, CROWN: 10, TUFT: 11, BRIDGE: 12, EYE: 13, RING: 14, MUZ: 15, NOSE: 16, AL: 17, AM: 18, AS: 19, AD: 20, ADD: 21, HOOF: 22, SPOT: 23, BONE: 24, BONED: 25, SOCK: 26, FELT: 27, FELTD: 28, TRIM: 29 };
   const RGB = [];
   RGB[K.HL] = hex('#b29881'); RGB[K.HM] = hex('#9b7f6a'); RGB[K.HD] = hex('#7e6656'); RGB[K.HDD] = hex('#66513f');
   RGB[K.CREAM] = hex('#ede1d1'); RGB[K.CREAMD] = hex('#d6c8b4');
@@ -23,6 +23,8 @@
   RGB[K.EYE] = hex('#1a0e10'); RGB[K.RING] = hex('#ede1d1'); RGB[K.MUZ] = hex('#bfb8ca'); RGB[K.NOSE] = hex('#322f42');
   RGB[K.AL] = hex('#b29881'); RGB[K.AM] = hex('#715842'); RGB[K.AS] = hex('#664937'); RGB[K.AD] = hex('#3c2013'); RGB[K.ADD] = hex('#2d170c');
   RGB[K.HOOF] = hex('#2d170c'); RGB[K.SPOT] = hex('#e3d6c4');
+  RGB[K.BONE] = hex('#ece6d6'); RGB[K.BONED] = hex('#c9bfa8'); RGB[K.SOCK] = hex('#2a211c');
+  RGB[K.FELT] = hex('#2f4a36'); RGB[K.FELTD] = hex('#223626'); RGB[K.TRIM] = hex('#c2a04e');
   WT.ART_K = K; WT.ART_RGB = RGB;
   const isAntler = (c) => c >= K.AL && c <= K.ADD;
 
@@ -519,6 +521,37 @@
   WT.drawRack = drawRack;
   WT.AntlerLayer = AntlerLayer;
 
+  /* ---------------------------------------------------------------- skull and cap mounts */
+  // European mount: the bare skull, front on. Cap mount: the skull plate under felt with a braid edge.
+  function drawMountHead(buf, mount, cx, top, ppi) {
+    const s = ppi / PPI0, icx = Math.floor(cx); top = Math.round(top);
+    if (mount === 'cap') {
+      const len = Math.max(2, Math.round(12 * s)), y0 = top - Math.round(3 * s);
+      for (let r = 0; r <= len; r++) {
+        const t = r / len;
+        const hw = Math.max(1, Math.round((t < 0.2 ? 8 + t * 10 : 10 * Math.sqrt(Math.max(0, 1 - Math.pow((t - 0.2) / 0.8, 2)))) * s));
+        for (let x = icx - hw; x < icx + hw; x++) {
+          const edge = x === icx - hw || x === icx + hw - 1 || r === 0;
+          buf.set(x, y0 + r, edge ? K.TRIM : x >= icx + hw - 1 - Math.round(2 * s) ? K.FELTD : K.FELT);
+        }
+      }
+      return;
+    }
+    const len = Math.max(3, Math.round(31 * s)), y0 = top - Math.round(4 * s);
+    const prof = [[0, 5], [0.07, 8.5], [0.2, 9.5], [0.3, 10.5], [0.4, 9], [0.5, 6], [0.72, 4.6], [0.92, 4], [1, 2.6]];
+    const hwAt = (t) => { for (let k = 1; k < prof.length; k++) if (t <= prof[k][0]) { const a = prof[k - 1], b = prof[k]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return 2.6; };
+    for (let r = 0; r <= len; r++) {
+      const t = r / len, hw = Math.max(1, Math.round(hwAt(t) * s));
+      for (let x = icx - hw; x < icx + hw; x++) buf.set(x, y0 + r, x >= icx + hw - Math.max(1, Math.round(hw * 0.28)) ? K.BONED : K.BONE);
+      if (s >= 0.5 && t > 0.04 && t < 0.5 && r % 2 === 0) buf.set(icx, y0 + r, K.BONED); // suture
+    }
+    if (s >= 0.5) {
+      for (const sgn of [-1, 1]) buf.ellipse(cx + sgn * 6.6 * s, y0 + len * 0.3, 2.6 * s, 3.2 * s, K.SOCK);
+      const n0 = Math.round(len * 0.6), n1 = Math.round(len * 0.9);
+      for (let r = n0; r <= n1; r++) { const hw = Math.max(1, Math.round(Math.min(2.4, 0.6 + (r - n0) * 0.5) * s)); buf.rect(icx - hw, y0 + r, icx + hw - 1, y0 + r, K.SOCK); }
+    } else { buf.set(icx - Math.max(1, Math.round(6 * s)), y0 + Math.round(len * 0.3), K.SOCK); buf.set(icx + Math.max(1, Math.round(6 * s)) - 1, y0 + Math.round(len * 0.3), K.SOCK); }
+  }
+
   /* ---------------------------------------------------------------- compose a deer */
   /* opts: { lod: 0-4, frame: 'bust' | 'full', pose: 'alert' | 'walk' | 'down', step: 0|1, day, mode: 'day'|'low'|'ir' }
      Returns { data (RGBA), W, H, bounds, anchor: {x, y} (ground center for 'full', skull top for 'bust'), rack } */
@@ -531,6 +564,7 @@
     const B = L.B;
     const pose = opts.pose || 'alert';
     const bust = opts.frame !== 'full';
+    const mount = bust && (opts.mount === 'euro' || opts.mount === 'cap') ? opts.mount : null; // skull or felt-cap mount: antlers only
     const down = pose === 'down';
     let W, H, cx, skullY, groundY;
     const legLen = B.sh - B.chestH - 0.5;
@@ -601,6 +635,7 @@
       // head down: a short thick neck dropping in front of the chest
       for (let y = chestCy; y <= skullY + Math.round(headH * 0.5); y++) { const hw = nTop * 0.95; buf.rect(Math.round(cx - hw), y, Math.round(cx + hw) - 1, y, K.HM); }
     }
+    if (mount) buf.c.fill(0);
     // head: ears, then antlers, then the face
     const headTop = skullY - (F ? F.crown : 0);
     let rackInfo = null;
@@ -608,12 +643,13 @@
     const ant = antlered ? new AntlerLayer(W, H) : null;
     if (F) {
       const x0 = icx - F.hw;
-      for (let r = 0; r < F.rows; r++) for (let i = 0; i < F.hw * 2; i++) { const c = F.ear[r][i]; if (c) buf.set(x0 + i, headTop + r, c); }
+      if (!mount) for (let r = 0; r < F.rows; r++) for (let i = 0; i < F.hw * 2; i++) { const c = F.ear[r][i]; if (c) buf.set(x0 + i, headTop + r, c); }
       if (ant) {
         rackInfo = drawRack(ant, WT.unpackRack(deer.rack), deer.style, { cx, top: skullY + F.pedY, ppi, squash: down ? 0.5 : 1 });
         for (let i = 0; i < W * H; i++) if (ant.c[i]) buf.c[i] = ant.c[i];
       }
-      for (let r = 0; r < F.rows; r++) for (let i = 0; i < F.hw * 2; i++) { const c = F.face[r][i]; if (c) buf.set(x0 + i, headTop + r, c); }
+      if (mount) drawMountHead(buf, mount, cx, skullY + F.pedY, ppi);
+      else for (let r = 0; r < F.rows; r++) for (let i = 0; i < F.hw * 2; i++) { const c = F.face[r][i]; if (c) buf.set(x0 + i, headTop + r, c); }
       if (L.button && lod === 0) { buf.set(icx - 5, skullY, K.TUFT); buf.set(icx + 4, skullY, K.TUFT); }
     } else {
       // tiny head: a blob with ear flecks
@@ -630,7 +666,7 @@
       for (let y = chestCy - Math.round(ry * 0.6); y < chestCy; y += 2) for (let x = Math.round(cx - rx * 0.6); x < cx + rx * 0.6; x += 3) if (WT.hash2(x, y, deer.id | 0) < 0.5 && buf.get(x, y) === K.HM) buf.set(x, y, K.SPOT);
     }
     // bust: cut off below the neck with rounded corners
-    if (bust) {
+    if (bust && !mount) {
       const cut = Math.min(H - 1, skullY + Math.round(36 / Math.pow(2, lod)));
       for (let y = cut + 1; y < H; y++) for (let x = 0; x < W; x++) buf.c[y * W + x] = 0;
       for (const [dy, n] of [[0, 2], [1, 1]]) { let k = 0; for (let x = 0; x < W && k < n; x++) if (buf.get(x, cut - dy)) { buf.set(x, cut - dy, 0); k++; } k = 0; for (let x = W - 1; x >= 0 && k < n; x--) if (buf.get(x, cut - dy)) { buf.set(x, cut - dy, 0); k++; } }
