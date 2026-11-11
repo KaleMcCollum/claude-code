@@ -94,7 +94,7 @@
       parcelTargetAcres: 130,
       minParcelAcres: 40,
       publicShare: 0.16,
-      bowOnlyShare: 0.35,               // of public areas
+      bowOnlyShare: 0.34,               // of public areas
       permissionShare: 0.35,            // of NPC parcels willing to sell permission
       forSaleCount: 6,
       starterAcres: 100,

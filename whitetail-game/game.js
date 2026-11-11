@@ -95,7 +95,7 @@
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
       genV: 3,
-      journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
+      journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', bowThird: true, pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
     };
@@ -384,6 +384,18 @@
       st.settings = st.settings || {};
       for (const p of G.world.parcels) if (st.parcels[p.id].owner === 'public' && st.parcels[p.id].bowOnly) initParcelHerd(p.id);
       st.settings.bowHerds = true;
+    }
+    // older saves: about a third of public areas should be bow only. Convert more if this map came up short,
+    // leaving alone any area where you already have a spot or a camera.
+    if (!st.settings.bowThird) {
+      const pubs = G.world.parcels.filter((p) => st.parcels[p.id].owner === 'public');
+      const want = Math.max(1, Math.round(pubs.length * C().world.bowOnlyShare));
+      let have = pubs.filter((p) => st.parcels[p.id].bowOnly).length;
+      const free = pubs.filter((p) => { const d = st.parcels[p.id]; return !d.bowOnly && !(d.spots || []).length && !(d.cams || []).length; }).sort((a, b) => WT.hash2(a.id, 3, st.seed + 41) - WT.hash2(b.id, 3, st.seed + 41));
+      const changed = [];
+      while (have < want && free.length) { const p = free.shift(), d = st.parcels[p.id]; d.bowOnly = true; G.world.parcels[p.id].bowOnly = true; const keep = (d.herd || []).filter((x) => st.hitList.some((e) => e.k === x.id)); initParcelHerd(p.id); st.parcels[p.id].herd.push(...keep); changed.push(p.name); have++; }
+      if (changed.length) st.news.unshift({ d: st.day, kind: 'info', text: `The state made ${changed.length === 1 ? 'one more public area' : changed.length + ' more public areas'} bow only: ${changed.join(', ')}.` });
+      st.settings.bowThird = true;
     }
     // older saves: regular public land was hunted down to yearlings. Restock it once, keeping any deer on your hit list.
     if (!st.settings.pubCrowd) {

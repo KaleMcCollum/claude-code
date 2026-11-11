@@ -356,6 +356,12 @@
       for (let i = 0; i < N; i++) { const pid = world.parcelOf[i]; if (pid >= 0 && world.fieldId[i] >= 0 && world.parcels[pid].owner === 'public') { cover[i] = T.PRAIRIE; world.fieldId[i] = -1; cut = true; } }
       if (cut) { computeDerivedLayers(world); for (const p of world.parcels) p.habitat = tileHabitat(world, p.id); }
     }
+    if (ver >= 3) {
+      // a third of the public areas are bow only (at least one), picked the same way every time for a given map
+      const pubs = world.parcels.filter((p) => p.owner === 'public').sort((a, b) => hash2(a.id, 3, seed + 41) - hash2(b.id, 3, seed + 41));
+      const want = Math.max(1, Math.round(pubs.length * cfg.bowOnlyShare));
+      pubs.forEach((p, k) => { p.bowOnly = k < want; });
+    }
     world.ready = true; // parcels are final from here on
     return world;
   }
