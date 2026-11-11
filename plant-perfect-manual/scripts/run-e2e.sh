@@ -56,7 +56,7 @@ for name in "${TESTS[@]}"; do
     exit 1
   fi
 
-  DATA=".data/e2e-$(date +%s)-$name"
+  DATA=".data/e2e-$(date +%s)-$PORT-$name"
   mkdir -p "$DATA"
   LOG="${E2E_LOG:-$DATA/server.log}"
 
