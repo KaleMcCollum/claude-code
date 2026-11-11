@@ -154,7 +154,7 @@
     }
     for (let k = 0; k < spruceN; k++) {
       const x = Math.round(hs(k, 7) * (SW - 10)) + 5, hgt = 12 + Math.floor(hs(k, 8) * 8);
-      for (let r = 0; r < hgt; r += 2) { const wd = 1 + Math.round(r * 0.55); R(snow ? '#3a4a3a' : '#2e4a30', x - wd / 2, HORIZON + 1 - hgt + r, wd, 2); if (snow && r % 4 === 0) R('#e8e4dc', x - wd / 2, HORIZON + 1 - hgt + r, Math.max(1, wd - 1), 1); }
+      for (let r = 0; r < hgt; r += 2) { const wd = 1 + Math.round(r * 0.55); R(snow ? '#3a4a3a' : '#2e4a30', x - wd / 2, HORIZON - hgt + r, wd, 2); if (snow && r % 4 === 0) R('#e8e4dc', x - wd / 2, HORIZON - hgt + r, Math.max(1, wd - 1), 1); }
     }
     // ground bands, nearer = taller bands
     const gc = groundColors(H);
@@ -165,19 +165,8 @@
     if (info.plot || info.newPlot) {
       const grown = info.plot, c1 = snow ? (grown ? '#c2d0b0' : '#cfc8bc') : grown ? '#5e9a3e' : '#6e5038', c2 = snow ? (grown ? '#b0c09e' : '#bdb6aa') : grown ? '#4f8a34' : '#5e4430';
       R(c1, 0, 74, SW, 12); R(c2, 0, 77, SW, 2); R(c2, 0, 82, SW, 2);
-      for (let x = 2; x < SW; x += 6) { const yy = 75 + Math.floor(hs(x, 9) * 9); if (grown) { R(snow ? '#9ab08a' : '#78b452', x, yy, 2, 1); R(snow ? '#8aa07a' : '#3f7a2c', x, yy + 1, 2, 1); } else R('#4a3626', x, yy, 3, 1); }
     }
-    // what grows here, drawn flat
-    const c = H.cover;
-    if (gc === SCENE.corn) for (let x = 4; x < SW; x += 14) R(snow ? '#b8a878' : '#8c7a40', x, 100, 2, 35);
-    if (info.slough || c === T.SLOUGH) for (let x = 3; x < SW; x += 7) { const yy = 67 + Math.floor(hs(x, 4) * 4); R(snow ? '#b8a878' : '#9a8a4c', x, yy - 5, 1, 6); R('#4a3020', x, yy - 6, 1, 2); }
-    if (info.corn && gc !== SCENE.corn) for (let x = 2; x < SW; x += 5) { const yy = 70 + Math.floor(hs(x, 6) * 3); R(snow ? '#c8b888' : '#b89a4a', x, yy - 5, 1, 6); R(snow ? '#b8a878' : '#a0863e', x - 1, yy - 3, 3, 1); }
-    if (c === T.PRAIRIE || c === T.HAY || c === T.PASTURE || c === T.WHEAT) for (let n = 0; n < 46; n++) { const x = Math.floor(hs(n, 12) * SW), yy = 90 + Math.floor(hs(n, 13) * 40); if (yy >= 74 && yy <= 86 && (info.plot || info.newPlot)) continue; R(snow ? '#c8bc98' : '#c2a862', x, yy - 3, 1, 4); R(snow ? '#b8ac88' : '#a48a4e', x + 2, yy - 2, 1, 3); }
-    if (c === T.TIMBER || c === T.BELT || c === T.BRUSH) {
-      for (let n = 0; n < 40; n++) R(snow ? '#bdb6aa' : n % 2 ? '#8a5a34' : '#3e3024', Math.floor(hs(n, 14) * SW), 92 + Math.floor(hs(n, 15) * 40), 2, 1); // leaf litter
-      // a few big trunks close by, off to the sides so the middle stays open
-      for (const [tx, tw] of [[22, 9], [44, 5], [203, 6], [219, 10]]) { R(trunk, tx, 0, tw, 118 + (tx % 7)); R(snow ? '#3a342e' : '#221a12', tx + tw - 2, 0, 2, 118 + (tx % 7)); if (snow) R('#e8e4dc', tx, 117 + (tx % 7), tw, 1); }
-    }
+    // nothing stands on the ground where deer walk: the scenery stays up on the horizon
     if (st.weather.precip === 'snow') { ctx.fillStyle = '#ffffff'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 90)) % SW, (n * 23 + Math.floor(t / 60)) % SH, 1, 1); }
     if (st.weather.precip === 'rain') { ctx.fillStyle = '#9fb3c8'; for (let n = 0; n < 40; n++) ctx.fillRect((n * 37 + Math.floor(t / 40)) % SW, (n * 23 + Math.floor(t / 25) * 3) % SH, 1, 3); }
     // deer, far to near
