@@ -636,6 +636,17 @@
     d.stands.push(s);
     return null;
   };
+  /* Land work takes time, not money. Moving or picking up a stand, and hanging, moving or taking down a camera, use up
+     the day: it is the next morning when you are done. One work day covers every job you do before you next hunt or
+     wait, so a morning spent hanging six cameras is still one day. In the off-season none of it costs anything. */
+  WT.workCostsDay = () => { const st = S(); return !WT.offseason() && !G.seasonOver && !(st.workedUntil === st.day && st.slot === 'morning'); };
+  function workDay(what) {
+    const st = S();
+    if (!WT.workCostsDay()) return false;
+    WT.skip('day'); st.workedUntil = st.day;
+    news(`You spent the day ${what}.`, 'info');
+    return true;
+  }
   WT.removeStand = function (pid, sid) {
     const st = S(), d = st.parcels[pid];
     const s = d.stands.find((z) => z.sid === sid); if (!s) return 'No stand.';
@@ -643,6 +654,7 @@
     void kind; // picking a stand up is free
     d.stands = d.stands.filter((z) => z.sid !== sid);
     st.inv.stands[s.type] = (st.inv.stands[s.type] || 0) + 1;
+    workDay('taking down a stand');
     return null;
   };
   // Move a stand you already have up. It costs no money: it costs the day. In the off-season it costs nothing.
@@ -656,11 +668,11 @@
     if (w.cover[i] === T().PLOT || w.cover[i] === T().PLOT_NEW) return 'Stands go on the edge of a food plot, not in it. Pick a tile touching the plot.';
     { const lt = WT.landType(w.cover[i]); if (lt === 'farm') return "That's a crop field. Nothing can go up in it."; if (lt === 'swamp' && !C().land.swampStands.includes(s.type)) return 'Only a ladder stand can go up in the swamp.'; }
     if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
-    const tookDay = !WT.offseason() && !G.seasonOver;
+
     const n = makeStand(s.type, x, y, s.name);
     Object.assign(s, { x, y, r: n.r, sits: 0, seen: 0, pressure: 0, sessions: {}, recent: [], noise: n.noise, tree: undefined });
     delete s._traits;
-    if (tookDay) { WT.skip('day'); news(`You spent the day moving ${s.name || 'a stand'}.`, 'info'); } // hauling a stand is a day's work
+    workDay(`moving ${s.name || 'a stand'}`);
     return null;
   };
   WT.moveCamera = function (pid, cid, x, y) {
@@ -668,6 +680,7 @@
     const c = d.cams.find((z) => z.cid === cid); if (!c) return 'No camera.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a spot inside your property.';
     c.x = x; c.y = y;
+    workDay('moving a camera');
     return null;
   };
   // Take out an improvement on this tile and put the ground back the way it was. No refund.
@@ -756,6 +769,7 @@
     if (d.cams.some((c) => c.x === x && c.y === y)) return 'There is already a camera on this spot.';
     st.inv.cameras[type]--;
     d.cams.push({ cid: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), type, x, y, pending: 0, total: 0 });
+    workDay('hanging cameras');
     return null;
   };
   WT.removeCamera = function (pid, cid) {
@@ -763,6 +777,7 @@
     const c = d.cams.find((z) => z.cid === cid); if (!c) return 'No camera.';
     d.cams = d.cams.filter((z) => z.cid !== cid);
     st.inv.cameras[c.type] = (st.inv.cameras[c.type] || 0) + 1;
+    workDay('pulling cameras');
     return null;
   };
   /* Food plots through the year. A plot is a 2 x 2 site you lay out any time for free; it is bare dirt until it is

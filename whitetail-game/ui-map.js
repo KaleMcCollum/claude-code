@@ -439,9 +439,7 @@
         if (pid !== state.pid) return UI.toast('Keep it on the same property.', 'bad');
         const e = state.move.kind === 'stand' ? WT.moveStand(pid, state.move.id, x, y) : WT.moveCamera(pid, state.move.id, x, y);
         if (UI.err(e)) return;
-        const wasStand = state.move.kind === 'stand', dayBefore = st.day;
-        state.move = null; setBanner(); done(wasStand && st.day !== dayBefore ? 'Moved. That took the day: it is now ' + WT.dateLabel(Math.min(st.day, 91)) + '.' : 'Moved.', false, x, y);
-        if (WT.game.seasonOver) UI.seasonOver(); // the move ran out the last day of the season
+        state.move = null; setBanner(); done('Moved.', false, x, y);
         return;
       }
       selectTile(pid, x, y);
@@ -450,13 +448,17 @@
       refreshMap(); renderCard();
     }
     // after any change: save, redraw, keep the same spot selected
+    let dayShown = st.day;
     function done(msg, terrain, x, y) {
       WT.save();
+      // land work can use up the day: say so, and if it was the last day of the season, close it out
+      if (st.day !== dayShown) { msg = (msg ? msg + ' ' : '') + `That took the day: it is now the morning of ${WT.dateLabel(Math.min(st.day, 91))}. Anything else you do here this morning is part of the same day's work.`; dayShown = st.day; }
       if (msg) UI.toast(msg, 'good');
       const t = x != null ? { x, y } : state.tile;
       if (t) selectTile(state.pid, t.x, t.y);
       if (terrain) view.rebuild();
       refreshMap(); renderCard(); UI.topbar();
+      if (WT.game.seasonOver) UI.seasonOver(); // the work ran out the last day of the season
     }
 
     const rateTxt = (c) => { const r = WT.camRate(c); return r == null ? (WT.camType(c.type).cell ? 'no days logged yet' : 'check the card to see') : `${r.toFixed(1)} deer a week`; };
@@ -466,11 +468,11 @@
           <dl class="kv"><dt>Activity</dt><dd><b>${rateTxt(c)}</b></dd><dt>Photos</dt><dd>${c.total || 0}${c.total ? ` · ${c.dayN || 0} in daylight · ${c.bucks || 0} of bucks` : ''}</dd>
           <dt>Watching</dt><dd>${(() => { const tw = WT.touching(WT.game.world.parcelOf[c.y * WT.game.world.W + c.x], c.x, c.y); const l = [tw.stand ? esc(tw.stand.name || (tw.stand.kind === 'spot' ? 'your marked spot' : WT.standType(tw.stand.type).name)) + (tw.stand.x === c.x && tw.stand.y === c.y ? ' (same tile)' : ' (it touches this plot)') : null, tw.plot ? 'a food plot' : null, tw.field ? 'a crop field' : null, tw.water ? 'water' : null].filter(Boolean); return l.length ? l.join(', ') : '<span class="faint">just the ground it is on. Put it on a stand\'s tile, or on a food plot the stand touches, to cover that stand</span>'; })()}</dd>
           <dt>Sees here</dt><dd>clear to ${sg.clear} yd, nothing past ${sg.reach} yd${sg.limited ? ' <span class="faint">(cover is cutting it short)</span>' : ''}</dd><dt>Up for</dt><dd>${c.days || 0} day${c.days === 1 ? '' : 's'}</dd></dl>
-          <div class="row" style="margin-top:6px">${ct.cell ? '' : '<button class="btn small" id="ccheck">Check card</button>'}<button class="btn small" id="cmove">Move</button><button class="btn small" id="cpick">Pick up</button><button class="btn small" id="cphotos">Photos</button></div></div>`;
+          <div class="row" style="margin-top:6px">${ct.cell ? '' : '<button class="btn small" id="ccheck">Check card</button>'}<button class="btn small" id="cmove">Move</button><button class="btn small" id="cpick">Pick up</button><button class="btn small" id="cphotos">Photos</button></div>${WT.workCostsDay() ? '<p class="faint" style="margin:4px 0 0">Moving it or taking it down takes the day.</p>' : ''}</div>`;
     }
     function addCamRow(onStand) {
       const cams = Object.entries(st.inv.cameras).filter(([, n]) => n > 0);
-      return `<div class="row" style="margin-top:6px">${cams.length ? `<select id="camSel">${cams.map(([id, n]) => `<option value="${id}" ${state.camType === id ? 'selected' : ''}>${esc(WT.camType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addCam">Hang camera${onStand ? ' on this spot' : ' here'}</button>` : '<span class="faint">No cameras in your truck. Buy one at the Shop.</span>'}</div>`;
+      return `<div class="row" style="margin-top:6px">${cams.length ? `<select id="camSel">${cams.map(([id, n]) => `<option value="${id}" ${state.camType === id ? 'selected' : ''}>${esc(WT.camType(id).name)} (${n})</option>`).join('')}</select><button class="btn small" id="addCam">Hang camera${onStand ? ' on this spot' : ' here'}${WT.workCostsDay() ? ' (takes the day)' : ''}</button>` : '<span class="faint">No cameras in your truck. Buy one at the Shop.</span>'}</div>`;
     }
     // every camera you have out, best first: this is how you find the next place to sit
     function camReport() {
@@ -527,7 +529,7 @@
       const info = WT.tileInfo(pid, t.x, t.y), s = state.sid ? d.stands.find((z) => z.sid === state.sid) : null, c = state.cid ? d.cams.find((z) => z.cid === state.cid) : null;
       html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${WT.LAND[WT.landType(w.cover[info.i])].name}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div><p class="faint" style="margin:2px 0">${esc(info.cover)}. ${esc(WT.LAND[WT.landType(w.cover[info.i])].rule)}</p>${!s && info.buildable && WT.landType(w.cover[info.i]) !== 'farm' ? (() => { const sg = WT.settingOf(t.x, t.y); return `<p style="margin:2px 0">A stand here would be: <b>${sg.name}</b>${sg.extra.length ? ` <span class="dim">touching ${sg.extra.join(', ')}</span>` : ''}. <span class="faint">${esc(sg.note)}</span></p>`; })() : ''}`;
       if (s) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.standType(s.type).name)}</span><input type="text" id="sname" maxlength="28" value="${esc(s.name || '')}" placeholder="Name it" style="flex:1;min-width:90px"><button class="btn small" id="srename">Rename</button></div>
-          <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
+          <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button>${WT.workCostsDay() ? '<span class="faint">either one takes the day</span>' : ''}</div>
           ${UI.knowledgeHtml(s, UI.stackHtml(pid, s))}</div>`;
       if (c) html += camBlock(c);
       if (info.plot) html += `<div class="item" style="display:block;margin-top:6px"><span class="nm">Food plot</span> <span class="dim">${info.plot.planted ? `${esc(WT.plotType(info.plot.type).name)}, came in ${esc(info.plot.quality || 'fair')}. Feeding deer all season; it goes back to dirt when the season ends.` : WT.plantingOpen() ? 'Bare dirt. Spring planting is open: choose a crop for it now.' : 'Bare dirt this season. You choose its crop in spring, after the season ends.'}</span><div class="row" style="margin-top:6px">${!info.plot.planted && WT.plantingOpen() ? '<button class="btn small blaze" data-planting>Spring planting</button>' : ''}<button class="btn small" id="unbuild">Take the plot out</button></div></div>`;
@@ -644,8 +646,9 @@
       on('checkCams', () => { const n = WT.checkCameras(pid); WT.save(); UI.toast(checkMsg(n)); renderCard(); refreshMap(); });
       on('ccheck', () => { const n = WT.checkCameras(pid, state.cid); WT.save(); UI.toast(checkMsg(n)); renderCard(); refreshMap(); });
       on('cphotos', () => UI.go('hitlist', { photos: true }));
-      on('smove', () => { state.move = { kind: 'stand', id: state.sid }; setBanner(); UI.toast(WT.offseason() ? 'Tap the new spot. It is the off-season, so it costs you nothing. You start learning the new spot from scratch.' : 'Tap the new spot. Moving a stand takes the rest of today: it will be tomorrow morning when you are done. You start learning the new spot from scratch.'); });
-      on('cmove', () => { state.move = { kind: 'cam', id: state.cid }; setBanner(); UI.toast('Tap the new spot.'); });
+      const dayNote = () => (WT.workCostsDay() ? ' This takes the rest of today: it will be tomorrow morning when you are done, and everything else you do then is part of the same day of work.' : '');
+      on('smove', () => { state.move = { kind: 'stand', id: state.sid }; setBanner(); UI.toast('Tap the new spot. You start learning the new spot from scratch.' + dayNote()); });
+      on('cmove', () => { state.move = { kind: 'cam', id: state.cid }; setBanner(); UI.toast('Tap the new spot.' + dayNote()); });
       on('spick', () => { if (UI.err(WT.removeStand(pid, state.sid))) return; done('Stand is back in your truck.'); });
       on('cpick', () => { if (UI.err(WT.removeCamera(pid, state.cid))) return; done('Camera is back in your truck.'); });
       let armed = false;
