@@ -676,7 +676,7 @@
   };
   // Everything on (or right at) a spot: things within one tile of each other count as the same setup.
   const NEAR = (a, x, y) => Math.abs(a.x - x) <= 1 && Math.abs(a.y - y) <= 1;
-  WT.camsAtStand = (pid, s) => (S().parcels[pid].cams || []).filter((c) => NEAR(c, s.x, s.y));
+  WT.camsAtStand = (pid, s) => (S().parcels[pid].cams || []).filter((c) => c.x === s.x && c.y === s.y); // a camera covers a stand only from the stand's own tile
   WT.tileInfo = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y), TT = T();
     const pick = (list) => (list || []).find((a) => a.x === x && a.y === y) || (list || []).find((a) => NEAR(a, x, y));
@@ -701,8 +701,8 @@
     const st = S(), d = st.parcels[pid], w = G.world, TT = T(), out = { stand: null, cams: [], plot: false, newPlot: false, field: false, water: false };
     if (!d) return out;
     const near = (a) => Math.abs(a.x - x) <= 1 && Math.abs(a.y - y) <= 1;
-    out.stand = [...(d.stands || []), ...(d.spots || [])].find(near) || null;
-    out.cams = (d.cams || []).filter(near);
+    out.stand = [...(d.stands || []), ...(d.spots || [])].find((a) => a.x === x && a.y === y) || null; // stands and cameras pair up only on the same tile
+    out.cams = (d.cams || []).filter((a) => a.x === x && a.y === y); void near;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       const i = tileAt(x + dx, y + dy); if (i < 0) continue;
       const c = w.cover[i];
@@ -1177,6 +1177,15 @@
     return { factor, stars: Math.max(1, Math.min(5, Math.floor(factor / 0.18))), windOk, windNear, windF, dayF, sesF, presF };
   };
   // How far out deer show from a stand: timber is 20 to 200 yards, open country 150 to 500.
+  // The stand's setting in words: where it is and what it touches.
+  WT.settingOf = function (x, y) {
+    const set = WT.spotSetting(G.world, x, y), cfg = C().land.settings[set.id], t = set.touching, extra = [];
+    if (set.id !== 'treeline' && set.own !== 'timber' && t.timber) extra.push('timber');
+    if (set.id !== 'fieldEdge' && t.farm) extra.push('a crop field');
+    if (set.id !== 'bank' && t.water) extra.push('water');
+    if (t.plot) extra.push('a food plot');
+    return { id: set.id, name: cfg.name, note: cfg.note, extra, own: set.own };
+  };
   WT.standView = function (s, typeId) {
     const sType = WT.standType(typeId || s.type);
     const vis = clamp(s.r.visibility * 0.85 + sType.visibility / 100 * 0.15);
@@ -1850,7 +1859,7 @@
         const watched = Math.pow(sight.reach / 60, 0.7); // more ground in view, more deer caught
         const spotOf = d.owner === 'public' ? d.spots || [] : d.stands;
         const rutCam = /Seek|Peak/.test(WT.rutPhase(Math.min(st.day, 91)).name);
-        const at = spotOf.find((z) => Math.abs(z.x - cam.x) <= 1 && Math.abs(z.y - cam.y) <= 1);
+        const at = spotOf.find((z) => z.x === cam.x && z.y === cam.y);
         for (const deer of d.herd) {
           if (deer.age < 1 && rng.chance(0.6)) continue;
           const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6 * WT.homeFactor(p.id, deer, cam.x, cam.y, rutCam);

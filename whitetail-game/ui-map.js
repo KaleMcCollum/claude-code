@@ -252,10 +252,11 @@
   UI.knowledgeHtml = function (s, extra = '') {
     const st = S(), k = WT.standKnowledge(s);
     const rec = (s.recent || []).slice(0, 4).map((r) => `<p class="dim">${WT.dateLabel(r.d)} ${r.s}: ${r.seen ? r.seen + ' deer seen' : 'nothing'} (wind ${r.wind})</p>`).join('');
-    if (!k.known) return `<p class="dim">You haven't sat here yet. One sit tells you its rating, its winds and how far you can see.</p><dl class="kv"><dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd></dl>${extra}`;
+    const sg = WT.settingOf(s.x, s.y), setLine = `<p style="margin:2px 0 6px"><b>${sg.name}</b>${sg.extra.length ? ` <span class="dim">touching ${sg.extra.join(', ')}</span>` : ''}<br><span class="faint">${esc(sg.note)}</span></p>`;
+    if (!k.known) return setLine + `<p class="dim">You haven't sat here yet. One sit tells you its rating, its winds and how far you can see.</p><dl class="kv"><dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd></dl>${extra}`;
     const b = UI.betScore(s);
     const line = (name, o) => `<dt>${name}</dt><dd><span class="stars">${stars(o.stars)}</span></dd>`;
-    return `<dl class="kv"><dt>Stand rating</dt><dd><b>${k.rating}</b> / 100</dd>
+    return setLine + `<dl class="kv"><dt>Stand rating</dt><dd><b>${k.rating}</b> / 100</dd>
       <dt>This ${st.slot}</dt><dd><span class="stars">${stars(b.stars)}</span> <span class="faint">${b.notes.join(', ')}</span></dd>
       <dt>Wind</dt><dd>${st.weather.windDir} today · best on ${k.winds.join(', ')}</dd>
       <dt>Pressure</dt><dd>${pressureHtml(k.pressure)}</dd></dl>
@@ -350,8 +351,8 @@
   UI.stackHtml = function (pid, s) {
     const d = S().parcels[pid], info = WT.tileInfo(pid, s.x, s.y), out = [];
     if (d.owner === 'player' || d.owner === 'public') {
-      for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera ${c.x === s.x && c.y === s.y ? 'on' : 'touching'} this stand</span>: ${WT.camRate(c) != null ? WT.camRate(c).toFixed(1) + ' deer a week, ' : ''}${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
-      if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera here. Hang one on this tile or one touching it to learn what walks past this stand.</span>');
+      for (const c of WT.camsAtStand(pid, s)) out.push(`<span class="good">Trail camera on this stand</span>: ${WT.camRate(c) != null ? WT.camRate(c).toFixed(1) + ' deer a week, ' : ''}${c.total || 0} photo${c.total === 1 ? '' : 's'} so far${c.total ? ` (${c.dayN || 0} in daylight, ${c.bucks || 0} of bucks)` : ''}${c.queue && c.queue.length ? `, <b>${c.queue.length} waiting on the card</b>` : ''}`);
+      if (!WT.camsAtStand(pid, s).length) out.push('<span class="faint">No camera on this stand. Hang one on this same tile to learn what walks past it.</span>');
     }
     if (info.nearPlot) out.push(info.nearPlot.ready ? '<span class="good">Food plot touching this stand</span>: counted in its rating, most of all for evening sits' : '<span class="warn">New food plot touching this stand</span>: it grows in next season and the rating goes up then');
     if (s.r.shore > 0.2) out.push('<span class="good">On the bank</span>: deer walk the shoreline instead of crossing, so this stand sits on a funnel (counted in its rating)');
@@ -450,7 +451,7 @@
       const ct = WT.camType(c.type), sg = WT.camSight(c);
       return `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(ct.name)}</span><span class="dim">${ct.cell ? 'sends photos by itself' : c.queue && c.queue.length ? `<b>${c.queue.length} photos waiting on the card</b>` : 'nothing new on the card'}</span></div>
           <dl class="kv"><dt>Activity</dt><dd><b>${rateTxt(c)}</b></dd><dt>Photos</dt><dd>${c.total || 0}${c.total ? ` · ${c.dayN || 0} in daylight · ${c.bucks || 0} of bucks` : ''}</dd>
-          <dt>Watching</dt><dd>${(() => { const tw = WT.touching(WT.game.world.parcelOf[c.y * WT.game.world.W + c.x], c.x, c.y); const l = [tw.stand ? esc(tw.stand.name || (tw.stand.kind === 'spot' ? 'your marked spot' : WT.standType(tw.stand.type).name)) : null, tw.plot ? 'a food plot' : null, tw.field ? 'a crop field' : null, tw.water ? 'water' : null].filter(Boolean); return l.length ? l.join(', ') + ' <span class="faint">(touching this tile)</span>' : '<span class="faint">nothing touching this tile: just the ground it is on</span>'; })()}</dd>
+          <dt>Watching</dt><dd>${(() => { const tw = WT.touching(WT.game.world.parcelOf[c.y * WT.game.world.W + c.x], c.x, c.y); const l = [tw.stand ? esc(tw.stand.name || (tw.stand.kind === 'spot' ? 'your marked spot' : WT.standType(tw.stand.type).name)) + ' (same tile)' : null, tw.plot ? 'a food plot' : null, tw.field ? 'a crop field' : null, tw.water ? 'water' : null].filter(Boolean); return l.length ? l.join(', ') : '<span class="faint">just the ground it is on. Put it on a stand\'s tile to cover that stand</span>'; })()}</dd>
           <dt>Sees here</dt><dd>clear to ${sg.clear} yd, nothing past ${sg.reach} yd${sg.limited ? ' <span class="faint">(cover is cutting it short)</span>' : ''}</dd><dt>Up for</dt><dd>${c.days || 0} day${c.days === 1 ? '' : 's'}</dd></dl>
           <div class="row" style="margin-top:6px">${ct.cell ? '' : '<button class="btn small" id="ccheck">Check card</button>'}<button class="btn small" id="cmove">Move</button><button class="btn small" id="cpick">Pick up</button><button class="btn small" id="cphotos">Photos</button></div></div>`;
     }
@@ -500,7 +501,7 @@
         return html;
       }
       const info = WT.tileInfo(pid, t.x, t.y), s = state.sid ? d.stands.find((z) => z.sid === state.sid) : null, c = state.cid ? d.cams.find((z) => z.cid === state.cid) : null;
-      html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${WT.LAND[WT.landType(w.cover[info.i])].name}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div><p class="faint" style="margin:2px 0">${esc(info.cover)}. ${esc(WT.LAND[WT.landType(w.cover[info.i])].rule)}</p>`;
+      html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${WT.LAND[WT.landType(w.cover[info.i])].name}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div><p class="faint" style="margin:2px 0">${esc(info.cover)}. ${esc(WT.LAND[WT.landType(w.cover[info.i])].rule)}</p>${!s && info.buildable && WT.landType(w.cover[info.i]) !== 'farm' ? (() => { const sg = WT.settingOf(t.x, t.y); return `<p style="margin:2px 0">A stand here would be: <b>${sg.name}</b>${sg.extra.length ? ` <span class="dim">touching ${sg.extra.join(', ')}</span>` : ''}. <span class="faint">${esc(sg.note)}</span></p>`; })() : ''}`;
       if (s) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.standType(s.type).name)}</span><input type="text" id="sname" maxlength="28" value="${esc(s.name || '')}" placeholder="Name it" style="flex:1;min-width:90px"><button class="btn small" id="srename">Rename</button></div>
           <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
           ${UI.knowledgeHtml(s, UI.stackHtml(pid, s))}</div>`;

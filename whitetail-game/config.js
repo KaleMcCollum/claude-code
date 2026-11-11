@@ -254,6 +254,18 @@
          barrier: land along a river or lake has no neighbor on that side, so fewer deer are lost to other hunters
          warmDay: on warm days deer stay close to water */
       water: { shore: 0.1, shoreMature: 0.06, barrier: 0.25, barrierFull: 0.3, warmHigh: 62, warmBoost: 0.35 },
+      /* Where a stand is. Decided by the tile it stands on plus what its 8 neighbours are.
+         view: how open the look is (0 thick, 1 wide open). The rest are added to that part of the stand's rating.
+         A stand ON swamp gets the full big-buck effect; one only touching swamp gets half. */
+      settings: {
+        swamp:     { name: 'In the swamp',     view: 0.18, mature: 0.30, morning: 0.05, note: 'On swamp ground: the full big-buck effect, close shots.' },
+        swampEdge: { name: 'Swamp edge',       view: 0.5,  mature: 0.15, note: 'Touching swamp but not in it: half the big-buck effect, and any stand can go here.' },
+        timber:    { name: 'In the timber',    view: 0.15, morning: 0.06, rut: 0.03, note: 'In the woods: close shots, best for mornings near bedding.' },
+        treeline:  { name: 'Tree line',        view: 0.55, evening: 0.05, rut: 0.06, note: 'On open ground touching timber: deer travel this edge. Medium shots.' },
+        fieldEdge: { name: 'Field edge',       view: 0.75, evening: 0.06, note: 'Touching a crop field: an evening spot while the crop stands. Long shots.' },
+        bank:      { name: "Water's edge",     view: 0.6,  morning: 0.04, evening: 0.04, note: 'Touching water: deer walk the bank instead of crossing.' },
+        open:      { name: 'Open prairie',     view: 0.95, note: 'Out in the open, touching nothing: you see a long way, and so do the deer.' },
+      },
       crops: { offDay: [7, 14], rushDays: 14, standing: 0.15, rush: [0.3, 0.9], after: 0.3, coverSaves: 0.6, neighbors: 0.5 },
     },
     mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards

@@ -637,6 +637,24 @@
   /* ================================================================ STAND SPOT RATINGS (hidden) */
   const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   WT.DIRS = DIRS;
+  // Where a spot is: the tile it is on, plus what touches it (its 8 neighbours).
+  const landKind = (c) => (c === T.SLOUGH ? 'swamp' : c === T.CORN || c === T.SOY || c === T.SUNFLOWER ? 'farm' : c === T.TIMBER || c === T.BELT || c === T.BRUSH || c === T.YOUNGTREES ? 'timber' : isWater(c) ? 'water' : c === T.ROAD || c === T.TOWN || c === T.YARD ? 'road' : 'prairie');
+  function spotSetting(world, x, y) {
+    const { W, H, cover } = world, own = landKind(cover[y * W + x]), t = { timber: false, swamp: false, farm: false, water: false, plot: false };
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+      const c = cover[yy * W + xx], k = landKind(c);
+      if (k in t) t[k] = true;
+      if (c === T.PLOT || c === T.PLOT_NEW) t.plot = true;
+    }
+    if (cover[y * W + x] === T.PLOT || cover[y * W + x] === T.PLOT_NEW) t.plot = true;
+    // the tile you stand on decides first; on open ground, the best thing you touch decides
+    const id = own === 'swamp' ? 'swamp' : own === 'timber' ? (t.swamp ? 'swampEdge' : 'timber') : t.swamp ? 'swampEdge' : t.timber ? 'treeline' : t.farm ? 'fieldEdge' : t.water ? 'bank' : 'open';
+    return { id, own, touching: t };
+  }
+  WT.spotSetting = spotSetting;
+
   function spotRatings(world, x, y) {
     const { W, H, cover, travel, distRoad } = world;
     let fW = 0, bW = 0, wW = 0, tot = 0, open = 0, openN = 0, tv = 0, tvN = 0, vx = 0, vy = 0, plotN = 0, swamp = 0, swN = 0, shW = 0, shN = 0;
@@ -656,18 +674,20 @@
     const food = clamp(fW / tot * 1.6), bed = clamp(bW / tot * 1.5), wat = clamp(wW / tot * 4);
     const trav = clamp(tv / Math.max(1, tvN));
     const depth = clamp(distRoad[y * W + x] / 14);
-    const vis = clamp(open / Math.max(1, openN) * 1.1);
-    // a bank is a funnel: some water close by, but not standing in the middle of it
-    const shoreShare = shW / Math.max(1, shN), shore = shoreShare > 0 && shoreShare < 0.6 ? Math.min(1, shoreShare * 5) : 0, LW = C().land.water;
+    const set = spotSetting(world, x, y), SS = C().land.settings[set.id], LW = C().land.water;
+    // how far you see is mostly the setting (in the timber, on a tree line, out in the open), a little the country around
+    const vis = clamp(SS.view * 0.75 + clamp(open / Math.max(1, openN) * 1.1) * 0.25);
+    const shore = set.touching.water && set.own !== 'water' ? 1 : 0; // the bank only counts if your tile touches the water
+    void swamp; void swN; void shW; void shN;
     const jit = (k) => (hash2(x, y, world.seed + k) - 0.5) * 0.18;
     const r = {
-      morning: clamp(0.38 * bed + 0.34 * trav + 0.18 * depth + 0.1 * wat - 0.12 * Math.max(0, food - 0.7) + 0.08 + jit(1) + LW.shore * shore),
-      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2) + 0.08 * Math.min(1, plotN / 3) + LW.shore * shore), // a grown food plot right at the stand is a destination
-      rut: clamp(0.5 * trav + 0.3 * bed + 0.15 * food + 0.08 + jit(3) + LW.shore * shore),
-      mature: clamp(0.45 * trav + 0.3 * depth + 0.2 * bed - 0.15 * Math.max(0, vis - 0.7) + jit(4) + 0.3 * Math.min(1, swamp / Math.max(1, swN) * 2) + LW.shoreMature * shore), // a stand in or beside a swamp is where the old ones are
+      morning: clamp(0.38 * bed + 0.34 * trav + 0.18 * depth + 0.1 * wat - 0.12 * Math.max(0, food - 0.7) + 0.08 + jit(1) + LW.shore * shore + (SS.morning || 0)),
+      evening: clamp(0.5 * food + 0.3 * trav + 0.12 * wat + 0.05 + jit(2) + 0.08 * Math.min(1, plotN / 3) + LW.shore * shore + (SS.evening || 0)), // a grown food plot right at the stand is a destination
+      rut: clamp(0.5 * trav + 0.3 * bed + 0.15 * food + 0.08 + jit(3) + LW.shore * shore + (SS.rut || 0)),
+      mature: clamp(0.45 * trav + 0.3 * depth + 0.2 * bed - 0.15 * Math.max(0, vis - 0.7) + jit(4) + (SS.mature || 0) + LW.shoreMature * shore), // in the swamp: full; touching it: half
       water: wat,
       visibility: vis,
-      shore,
+      shore, setting: set.id, touching: set.touching,
       accessImpact: clamp(0.25 + depth * 0.35 + bed * 0.35 + jit(5) * 0.5),
     };
     // deer come from the direction of the strongest pull; you want the wind blowing FROM there
