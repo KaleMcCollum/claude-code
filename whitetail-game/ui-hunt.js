@@ -100,8 +100,8 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
     const day = S().day, c = H.cover;
     if (day > 62) return SCENE.snow;
     if (c === T.PLOT || c === T.PLOT_NEW) return SCENE.plot;
-    if (c === T.CORN || c === T.SUNFLOWER) return SCENE.corn;
-    if (c === T.SOY) return SCENE.soy;
+    if (c === T.CORN || c === T.SUNFLOWER) return WT.cropsOff() ? SCENE.stubble : SCENE.corn; // combined fields are stubble
+    if (c === T.SOY) return WT.cropsOff() ? SCENE.stubble : SCENE.soy;
     if (c === T.WHEAT || c === T.HAY || c === T.PASTURE) return SCENE.stubble;
     if (c === T.SLOUGH) return SCENE.slough;
     if (c === T.TIMBER || c === T.BELT || c === T.BRUSH) return SCENE.timber;
@@ -206,7 +206,7 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
     while (y < SHd) { const bh = Math.max(1, Math.floor((y - base) / 6) + 1); R(gc[k % 2], 0, y, SW, bh); y += bh; k++; }
     // fields and plots are strips of ground colour: a crop field far out, your food plot in the middle distance
     if (info.cropKind && gc !== SCENE.corn && gc !== SCENE.soy) {
-      const cc = snow ? ['#d8cfb4', '#cabfa2'] : info.cropKind === 'corn' ? ['#c4aa5c', '#a48c44'] : info.cropKind === 'soy' ? ['#a8884a', '#8e7240'] : ['#d0ba76', '#bca866'];
+      const cc = snow ? ['#d8cfb4', '#cabfa2'] : WT.cropsOff() ? ['#d0ba76', '#bca866'] : info.cropKind === 'corn' ? ['#c4aa5c', '#a48c44'] : info.cropKind === 'soy' ? ['#a8884a', '#8e7240'] : ['#d0ba76', '#bca866'];
       const y0 = base + 3; R(cc[0], 0, y0, SW, 5); R(cc[1], 0, y0 + 1, SW, 1); R(cc[1], 0, y0 + 3, SW, 1);
     }
     if (info.plot || info.newPlot) {

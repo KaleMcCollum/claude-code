@@ -237,6 +237,20 @@
     },
     // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
     traveler: { chance: 0.035, rut: 2.2, quiet: 1.5, crowded: 0.7, gp: [170, 200], age: [4.5, 6.5], stays: 0.3 },
+    /* Four kinds of ground.
+       prairie: open grass, hay and stubble. The common middle ground: build anything, plant plots and tree rows.
+       timber:  woods, tree rows and brush. Holds more deer. Build anything except plots (no open ground).
+       farm:    standing row crops. Nothing can be built or marked on it, and it can't be sanctuary. Holds deer until
+                the combines roll, then empties: for two weeks deer pack into your cover, after that they drift off.
+       swamp:   cattail slough. Rare and the best ground for old bucks. Ladder stands and carried stands only; no
+                blinds or big stands, no plots, trees or water holes. */
+    land: {
+      timberCapacity: 0.3,      // a property that is all timber holds 30% more deer
+      swampOldBucks: 0.4,       // bucks 3.5+ die up to 40% less on swampy ground (full effect at 20% swamp)
+      swampFull: 0.2,
+      swampStands: ['ladder'],  // the only stand you can leave up in a swamp
+      crops: { offDay: [7, 14], rushDays: 14, standing: 0.15, rush: [0.3, 0.9], after: 0.3, coverSaves: 0.6, neighbors: 0.5 },
+    },
     mobileStands: ['saddle', 'hangon', 'climber', 'popup'], // carried on your back: equip one under Gear to hunt public land   // 3 tiles is about 100 yards
 
     /* ------------------------------------------------------------ trail cameras */

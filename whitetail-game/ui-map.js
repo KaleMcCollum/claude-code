@@ -35,12 +35,12 @@
   const STAND_LETTER = { ground: 'G', saddle: 'S', hangon: 'H', climber: 'C', popup: 'P', tripod: 'T', ladder: 'L', box: 'B', house: 'X' };
 
   // Simple view: four colors that say what deer use the ground for.
-  const SIMPLE = { cover: ['#4f6b3a', '#56733f'], food: ['#c9ac5c', '#c2a555'], water: ['#4a78a8', '#4a78a8'], people: ['#8a8076', '#8a8076'] };
-  const CAT = {};
-  [T.TIMBER, T.BELT, T.BRUSH, T.PRAIRIE, T.SLOUGH, T.YOUNGTREES].forEach((t) => { CAT[t] = 'cover'; });
-  [T.CORN, T.SOY, T.WHEAT, T.SUNFLOWER, T.HAY, T.PASTURE, T.PLOT, T.PLOT_NEW].forEach((t) => { CAT[t] = 'food'; });
-  [T.WATER, T.CREEK, T.POND].forEach((t) => { CAT[t] = 'water'; });
-  [T.ROAD, T.YARD, T.TOWN].forEach((t) => { CAT[t] = 'people'; });
+  // The map shows the four kinds of ground, plus water, roads and your own food plots.
+  const SIMPLE = {
+    prairie: ['#b9a868', '#b2a160'], timber: ['#4f6b3a', '#56733f'], farm: ['#d9b24a', '#d2aa42'], farmOff: ['#cfc49a', '#c8bc90'],
+    swamp: ['#5d6f6a', '#667a70'], plot: ['#6fb04a', '#68a644'], water: ['#4a78a8', '#4a78a8'], people: ['#8a8076', '#8a8076'],
+  };
+  const catOf = (c) => { const lt = WT.landType(c); return c === T.PLOT || c === T.PLOT_NEW ? 'plot' : lt === 'road' ? 'people' : lt === 'farm' && WT.cropsOff() ? 'farmOff' : lt; };
   UI.MAP_SIMPLE = SIMPLE;
   function huntable(d) { return d.owner === 'player' || d.owner === 'public' || d.permBought; }
   function buildBase(huntMode) {
@@ -52,7 +52,7 @@
     const img = ctx.createImageData(w.W, w.H);
     for (let i = 0; i < w.W * w.H; i++) {
       const x = i % w.W, y = (i / w.W) | 0;
-      const p = simple ? SIMPLE[CAT[w.cover[i]] || 'food'] : (PAL[w.cover[i]] || PAL[8])[season];
+      const p = simple ? SIMPLE[catOf(w.cover[i])] || SIMPLE.prairie : (PAL[w.cover[i]] || PAL[8])[season];
       const rgb = hexRgb(p[simple ? (WT.hash2(x >> 1, y >> 1, 3) < 0.5 ? 0 : 1) : (x + y) % 2 === 0 || WT.hash2(x, y, 3) < 0.5 ? 0 : 1]);
       img.data.set([...rgb, 255], i * 4);
     }
@@ -264,7 +264,7 @@
     const simple = (S().settings.mapStyle || 'simple') === 'simple';
     const sw = (c, t, box) => `<span><span style="color:${c}">${box ? '▢' : '■'}</span> ${t}</span>`;
     const land = [sw('#7fb0ff', 'yours', 1), sw('#b6e08a', 'public', 1), sw('#e2b04a', 'permission', 1)].concat(mode === 'hunt' ? [] : [sw('#ff8a3a', 'for sale', 1)]);
-    return (simple ? [sw(SIMPLE.cover[0], 'cover'), sw(SIMPLE.food[0], 'food'), sw(SIMPLE.water[0], 'water')] : []).concat(land).join('');
+    return (simple ? [sw(SIMPLE.prairie[0], 'prairie'), sw(SIMPLE.timber[0], 'timber'), sw(WT.cropsOff() ? SIMPLE.farmOff[0] : SIMPLE.farm[0], WT.cropsOff() ? 'farm (crops off)' : 'farm'), sw(SIMPLE.swamp[0], 'swamp'), sw(SIMPLE.water[0], 'water')] : []).concat(land).join('');
   };
   // Ranks a stand using only what the player has learned plus today's wind. Hidden values stay hidden.
   // Today's sit: stars are how close this sit is to the stand's own best (5 = as good as this stand gets).
@@ -276,6 +276,7 @@
     if (d.sesF < 0.75) notes.push(`better in the ${s.r.morning > s.r.evening ? 'morning' : 'evening'}`);
     if (d.presF < 0.8) notes.push('<span class="warn">pressured</span>');
     if (d.dayF < 0.8) notes.push('deer are off it today');
+    { const w0 = Wd(), pid0 = w0.parcelOf[s.y * w0.W + s.x], ce = pid0 >= 0 ? WT.cropEffect(pid0) : null; if (ce && ce.phase === 'rush') notes.push('<span class="good">crops just came off</span>'); else if (ce && ce.phase === 'off' && ce.f < 0.95) notes.push('<span class="warn">crops are off</span>'); }
     return { stars: d.stars, rating: k.rating, score: k.rating * d.factor, notes };
   };
   UI.mapTutorial = function (page = 0) {
@@ -283,13 +284,12 @@
     const swatch = (c) => `<span style="display:inline-block;width:14px;height:14px;background:${c};vertical-align:middle;margin-right:6px;border:1px solid #1c1410"></span>`;
     const box = (c) => `<span style="display:inline-block;width:14px;height:14px;border:3px solid ${c};vertical-align:middle;margin-right:6px"></span>`;
     const pages = [
-      `<h2>Reading the map (1/3): the ground</h2>
-       <p>The map shows what deer use each piece of ground for.</p>
-       <p>${swatch(SIMPLE.cover[0])}<b>Cover</b>: timber, tree rows, brush, CRP grass and cattail sloughs. Deer bed here during the day.</p>
-       <p>${swatch(SIMPLE.food[0])}<b>Food</b>: crop fields, hay, pasture and your food plots. Deer feed here at dawn and dusk.</p>
-       <p>${swatch(SIMPLE.water[0])}<b>Water</b>: rivers, creeks and ponds.</p>
-       <p>${swatch(SIMPLE.people[0])}<b>Roads, farms and town</b>: people. Deer avoid them, and stands near roads get bumped walking in.</p>
-       `,
+      `<h2>Reading the map (1/3): four kinds of ground</h2>
+       <p>${swatch(SIMPLE.prairie[0])}<b>Prairie</b>: open grass, hay and stubble. The most common ground and the middle of the road for deer. You can build anything on it, and it's where food plots and tree rows go.</p>
+       <p>${swatch(SIMPLE.timber[0])}<b>Timber</b>: woods, tree rows and brush. Better than prairie: it holds more deer, and shots are close.</p>
+       <p>${swatch(SIMPLE.farm[0])}<b>Farm</b>: someone's crop. You can't build or mark anything on it. It holds deer until the combines roll in the second week of October. Then for two weeks deer are packed into the cover beside it (the best hunting of the year if you have timber or swamp there), and after that they drift to the neighbors.</p>
+       <p>${swatch(SIMPLE.swamp[0])}<b>Swamp</b>: rare, and where the old bucks live. Ladder stands and carried stands only: no blinds, no building.</p>
+       <p>${swatch(SIMPLE.water[0])}<b>Water</b> · ${swatch(SIMPLE.people[0])}<b>Roads, farmyards and town</b>: deer avoid people, and stands near roads get bumped walking in.</p>`,
       `<h2>Reading the map (2/3): whose land</h2>
        <p>${box('#7fb0ff')}<b>Blue outline</b>: your land. Hunt any stand you put up. Bow or rifle.</p>
        <p>${box('#b6e08a')}<b>Green outline</b>: public land. Free, but crowded and pressured. Mark up to 3 spots per area. You need a mobile stand equipped under Gear: a hang-on, climber or saddle for a tree, or a pop-up blind for open ground.</p>
@@ -424,6 +424,7 @@
       return `<h3>Camera report</h3><p class="dim">Busiest first. The camera getting the most deer, and the most in daylight, is the spot to hunt. Compare the same model against itself: a camera with more reach catches more deer on the same spot.</p><div class="list">${all.map((a) => `<button class="item" style="text-align:left;border:0" data-cam="${a.pid}:${a.cam.x},${a.cam.y}"><span><span class="nm">${esc(WT.camType(a.cam.type).name)}</span> <span class="dim">${esc(a.parcel)}${a.owner === 'public' ? ' (public)' : ''}</span></span><span>${rateTxt(a.cam)}</span><span class="st">${a.cam.total || 0} photos · ${a.cam.dayN || 0} daylight · ${a.cam.bucks || 0} bucks${a.cam.queue && a.cam.queue.length ? ` · <b>${a.cam.queue.length} on the card</b>` : ''}</span></button>`).join('')}</div>`;
     }
     const bar = (v) => { const n = Math.max(0, Math.min(5, Math.round(v * 5))); return `<span class="${n >= 4 ? 'good' : n >= 2 ? 'warn' : 'bad'}">${'■'.repeat(n)}${'□'.repeat(5 - n)}</span>`; };
+    const mixLine = (pid) => { const m = WT.landMix(pid); return ['prairie', 'timber', 'farm', 'swamp'].filter((k) => m[k] >= 0.01).sort((a, b) => m[b] - m[a]).map((k) => `${WT.LAND[k].name} ${Math.round(m[k] * 100)}%`).join(' · '); };
     function landMeters(pid) {
       const ls = WT.landStats(pid), sa = WT.sanctuaryInfo(pid);
       const dead = sa.notCover + sa.nearStand;
@@ -447,6 +448,7 @@
       const pending = d.cams.reduce((a, c) => a + (c.queue ? c.queue.length : 0), 0);
       let html = `<p>${p.acres} acres${WT.contiguousAcres(pid) > p.acres ? ` (${WT.contiguousAcres(pid)} with your adjoining land)` : ''}. ${esc(flavor(p.habitat))}</p>
         <p class="dim">Stands ${d.stands.length}/${lim.stands} · Cameras ${d.cams.length}/${lim.cams} · Food plots ${WT.plotAcresUsed(pid)}/${lim.plotAcres} ac · Water holes ${d.waterholes.length}/${lim.waterholes}</p>
+        <p class="dim">${mixLine(pid)}</p>${(() => { const ce = WT.cropEffect(pid); return ce.note ? `<p class="${ce.phase === 'rush' ? 'good' : ce.phase === 'off' && ce.f < 0.97 ? 'warn' : 'dim'}">${ce.phase === 'rush' ? 'Hunt it now: ' : ''}${esc(ce.note)}${ce.phase === 'rush' ? ` (${ce.left} more day${ce.left === 1 ? '' : 's'})` : ''}.</p>` : ''; })()}
         ${landMeters(pid)}
         <div class="row" style="margin:6px 0"><button class="btn" id="advice">Help: how do I make this land better?</button></div>`;
       if (!t) {
@@ -458,7 +460,7 @@
         return html;
       }
       const info = WT.tileInfo(pid, t.x, t.y), s = info.stand, c = info.cam;
-      html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${esc(info.cover)}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div>`;
+      html += `<div class="row" style="justify-content:space-between;margin-top:6px"><h3 style="margin:0">This spot · ${WT.LAND[WT.landType(w.cover[info.i])].name}${info.sanctuary ? ' · sanctuary' : ''}</h3><button class="btn small ghost" id="unsel">Close spot</button></div><p class="faint" style="margin:2px 0">${esc(info.cover)}. ${esc(WT.LAND[WT.landType(w.cover[info.i])].rule)}</p>`;
       if (s) html += `<div class="item" style="display:block;margin-top:6px"><div class="row"><span class="nm">${esc(WT.standType(s.type).name)}</span><input type="text" id="sname" maxlength="28" value="${esc(s.name || '')}" placeholder="Name it" style="flex:1;min-width:90px"><button class="btn small" id="srename">Rename</button></div>
           <div class="row" style="margin-top:6px"><button class="btn blaze small" id="huntHere">Hunt here</button><button class="btn small" id="smove">Move</button><button class="btn small" id="spick">Pick up</button></div>
           ${UI.knowledgeHtml(s, UI.stackHtml(pid, s))}</div>`;
@@ -519,14 +521,14 @@
         if (land) html += playerCard(p, d, pid);
         else html += standObj ? standBlock() + `<div class="row" style="margin-top:8px"><button class="btn small" id="toLand">Work on this land</button></div>` : `<p class="dim">Tap one of your stands to hunt it.</p><div class="row">${d.stands.map((s) => `<button class="btn small" data-goto="${s.x},${s.y}">${esc(s.name || WT.standType(s.type).name)}</button>`).join('')}<button class="btn small" id="toLand">Work on this land</button></div>`;
       } else if (st.forSale.includes(pid)) {
-        html += `<h3>For sale</h3>${listingHtml(p)}<div class="row"><button class="btn blaze" id="buyLand">Buy for ${WT.money(WT.landPrice(pid))}</button><span class="dim">You have ${WT.money(st.cash)}.</span></div>
+        html += `<h3>For sale</h3><p><b>${mixLine(pid)}</b></p>${listingHtml(p)}<div class="row"><button class="btn blaze" id="buyLand">Buy for ${WT.money(WT.landPrice(pid))}</button><span class="dim">You have ${WT.money(st.cash)}.</span></div>
           <p class="faint">The listing won't tell you how many deer are here or how good they are. Read the cover and take your chances.</p>`;
       } else if (d.owner === 'public') {
         const sc = d.scoutSits || 0;
         const q = WT.habitatQuality(p.habitat) * (1 - (d.pressure || 0.5) * 0.4);
         const scouted = sc >= 3 ? Math.max(1, Math.min(5, Math.round(1 + q * 5 + (WT.hash2(pid, 1, 2) - 0.5) * 2 / sc))) : 0;
         if (standObj) html += standBlock();
-        html += `<p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
+        html += `<p class="dim">${mixLine(pid)}</p><p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
           <dl class="kv"><dt>How busy</dt><dd><b>${WT.crowd(pid).name}</b> <span class="faint">${WT.crowd(pid).note}</span></dd><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
           ${state.cid ? camBlock(d.cams.find((c) => c.cid === state.cid)) : ''}

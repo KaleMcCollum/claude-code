@@ -130,7 +130,7 @@
       const w = world; let best = null;
       for (let y = home.minY; y <= home.maxY; y++) for (let x = home.minX; x <= home.maxX; x++) {
         const i = y * w.W + x;
-        if (w.parcelOf[i] !== home.id || !standableTile(w.cover[i])) continue;
+        if (w.parcelOf[i] !== home.id || !standableTile(w.cover[i]) || WT.landType(w.cover[i]) !== 'timber' && WT.landType(w.cover[i]) !== 'prairie') continue;
         const r = WT.spotRatings(w, x, y), score = -r.visibility - Math.abs(spotPercentile(peakOf(r)) - 0.6); // tight cover, a decent (not great) spot
         if (!best || score > best.score) best = { x, y, score };
       }
@@ -139,6 +139,7 @@
     st.parcels[home.id].stands.push(makeStand('ladder', hs.x, hs.y, 'Old ladder'));
     rotateListings();
     st.weather = rollWeather(0, null, rng);
+    st.cropDay = rng.int(C().land.crops.offDay[0], C().land.crops.offDay[1]);
     news(`Welcome to the Home Place: ${home.acres} acres of your own. Buy a buck tag at the shop, check your gear, then press HUNT.`);
     news('Rifle season runs Oct 1 to Dec 31 this year.');
     news('Tip: the first week of October is mild, so your starter clothes are fine for now. After the first cold front (around Oct 8) you will need a jacket, bibs, boots and a hat to sit more than a few minutes.');
@@ -152,6 +153,43 @@
     d.herd = prop.herd; d.capacity = prop.capacity; d.pressure = prop.huntingPressure;
   }
 
+  /* The four kinds of ground (plus water and roads). */
+  WT.landType = function (c) {
+    const TT = T();
+    if (c === TT.SLOUGH) return 'swamp';
+    if (c === TT.CORN || c === TT.SOY || c === TT.SUNFLOWER) return 'farm';
+    if (c === TT.TIMBER || c === TT.BELT || c === TT.BRUSH || c === TT.YOUNGTREES) return 'timber';
+    if (WT.isWater(c)) return 'water';
+    if (c === TT.ROAD || c === TT.TOWN || c === TT.YARD) return 'road';
+    return 'prairie';
+  };
+  WT.LAND = {
+    prairie: { name: 'Prairie', rule: 'Open ground. Build anything here; the place for food plots and tree rows.' },
+    timber: { name: 'Timber', rule: 'Woods. Holds more deer. Any stand or camera; no food plots without open ground.' },
+    farm: { name: 'Farm field', rule: "Somebody's crop. Nothing can be built or marked here, and it can't be sanctuary." },
+    swamp: { name: 'Swamp', rule: 'Where old bucks live. Ladder stands and carried stands only: no blinds or big stands, no plots, trees or water holes.' },
+    water: { name: 'Water', rule: '' }, road: { name: 'Road or farmyard', rule: '' },
+  };
+  WT.landMix = function (pid) {
+    const w = G.world; w._mix = w._mix || {};
+    if (w._mix[pid]) return w._mix[pid];
+    const p = w.parcels[pid], m = { prairie: 0, timber: 0, farm: 0, swamp: 0, water: 0, road: 0 }; let n = 0;
+    for (let y = p.minY; y <= p.maxY; y++) for (let x = p.minX; x <= p.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] !== pid) continue; m[WT.landType(w.cover[i])]++; n++; }
+    for (const k in m) m[k] /= Math.max(1, n);
+    return (w._mix[pid] = m);
+  };
+  // Crops: standing until the combines roll, then two weeks of deer packed into cover, then they drift away.
+  WT.cropsOff = () => S().day >= (S().cropDay ?? 9);
+  WT.cropEffect = function (pid) {
+    const st = S(), cfg = C().land.crops, m = WT.landMix(pid), farm = m.farm;
+    const cover = Math.min(1, (m.timber + m.swamp) * 3 + m.prairie * 0.5); // grass is some cover too
+    if (farm < 0.05) return { f: 1, phase: 'none', farm, note: null };
+    if (!WT.cropsOff()) return { f: 1 + cfg.standing * farm, phase: 'standing', farm, note: 'crops are still standing and holding deer' };
+    const since = st.day - (st.cropDay ?? 9);
+    if (since <= cfg.rushDays) return { f: 1 + farm * (cfg.rush[0] + cfg.rush[1] * cover), phase: 'rush', farm, cover, left: cfg.rushDays - since, note: cover > 0.3 ? 'crops just came off: deer are packed into your cover' : 'crops just came off: deer are on the move' };
+    return { f: 1 - farm * cfg.after * (1 - cfg.coverSaves * cover), phase: 'off', farm, cover, note: cover > 0.6 ? 'crops are off, but your cover is holding deer' : 'crops are off: deer are drifting to the neighbors' };
+  };
+
   /* Home areas. Every deer lives around one spot on its property, picked from the deer itself so it never moves
      (unless he changes properties). Homes favour cover three to one. A deer can show at any stand, but about twice
      as often near home and half as often at the far end. Bucks roam wider than does, and in the rut bucks go anywhere. */
@@ -159,7 +197,7 @@
     const w = G.world; w._ptiles = w._ptiles || {};
     if (w._ptiles[pid]) return w._ptiles[pid];
     const p = w.parcels[pid], list = [];
-    for (let y = p.minY; y <= p.maxY; y++) for (let x = p.minX; x <= p.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] !== pid) continue; const n = WT.COVER[w.cover[i]].b >= 0.5 ? 3 : WT.COVER[w.cover[i]].w ? 0 : 1; for (let k = 0; k < n; k++) list.push(i); }
+    for (let y = p.minY; y <= p.maxY; y++) for (let x = p.minX; x <= p.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] !== pid) continue; const lt = WT.landType(w.cover[i]); const n = lt === 'swamp' ? 6 : lt === 'farm' || lt === 'water' || lt === 'road' ? 0 : WT.COVER[w.cover[i]].b >= 0.5 ? 3 : 1; for (let k = 0; k < n; k++) list.push(i); }
     return (w._ptiles[pid] = list.length ? list : [p.labelY * w.W + p.labelX]);
   }
   WT.deerHome = function (pid, deer) {
@@ -228,6 +266,10 @@
     const burned = d.stands.filter((s) => (s.pressure || 0) > 0.35);
     if (burned.length) tips.push(['Rest a stand', `${burned.map((s) => s.name || WT.standType(s.type).name).join(', ')}: the pressure meter is high. Leave it alone for three or four days.`]);
     if (d.stands.length < lim.stands && d.stands.length >= 1 && d.stands.every((s) => s.sits > 0)) tips.push(['Room for another stand', `This land takes ${lim.stands} stands and has ${d.stands.length}. A second stand that works on a different wind means you can hunt here on more days without burning the first.`]);
+    { const mx = WT.landMix(pid), ce = WT.cropEffect(pid);
+      if (mx.farm > 0.25 && mx.timber + mx.swamp < 0.12) tips.push(['A lot of crop field and not much cover', `${Math.round(mx.farm * 100)}% of this land is farm field you can't build on. Once the crops come off, deer leave it. Plant tree rows on the prairie beside the fields so they have somewhere to go that is still yours.`]);
+      if (ce.phase === 'rush') tips.unshift(['Hunt here now', `The crops just came off and deer are packed into the cover. This lasts about ${ce.left} more day${ce.left === 1 ? '' : 's'}.`]);
+      if (mx.swamp > 0.04 && !d.stands.some((s) => WT.landType(w.cover[s.y * w.W + s.x]) === 'swamp' || WT.standTraits(s).rating && s.r.mature > 0.6)) tips.push(['You have swamp and no stand on it', 'Swamp is where the old bucks live. Put a ladder stand in it or on its edge (ladders are the only stand allowed there).']); }
     if (!tips.length) tips.push(['This place is in good shape', 'Nothing is holding it back. Keep the pressure low, pass young bucks, and let them get old.']);
     return { stats: ls, sanctuary: sa, tips };
   };
@@ -245,6 +287,7 @@
     prop.huntingPressure = d.pressure ?? 0.05;
     prop.sanct = WT.sanctuaryInfo(pid).counted;
     prop.bowOnly = !!d.bowOnly;
+    prop.mix = WT.landMix(pid);
     if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
     if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground
     prop.npcStyle = d.npcStyle;
@@ -271,7 +314,7 @@
     let best = null, bs = -1;
     for (let k = 0; k < 120; k++) {
       const x = rng.int(p.minX, p.maxX), y = rng.int(p.minY, p.maxY), i = y * w.W + x;
-      if (w.parcelOf[i] !== pid || !standableTile(w.cover[i])) continue;
+      if (w.parcelOf[i] !== pid || !standableTile(w.cover[i]) || WT.landType(w.cover[i]) === 'farm') continue; // never in a crop field
       const sc = w.travel[i] + rng.range(0, 0.4);
       if (sc > bs) { bs = sc; best = { x, y }; }
     }
@@ -318,6 +361,7 @@
       const d = st.parcels[p.id];
       for (const deer of d.herd || []) if (deer.sex === 'b' && deer.age >= 1.5 && !deer.rack) WT.growDeer(deer, makeProp(p.id), G.rng, 1);
     }
+    if (st.cropDay === undefined) st.cropDay = 9;
     for (const k in C().skills) if (st.skills[k] === undefined) st.skills[k] = 0; // skills added since this save
     // older saves: bow-only public land now holds an older, bigger herd. Restock it once.
     if (!st.settings || !st.settings.bowHerds) {
@@ -366,7 +410,7 @@
     WT.computeDerivedLayers(w);
     for (const p of w.parcels) p.habitat = WT.tileHabitat(w, p.id, { sanctuary: WT.sanctuaryInfo(p.id).working });
   }
-  function setTile(i, t) { G.world.cover[i] = t; S().tileMods[i] = t; }
+  function setTile(i, t) { G.world.cover[i] = t; S().tileMods[i] = t; delete G.world._mix; delete G.world._ptiles; }
   // A stand's rating is read off the ground around it, so anything you plant, dig or grow nearby counts.
   // Call after the ground changes (and on load, for saves where a plot went in after the stand).
   function refreshStands() {
@@ -549,6 +593,7 @@
     if (i < 0 || w.parcelOf[i] !== pid) return 'Pick a spot inside your property line.';
     if (!standableTile(w.cover[i])) return "Can't put a stand there.";
     if (!st.inv.stands[type]) return 'You do not have one of those in your truck. Buy it at the shop.';
+    { const lt = WT.landType(w.cover[i]); if (lt === 'farm') return "That's a crop field. Nothing can go up in it; put the stand on the edge."; if (lt === 'swamp' && !C().land.swampStands.includes(type)) return 'Only a ladder stand can go up in the swamp: no blinds, tripods or box stands.'; }
     if (type === 'ground' || WT.standType(type).kind === 'mobile') return 'That one is carried, not left up. Equip it under Gear to hunt public land; on your own land put up a ladder, tripod, pop-up or box blind.';
     if (d.stands.length >= WT.limits(pid).stands) return `Stand limit reached (${WT.limits(pid).stands} for this acreage).`;
     if (d.stands.some((s) => Math.abs(s.x - x) + Math.abs(s.y - y) < 3)) return 'Too close to another stand.';
@@ -574,6 +619,7 @@
     if (i < 0 || w.parcelOf[i] !== pid) return 'Pick a spot inside your property line.';
     if (!standableTile(w.cover[i])) return "Can't put a stand there.";
     if (d.stands.some((z) => z !== s && Math.abs(z.x - x) + Math.abs(z.y - y) < 3)) return 'Too close to another stand.';
+    { const lt = WT.landType(w.cover[i]); if (lt === 'farm') return "That's a crop field. Nothing can go up in it."; if (lt === 'swamp' && !C().land.swampStands.includes(s.type)) return 'Only a ladder stand can go up in the swamp.'; }
     if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
     if (WT.standType(s.type).kind === 'permanent') { if (st.cash < 50) return 'Moving a permanent stand costs $50 in labor.'; st.cash -= 50; ledger('Land work', -50); }
     const n = makeStand(s.type, x, y, s.name);
@@ -642,6 +688,7 @@
     if (d.owner !== 'player' && d.owner !== 'public') return 'Cameras go on your own land or on public land.';
     if (d.owner === 'public' && d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return d.owner === 'public' ? 'Pick a spot inside the public area.' : 'Pick a spot inside your property.';
+    if (WT.landType(w.cover[i]) === 'farm') return "That's a crop field. Hang the camera on the edge.";
     if (!st.inv.cameras[type]) return 'Buy a camera at the shop first.';
     const camLim = WT.camLimit(pid);
     if (d.cams.length >= camLim) return `Camera limit reached (${camLim} ${d.owner === 'public' ? 'per public area' : 'for this acreage'}).`;
@@ -669,7 +716,7 @@
       const i = tileAt(xx, yy);
       if (i < 0 || w.parcelOf[i] !== pid) return 'The plot runs past your property line. Pick another corner.';
       const c = w.cover[i];
-      if (!standableTile(c) || c === TT.TIMBER || c === TT.BELT || c === TT.SLOUGH || c === TT.PLOT || c === TT.PLOT_NEW) return 'Plots need open ground (no timber, sloughs, water or existing plots).';
+      if (!standableTile(c) || WT.landType(c) !== 'prairie' || c === TT.PLOT || c === TT.PLOT_NEW) return 'Food plots go on prairie: open grass, hay or stubble. Not timber, swamp, crop fields or water.';
       if (d.sanctuary.includes(i)) return "That's inside your sanctuary.";
       tiles.push(i);
     }
@@ -686,6 +733,7 @@
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y), TT = T();
     if (d.owner !== 'player') return 'Only on your land.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a spot inside your property.';
+    if (['farm', 'swamp'].includes(WT.landType(w.cover[i]))) return 'Water holes go on prairie or in timber, not in a crop field or the swamp.';
     if (d.waterholes.length >= WT.limits(pid).waterholes) return 'Water hole limit reached.';
     const cost = C().improvements.waterhole.cost;
     if (st.cash < cost) return `A dozer and liner cost ${WT.money(cost)}.`;
@@ -702,10 +750,10 @@
       const i = vertical ? tileAt(x, y + k) : tileAt(x + k, y);
       if (i < 0 || w.parcelOf[i] !== pid) break;
       const c = w.cover[i];
-      if (!standableTile(c) || c === TT.TIMBER || c === TT.BELT || c === TT.YOUNGTREES || c === TT.PLOT || c === TT.PLOT_NEW) continue;
+      if (!standableTile(c) || WT.landType(c) !== 'prairie' || c === TT.PLOT || c === TT.PLOT_NEW) continue;
       tiles.push(i);
     }
-    if (tiles.length < 3) return 'Not enough open ground in a row there.';
+    if (tiles.length < 3) return 'Tree rows need open prairie in a row: not crop fields, swamp or existing woods.';
     if (st.cash < cost) return `Seedlings and fabric cost ${WT.money(cost)}.`;
     st.cash -= cost; ledger('Land work', -cost);
     tiles.forEach((i) => { rememberCover(d, i); setTile(i, TT.YOUNGTREES); });
@@ -841,6 +889,7 @@
     if (d.owner !== 'public') return 'Spots are marked on public land. On your own land, put up a stand.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a tree or ground spot inside the public area.';
+    if (WT.landType(w.cover[i]) === 'farm') return "That's a crop field. Mark the edge of it instead.";
     d.spots = d.spots || [];
     const total = WT.publicAreas().reduce((a, p) => a + (st.parcels[p.id].spots || []).length, 0);
     if (d.spots.length >= WT.SPOT_LIMITS.perArea) return `You can mark ${WT.SPOT_LIMITS.perArea} spots per public area. Remove one first.`;
@@ -858,7 +907,7 @@
   WT.mobileOptions = function (spot) {
     const id = WT.mobileStand();
     if (!id) return [];
-    if (id !== 'popup' && spot && !spot.tree) return [{ id, ok: false, why: 'needs a tree' }];
+    if (id !== 'popup' && spot && !spot.tree && WT.landType(G.world.cover[spot.y * G.world.W + spot.x]) !== 'swamp') return [{ id, ok: false, why: 'needs a tree' }];
     return [{ id, ok: true }];
   };
   // Can you hunt this public spot right now? Returns null, or the reason you can't.
@@ -869,7 +918,9 @@
     if (spot.kind !== 'spot') return null;
     const id = WT.mobileStand();
     if (!id) return 'You need a mobile stand to hunt public land. Buy a hang-on, climber, saddle or pop-up blind at the Shop and equip it under Gear.';
-    if (id !== 'popup' && !spot.tree) return `A ${WT.standType(id).name} needs a tree, and this spot is in the open. Equip a pop-up blind, or mark a spot in the trees.`;
+    const lt = WT.landType(G.world.cover[spot.y * G.world.W + spot.x]);
+    if (lt === 'swamp' && id === 'popup') return 'No blinds in the swamp. Equip a hang-on, climber or saddle.';
+    if (id !== 'popup' && !spot.tree && lt !== 'swamp') return `A ${WT.standType(id).name} needs a tree, and this spot is in the open. Equip a pop-up blind, or mark a spot in the trees.`;
     return null;
   };
 
@@ -1161,7 +1212,7 @@
     const maxView = view.far, minView = view.near;
 
     const ctx = {
-      pressure: pressureCtx, rut, weather: st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
+      pressure: pressureCtx, rut, weather: WT.cropEffect(setup.pid).f * st.weather.move * (used.tinks && /Seek|Peak|Pre/.test(rut.name) ? 1.15 : 1),
       tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1), // early archery: deer haven't been hunted yet place: rating, matureRating: stand.r.mature,
       hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
@@ -1718,6 +1769,7 @@
       // neighbors and other hunters
       const prop = makeProp(p.id);
       if (st.day <= 0) continue; // before Oct 1 nobody else is hunting
+      if (WT.cropsOff()) prop.harvestAdj = (prop.harvestAdj || 1) * (1 + cfg.land.crops.neighbors * prop.mix.farm); // bare fields push deer in front of the neighbors
       const died = WT.inSeasonDailyMortality(prop, rng, cfg.calendar.seasonDays);
       d.herd = prop.herd;
       for (const deer of died) neighborKill(p, d, deer);
@@ -1726,6 +1778,7 @@
     if (st.day >= cfg.calendar.seasonDays) { G.seasonOver = true; return; }
     st.weather = rollWeather(st.day, st.weather, rng);
     if (st.day === 0) news('Rifle season is open. Everybody is in the woods now.', 'info');
+    if (st.day === (st.cropDay ?? 9)) news(`The combines rolled today. Crops are off. For the next two weeks deer that lived in the fields are packed into whatever cover is left: the best hunting of the year on land with timber or swamp beside the fields. After that they start drifting to the neighbors.`, 'good');
     const rut = WT.rutPhase(st.day), prev = WT.rutPhase(st.day - 1);
     if (rut !== prev) news(`${rut.name} has started.${/Seek/.test(rut.name) ? ' Mature bucks are on their feet in daylight. Hunt all day if you can.' : ''}`, 'info');
     if (st.weather.front && st.day === (cfg.calendar.fairDays || -1)) news('The first cold front of the fall is here. The mild weather is over: dress for it, or your sits will be short. Deer will be on their feet tomorrow.', 'warn');
@@ -1912,6 +1965,7 @@
     st.tags = { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 };
     st.seasonLog = { hunts: 0, harvest: [] };
     st.weather = rollWeather(0, null, rng);
+    st.cropDay = rng.int(C().land.crops.offDay[0], C().land.crops.offDay[1]);
     rotateListings();
     G.seasonOver = false;
     if (st.day < 0) news(`Early archery season is open: ${WT.dateLabel(st.day)} to Sep 30, bow only. You have the woods to yourself until rifle season opens Oct 1.`, 'good');
