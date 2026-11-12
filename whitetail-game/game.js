@@ -326,7 +326,7 @@
     // a little extra water from water holes in dry spots
     if (d.waterholes && d.waterholes.length) h.water = clamp(h.water + 0.12 * d.waterholes.length);
     p.habitat = h;
-    const prop = WT.propFromHabitat({ id: pid, acres: p.acres, type: d.owner === 'public' ? 'public' : 'private', neighborPressure: d.neighborPressure }, h);
+    const prop = WT.propFromHabitat({ id: pid, acres: p.acres, type: d.owner === 'public' ? 'public' : 'private', neighborPressure: d.owner === 'public' ? 0.5 : d.neighborPressure }, h); // on public the hunters are counted by access, not here
     prop.effectiveAcres = contiguousAcres(pid);
     { // genetics come from where the land sits on the map, not from the parcel itself
       const gm = C().deer.geneMap, gs = C().deer.genetics;
@@ -1433,15 +1433,17 @@
     if (hasLight) st.inv.lightCharge--;
 
     let start = plan.win[0];
+    // A far public spot costs you the walk: you get on stand that much later, and it comes out of how long you can stay.
     const depth = d.owner === 'public' && stand.kind === 'spot' ? WT.spotDepth(setup.pid, stand.x, stand.y) : null;
-    if (depth) start += depth.walkMin / 60; // the walk in comes off the sit
+    const walkHrs = depth ? depth.walkMin / 60 : 0, sitHrs = Math.max(0.75, plan.maxHrs - walkHrs);
     const end = plan.win[1];
     const log = [];
     if (!hasLight && setup.session !== 'evening') start = plan.legalStart + 0.4;
+    if (setup.session !== 'evening') start += walkHrs;
     // evening hunters time their walk-in so they're on stand for the last light
-    if (setup.session === 'evening') start = Math.max(start, Math.min(end, plan.sun.set) - plan.maxHrs + 0.25);
+    if (setup.session === 'evening') start = Math.max(start + walkHrs, Math.min(end, plan.sun.set) - sitHrs + 0.25);
     const endEarly = !hasLight && setup.session !== 'morning' ? plan.sun.set : end; // no light: walk out before dark
-    const sitEnd = Math.min(endEarly, start + plan.maxHrs);
+    const sitEnd = Math.min(endEarly, start + sitHrs);
     const today = WT.sitToday(stand, setup.session, st.day);
     const rating = standRatingFor(stand.r, setup.session, st.day) * today.dayF;
     const goodWind = today.windOk;

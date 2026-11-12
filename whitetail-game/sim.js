@@ -951,7 +951,8 @@
       if (d.sex === 'b') base *= D().bowOnlyBuckSurvival; // few hunters, short range: bucks grow old here
     } else if (prop.type === 'public' && d.age >= 1.5) {
       const pb = prop.publicBuck || m.publicBuck;
-      if (d.sex === 'b') base = (pb[0] + pb[1]) / 2 + (d.age >= 4.5 ? 0.04 : 0);
+      // what hunters take here (set by how easy the ground is to reach), plus old age: past his prime a buck dies more each year whoever hunts him
+      if (d.sex === 'b') base = (pb[0] + pb[1]) / 2 + Math.max(0, base - ageTable(m.buck, 4.5));
       else base *= prop.publicDoe ?? (prop.bowOnly ? 1.25 : 1.6);
     }
     // the map-wide balance (too many or too few deer) works on does and fawns: that is who overpopulates.

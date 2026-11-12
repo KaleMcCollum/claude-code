@@ -48,6 +48,10 @@
       const warns = [];
       if (block) warns.unshift(`<span class="bad">${esc(block)}</span>`);
       if (plan.hot > 0) warns.push('<span class="warn">You\'ll likely overheat and sweat.</span>');
+      if (stand.kind === 'spot' && S().parcels[args.pid].owner === 'public') { // a far public spot: the walk comes off the sit
+        const dp = WT.spotDepth(args.pid, stand.x, stand.y);
+        if (dp.walkMin >= 10) warns.push(`<span class="dim">The walk in takes about ${dp.walkMin} minutes${dp.viaLand ? ' across land next door' : ''}. That leaves about <b>${WT.fmtDur(Math.max(0.75, plan.maxHrs - dp.walkMin / 60))}</b> on stand.</span>`);
+      }
       if (!plan.allDayOk) warns.push(`<span class="warn">You can only sit about ${WT.fmtDur(plan.maxHrs)}. An all-day sit needs about ${WT.fmtDur(plan.windowHrs)}.</span>`);
       if (plan.heaterNote) warns.push(`<span class="warn">${esc(plan.heaterNote)}</span>`);
       if (!st.tags.buck && !st.tags.doe) warns.push('<span class="bad">You have no tags. You can hunt and scout, but not shoot.</span>');
