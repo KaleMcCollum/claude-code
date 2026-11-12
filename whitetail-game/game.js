@@ -76,7 +76,7 @@
   /* ================================================================ new game */
   WT.newGame = function (seed) {
     seed = seed || ((Math.random() * 1e9) | 0);
-    const world = WT.genWorld(seed, 6); // version 6 worlds: lakes, state land that cuts across the road grid, private places of every size
+    const world = WT.genWorld(seed, 7); // version 6 worlds: lakes, state land that cuts across the road grid, private places of every size. Version 7: no land left belonging to nobody
     captureNatural(world);
     G.world = world;
     const rng = WT.makeRng(seed ^ 0x5eed);
@@ -94,7 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
-      genV: 6,
+      genV: 7,
       journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', bowThird: true, pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
@@ -333,6 +333,7 @@
     const prop = WT.propFromHabitat({ id: pid, acres: p.acres, type: d.owner === 'public' ? 'public' : 'private', neighborPressure: d.owner === 'public' ? 0.5 : d.neighborPressure }, h); // on public the hunters are counted by access, not here
     prop.effectiveAcres = contiguousAcres(pid);
     prop.geneG = WT.geneAt(pid); // the genetics map: hot pockets and cold ones, sliding slowly across the country
+    prop.geneFor = (deer) => { const h = WT.deerHome(pid, deer); return WT.geneTile(h.x, h.y); }; // read at the spot each deer lives, so one big property can be good at one end and poor at the other
     prop.herd = d.herd || [];
     prop.huntingPressure = d.pressure ?? 0.05;
     prop.sanct = WT.sanctuaryInfo(pid).counted;
@@ -369,6 +370,10 @@
   };
   WT.geneName = (g) => (g < -0.6 ? 'Cold' : g < -0.2 ? 'Cool' : g <= 0.2 ? 'Ordinary' : g <= 0.6 ? 'Warm' : 'Hot');
   WT.makeProp = makeProp;
+  // The genetics map at one tile, this year. Worked out once per tile per year.
+  WT.geneTile = function (x, y) { const w = G.world, yr = S().year || 1; if (w._geneTYr !== yr || !w._geneT) { w._geneT = new Float32Array(w.W * w.H).fill(NaN); w._geneTYr = yr; } const i = y * w.W + x; if (w._geneT[i] !== w._geneT[i]) w._geneT[i] = WT.geneField(w, x, y, yr - 1); return w._geneT[i]; };
+  // How the genetics map lies across one property: its coldest, average and hottest ground.
+  WT.geneRange = function (pid) { const w = G.world, p = w.parcels[pid]; let lo = 9, hi = -9, sum = 0, n = 0; const st = p.tiles > 1600 ? 2 : 1; for (let y = p.minY; y <= p.maxY; y += st) for (let x = p.minX; x <= p.maxX; x += st) { if (w.parcelOf[y * w.W + x] !== pid) continue; const g = WT.geneTile(x, y); if (g < lo) lo = g; if (g > hi) hi = g; sum += g; n++; } return n ? { lo, hi, avg: sum / n } : { lo: 0, hi: 0, avg: 0 }; };
   WT.geneAt = function (pid) { const w = G.world, p = w.parcels[pid], yr = S().year || 1; if (w._geneYr !== yr) { w._gene = {}; w._geneYr = yr; } if (w._gene[pid] === undefined) w._gene[pid] = WT.geneField(w, p.cx, p.cy, yr - 1); return w._gene[pid]; };
 
   function contiguousAcres(pid) {

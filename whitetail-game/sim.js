@@ -647,6 +647,15 @@
         if (nd < dist[k]) { dist[k] = nd; push(nd, k, p); }
       }
     }
+    if (world.ver >= 7) { // version 7: ground no seed could reach (a corner shut in by roads, state land or the lake) becomes a place of its own rather than belonging to nobody
+      let next = seeds.length + (world.stateAreas || []).length; const seenU = new Uint8Array(N);
+      for (let i0 = 0; i0 < N; i0++) {
+        if (parcelOf[i0] !== -1 || !passable(i0) || seenU[i0]) continue;
+        const comp = [i0]; seenU[i0] = 1;
+        for (let h = 0; h < comp.length; h++) { const i = comp[h], x = i % W, y = (i / W) | 0; for (const k of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) if (k >= 0 && parcelOf[k] === -1 && passable(k) && !seenU[k]) { seenU[k] = 1; comp.push(k); } }
+        for (const i of comp) parcelOf[i] = next; next++;
+      }
+    }
     // merge small parcels into the neighbor they share the longest border with
     const minTiles = (v6 ? cfg.v6.minParcelAcres : cfg.minParcelAcres) / cfg.acresPerTile;
     for (let pass = 0; pass < 4; pass++) {
@@ -696,6 +705,13 @@
       }
     }
     world.parcels = parcels;
+    if (world.ver >= 7) for (const p of parcels) { // a scrap too small to be a property, cut off by roads, joins the biggest place next to it
+      if (p.tiles >= minTiles || p.merged !== undefined) continue;
+      const nb = [...p.neighbors].map((q) => parcels[q]).filter((q) => q.merged === undefined && q.tiles >= minTiles).sort((a, b) => b.tiles - a.tiles)[0];
+      if (!nb) continue;
+      for (let i = 0; i < N; i++) if (parcelOf[i] === p.id) parcelOf[i] = nb.id;
+      p.merged = nb.id; nb.tiles += p.tiles; nb.sx += p.sx; nb.sy += p.sy;
+    }
 
     // ---- assign public areas: merge clumps of parcels with lots of water/bedding
     parcels.forEach((p) => { p.cx = p.sx / p.tiles; p.cy = p.sy / p.tiles; p.habitat = tileHabitat(world, p.id); });
@@ -1075,9 +1091,10 @@
     const potentialZ = clamp((d.gp - G0.mean) / G0.sd, -3, 3), yearZ = rng.normal(0, 1);
     const z = clamp(A.keep * potentialZ + A.year * yearZ, -A.clampZ, A.clampZ);
     d.yz = Math.round(yearZ * 100) / 100;
-    const Gi = A.giant, heat = prop.geneG || 0, gs = heat >= 0 ? Gi.base + (Gi.hot - Gi.base) * Math.min(1, heat) : Gi.base * Math.max(0, 1 + heat);
+    const Gi = A.giant, heat = prop.geneFor ? prop.geneFor(d) : (prop.geneG || 0), gs = heat >= 0 ? Gi.base + (Gi.hot - Gi.base) * Math.min(1, heat) : Gi.base * Math.max(0, 1 + heat);
     const giant = Math.min(Gi.max, gs * Math.max(0, potentialZ - Gi.from)); // the rare buck far above average for his age gets more on warm ground
-    let raw = (A.mean[ai] + Math.min(Gi.top, z + giant) * A.stdDev[ai]) * (prop.landQuality ?? A.land.neutral);
+    const ground = prop.geneFor && WT.landQualityOf ? WT.landQualityOf(heat) + (prop.plotAntler || 0) : (prop.landQuality ?? A.land.neutral); // the genetics where he lives, plus a little for food plots
+    let raw = (A.mean[ai] + Math.min(Gi.top, z + giant) * A.stdDev[ai]) * ground;
     { const F = A.flat; if (F && raw > F.from) { const e = raw - F.from, t = e / F.over; raw = Math.min(F.cap, t < 1 ? raw - F.take * 16 * t * t * (1 - t) * (1 - t) : raw + (e - F.over) * F.stretch); } } // the flattened back half of the curve
     const target = Math.max(d.age < 2 ? 10 : 25, raw); // the floor only keeps the rack builder sane: a tiny yearling is a spike
     // The rack is built as B&C components + 3D geometry; the score is measured from it (antlers.js).
