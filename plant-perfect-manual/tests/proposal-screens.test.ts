@@ -416,7 +416,7 @@ describe("comparing two versions", () => {
       ],
     };
     expect(compareDocs(plain, plain)).toEqual({ kind: "same" });
-    expect(compareDocs(plain, bold)).toEqual({ kind: "formatting" });
+    expect(compareDocs(plain, bold)).toEqual({ kind: "formatting", links: false, checks: false });
     expect(compareDocs(null, { type: "doc", content: [{ type: "paragraph" }] })).toEqual({ kind: "same" });
     expect(compareDocs(null, plain)).toEqual({ kind: "words", parts: [{ kind: "added", text: "Starting wage: $15.00/hr." }] });
     expect(compareDocs(plain, doc("Starting wage: $16.00/hr."))).toEqual({

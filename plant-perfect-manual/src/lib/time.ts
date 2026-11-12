@@ -66,8 +66,14 @@ export function centralDateKey(date: Date = new Date()): string {
   return dateKeyFormat.format(date);
 }
 
+/**
+ * True for a real calendar day written as a date key. The year 0000 is
+ * refused: JavaScript has one, the database does not (its years go from 1),
+ * and a date key ends up in a database query.
+ */
 export function isDateKey(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (value.startsWith("0000")) return false;
   const date = new Date(`${value}T12:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }

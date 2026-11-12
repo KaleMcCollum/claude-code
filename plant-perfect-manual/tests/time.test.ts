@@ -45,4 +45,15 @@ describe("dates are in US Central time", () => {
     expect(isDateKey("today")).toBe(false);
     expect(isDateKey(undefined)).toBe(false);
   });
+
+  it("refuses the year 0000, which the database cannot hold", () => {
+    // JavaScript has a year 0; the database's calendar starts at year 1.
+    expect(new Date("0000-01-01T12:00:00Z").toISOString().slice(0, 10)).toBe("0000-01-01");
+    expect(isDateKey("0000-01-01")).toBe(false);
+    expect(isDateKey("0000-12-31")).toBe(false);
+    expect(isDateKey("0000-02-29")).toBe(false);
+    // The first and last days a four-digit year can name are fine.
+    expect(isDateKey("0001-01-01")).toBe(true);
+    expect(isDateKey("9999-12-31")).toBe(true);
+  });
 });
