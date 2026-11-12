@@ -598,8 +598,14 @@
         const q = WT.habitatQuality(p.habitat) * (1 - (d.pressure || 0.5) * 0.4);
         const scouted = sc >= 3 ? Math.max(1, Math.min(5, Math.round(1 + q * 5 + (WT.hash2(pid, 1, 2) - 0.5) * 2 / sc))) : 0;
         if (standObj) html += standBlock();
-        if (standObj) { const dp = WT.spotDepth(pid, standObj.x, standObj.y); html += `<p class="dim">${dp.walkMin < 10 ? 'Right by the road. Easy to reach, so everybody hunts here: expect company and mostly young deer.' : dp.q < 0.6 ? `About a ${dp.walkMin} minute walk in, which comes off your sit. Fewer hunters make it this far.` : `Far back: about a ${dp.walkMin} minute walk in, which comes off your sit. Hardly anyone comes this far, and this is where the old bucks live.`}</p>`; }
-        if (!WT.canReach(pid)) html += `<p class="warn">No road reaches this ground, so nobody hunts it. You can only walk in from land touching it that you own or have paid permission on.</p>`;
+        if (standObj) {
+          const dp = WT.spotDepth(pid, standObj.x, standObj.y);
+          const how = dp.q < 0.45 ? 'Close to the road, so plenty of people hunt here: expect company and mostly young deer.' : dp.q < 0.85 ? 'A fair way back. Fewer hunters make it this far.' : 'Far back. Hardly anyone gets here, and this is where the old bucks live.';
+          html += `<p class="dim">${dp.viaLand ? `About a ${Math.max(5, dp.walkMin)} minute walk in across land next door, which comes off your sit.` : `About a ${Math.max(5, dp.walkMin)} minute walk in from the road, which comes off your sit.`} ${how}</p>`;
+        }
+        { const ac = WT.access(pid), A = WT.CONFIG.publicCrowd.access, per = A.walkMin * (1 - A.hikeFaster * (S().skills.hiking || 0)), mins = (t) => Math.max(5, Math.round(Math.min(A.walkMax, t * per) / 5) * 5), mine = WT.hikeReach();
+          if (!WT.canReach(pid)) html += `<p class="warn">No road reaches this ground, so nobody hunts it. You can only walk in from land touching it that you own or have paid permission on.</p>`;
+          else if (isFinite(ac.near)) html += `<p class="dim">From the nearest road, the near side of this ground is about a ${mins(ac.near)} minute walk and the far side about ${mins(ac.far)}. ${mine >= ac.far ? 'Your Backcountry skill covers all of it.' : mine < ac.near ? `Your Backcountry skill is good for about ${mins(mine)} minutes, which does not reach it yet.` : `Your Backcountry skill is good for about ${mins(mine)} minutes, so part of it.`} Land touching it that you own or have permission on is a way in from that side.</p>`; }
         html += `<p class="dim">${mixLine(pid)}</p><p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
           <dl class="kv"><dt>How busy</dt><dd><b>${WT.crowd(pid).name}</b> <span class="faint">${WT.crowd(pid).note}</span></dd><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>

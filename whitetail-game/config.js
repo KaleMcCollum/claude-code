@@ -94,6 +94,10 @@
       minParcelAcres: 40,
       publicShare: 0.16,
       bowOnlyShare: 0.34,               // of public areas
+      /* Version 4 maps: roadless country. A few blocks of the road grid lose their inside roads and become big public
+         areas, reached only from the roads around them, so the middle is a long walk from anywhere. big = 2 x 2 road
+         squares, mid = 2 x 1. Every private parcel is guaranteed a road. publicShare: small roadside areas fill up to this. */
+      wild: { secondBig: 0.35, secondMid: 0.5, bigMin: 60, midMin: 30, luck: 0.25, maxShare: 0.27, publicShare: 0.22, timber: 0.56, brush: 0.52, slough: 0.55 },
       permissionShare: 0.35,            // of NPC parcels willing to sell permission
       forSaleCount: 6,
       starterAcres: 100,
@@ -235,22 +239,29 @@
     home: { near: 2.0, far: 0.55, doeReach: 0.5, buckReach: 0.7 },
     // Sanctuary: cover you never hunt. It only counts in cover, away from your stands, and up to a share of the land.
     sanctuary: { maxShare: 0.25, standTiles: 3, holdBucks: 1.2, capacity: 0.6 }, // at the cap: 30% fewer young bucks leave, 15% more deer fit
-    /* Public land comes in kinds, decided by how easy it is to get into (see access below; bow-only areas are their own thing). buckDeaths is the share of adult bucks
-       killed each year; floor is the pressure it never drops below; company is the base chance someone beat you there. */
+    /* Public land. The deer are the same as anywhere; what differs is how many hunters reach them.
+       Hunters drive to any road that touches public ground and walk in, across as much public land as they like but never
+       across private. ease is the share of an area that is an easy walk (0 = nobody gets there, about 0.5 = road all round).
+       Bucks die at `natural` a year plus what hunters take: killPerEase x ease, up to maxKill. Does, deer wariness (floor)
+       and the chance somebody beat you to your spot (company) scale with ease the same way. */
     publicCrowd: {
-      crowded: { name: 'Crowded',  buckDeaths: [0.52, 0.62], floor: 0.45, company: 0.28, note: 'trucks at every access. Lots of pressure, mostly young bucks' },
-      average: { name: 'Average',  buckDeaths: [0.38, 0.46], floor: 0.3,  company: 0.12, note: 'hunted, but there is room. A decent buck now and then' },
-      quiet:   { name: 'Quiet',    buckDeaths: [0.27, 0.33], floor: 0.15, company: 0.04, note: 'hard to get to and lightly hunted. Close to private-land deer' },
-      // No road touches it. Nobody hunts it; bucks die there only of old age or when they wander next door.
-      landlocked: { name: 'Landlocked', buckDeaths: [0.11, 0.16], floor: 0.04, company: 0, note: 'no road reaches it. You can only walk in from land next to it that you own or have permission on' },
-      /* How busy an area is comes from the map. Hunters walk in from the road and thin out the further they must go:
-         reach is how many tiles until two thirds of them have stopped. Water, swamp and timber cost extra to cross.
-         ease is the share of the area that sees real traffic: above `crowded` it is Crowded, above `average` Average, else Quiet.
-         A deep spot costs you walkMin minutes a tile off the sit, sees deepCompany fewer trucks, and mature bucks go from
-         deepMature[0] (roadside) to deepMature[1] (far back) of the usual odds. */
-      // Far fewer people bow hunt. A bow-only area is rated by access like any other, then its hunter kill is cut to this share.
-      bow: { kill: 0.45, natural: 0.12, company: 0.4, floor: 0.5 },
-      access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, crowded: 0.38, average: 0.26, walkMin: 2.5, walkMax: 75, hikeBase: 5, hikePer: 1.25, hikeFaster: 0.02, /* tiles from the road you can go with no Backcountry skill, more per point, and the share of walk time each point saves */ deepCompany: 0.85, deepMature: [0.6, 1.5], lockedDepth: 14, oldBuckHome: 0.35 },
+      natural: 0.12, killPerEase: 0.95, maxKill: 0.55, doeExtra: 0.6, doeFull: 0.35,
+      floorMin: 0.04, floorPerEase: 0.9, floorMax: 0.5, companyPerEase2: 1.1, companyMax: 0.35,
+      levels: [
+        { id: 'crowded', min: 0.38, name: 'Crowded', note: 'road all along it and easy walking. Trucks at every access, lots of pressure, mostly young bucks' },
+        { id: 'average', min: 0.26, name: 'Average', note: 'hunted, but there is room. A decent buck now and then' },
+        { id: 'quiet',   min: 0.08, name: 'Quiet',   note: 'a real walk from the road, or hard going. Lightly hunted, and bucks get some age' },
+        { id: 'remote',  min: -1,   name: 'Remote',  note: 'a long way from any road. Almost nobody gets back here, and bucks grow old' },
+      ],
+      // Old maps only: a public area no road touches at all.
+      landlocked: { id: 'landlocked', name: 'Landlocked', note: 'no road reaches it. You can only walk in from land next to it that you own or have permission on' },
+      // Far fewer people bow hunt: on bow-only ground the hunters' share is cut to this.
+      bow: { kill: 0.45, company: 0.4, floor: 0.5 },
+      /* Walking in. reach: tiles until two thirds of hunters have stopped. Water, swamp and timber cost extra to cross.
+         You can go hikeBase tiles from the road, plus hikePer for each Backcountry point; each point also takes hikeFaster
+         off the walk. walkMin minutes a tile come off your sit, up to walkMax. A deep spot sees deepCompany fewer trucks,
+         and mature bucks show from deepMature[0] (roadside) to deepMature[1] (far back) of the usual odds. */
+      access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, hikeBase: 6, hikePer: 3, hikeFaster: 0.02, walkMin: 1.5, walkMax: 90, deepCompany: 0.85, deepMature: [0.7, 1.35], oldBuckHome: 0.35 },
     },
     // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
     traveler: { chance: 0.005, rut: 2.2, quiet: 1.5, crowded: 0.5, gp: [150, 185], age: [4.5, 6.5], stays: 0.3 },

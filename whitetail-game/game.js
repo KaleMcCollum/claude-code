@@ -76,7 +76,7 @@
   /* ================================================================ new game */
   WT.newGame = function (seed) {
     seed = seed || ((Math.random() * 1e9) | 0);
-    const world = WT.genWorld(seed, 3); // version 3 worlds: rectangular fields, 2.5 times the land
+    const world = WT.genWorld(seed, 4); // version 4 worlds: big roadless public areas, a road to every private parcel
     captureNatural(world);
     G.world = world;
     const rng = WT.makeRng(seed ^ 0x5eed);
@@ -94,7 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
-      genV: 3,
+      genV: 4,
       journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', bowThird: true, pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
@@ -350,7 +350,7 @@
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
     prop.mix = WT.landMix(pid);
-    if (d.owner === 'public') { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
+    if (d.owner === 'public') { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.publicDoe = cr.doeMult; prop.pressFloor = cr.floor; }
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
     return prop;
@@ -562,7 +562,14 @@
   };
   // How far back on public land you can go (tiles of walking from the road).
   WT.hikeReach = function () { const a = C().publicCrowd.access; return a.hikeBase + a.hikePer * (S().skills.hiking || 0); };
-  const tooFar = (pid, x, y) => { const a = WT.access(pid); if (a.locked) return null; const need = WT.spotDepth(pid, x, y).tiles; if (need <= WT.hikeReach() + 1e-6) return null; const pts = Math.ceil((need - C().publicCrowd.access.hikeBase) / C().publicCrowd.access.hikePer); return `That is too far back for you yet. It takes Backcountry ${pts} (you have ${S().skills.hiking || 0}).`; };
+  const tooFar = (pid, x, y) => {
+    const a = C().publicCrowd.access, need = WT.spotDepth(pid, x, y).tiles, have = S().skills.hiking || 0;
+    if (!isFinite(need)) return 'No road reaches this ground. You can only walk in from land next to it that you own or have permission on.';
+    if (need <= WT.hikeReach() + 1e-6) return null;
+    const pts = Math.ceil((need - a.hikeBase) / a.hikePer), max = C().skills.hiking.max;
+    return pts > max ? 'That is further back than anyone walks in from the road. The way in is across land next to it that you own or have permission on.'
+      : `That is too far back for you yet. It takes Backcountry ${pts} (you have ${have}), or a way in across land next to it that you own or have permission on.`;
+  };
 
   /* ================================================================ shop */
   WT.buy = function (kind, id, qty = 1) {
@@ -1051,7 +1058,6 @@
   WT.markSpot = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'public') return 'Spots are marked on public land. On your own land, put up a stand.';
-    if (!WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land next to it that you own or have paid permission on.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a tree or ground spot inside the public area.';
     if (WT.landType(w.cover[i]) === 'farm') return "That's a crop field. Mark the edge of it instead.";
@@ -1082,7 +1088,6 @@
     if (WT.earlySeason() && !WT.hasBow()) return 'Early archery season: bow only until Oct 1. Equip your bow under Gear, or press Wait.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (spot.kind !== 'spot') return null;
-    if (d.owner === 'public' && !WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land next to it that you own or have paid permission on.';
     if (d.owner === 'public') { const far = tooFar(pid, spot.x, spot.y); if (far) return far; }
     const id = WT.mobileStand();
     if (!id) return 'You need a mobile stand to hunt public land. Buy a hang-on, climber, saddle or pop-up blind at the Shop and equip it under Gear.';
@@ -1323,54 +1328,82 @@
   };
 
   // Public land: other hunters
-  /* How people get into a public area. Hunters start at any road that touches it and walk; every tile costs a step,
-     more through timber, swamp and water. walk[i] is the cost to reach tile i; ease is how much of the area is an easy
-     walk; locked means no road touches it at all. Worked out from the map, once. */
+  /* How people get onto public land. Hunters drive to any road that touches public ground and walk from there, across
+     as much public land as they like but never across private. Every tile costs a step, more through timber, swamp
+     and water. The result is the cost to reach every public tile (Infinity where no road leads). `extra` adds the
+     borders of land YOU can cross (yours, or where you have paid permission) as ways in. Worked out from the map. */
+  function walkField(extra) {
+    const w = G.world, cfg = C().publicCrowd.access, TT = T(), W = w.W, N = W * w.H;
+    const pub = new Uint8Array(w.parcels.length); for (const p of w.parcels) if (p.owner === 'public') pub[p.id] = 1;
+    const isRoad = (i) => w.cover[i] === TT.ROAD || w.cover[i] === TT.TOWN;
+    const step = (i) => { const c = w.cover[i]; if (WT.isWater(c)) return cfg.water; const lt = WT.landType(c); return lt === 'swamp' ? cfg.swamp : lt === 'timber' ? cfg.timber : 1; };
+    const nb = (i) => { const x = i % W, o = []; if (x > 0) o.push(i - 1); if (x < W - 1) o.push(i + 1); if (i >= W) o.push(i - W); if (i + W < N) o.push(i + W); return o; };
+    const dist = new Float64Array(N).fill(Infinity), heap = [];
+    const push = (d, i) => { heap.push([d, i]); let k = heap.length - 1; while (k > 0) { const pk = (k - 1) >> 1; if (heap[pk][0] <= heap[k][0]) break; [heap[pk], heap[k]] = [heap[k], heap[pk]]; k = pk; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+    for (let i = 0; i < N; i++) {
+      const p = w.parcelOf[i]; if (p < 0 || !pub[p]) continue;
+      if (nb(i).some((k) => isRoad(k) || (extra && w.parcelOf[k] >= 0 && extra.has(w.parcelOf[k])))) { dist[i] = step(i); push(dist[i], i); }
+    }
+    while (heap.length) {
+      const [d, i] = pop(); if (d > dist[i] + 1e-9) continue;
+      for (const k of nb(i)) { const p = w.parcelOf[k]; if (p < 0 || !pub[p]) continue; const nd = d + step(k); if (nd < dist[k] - 1e-6) { dist[k] = nd; push(nd, k); } } // the margin matters: equal routes differ by rounding, and without it they requeue each other forever
+    }
+    return dist;
+  }
+  const pubWalk = () => G.world._pubWalk || (G.world._pubWalk = walkField(null));
+  WT.pubWalk = pubWalk;
+  // The same walk for you: the road, or straight across the fence from land you own or have permission on.
+  function myWalk() {
+    const w = G.world, st = S(), ids = w.parcels.filter((p) => st.parcels[p.id].owner === 'player' || st.parcels[p.id].permBought).map((p) => p.id), key = ids.join(',');
+    if (!w._myWalk || w._myWalk.key !== key) w._myWalk = { key, dist: walkField(new Set(ids)) };
+    return w._myWalk.dist;
+  }
+  // One public area, summed up: how much of it is an easy walk, how far its near and far ends are, where its far back is.
   WT.access = function (pid) {
     const w = G.world; w._acc = w._acc || {};
     if (w._acc[pid]) return w._acc[pid];
-    const cfg = C().publicCrowd.access, TT = T(), W = w.W, p0 = w.parcels[pid], list = [], walk = new Map(), open = [];
-    for (let y = p0.minY; y <= p0.maxY; y++) for (let x = p0.minX; x <= p0.maxX; x++) if (w.parcelOf[y * W + x] === pid) list.push(y * W + x);
-    const isRoad = (i) => w.cover[i] === TT.ROAD || w.cover[i] === TT.TOWN;
-    const step = (i) => { const c = w.cover[i]; if (isRoad(i)) return 0.2; if (WT.isWater(c)) return cfg.water; const lt = WT.landType(c); return lt === 'swamp' ? cfg.swamp : lt === 'timber' ? cfg.timber : 1; };
-    const nb = (i) => { const x = i % W, y = (i / W) | 0, o = []; if (x > 0) o.push(i - 1); if (x < W - 1) o.push(i + 1); if (y > 0) o.push(i - W); if (y < w.H - 1) o.push(i + W); return o; };
-    for (const i of list) if (isRoad(i) || nb(i).some(isRoad)) { walk.set(i, isRoad(i) ? 0 : step(i)); open.push(i); }
-    const locked = !open.length;
-    while (open.length) { // small areas: a plain relaxing pass is plenty
-      const i = open.shift(), d0 = walk.get(i);
-      for (const j of nb(i)) { if (w.parcelOf[j] !== pid) continue; const d1 = d0 + step(j); if (!walk.has(j) || d1 < walk.get(j) - 1e-6) { walk.set(j, d1); open.push(j); } }
+    const cfg = C().publicCrowd.access, walk = pubWalk(), p0 = w.parcels[pid], land = [];
+    let ease = 0, near = Infinity, far = 0;
+    for (let y = p0.minY; y <= p0.maxY; y++) for (let x = p0.minX; x <= p0.maxX; x++) {
+      const i = y * w.W + x; if (w.parcelOf[i] !== pid || WT.isWater(w.cover[i])) continue;
+      const d = walk[i]; land.push([i, d]);
+      if (isFinite(d)) { ease += Math.exp(-d / cfg.reach); near = Math.min(near, d); far = Math.max(far, d); }
     }
-    let ease = 0, n = 0; const land = [];
-    for (const i of list) { if (WT.isWater(w.cover[i]) || isRoad(i)) continue; n++; const d = locked ? cfg.lockedDepth : walk.get(i) ?? cfg.lockedDepth; ease += Math.exp(-d / cfg.reach); land.push([i, d]); }
     land.sort((p, q) => q[1] - p[1]);
-    return (w._acc[pid] = { locked, walk, ease: n ? ease / n : 0, deep: land.slice(0, Math.max(1, Math.round(land.length * cfg.oldBuckHome))).map((p) => p[0]) });
+    return (w._acc[pid] = { locked: !isFinite(near), ease: land.length ? ease / land.length : 0, near, far, deep: land.slice(0, Math.max(1, Math.round(land.length * cfg.oldBuckHome))).map((p) => p[0]) });
   };
-  // Can you get in? Roadless public land is reached only across land you own that touches it.
-  WT.canReach = function (pid) { const a = WT.access(pid); return !a.locked || [...G.world.parcels[pid].neighbors].some((q) => S().parcels[q].owner === 'player' || S().parcels[q].permBought); };
-  // How far back a spot is: tiles of walking, and 0..1 (0 at the road, near 1 far back).
+  // Can you get in at all?
+  WT.canReach = function (pid) {
+    const w = G.world, walk = myWalk(), p0 = w.parcels[pid];
+    for (let y = p0.minY; y <= p0.maxY; y++) for (let x = p0.minX; x <= p0.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] === pid && isFinite(walk[i])) return true; }
+    return false;
+  };
+  /* One spot. pub: how far the public has to walk to it (sets how hunted it is; q is that as 0 at the road .. 1 far back).
+     tiles: how far YOU walk, which may be shorter across land of your own (viaLand). walkMin: minutes off your sit. */
   WT.spotDepth = function (pid, x, y) {
-    const a = WT.access(pid), cfg = C().publicCrowd.access, d = a.locked ? cfg.lockedDepth : a.walk.get(y * G.world.W + x) ?? cfg.lockedDepth;
+    const cfg = C().publicCrowd.access, i = y * G.world.W + x, pub = pubWalk()[i], mine = myWalk()[i];
     const fast = 1 - cfg.hikeFaster * (S().skills.hiking || 0);
-    return { tiles: d, q: 1 - Math.exp(-d / cfg.reach), walkMin: Math.round(Math.min(cfg.walkMax, d * cfg.walkMin * fast) / 5) * 5 };
+    return { pub, tiles: mine, viaLand: mine < pub - 0.5, q: isFinite(pub) ? 1 - Math.exp(-pub / cfg.reach) : 1,
+      walkMin: isFinite(mine) ? Math.round(Math.min(cfg.walkMax, mine * cfg.walkMin * fast) / 5) * 5 : 0 };
   };
-  // How hard a public area gets hunted. Fixed for the life of the map.
+  // How hunted a public area is. Everything here follows from how easy it is to reach, and from bow-only or not.
   WT.crowd = function (pid) {
     const cfg = C().publicCrowd, d = S().parcels[pid];
     if (d.owner !== 'public') return null;
-    if (WT.access(pid).locked) return Object.assign({ id: 'landlocked' }, cfg.landlocked);
-    const a = WT.access(pid);
-    const id = a.ease > cfg.access.crowded ? 'crowded' : a.ease > cfg.access.average ? 'average' : 'quiet';
-    if (d.bowOnly) { // same ground, same access, fewer hunters: only the share of bucks that hunters take goes down
-      const b = cfg.bow, lv = cfg[id], cut = (v) => b.natural + Math.max(0, v - b.natural) * b.kill;
-      return { id: 'bow', level: id, name: 'Bow only, ' + lv.name.toLowerCase(), buckDeaths: lv.buckDeaths.map(cut), floor: lv.floor * b.floor, company: lv.company * b.company, note: 'bow hunters only, and far fewer of them. ' + lv.note };
-    }
-    return Object.assign({ id }, cfg[id]);
+    const a = WT.access(pid), bow = !!d.bowOnly, b = cfg.bow;
+    const lvl = a.locked ? cfg.landlocked : cfg.levels.find((l) => a.ease >= l.min);
+    const mid = cfg.natural + Math.min(cfg.maxKill, cfg.killPerEase * a.ease) * (bow ? b.kill : 1);
+    return { id: lvl.id, bow, ease: a.ease, name: bow ? 'Bow only, ' + lvl.name.toLowerCase() : lvl.name, note: (bow ? 'bow hunters only, and far fewer of them. ' : '') + lvl.note,
+      buckDeaths: [mid - 0.03, mid + 0.03], doeMult: 1 + cfg.doeExtra * clamp(a.ease / cfg.doeFull) * (bow ? b.kill : 1),
+      floor: clamp(cfg.floorMin + cfg.floorPerEase * a.ease, cfg.floorMin, cfg.floorMax) * (bow ? b.floor : 1),
+      company: Math.min(cfg.companyMax, cfg.companyPerEase2 * a.ease * a.ease) * (bow ? b.company : 1) };
   };
   WT.publicCompetition = function (pid, spot) {
     const st = S(), d = st.parcels[pid];
     if (d.owner !== 'public') return null;
     const weekend = st.day % 7 >= 5;
-    const cr = WT.crowd(pid); if (cr.id === 'landlocked') return null;
+    const cr = WT.crowd(pid); if (!(cr.company > 0)) return null;
     const deep = spot ? 1 - C().publicCrowd.access.deepCompany * WT.spotDepth(pid, spot.x, spot.y).q : 1; // few people walk that far
     const p = (cr.company + (weekend ? 0.15 : 0) + (/Seek|Peak/.test(WT.rutPhase(st.day).name) ? 0.1 : 0)) * deep;
     const h = WT.hash2(pid, st.year * 1000 + st.day * 2 + (st.slot === 'evening' ? 1 : 0), 17);
@@ -1501,7 +1534,7 @@
     // public land: now and then a big buck from somewhere else is passing through. You can't plan on him.
     if (d.owner === 'public') {
       const tv = cfg.traveler, cr = WT.crowd(setup.pid);
-      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'quiet' || cr.id === 'bow' || cr.id === 'landlocked' ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
+      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'quiet' || cr.id === 'remote' || cr.id === 'landlocked' || cr.bow ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
       if (rng.chance(pT)) {
         const big = WT.makeDeer(rng, 'b', rng.pick([4.5, 5.5, 5.5, 6.5].filter((a) => a >= tv.age[0] && a <= tv.age[1])), prop);
         big.gp = rng.range(tv.gp[0], tv.gp[1]); big.w = clamp(big.w + 0.2, 0.05, 0.95); big.traveler = true;

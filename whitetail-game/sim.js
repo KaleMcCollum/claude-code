@@ -305,12 +305,21 @@
     const vRoads = [], hRoads = [];
     for (let rx = Math.round(sp * rng.range(0.4, 0.8)); rx < W - 6; rx += sp + rng.int(-6, 6)) vRoads.push(rx);
     for (let ry2 = Math.round(sp * rng.range(0.4, 0.8)); ry2 < H - 6; ry2 += sp + rng.int(-6, 6)) hRoads.push(ry2);
+    // --- Version 4: roadless blocks that become the big public areas (chosen where the ground is already wild)
+    const wild = ver >= 4 ? pickWildBlocks(cover, W, H, vRoads, hRoads, seed) : [];
+    for (const b of wild) for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+      const i = y * W + x, c = cover[i];
+      if (isWater(c) || c === T.TIMBER || c === T.SLOUGH || c === T.BRUSH) continue;
+      const n = fbm(x / 10, y / 10, s + 77, 3), m = fbm(x / 7, y / 7, s + 78, 2), wc = cfg.wild; // nobody farms it: grass, brush, woods and wet ground
+      cover[i] = n > wc.timber ? T.TIMBER : n > wc.brush ? T.BRUSH : moist[i] > 0.5 && m > wc.slough ? T.SLOUGH : T.PRAIRIE;
+    }
     const road = new Uint8Array(N);
     vRoads.forEach((rx, k) => {
       const broken = rng.chance(0.35) ? [rng.int(10, H - 40), 0] : null;
       if (broken) broken[1] = broken[0] + rng.int(15, 35);
       for (let y = 0; y < H; y++) {
         if (broken && y > broken[0] && y < broken[1]) continue;
+        if (wild.some((b) => b.i < k + 1 && k + 1 < b.i + b.cw && y > b.ry0 && y < b.ry1)) continue; // no road through roadless country
         const x = clamp(Math.round(rx + Math.sin(y / 17 + k * 3) * 2.2), 0, W - 1);
         road[y * W + x] = 1;
         if (y > 0) { const px = clamp(Math.round(rx + Math.sin((y - 1) / 17 + k * 3) * 2.2), 0, W - 1); for (let xx = Math.min(px, x); xx <= Math.max(px, x); xx++) road[y * W + xx] = 1; }
@@ -321,6 +330,7 @@
       if (broken) broken[1] = broken[0] + rng.int(20, 45);
       for (let x = 0; x < W; x++) {
         if (broken && x > broken[0] && x < broken[1]) continue;
+        if (wild.some((b) => b.j < k + 1 && k + 1 < b.j + b.ch && x > b.rx0 && x < b.rx1)) continue;
         const y = clamp(Math.round(ry3 + Math.sin(x / 19 + k * 5) * 2), 0, H - 1);
         road[y * W + x] = 1;
         if (x > 0) { const py = clamp(Math.round(ry3 + Math.sin((x - 1) / 19 + k * 5) * 2), 0, H - 1); for (let yy = Math.min(py, y); yy <= Math.max(py, y); yy++) road[yy * W + x] = 1; }
@@ -360,7 +370,7 @@
       farmsteads.push({ x: x + 1, y: y + 1 });
     }
 
-    const world = { seed, W, H, cover, elev, soil, gen, moist, towns, farmsteads, riverPath, ver, big };
+    const world = { seed, W, H, cover, elev, soil, gen, moist, towns, farmsteads, riverPath, ver, big, wild };
     if (ver >= 2) world.fieldId = squareFields(cover, W, H, seed, big);
     computeDerivedLayers(world);
     genParcels(world, rng);
@@ -375,11 +385,50 @@
       const pubs = world.parcels.filter((p) => p.owner === 'public').sort((a, b) => hash2(a.id, 3, seed + 41) - hash2(b.id, 3, seed + 41));
       const want = Math.max(1, Math.round(pubs.length * cfg.bowOnlyShare));
       pubs.forEach((p, k) => { p.bowOnly = k < want; });
+      if (ver >= 4) { // a big area is bow only or not as a whole, never unit by unit
+        const groups = new Map();
+        for (const p of pubs) { const key = p.complex !== undefined ? 'c' + p.complex : 'p' + p.id; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(p); }
+        // about a third of the public ACRES, not a third of the areas, or two big bow-only blocks could swallow the map
+        const keys = [...groups.keys()], size = (key) => groups.get(key).reduce((t, p) => t + p.tiles, 0), total = keys.reduce((t, key) => t + size(key), 0);
+        let bowT = 0; const bowKeys = new Set();
+        for (const key of keys) if (bowT + size(key) <= total * (cfg.bowOnlyShare + 0.08)) { bowKeys.add(key); bowT += size(key); }
+        if (!bowKeys.size) bowKeys.add(keys.slice().sort((a, b) => size(a) - size(b))[0]);
+        keys.forEach((key) => groups.get(key).forEach((p) => { p.bowOnly = bowKeys.has(key); }));
+        const cx = keys.filter((key) => key[0] === 'c'); // never every big area: rifle hunters need deep ground too
+        if (cx.length && cx.every((key) => groups.get(key)[0].bowOnly)) groups.get(cx.sort((a, b) => groups.get(b).length - groups.get(a).length)[0]).forEach((p) => { p.bowOnly = false; });
+      }
     }
     world.ready = true; // parcels are final from here on
     return world;
   }
   WT.genWorld = genWorld;
+
+  // Which blocks of the road grid go roadless. Grid lines are the roads plus the map edges (an edge has no road on it).
+  function pickWildBlocks(cover, W, H, vRoads, hRoads, seed) {
+    const cfg = C().world.wild, xs = [-1, ...vRoads, W], ys = [-1, ...hRoads, H];
+    const tx = vRoads[Math.floor(vRoads.length / 2)] ?? W / 2, ty = hRoads[Math.floor(hRoads.length / 2)] ?? H / 2; // where the town will be
+    const WILD = new Set([T.TIMBER, T.BRUSH, T.SLOUGH, T.POND, T.WATER, T.CREEK, T.PRAIRIE, T.BELT]);
+    const cands = [];
+    for (const [cw, ch, kind] of [[2, 2, 'big'], [2, 1, 'mid'], [1, 2, 'mid']]) for (let i = 0; i + cw < xs.length; i++) for (let j = 0; j + ch < ys.length; j++) {
+      const x0 = Math.max(0, xs[i] + 3), x1 = Math.min(W - 1, xs[i + cw] - 3), y0 = Math.max(0, ys[j] + 3), y1 = Math.min(H - 1, ys[j + ch] - 3);
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      if (kind === 'big' ? Math.min(bw, bh) < cfg.bigMin : Math.max(bw, bh) < cfg.bigMin || Math.min(bw, bh) < cfg.midMin) continue;
+      if (tx > x0 - 12 && tx < x1 + 12 && ty > y0 - 12 && ty < y1 + 12) continue; // not on top of town
+      if (xs[i] < 0 && xs[i + cw] >= W || ys[j] < 0 && ys[j + ch] >= H) continue;
+      let wildN = 0, n = 0;
+      for (let y = y0; y <= y1; y += 2) for (let x = x0; x <= x1; x += 2) { n++; if (WILD.has(cover[y * W + x])) wildN++; }
+      cands.push({ i, j, cw, ch, kind, x0, x1, y0, y1, tiles: bw * bh, score: wildN / n + hash2(i * 7 + cw, j * 5 + ch, seed + 97) * cfg.luck,
+        // where the inside roads stop: just past the roads that bound the block, or at the map edge
+        ry0: ys[j] < 0 ? -1 : ys[j] + 2, ry1: ys[j + ch] >= H ? H : ys[j + ch] - 2, rx0: xs[i] < 0 ? -1 : xs[i] + 2, rx1: xs[i + cw] >= W ? W : xs[i + cw] - 2 });
+    }
+    cands.sort((a, b) => b.score - a.score);
+    const picked = []; let used = 0;
+    const clash = (a, b) => a.i <= b.i + b.cw && b.i <= a.i + a.cw && a.j <= b.j + b.ch && b.j <= a.j + a.ch; // overlapping or sharing a road
+    const take = (kind, count) => { for (const c of cands) { if (count <= 0) break; if (c.kind !== kind || picked.some((p) => clash(p, c)) || used + c.tiles > cfg.maxShare * W * H) continue; picked.push(c); used += c.tiles; count--; } };
+    take('big', 1 + (hash2(1, 1, seed + 98) < cfg.secondBig ? 1 : 0));
+    take('mid', 1 + (hash2(2, 2, seed + 98) < cfg.secondMid ? 1 : 0));
+    return picked;
+  }
 
   // distance to road/town, distance to water, deer travel
   function computeDerivedLayers(world) {
@@ -505,9 +554,36 @@
     const order = parcels.slice().sort((a, b) => (b.habitat.water + b.habitat.bedding + rng.range(0, 0.6)) - (a.habitat.water + a.habitat.bedding + rng.range(0, 0.6)));
     let publicTiles = 0, pubIdx = 0;
     const pubNames = PUBLIC_NAMES.slice();
+    const v4 = world.ver >= 4, isRoadT = (i) => cover[i] === T.ROAD || cover[i] === T.TOWN;
+    const roadTouch = () => { // which parcels have a road along them, and how much border each shares with each neighbour
+      const touch = new Uint8Array(parcels.length), border = parcels.map(() => new Map());
+      for (let i = 0; i < N; i++) {
+        const p = parcelOf[i]; if (p < 0) continue; const x = i % W;
+        for (const k of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) {
+          if (k < 0 || k >= N) continue;
+          if (isRoadT(k)) touch[p] = 1; else { const q = parcelOf[k]; if (q >= 0 && q !== p) border[p].set(q, (border[p].get(q) || 0) + 1); }
+        }
+      }
+      return { touch, border };
+    };
+    let touch0 = null;
+    if (v4) {
+      touch0 = roadTouch().touch;
+      // every parcel that sits in a roadless block is a unit of that block's public area
+      world.wild.forEach((b, bi) => {
+        const cname = pubNames.length ? pubNames.splice(rng.int(0, pubNames.length - 1), 1)[0] : `State Land #${bi + 1}`;
+        let unit = 0;
+        for (const p of parcels) {
+          if (p.owner || p.cx < b.x0 || p.cx > b.x1 || p.cy < b.y0 || p.cy > b.y1) continue;
+          p.owner = 'public'; p.complex = bi; p.complexName = cname; p.name = `${cname}, Unit ${++unit}`;
+          publicTiles += p.tiles; pubIdx++;
+        }
+      });
+    }
     for (const p of order) {
-      if (publicTiles > totalTiles * cfg.publicShare) break;
+      if (publicTiles > totalTiles * (v4 ? cfg.wild.publicShare : cfg.publicShare)) break;
       if (p.merged || p.owner) continue;
+      if (v4 && !touch0[p.id]) continue; // a small public area always has a road along it
       if ([...p.neighbors].some((q) => parcels[q].owner === 'public')) continue;
       p.owner = 'public';
       let area = p.tiles;
@@ -526,6 +602,28 @@
     }
     const pubs = parcels.filter((p) => p.owner === 'public' && p.merged === undefined);
     if (pubs.length && !pubs.some((p) => p.bowOnly)) pubs.sort((a, b) => b.tiles - a.tiles)[Math.min(1, pubs.length - 1)].bowOnly = true;
+    if (v4) {
+      // Every private parcel gets a road. One with none joins the neighbour it shares the most fence with (a private one
+      // on a road if it can); one walled in by public land becomes part of that public land.
+      for (let pass = 0; pass < 8; pass++) {
+        const { touch, border } = roadTouch();
+        let changed = false;
+        for (const p of parcels) {
+          if (p.merged !== undefined || p.owner === 'public' || touch[p.id]) continue;
+          const nb = [...border[p.id]].filter(([q]) => parcels[q].merged === undefined);
+          const priv = nb.filter(([q]) => parcels[q].owner !== 'public'), onRoad = priv.filter(([q]) => touch[q]);
+          const from = onRoad.length ? onRoad : priv.length ? priv : nb;
+          if (!from.length) continue;
+          const q = from.sort((a, b) => b[1] - a[1])[0][0];
+          for (let i = 0; i < N; i++) if (parcelOf[i] === p.id) parcelOf[i] = q;
+          p.merged = q; parcels[q].tiles += p.tiles; changed = true;
+          for (const [r, n] of border[p.id]) if (r !== q) border[q].set(r, (border[q].get(r) || 0) + n);
+          for (const m of border) if (m.has(p.id)) { m.set(q, (m.get(q) || 0) + m.get(p.id)); m.delete(p.id); } // its fences are q's now
+          border[q].delete(q);
+        }
+        if (!changed) break;
+      }
+    }
     // rebuild parcel list after merges (keep ids stable; merged parcels are removed)
     const alive = parcels.filter((p) => p.merged === undefined);
     const idMap = new Map(alive.map((p, k) => [p.id, k]));
@@ -854,7 +952,7 @@
     } else if (prop.type === 'public' && d.age >= 1.5) {
       const pb = prop.publicBuck || m.publicBuck;
       if (d.sex === 'b') base = (pb[0] + pb[1]) / 2 + (d.age >= 4.5 ? 0.04 : 0);
-      else base *= prop.bowOnly ? 1.25 : 1.6;
+      else base *= prop.publicDoe ?? (prop.bowOnly ? 1.25 : 1.6);
     }
     // the map-wide balance (too many or too few deer) works on does and fawns: that is who overpopulates.
     // Antlered bucks are left out of it, or a crowd of does would get the bucks shot.
