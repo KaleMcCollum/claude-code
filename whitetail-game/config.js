@@ -272,6 +272,10 @@
     },
     /* What a stand's numbers are worth in deer. A rating of 90 sees about three and a half times the deer of a 10,
        and a 5-star sit about twice a 1-star sit. Old bucks follow the big-buck rating: swamp is where you see them. */
+    /* Deer don't stop at a fence. Deer living on the properties around the one you are hunting wander past your
+       stand too, less often the farther their home is from it. reach is in tiles (35 yards each); in the rut bucks
+       travel farther. share is how likely a neighbour's deer is to come through compared with one of your own. */
+    visitors: { buckReach: 16, doeReach: 9, rutReach: 1.6, buckShare: 0.55, doeShare: 0.3 },
     plotPull: 0.3,   // a stand touching a planted plot: deer seen x (1 + plotPull * (crop value now - 0.5) * how well it came in)
     sightMult: { ratingBase: 0.45, ratingGain: 1.75, ratingPow: 1.3, starBase: 0.5, starGain: 1.0, norm: 1.15, matureBase: 0.5, matureGain: 3.0, maturePow: 1.5, matureLift: 0.5 },
     // Off-season scouting: 3 x 3 blocks you can search each spring, plus one per this many Woodcraft points.

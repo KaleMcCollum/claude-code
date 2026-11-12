@@ -1400,6 +1400,26 @@
       const b = herd.find((x) => x.sex === 'b' && x.age >= 1.5 && !sched.some((q) => q.members.includes(x)) && rng.chance(0.3 * x.tOP));
       if (b) sg.members.push(b);
     }
+    // the neighbours' deer: they wander through too, most often the ones that live near your fence
+    const visitorOf = new Map();
+    {
+      const V = cfg.visitors;
+      for (const nb of parcel.neighbors) {
+        const nd = st.parcels[nb]; if (!nd || !nd.herd) continue;
+        const nbMom = {}; nd.herd.forEach((x) => { if (x.mom) (nbMom[x.mom] = nbMom[x.mom] || []).push(x); });
+        for (const deer of nd.herd) {
+          if (deer.mom && nd.herd.some((q) => q.id === deer.mom)) continue; // fawns come with their mother
+          const antlered = deer.sex === 'b' && deer.age >= 1.5;
+          const h = WT.deerHome(nb, deer), dist = Math.hypot(h.x - stand.x, h.y - stand.y);
+          const reach = (antlered ? V.buckReach : V.doeReach) * (antlered && rutOn ? V.rutReach : 1);
+          const vf = (antlered ? V.buckShare : V.doeShare) * Math.exp(-Math.pow(dist / reach, 2));
+          if (vf < 0.01 || !rng.chance(Math.min(0.97, WT.sightingChance(deer, ctx) * vf * WT.signBoost(signHere, deer, 'stand', rutOn)))) continue;
+          const members = [deer, ...(nbMom[deer.id] || []).filter(() => rng.chance(0.85))];
+          members.forEach((x) => visitorOf.set(x.id, nb));
+          sched.push({ t: pickTime(deer), members });
+        }
+      }
+    }
     // public land: now and then a big buck from somewhere else is passing through. You can't plan on him.
     if (d.owner === 'public') {
       const tv = cfg.traveler, cr = WT.crowd(setup.pid);
@@ -1427,7 +1447,7 @@
       setup, plan, rifle, scope, eq, used, prop, parcel, stand, sType, rating, goodWind, rut, maxView, minView, today, closeF,
       start, end, sitEnd, now: start, sched, log, visible: [], seenIds: new Set(), unknown: 0, calls: 0,
       scentCtl, conceal, quiet, walkNoise, pPerSit, ctx, hasLight, over: false, endReason: null,
-      rounds: rifle.mag, harvested: [], wounded: [], shots: 0, misses: 0, xp: 0, groupSeq: 1, selected: null, ranged: {},
+      visitorOf, rounds: rifle.mag, harvested: [], wounded: [], shots: 0, misses: 0, xp: 0, groupSeq: 1, selected: null, ranged: {},
       cover: w.cover[stand.y * w.W + stand.x], addedToList: [],
     };
     const where = d.owner === 'public' ? ' (public land)' : d.owner === 'npc' ? ` (${parcel.ownerName}'s land)` : '';
@@ -1688,7 +1708,7 @@
       if (rng.chance(recover)) harvest(H, g, deer, dist, 'after a long blood trail, you find it piled up in the cattails');
       else {
         H.wounded.push(deer); st.stats.wounded++;
-        { const hi = H.prop.herd.indexOf(deer); if (hi >= 0) H.prop.herd.splice(hi, 1); } // a traveler isn't in the herd // a lost deer is a dead deer
+        { const hi = H.prop.herd.indexOf(deer); if (hi >= 0) H.prop.herd.splice(hi, 1); else if (H.visitorOf && H.visitorOf.has(deer.id)) { const vh = S().parcels[H.visitorOf.get(deer.id)].herd, vi = vh.indexOf(deer); if (vi >= 0) vh.splice(vi, 1); } } // a neighbour's deer comes off the neighbour's herd; a traveler is in nobody's // a lost deer is a dead deer
         const antlered = deer.sex === 'b' && deer.age >= 1.5;
         if (antlered && st.tags.buck > 0) { st.tags.buck--; st.tags.buckFilled++; } else if (st.tags.doe > 0) { st.tags.doe--; st.tags.doeFilled++; } else { st.tags.buck--; st.tags.buckFilled++; }
         H.log.push({ t: H.now, kind: 'bad', text: "You track until the blood runs out. Never found. You tag it anyway. It's the right thing to do." });
@@ -1703,7 +1723,7 @@
 
   function harvest(H, g, deer, dist, how) {
     const st = S(), rng = G.rng, cfg = C(), P = cfg.progression;
-    { const hi = H.prop.herd.indexOf(deer); if (hi >= 0) H.prop.herd.splice(hi, 1); } // a traveler isn't in the herd
+    { const hi = H.prop.herd.indexOf(deer); if (hi >= 0) H.prop.herd.splice(hi, 1); else if (H.visitorOf && H.visitorOf.has(deer.id)) { const vh = S().parcels[H.visitorOf.get(deer.id)].herd, vi = vh.indexOf(deer); if (vi >= 0) vh.splice(vi, 1); } } // a neighbour's deer comes off the neighbour's herd; a traveler is in nobody's
     const antlered = deer.sex === 'b' && deer.age >= 1.5;
     // legal check: antlered deer need a buck tag; antlerless deer (does, fawns, button bucks) a doe tag
     let legal = true, tagUsed;
