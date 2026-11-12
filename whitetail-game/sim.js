@@ -990,10 +990,16 @@
       base = hs.natural + (1 - Math.exp(-looks * wary(d.age) * trait * want(d.gross || 0))) + oldAge;
     }
     if (d.sex === 'b' && prop.type !== 'public') mult *= 1 + (0.6 - d.tOP) * 0.7;
-    mult *= 1.12 - 0.25 * prop.security;
-    if (d.sex === 'b' && d.age >= 2.5) mult *= clamp(1 - C().landWork.buckSurvival * (prop.security - 0.45), 0.6, 1.15); // safe ground is how a buck gets old
-    if (prop.mix && d.age >= 1.5) mult *= 1 - C().land.water.barrier * Math.min(1, (prop.mix.shoreline || 0) / C().land.water.barrierFull); // nobody hunts the far bank
-    if (d.sex === 'b' && d.age >= 3.5 && prop.mix) mult *= 1 - C().land.swampOldBucks * Math.min(1, prop.mix.swamp / C().land.swampFull); // old bucks live in the swamp
+    // Cover, water and swamp keep hunters off a deer. On public land that is already counted: thick, wet ground is hard
+    // to walk into, so fewer hunters reach it. Counting it again here used to halve the death rate on timber and swamp
+    // public land, so for public bucks the rate is what access sets and nothing else.
+    const counted = d.sex === 'b' && d.age >= 1.5 && prop.type === 'public' && !!hs;
+    if (!counted) {
+      mult *= 1.12 - 0.25 * prop.security;
+      if (d.sex === 'b' && d.age >= 2.5) mult *= clamp(1 - C().landWork.buckSurvival * (prop.security - 0.45), 0.6, 1.15); // safe ground is how a buck gets old
+      if (prop.mix && d.age >= 1.5) mult *= 1 - C().land.water.barrier * Math.min(1, (prop.mix.shoreline || 0) / C().land.water.barrierFull); // nobody hunts the far bank
+      if (d.sex === 'b' && d.age >= 3.5 && prop.mix) mult *= 1 - C().land.swampOldBucks * Math.min(1, prop.mix.swamp / C().land.swampFull); // old bucks live in the swamp
+    }
     return clamp(base * mult, 0.02, 0.95);
   }
   WT.annualMortality = annualMortality;
