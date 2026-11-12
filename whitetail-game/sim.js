@@ -971,9 +971,24 @@
     // Antlered bucks are left out of it, or a crowd of does would get the bucks shot.
     let mult = (d.sex === 'b' && d.age >= 1.5 ? 1 : prop.harvestAdj || 1) * (prop.cropAdj || 1);
     mult *= 0.7 + 0.6 * (prop.neighborPressure ?? 0.5);
-    // NPC hunters: 'meat' hunters shoot the first buck they see, 'manage' hunters pass young bucks
-    if (d.sex === 'b' && prop.npcStyle === 'meat') mult *= d.age <= 2.5 ? 1.25 : 0.95;
-    if (d.sex === 'b' && prop.npcStyle === 'manage') mult *= d.age <= 2.5 ? 0.6 : d.age >= 4.5 ? 1.2 : 0.9;
+    /* Who pulls the trigger. Other hunters kill a buck in two steps. First one of them has to get a look at him: that
+       depends on the ground (how many hunters reach it) and on the buck (an old buck moves less in daylight, and a wary
+       one less still). Then that hunter has to want him: few will shoot a fork, nearly all will shoot a 150.
+       The ground's set rate is what its reference buck faces; every other buck is worked out from there. */
+    const hs = m.hunters;
+    if (d.sex === 'b' && d.age >= 1.5 && hs) {
+      const pick = (v) => { const t = hs.share; if (v <= t[0][0]) return t[0][1]; for (let k = 1; k < t.length; k++) if (v <= t[k][0]) return t[k - 1][1] + (t[k][1] - t[k - 1][1]) * (v - t[k - 1][0]) / (t[k][0] - t[k - 1][0]); return t[t.length - 1][1]; };
+      const wary = (a) => ageTable(hs.wary, Math.min(a, 6.5));
+      const priv = prop.type !== 'public';
+      // the two kinds of neighbour bend the curve: some shoot the first buck they see, some pass anything young
+      const want = (v) => { const sh = pick(v); return priv && prop.npcStyle === 'meat' ? hs.meat + (1 - hs.meat) * sh : priv && prop.npcStyle === 'manage' ? Math.pow(sh, hs.manage) : sh; };
+      const prime = ageTable(m.buck, 4.5), oldAge = Math.max(0, ageTable(m.buck, d.age) - prime);
+      const setKill = clamp((priv ? prime : base - oldAge) - hs.natural, 0, hs.maxKill);
+      const ref = priv ? hs.refPrivate : hs.refPublic;                      // [score, age] of the buck the set rate is for
+      const looks = -Math.log(1 - setKill) / (want(ref[0]) * wary(ref[1])); // hunters who get a look at a bold young buck here in a year
+      const trait = clamp(1 + hs.trait * (0.45 - (d.w ?? 0.45)) / 0.18, 0.4, 1.6); // his own nature: the wary ones show themselves less
+      base = hs.natural + (1 - Math.exp(-looks * wary(d.age) * trait * want(d.gross || 0))) + oldAge;
+    }
     if (d.sex === 'b' && prop.type !== 'public') mult *= 1 + (0.6 - d.tOP) * 0.7;
     mult *= 1.12 - 0.25 * prop.security;
     if (d.sex === 'b' && d.age >= 2.5) mult *= clamp(1 - C().landWork.buckSurvival * (prop.security - 0.45), 0.6, 1.15); // safe ground is how a buck gets old

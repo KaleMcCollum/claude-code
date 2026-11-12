@@ -131,6 +131,15 @@
         buck: { 0.5: [0.15, 0.25], 1.5: 0.25, 2.5: 0.25, 3.5: 0.29, 4.5: 0.30, 5.5: 0.32, 6.5: 0.38, 7.5: 0.44, 8.5: 0.52, 9.5: 0.6, 10.5: 0.75 },
         doe:  { 0.5: [0.15, 0.25], 1.5: 0.12, 2.5: 0.12, 3.5: 0.12, 4.5: 0.12, 5.5: 0.12, 6.5: 0.18, 7.5: 0.18, 8.5: 0.27, 9.5: 0.35, 10.5: 0.5 },
         publicBuck: [0.38, 0.46],
+        /* Other hunters. share: of the hunters who get a look at a buck of this score, how many shoot (few shoot a fork,
+           nearly all shoot a 150). wary: how much less an older buck shows himself than a yearling. trait: how much a
+           buck's own wariness moves that, per notch. natural: yearly deaths that have nothing to do with hunters.
+           refPublic / refPrivate: the [score, age] of the buck a piece of ground's set death rate is for. On public land
+           a 100-inch three-year-old keeps the rate the ground sets; on private land a 125-inch four-year-old does.
+           meat / manage: neighbours who shoot the first buck they see, and neighbours who pass anything young. */
+        hunters: { share: [[0, 0.10], [80, 0.10], [100, 0.20], [120, 0.55], [130, 0.72], [140, 0.85], [150, 0.93], [160, 0.98], [170, 1]],
+          wary: { 1.5: 1.0, 2.5: 0.9, 3.5: 0.75, 4.5: 0.6, 5.5: 0.5, 6.5: 0.45 }, trait: 0.15, natural: 0.12,
+          refPublic: [100, 3.5], refPrivate: [125, 4.5], meat: 0.35, manage: 1.6, maxKill: 0.9 },
         inSeasonShare: 0.45,          // share of neighbor/hunter mortality that happens during the season
         winterBase: 0.03, winterSevere: 0.10,
       },
