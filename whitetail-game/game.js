@@ -345,10 +345,11 @@
       prop.food = clamp(prop.food + Math.min(L.plotFoodMax, L.plotFood * plotPts));
       prop.plotNutrition = Math.min(L.plotNutritionMax, L.plotNutrition * plotPts);
       prop.plotCapacity = Math.min(L.plotCapacityMax, L.plotCapacity * plotPts);
+      { const AL = C().deer.antlers.land; prop.plotAntler = Math.min(AL.plotMax, AL.plot * plotPts); } // a small bump to rack size on planted land
       prop.bedding = clamp(prop.bedding + Math.min(L.treeBedMax, L.treeBed * treePts));
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
-    prop.landQuality = WT.landQualityOf(prop.geneG); // the genetics map and nothing else: what the antler model multiplies by
+    prop.landQuality = WT.landQualityOf(prop.geneG) + (prop.plotAntler || 0); // the genetics map, plus a little for your food plots: what the antler model multiplies by
     prop.mix = WT.landMix(pid);
     if (d.owner === 'public') { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.publicDoe = cr.doeMult; prop.pressFloor = cr.floor;
       { // each buck faces the hunters who reach where HE lives: lots by the road, hardly any far back
@@ -360,7 +361,8 @@
     return prop;
   }
   /* Land quality for antlers comes straight off the genetics map (see deer.antlers.land): ordinary ground is `neutral`,
-     a full hot pocket `hot`, a full cold pocket `cold`. Crops, soil and food plots have no say in it. */
+     a full hot pocket `hot`, a full cold pocket `cold`. Crops and soil have no say in it; your own food plots add a
+     little on top (makeProp). */
   WT.landQualityOf = function (g) {
     const L = C().deer.antlers.land; g = Math.max(-1, Math.min(1, g || 0));
     return g >= 0 ? L.neutral + (L.hot - L.neutral) * g : L.neutral + (L.neutral - L.cold) * g;
@@ -2322,7 +2324,7 @@
     // this year's plots fed this year's deer: remember what they gave before the plots go back to dirt,
     // or next year's antlers would be grown as if nothing had been planted
     const plotFed = {};
-    for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') { const pr = makeProp(p.id); plotFed[p.id] = { food: pr.food, n: pr.plotNutrition || 0, c: pr.plotCapacity || 0 }; }
+    for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') { const pr = makeProp(p.id); plotFed[p.id] = { food: pr.food, n: pr.plotNutrition || 0, c: pr.plotCapacity || 0, a: pr.plotAntler || 0 }; }
     for (const p of w.parcels) {
       const d = st.parcels[p.id];
       // the season is over: every plot is bare dirt again until you replant it this spring
@@ -2342,7 +2344,7 @@
     for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
     summary.recap = buildRecap();
     // whole-map year: every parcel's cycle, dispersal between real parcels, population stabilizer
-    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; const pf = plotFed[p.id]; if (pf) { pr.plotNutrition = Math.max(pr.plotNutrition || 0, pf.n); pr.plotCapacity = Math.max(pr.plotCapacity || 0, pf.c); } /* this year's plots fed this year's herd */ return pr; });
+    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; const pf = plotFed[p.id]; if (pf) { pr.plotNutrition = Math.max(pr.plotNutrition || 0, pf.n); pr.plotCapacity = Math.max(pr.plotCapacity || 0, pf.c); if (pf.a > (pr.plotAntler || 0)) { pr.landQuality += pf.a - (pr.plotAntler || 0); pr.plotAntler = pf.a; } } /* this year's plots fed this year's herd and the racks it grows */ return pr; });
     const res = WT.worldYear(props, rng, { winter, yearFactor, seasonMortalityApplied: true }, st.worldSim);
     st.worldSim = res.world;
     props.forEach((pr, k) => {

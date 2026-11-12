@@ -136,10 +136,12 @@
            grades map onto the map's four kinds of ground: a full cold pocket is `cold` (the file's poor, 0.90),
            ordinary ground, which is most of the map, is `neutral` (average, 1.00), a full hot pocket is `hot` (prime,
            1.25), and warm ground halfway up lands on the file's good farmland (1.12). The ground between slides evenly.
-           Crops, soil and food plots do not enter into it. Raising `neutral` puts more big deer everywhere. */
+           Crops and soil do not enter into it. Raising `neutral` puts more big deer everywhere.
+           plot / plotMax: your own planted food plots add a little on top, `plot` for each good plot per 100 acres,
+           never more than `plotMax` (five good plots per 100 acres gets all of it). */
       antlers: { ages: [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5], mean: [36.1, 80.7, 102.9, 118.7, 129.9, 133.2, 131.5, 127.1], stdDev: [13.7, 16.7, 17.9, 20.4, 16.6, 17.6, 15.9, 17.4],
         keep: 0.85, year: 0.53, clampZ: 3.5, /* the model file says 3, but its own rarity test (1 in 1,000 six-year-olds over 210 on 1.12 ground) needs 3.09, which a clamp of 3 makes impossible */
-        land: { cold: 0.90, neutral: 1.00, hot: 1.25 } },
+        land: { cold: 0.90, neutral: 1.00, hot: 1.25, plot: 0.006, plotMax: 0.03 } },
       genetics: { mean: 140, sd: 15, inherit: 0.25 }, // how potential is stored (mean + sd x his place in the curve) and how much a fawn takes after its mother
       /* Genetics drift slowly across the map. Most ground is neutral; a region can run a few inches up or down, and now and
          then there is a small hot pocket (or a cold one). g runs about -1..+1 (a hot pocket can reach 1.6).
