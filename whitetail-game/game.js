@@ -350,8 +350,7 @@
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
     prop.mix = WT.landMix(pid);
-    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
-    if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground
+    if (d.owner === 'public') { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
     return prop;
@@ -1359,9 +1358,12 @@
     const cfg = C().publicCrowd, d = S().parcels[pid];
     if (d.owner !== 'public') return null;
     if (WT.access(pid).locked) return Object.assign({ id: 'landlocked' }, cfg.landlocked);
-    if (d.bowOnly) return { id: 'bow', name: 'Bow only', floor: C().deer.pressure.bowOnlyFloor, company: 0.03, note: 'few hunters, short range. The oldest bucks on public ground' };
     const a = WT.access(pid);
     const id = a.ease > cfg.access.crowded ? 'crowded' : a.ease > cfg.access.average ? 'average' : 'quiet';
+    if (d.bowOnly) { // same ground, same access, fewer hunters: only the share of bucks that hunters take goes down
+      const b = cfg.bow, lv = cfg[id], cut = (v) => b.natural + Math.max(0, v - b.natural) * b.kill;
+      return { id: 'bow', level: id, name: 'Bow only, ' + lv.name.toLowerCase(), buckDeaths: lv.buckDeaths.map(cut), floor: lv.floor * b.floor, company: lv.company * b.company, note: 'bow hunters only, and far fewer of them. ' + lv.note };
+    }
     return Object.assign({ id }, cfg[id]);
   };
   WT.publicCompetition = function (pid, spot) {

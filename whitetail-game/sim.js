@@ -830,7 +830,7 @@
   function initHerd(prop, rng) {
     prop.capacity = carryingCapacity(prop);
     prop.herd = [];
-    prop.huntingPressure = prop.type === 'public' ? (prop.bowOnly ? D().pressure.bowOnlyFloor : prop.pressFloor ?? D().pressure.publicFloor) : 0.05;
+    prop.huntingPressure = prop.type === 'public' ? (prop.pressFloor ?? (prop.bowOnly ? D().pressure.bowOnlyFloor : D().pressure.publicFloor)) : 0.05;
     const n = prop.capacity;
     for (let k = 0; k < n; k++) {
       const r = rng.next();
@@ -849,12 +849,12 @@
     const m = D().mortality;
     let base = ageTable(d.sex === 'b' ? m.buck : m.doe, d.age);
     if (Array.isArray(base)) base = (base[0] + base[1]) / 2;
-    if (prop.type === 'public' && prop.bowOnly && d.age >= 1.5) {
+    if (prop.type === 'public' && prop.bowOnly && !prop.publicBuck && d.age >= 1.5) { // old saves only
       if (d.sex === 'b') base *= D().bowOnlyBuckSurvival; // few hunters, short range: bucks grow old here
     } else if (prop.type === 'public' && d.age >= 1.5) {
       const pb = prop.publicBuck || m.publicBuck;
       if (d.sex === 'b') base = (pb[0] + pb[1]) / 2 + (d.age >= 4.5 ? 0.04 : 0);
-      else base *= 1.6;
+      else base *= prop.bowOnly ? 1.25 : 1.6;
     }
     // the map-wide balance (too many or too few deer) works on does and fawns: that is who overpopulates.
     // Antlered bucks are left out of it, or a crowd of does would get the bucks shot.
@@ -980,7 +980,7 @@
       if (d.hist.length > 10) d.hist.shift();
     }
     // pressure relaxes over the off-season
-    prop.huntingPressure = prop.type === 'public' ? (prop.bowOnly ? D().pressure.bowOnlyFloor : prop.pressFloor ?? D().pressure.publicFloor) : 0.05;
+    prop.huntingPressure = prop.type === 'public' ? (prop.pressFloor ?? (prop.bowOnly ? D().pressure.bowOnlyFloor : D().pressure.publicFloor)) : 0.05;
     return log;
   }
   WT.yearCycle = yearCycle;

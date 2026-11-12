@@ -248,6 +248,8 @@
          ease is the share of the area that sees real traffic: above `crowded` it is Crowded, above `average` Average, else Quiet.
          A deep spot costs you walkMin minutes a tile off the sit, sees deepCompany fewer trucks, and mature bucks go from
          deepMature[0] (roadside) to deepMature[1] (far back) of the usual odds. */
+      // Far fewer people bow hunt. A bow-only area is rated by access like any other, then its hunter kill is cut to this share.
+      bow: { kill: 0.45, natural: 0.12, company: 0.4, floor: 0.5 },
       access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, crowded: 0.38, average: 0.26, walkMin: 2.5, walkMax: 75, hikeBase: 5, hikePer: 1.25, hikeFaster: 0.02, /* tiles from the road you can go with no Backcountry skill, more per point, and the share of walk time each point saves */ deepCompany: 0.85, deepMature: [0.6, 1.5], lockedDepth: 14, oldBuckHome: 0.35 },
     },
     // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
