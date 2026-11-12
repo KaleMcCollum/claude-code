@@ -48,9 +48,10 @@
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   }
   // Genetics across the map: -1 (cold pocket) .. 0 (neutral, most of the map) .. +1 and a bit more (hot pocket).
-  WT.geneField = function (world, x, y) {
+  WT.geneField = function (world, x, y, yr) {
     const gm = C().deer.geneMap, s = world.seed + 771, W = world.W, Hh = world.H;
     const ang = hash2(1, 2, s) * Math.PI * 2;
+    { const da = hash2(7, 8, s) * Math.PI * 2, k = (yr || 0) * gm.drift; x -= Math.cos(da) * k; y -= Math.sin(da) * k; } // the pattern slides slowly, pockets and all
     const raw = (px, py) => fbm(px / (W * gm.scale), py / (W * gm.scale), s, 2);
     if (world._geneMean === undefined) { let t = 0, n = 0; for (let yy = 0; yy < Hh; yy += 8) for (let xx = 0; xx < W; xx += 8) { t += raw(xx, yy); n++; } world._geneMean = t / n; } // so no map is all warm or all cold
     let c = (raw(x, y) - world._geneMean) * gm.amp + ((x / W - 0.5) * Math.cos(ang) + (y / Hh - 0.5) * Math.sin(ang)) * 2 * gm.tilt;

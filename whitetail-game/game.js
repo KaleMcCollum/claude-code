@@ -357,7 +357,7 @@
     return prop;
   }
   WT.makeProp = makeProp;
-  WT.geneAt = function (pid) { const w = G.world, p = w.parcels[pid]; w._gene = w._gene || {}; if (w._gene[pid] === undefined) w._gene[pid] = WT.geneField(w, p.cx, p.cy); return w._gene[pid]; };
+  WT.geneAt = function (pid) { const w = G.world, p = w.parcels[pid], yr = S().year || 1; if (w._geneYr !== yr) { w._gene = {}; w._geneYr = yr; } if (w._gene[pid] === undefined) w._gene[pid] = WT.geneField(w, p.cx, p.cy, yr - 1); return w._gene[pid]; };
 
   function contiguousAcres(pid) {
     const d = S().parcels[pid];
