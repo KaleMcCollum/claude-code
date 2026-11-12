@@ -345,7 +345,7 @@
        <p><b>Edges are best.</b> Deer travel between cover and food. A stand where green meets gold, or in a tree row or creek that connects them, sees the most deer.</p>
        <p><b>Mornings:</b> sit near cover and catch deer going back to bed. <b>Evenings:</b> sit near food as they come out to feed. <b>The rut</b> (early to mid November): travel routes between cover are best all day.</p>
        <p><b>Wind:</b> deer smell you downwind. Each spot has winds that work; steady spots work on many winds, fickle ones on just one.</p>
-       <p><b>Timber or open?</b> In timber deer show at 20 to 200 yards, an easy shot for a starter rifle. Open country shows more ground but deer are 150 to 500 yards out, which takes a real rifle and scope.</p>
+       <p><b>Timber or open?</b> In timber deer show at 10 to 120 yards, an easy shot for a starter rifle. Open country shows more ground but deer are 150 to 500 yards out, which takes a real rifle and scope.</p>
        <p><b>Rating:</b> sit a spot once and you learn its rating out of 100. That number never changes, and great spots are rare. The stars are today's sit: 5 means the stand is at its best, fewer means wind, time of day or pressure is holding it back. A sit can never beat the stand's rating.</p>
        <p><b>Pressure:</b> hunting the same stand every day fills its pressure meter. Rest it a few days.</p>
        <p class="dim">Stands and cameras show as tiny pictures on their tiles (a ladder, a box on legs, a little movie camera); a flag is a spot you marked on public land.</p>`,

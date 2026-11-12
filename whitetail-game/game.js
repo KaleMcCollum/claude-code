@@ -1313,7 +1313,7 @@
     return (m.ratingBase + m.ratingGain * Math.pow(r, m.ratingPow)) * (m.starBase + m.starGain * f) / m.norm;
   };
   WT.matureMult = function (s) { const m = C().sightMult; return (m.matureBase + m.matureGain * Math.pow(clamp(s.r.mature), m.maturePow)) * m.matureLift; };
-  // How far out deer show from a stand: timber is 20 to 200 yards, open country 150 to 500.
+  // How far out deer show from a stand: timber is 10 to 120 yards, open country 150 to 500.
   // The stand's setting in words: where it is and what it touches.
   WT.settingOf = function (x, y) {
     const set = WT.spotSetting(G.world, x, y), cfg = C().land.settings[set.id], t = set.touching, extra = [];
@@ -1326,7 +1326,7 @@
   WT.standView = function (s, typeId) {
     const sType = WT.standType(typeId || s.type);
     const vis = clamp(s.r.visibility * 0.85 + sType.visibility / 100 * 0.15);
-    return { vis, near: Math.round((20 + Math.pow(vis, 1.5) * 130) / 5) * 5, far: Math.round((110 + vis * 390) / 10) * 10 };
+    const open = clamp((vis - 0.22) / 0.72); return { vis, near: Math.round((10 + Math.pow(open, 1.3) * 150) / 5) * 5, far: Math.round((110 + open * 400) / 10) * 10 }; // thick timber: about 10 to 120 yards. Wide open: 150 to 500
   };
 
   // Public land: other hunters
@@ -1560,7 +1560,7 @@
     const closeF = clamp(0.2 + rating * 0.35 + (goodWind ? 0.15 : -0.1) + conceal * 0.12 + quiet * 0.08 + scentCtl * 0.1);
 
     const H = {
-      setup, plan, rifle, scope, eq, used, prop, parcel, stand, sType, rating, goodWind, rut, maxView, minView, today, closeF,
+      setup, plan, rifle, scope, eq, used, prop, parcel, stand, sType, rating, goodWind, rut, maxView, minView, today, closeF, signHere,
       start, end, sitEnd, now: start, sched, log, visible: [], seenIds: new Set(), unknown: 0, calls: 0,
       scentCtl, conceal, quiet, walkNoise, pPerSit, ctx, hasLight, over: false, endReason: null,
       visitorOf, rounds: rifle.mag, harvested: [], wounded: [], shots: 0, misses: 0, xp: 0, groupSeq: 1, selected: null, ranged: {},
@@ -1599,7 +1599,7 @@
     const x = g.x0 + (g.x1 - g.x0) * p;
     const edge = p < 0.5 ? g.d0 : g.d1;
     const dist = g.dmin + (edge - g.dmin) * Math.pow(2 * p - 1, 2);
-    return { x, dist: Math.max(15, Math.round(dist)) };
+    return { x, dist: Math.max(8, Math.round(dist)) };
   }
   WT.groupPos = pathPos;
 
@@ -1610,12 +1610,14 @@
     const rng = G.rng;
     const fromCall = !!sg.fromCall;
     const mature = sg.members.some((m) => m.sex === 'b' && m.age >= 3.5);
-    const close = clamp(H.closeF + (fromCall ? 0.25 : 0) - (mature ? 0.12 : 0) + rng.range(-0.25, 0.25));
+    // a buck whose scrape, rub or bed your stand touches is coming to that exact spot: he passes close
+    const sgn = H.signHere && sg.members.map((m) => H.signHere.get(m.id)).find(Boolean);
+    const close = clamp(H.closeF + (fromCall ? 0.25 : 0) - (mature ? 0.12 : 0) + (sgn ? (sgn.scrape ? 0.4 : 0.22) : 0) + rng.range(-0.25, 0.25));
     // deer show somewhere between the stand's near and far range and work in toward the near end
     const span = H.maxView - H.minView;
     const d0 = Math.round(H.minView + span * rng.range(0.55, 1));
     const d1 = Math.round(H.minView + span * rng.range(0.45, 1));
-    const dmin = Math.max(20, Math.round(H.minView + (Math.min(d0, d1) - H.minView) * (1 - close) * rng.range(0.25, 1)));
+    const dmin = Math.max(8, Math.round(H.minView + (Math.min(d0, d1) - H.minView) * (1 - close) * rng.range(0.1, 1)));
     const left = rng.chance(0.5);
     const feeding = !mature && rng.chance(H.cover === T().PLOT || COVER_FOOD(H) ? 0.55 : 0.3);
     const quick = rng.chance(mature ? 0.4 : 0.2);
