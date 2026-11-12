@@ -132,19 +132,18 @@
          Average and spread of gross score at each age on ground of quality 1.00 (ages past 8.5 use the 8.5 row).
          keep / year: how much of a buck's place in the curve is his own for life and how much is this year's luck
            (keep^2 + year^2 = 1). clampZ: nobody is more than this many spreads from average.
-         land: the quality multiplier, from food and soil only. Food sets the tier: at or below foodPoor it is `poor`
-           (big woods, swamp), at foodAverage `average` (mixed timber, pasture, grass), at foodFarm and above `farm`
-           (corn and beans with cover, the usual ground here). Soil then moves it: `soil` per notch on the soil map,
-           so rich-soil farmland reaches `prime` and thin soil falls short. Never below poor or above prime. */
+         land: the quality multiplier, read off the genetics map and nothing else (see geneMap). The model file's four
+           grades map onto the map's four kinds of ground: a full cold pocket is `cold` (the file's poor, 0.90),
+           ordinary ground, which is most of the map, is `neutral` (average, 1.00), a full hot pocket is `hot` (prime,
+           1.25), and warm ground halfway up lands on the file's good farmland (1.12). The ground between slides evenly.
+           Crops, soil and food plots do not enter into it. Raising `neutral` puts more big deer everywhere. */
       antlers: { ages: [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5], mean: [36.1, 80.7, 102.9, 118.7, 129.9, 133.2, 131.5, 127.1], stdDev: [13.7, 16.7, 17.9, 20.4, 16.6, 17.6, 15.9, 17.4],
         keep: 0.85, year: 0.53, clampZ: 3.5, /* the model file says 3, but its own rarity test (1 in 1,000 six-year-olds over 210 on 1.12 ground) needs 3.09, which a clamp of 3 makes impossible */
-        land: { poor: 0.90, average: 1.00, farm: 1.12, prime: 1.25, foodPoor: 0.33, foodAverage: 0.45, foodFarm: 0.57, soil: 0.08 } },
+        land: { cold: 0.90, neutral: 1.00, hot: 1.25 } },
       genetics: { mean: 140, sd: 15, inherit: 0.25 }, // how potential is stored (mean + sd x his place in the curve) and how much a fawn takes after its mother
       /* Genetics drift slowly across the map. Most ground is neutral; a region can run a few inches up or down, and now and
          then there is a small hot pocket (or a cold one). g runs about -1..+1 (a hot pocket can reach 1.6).
-         inches: what g = 1 adds to the average buck's potential. tail: on warm ground the spread widens and freaks are
-         likelier, so the top end stretches more than the average moves. managed: land you keep planted breeds a little
-         better every year, up to maxYears. */
+         This map is the antler model's land quality: it slides every age's bell curve up or down (antlers.land). */
       geneMap: { drift: 2, /* tiles a year the whole pattern slides: about one property-width a decade */ scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0, managedMaxYears: 8 },
       ageCurve: { 0.5: 0, 1.5: [0.30, 0.40], 2.5: [0.55, 0.65], 3.5: [0.75, 0.82], 4.5: [0.88, 0.94], 5.5: [0.97, 1.0], 6.5: [0.97, 1.0], 7.5: [0.96, 1.0], 8.5: [0.91, 0.95], 9.5: [0.83, 0.87], 10.5: [0.78, 0.84] },
       maxAge: 10.5,

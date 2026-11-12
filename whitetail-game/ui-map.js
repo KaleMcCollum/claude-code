@@ -489,8 +489,8 @@
     function landMeters(pid) {
       const ls = WT.landStats(pid), sa = WT.sanctuaryInfo(pid);
       const dead = sa.notCover + sa.nearStand;
-      const lq = WT.makeProp(pid).landQuality, lqPct = Math.round((lq - 1) * 100);
-      return `<dl class="kv" style="margin:4px 0"><dt>Antler ground</dt><dd><b>${WT.landQualityName(lq)}</b> <span class="faint">racks run ${lqPct === 0 ? 'about average' : Math.abs(lqPct) + '% ' + (lqPct > 0 ? 'above' : 'below') + ' average'} here</span></dd><dt>Food</dt><dd>${bar(ls.food)}</dd><dt>Water</dt><dd>${bar(ls.water)}</dd><dt>Bedding cover</dt><dd>${bar(ls.bedding)}</dd><dt>Security</dt><dd>${bar(ls.security)}</dd>
+      const gg = WT.geneAt(pid), lqPct = Math.round((WT.landQualityOf(gg) / WT.CONFIG.deer.antlers.land.neutral - 1) * 100);
+      return `<dl class="kv" style="margin:4px 0"><dt>Genetics</dt><dd><b>${WT.geneName(gg)}</b> <span class="faint">${Math.abs(gg) <= 0.2 ? 'racks run about the same as on most of the map' : 'racks run ' + Math.abs(lqPct) + '% ' + (lqPct > 0 ? 'bigger' : 'smaller') + ' than on ordinary ground'}</span></dd><dt>Food</dt><dd>${bar(ls.food)}</dd><dt>Water</dt><dd>${bar(ls.water)}</dd><dt>Bedding cover</dt><dd>${bar(ls.bedding)}</dd><dt>Security</dt><dd>${bar(ls.security)}</dd>
         <dt>Sanctuary</dt><dd>${sa.marked ? `${(sa.working.size / 4).toFixed(1)} ac working${sa.full ? ' <span class="good">(at the ' + Math.round(sa.maxShare * 100) + '% cap)</span>' : ` <span class="faint">counts up to ${Math.round(sa.maxShare * 100)}% of the land</span>`}${dead ? ` · <span class="bad">${dead} tile${dead === 1 ? '' : 's'} not counting</span>` : ''}` : '<span class="faint">none</span>'}</dd></dl>`;
     }
     function showAdvice(pid) {
