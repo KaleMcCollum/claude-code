@@ -902,14 +902,17 @@
     /* Antler score, as the model file gives it (deer-antler-score-model.md):
          score = (mean[age] + z * stdDev[age]) * landQuality,   z = keep * potentialZ + year * yearZ, clamped to +-3.
        Age sets the bell curve, the buck's own potential sets his place in it for life, a fresh roll each year moves him
-       a little, and the genetics of the area he lives in scale the whole curve. Hunting never enters into it:
+       a little, and the genetics of the area he lives in scale the whole curve. On top of the file's formula, the rare
+       buck far above average for his age gets extra, most of all on hot ground (antlers.giant). Hunting never enters into it:
        pressure only decides which bucks live long enough to be measured here. Worked out once a season and stored. */
     const A = cfg.antlers, G0 = cfg.genetics;
     let ai = 0; for (let k = 0; k < A.ages.length; k++) if (Math.min(d.age, A.ages[A.ages.length - 1]) >= A.ages[k]) ai = k;
     const potentialZ = clamp((d.gp - G0.mean) / G0.sd, -3, 3), yearZ = rng.normal(0, 1);
     const z = clamp(A.keep * potentialZ + A.year * yearZ, -A.clampZ, A.clampZ);
     d.yz = Math.round(yearZ * 100) / 100;
-    const target = Math.max(d.age < 2 ? 10 : 25, (A.mean[ai] + z * A.stdDev[ai]) * (prop.landQuality ?? A.land.neutral)); // the floor only keeps the rack builder sane: a tiny yearling is a spike
+    const Gi = A.giant, heat = prop.geneG || 0, gs = heat >= 0 ? Gi.base + (Gi.hot - Gi.base) * Math.min(1, heat) : Gi.base * Math.max(0, 1 + heat);
+    const giant = Math.min(Gi.max, gs * Math.max(0, potentialZ - Gi.from)); // the rare buck far above average for his age gets more on warm ground
+    const target = Math.max(d.age < 2 ? 10 : 25, (A.mean[ai] + Math.min(Gi.top, z + giant) * A.stdDev[ai]) * (prop.landQuality ?? A.land.neutral)); // the floor only keeps the rack builder sane: a tiny yearling is a spike
     // The rack is built as B&C components + 3D geometry; the score is measured from it (antlers.js).
     if (!d.style) d.style = WT.rollRackStyle(rng);
     const { comp, sheet } = WT.growRack(d.style, d.age, target, rng);
