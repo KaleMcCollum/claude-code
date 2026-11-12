@@ -175,8 +175,8 @@
     rifles: [
       // bows: quiet and short. Good to about 3 x range yards; needed for bow-only public land.
       { id: 'bear_cruzer',  level: 15,  name: 'Bear Cruzer G3 compound',     cal: 'compound bow',    bow: true, maxYd: 50, acc: 56, range: 12, power: 30, recoil: 0, mag: 4, price: 900 },
-      { id: 'ravin_r10',    level: 22,  name: 'Ravin R10 crossbow',          cal: 'crossbow',        bow: true, maxYd: 60, acc: 66, range: 20, power: 42, recoil: 0, mag: 3, price: 1800 },
-      { id: 'mathews_v3x',  level: 30,  name: 'Mathews V3X compound',        cal: 'compound bow',    bow: true, maxYd: 70, acc: 72, range: 17, power: 38, recoil: 0, mag: 5, price: 2400 },
+      { id: 'mathews_v3x',  level: 22,  name: 'Mathews V3X compound',        cal: 'compound bow',    bow: true, maxYd: 70, acc: 72, range: 17, power: 38, recoil: 0, mag: 5, price: 1800 },
+      { id: 'ravin_r10',    level: 30,  name: 'Ravin R10 crossbow',          cal: 'crossbow',        bow: true, maxYd: 100, acc: 76, range: 33, power: 42, recoil: 0, mag: 3, price: 2800 },
       { id: 'ruger_ranch',  level: 1,   name: 'Ruger American Ranch',        cal: '.223 Rem',        acc: 60, range: 35, power: 30, recoil: 10, mag: 5, price: 0 },
       { id: 'mossberg_pat', level: 3,   name: 'Mossberg Patriot',            cal: '.243 Win',        acc: 63, range: 50, power: 45, recoil: 22, mag: 5, price: 380 },
       { id: 'savage_axis',  level: 5,   name: 'Savage Axis II',              cal: '.243 Win',        acc: 68, range: 55, power: 50, recoil: 25, mag: 4, price: 420 },
