@@ -47,6 +47,19 @@
     const a = hash2(xi, yi, s), b = hash2(xi + 1, yi, s), c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   }
+  // Genetics across the map: -1 (cold pocket) .. 0 (neutral, most of the map) .. +1 and a bit more (hot pocket).
+  WT.geneField = function (world, x, y) {
+    const gm = C().deer.geneMap, s = world.seed + 771, W = world.W, Hh = world.H;
+    const ang = hash2(1, 2, s) * Math.PI * 2;
+    const raw = (px, py) => fbm(px / (W * gm.scale), py / (W * gm.scale), s, 2);
+    if (world._geneMean === undefined) { let t = 0, n = 0; for (let yy = 0; yy < Hh; yy += 8) for (let xx = 0; xx < W; xx += 8) { t += raw(xx, yy); n++; } world._geneMean = t / n; } // so no map is all warm or all cold
+    let c = (raw(x, y) - world._geneMean) * gm.amp + ((x / W - 0.5) * Math.cos(ang) + (y / Hh - 0.5) * Math.sin(ang)) * 2 * gm.tilt;
+    let g = Math.sign(c) * Math.pow(Math.min(1, Math.abs(c)), gm.shape);
+    const bump = (k, amp) => { const cx = (0.12 + 0.76 * hash2(k, 5, s)) * W, cy = (0.12 + 0.76 * hash2(k, 6, s)) * Hh, r = gm.pocket * W; return amp * Math.exp(-((x - cx) * (x - cx) + (y - cy) * (y - cy)) / (2 * r * r)); };
+    if (hash2(3, 4, s) < gm.hotChance) g += bump(11, gm.hot);
+    if (hash2(4, 3, s) < gm.coldChance) g -= bump(12, gm.cold);
+    return clamp(g, -1.5, 1.6);
+  };
   function fbm(x, y, s, oct) {
     let sum = 0, amp = 1, f = 1, norm = 0;
     for (let i = 0; i < oct; i++) {
@@ -720,9 +733,10 @@
 
   function rollPotential(rng, prop, momGp) {
     const g = D().genetics;
-    let gp = rng.normal(g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift, g.sd);
+    const warm = Math.max(0, prop.geneG || 0), gm = C().deer.geneMap;
+    let gp = rng.normal(g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift + (prop.geneBonus || 0), g.sd * (1 + gm.tail * warm));
     if (momGp) gp += clamp((momGp - g.mean) / g.sd, -1.5, 1.5) * g.heredity;
-    if (rng.chance(g.giantChance)) gp += rng.range(g.giantBonus[0], g.giantBonus[1]);
+    if (rng.chance(g.giantChance * (1 + gm.giant * warm))) gp += rng.range(g.giantBonus[0], g.giantBonus[1]);
     return clamp(gp, g.min, g.max);
   }
 

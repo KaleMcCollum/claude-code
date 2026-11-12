@@ -326,6 +326,12 @@
     p.habitat = h;
     const prop = WT.propFromHabitat({ id: pid, acres: p.acres, type: d.owner === 'public' ? 'public' : 'private', neighborPressure: d.neighborPressure }, h);
     prop.effectiveAcres = contiguousAcres(pid);
+    { // genetics come from where the land sits on the map, not from the parcel itself
+      const gm = C().deer.geneMap, gs = C().deer.genetics;
+      prop.geneG = WT.geneAt(pid);
+      prop.regionalGenetics = 0.5 + prop.geneG * gm.inches / (2 * gs.regionalShift);
+      prop.geneBonus = d.owner === 'player' ? Math.min(gm.managedMaxYears, d.managed || 0) * gm.managedPerYear : 0;
+    }
     prop.herd = d.herd || [];
     prop.huntingPressure = d.pressure ?? 0.05;
     prop.sanct = WT.sanctuaryInfo(pid).counted;
@@ -349,6 +355,7 @@
     return prop;
   }
   WT.makeProp = makeProp;
+  WT.geneAt = function (pid) { const w = G.world, p = w.parcels[pid]; w._gene = w._gene || {}; if (w._gene[pid] === undefined) w._gene[pid] = WT.geneField(w, p.cx, p.cy); return w._gene[pid]; };
 
   function contiguousAcres(pid) {
     const d = S().parcels[pid];
@@ -2154,6 +2161,8 @@
   WT.endSeason = function () {
     const st = S(), cfg = C(), rng = G.rng, w = G.world;
     const summary = { year: st.year, harvest: st.seasonLog.harvest.slice(), hunts: st.seasonLog.hunts, tax: 0, events: [], money: Object.assign({}, st.seasonLog.money || {}) };
+    // land kept planted breeds a little better each year; let it go and that slips back
+    for (const p of G.world.parcels) { const e = st.parcels[p.id]; if (e.owner !== 'player') { if (e.managed) e.managed = 0; continue; } const fed = makeProp(p.id).plotNutrition >= C().landWork.plotNutritionMax * 0.5; e.managed = Math.max(0, Math.min(C().deer.geneMap.managedMaxYears, (e.managed || 0) + (fed ? 1 : -1))); }
     // taxes
     let tax = 0;
     for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') tax += WT.landPrice(p.id) * cfg.economy.propertyTaxRate;
