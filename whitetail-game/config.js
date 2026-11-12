@@ -149,11 +149,12 @@
            never more than `max` spreads. It follows his lifelong potential, not the year's luck, so a giant is a giant
            every year. `top`: nobody ends up more than this many spreads above his age's average. */
         giant: { from: 1.25, base: 0.4, hot: 1.5, max: 1.5, top: 3.5 },
-        /* The back half of the curve is flattened. Past `from` inches a buck keeps only part of what he has over it:
-           `squeeze` of each inch right at the line, rising steadily until he is `over` inches past it, where he is back
-           to full value. Beyond that every inch counts for 1 + `stretch`. So fewer bucks make it into the 150s, 160s and
-           170s, and the ones at the very top are spread out thin and long. `cap`: the biggest a rack can score. */
-        flat: { from: 145, squeeze: 0.3, over: 35, stretch: 0.05, cap: 225 } },
+        /* The back half of the curve is flattened. Between `from` inches and `over` inches past it a buck gives some back:
+           nothing at either end, most in the middle (`take` inches at the halfway point), easing in and out so no score
+           gets a pile of bucks sitting on it. Fewer bucks make the 140s, 150s and 160s; from about 180 up nothing is
+           taken, so the top is left alone. Past the far end every inch counts for 1 + `stretch`. `cap`: the biggest a
+           rack can score. (take must stay under about over / 3 or scores would stop rising with quality.) */
+        flat: { from: 125, over: 60, take: 8, stretch: 0.05, cap: 225 } },
       genetics: { mean: 140, sd: 15, inherit: 0.25 }, // how potential is stored (mean + sd x his place in the curve) and how much a fawn takes after its mother
       /* Genetics drift slowly across the map. Most ground is neutral; a region can run a few inches up or down, and now and
          then there is a small hot pocket (or a cold one). g runs about -1..+1 (a hot pocket can reach 1.6).
