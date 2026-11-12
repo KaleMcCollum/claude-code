@@ -273,7 +273,7 @@
          You can go hikeBase tiles from the road, plus hikePer for each Backcountry point; each point also takes hikeFaster
          off the walk. walkMin minutes a tile come off your sit, up to walkMax. A deep spot sees deepCompany fewer trucks,
          and mature bucks show from deepMature[0] (roadside) to deepMature[1] (far back) of the usual odds. */
-      access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, hikeBase: 6, hikePer: 3, hikeFaster: 0.02, walkMin: 1.5, walkMax: 90, deepCompany: 0.85, deepMature: [0.7, 1.35], oldBuckHome: 0.35 },
+      access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, hikeBase: 6, hikePer: 3, hikeFaster: 0.02, walkMin: 1.5, walkMax: 90, deepCompany: 0.85, deepMature: [0.85, 1.1], oldBuckHome: 0.6 },
     },
     /* Four kinds of ground.
        prairie: open grass, hay and stubble. The common middle ground: build anything, plant plots and tree rows.

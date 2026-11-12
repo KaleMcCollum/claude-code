@@ -26,6 +26,7 @@ for (let h = 0; h < 30 && WT.game.state.day < 92; h++) {
     if (H.over) break;
     if (H.visible.length) {
       WT.raiseOptic('bino');
+      if (!H.visible.length) continue; // raising glass on a close deer can send it running
       const m = H.visible[0].members[0];
       if (WT.shotCheck(H, m.deer.id).ok && Math.random() < 0.3) { WT.shoot(m.deer.id); shots++; }
     }

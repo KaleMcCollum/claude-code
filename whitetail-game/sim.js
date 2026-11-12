@@ -581,10 +581,12 @@
           if (side === 'top' || side === 'bottom') { const cx = b.x0 + bw * t; wedge = { x0: cx - wd, x1: cx + wd, y0: side === 'top' ? b.y0 - 6 : b.y1 - bh * dp, y1: side === 'top' ? b.y0 + bh * dp : b.y1 + 6 }; }
           else if (side) { const cy = b.y0 + bh * t; wedge = { y0: cy - wd, y1: cy + wd, x0: side === 'left' ? b.x0 - 6 : b.x1 - bw * dp, x1: side === 'left' ? b.x0 + bw * dp : b.x1 + 6 }; }
         }
-        let unit = 0;
+        let unit = 0, whole = null; // version 5: the area is one piece of ground, not a patchwork of units
         for (const p of parcels) {
-          if (p.owner || p.cx < b.x0 || p.cx > b.x1 || p.cy < b.y0 || p.cy > b.y1) continue;
+          if (p.owner || p.merged !== undefined || p.cx < b.x0 || p.cx > b.x1 || p.cy < b.y0 || p.cy > b.y1) continue;
           if (wedge && p.cx >= wedge.x0 && p.cx <= wedge.x1 && p.cy >= wedge.y0 && p.cy <= wedge.y1) { p.inholding = true; continue; }
+          if (world.ver >= 5 && whole) { for (let i = 0; i < N; i++) if (parcelOf[i] === p.id) parcelOf[i] = whole.id; p.merged = whole.id; whole.tiles += p.tiles; publicTiles += p.tiles; continue; }
+          if (world.ver >= 5) { whole = p; p.owner = 'public'; p.complex = bi; p.complexName = cname; p.name = cname; publicTiles += p.tiles; pubIdx++; continue; }
           p.owner = 'public'; p.complex = bi; p.complexName = cname; p.name = `${cname}, Unit ${++unit}`;
           publicTiles += p.tiles; pubIdx++;
         }
@@ -966,7 +968,8 @@
     } else if (prop.type === 'public' && d.age >= 1.5) {
       const pb = prop.publicBuck || m.publicBuck;
       // what hunters take here (set by how easy the ground is to reach), plus old age: past his prime a buck dies more each year whoever hunts him
-      if (d.sex === 'b') base = (pb[0] + pb[1]) / 2 + Math.max(0, base - ageTable(m.buck, 4.5));
+      // on a big area the hunters thin out with distance from the road, so it matters where this buck lives
+      if (d.sex === 'b') base = (prop.publicBuckFor ? prop.publicBuckFor(d) : (pb[0] + pb[1]) / 2) + Math.max(0, base - ageTable(m.buck, 4.5));
       else base *= prop.publicDoe ?? (prop.bowOnly ? 1.25 : 1.6);
     }
     // the map-wide balance (too many or too few deer) works on does and fawns: that is who overpopulates.

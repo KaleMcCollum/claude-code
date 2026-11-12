@@ -614,7 +614,7 @@
           } }
         html += `<p class="dim">${mixLine(pid)}</p><p>${p.acres} acres of public ground. ${['quiet', 'remote', 'landlocked'].includes(WT.crowd(pid).id) ? 'Free to hunt, if you can get to it.' : 'Free to hunt, but everybody else knows about it too.'}${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
           <dl class="kv"><dt>How busy</dt><dd><b>${WT.crowd(pid).name}</b> <span class="faint">${WT.crowd(pid).note}</span></dd><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
-          <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
+          <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.spotLimit(pid)} here</dd></dl>
           ${state.tile ? scoutRow(pid, state.tile) : ''}
           ${state.cid ? camBlock(d.cams.find((c) => c.cid === state.cid)) : ''}
           ${state.tile && !standObj ? `<div class="row" style="margin-top:6px"><button class="btn" id="markHere" ${d.bowOnly && !WT.hasBow() ? 'disabled' : ''}>Mark ${state.cid ? 'this camera spot' : 'the spot you tapped'} to hunt</button></div>` : !state.tile ? '<p><b>Tap the map inside this area</b> to mark a spot to sit or hang a camera.</p>' : ''}

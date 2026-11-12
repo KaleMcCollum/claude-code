@@ -76,7 +76,7 @@
   /* ================================================================ new game */
   WT.newGame = function (seed) {
     seed = seed || ((Math.random() * 1e9) | 0);
-    const world = WT.genWorld(seed, 4); // version 4 worlds: big roadless public areas, a road to every private parcel
+    const world = WT.genWorld(seed, 5); // version 4 worlds: big roadless public areas, a road to every private parcel
     captureNatural(world);
     G.world = world;
     const rng = WT.makeRng(seed ^ 0x5eed);
@@ -94,7 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
-      genV: 4,
+      genV: 5,
       journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', bowThird: true, pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },
@@ -242,7 +242,7 @@
     return (w._ptiles[pid] = list.length ? list : [p.labelY * w.W + p.labelX]);
   }
   WT.deerHome = function (pid, deer) {
-    const w = G.world, list = parcelTiles(pid), home = deer.mom && S().parcels[pid].herd.some((m) => m.id === deer.mom) ? deer.mom : deer.id; // a fawn lives where its mother does
+    const w = G.world, list = parcelTiles(pid), home = deer.mom && (S().parcels[pid].herd || []).some((m) => m.id === deer.mom) ? deer.mom : deer.id; // a fawn lives where its mother does
     let pool = list;
     if (S().parcels[pid].owner === 'public' && deer.sex === 'b' && deer.age >= 3.5) pool = WT.access(pid).deep; // old bucks on public live where people don't walk
     const i = pool[Math.floor(WT.hash2(home, pid, 91) * pool.length) % pool.length];
@@ -250,10 +250,14 @@
   };
   WT.homeFactor = function (pid, deer, x, y, rut) {
     const cfg = C().home, antlered = deer.sex === 'b' && deer.age >= 1.5;
-    if (antlered && rut) return 1;
-    const h = WT.deerHome(pid, deer), size = Math.sqrt(G.world.parcels[pid].acres * 4);
-    const reach = size * (antlered ? cfg.buckReach : cfg.doeReach);
-    return cfg.far + (cfg.near - cfg.far) * Math.exp(-Math.pow(Math.hypot(h.x - x, h.y - y) / reach, 2));
+    // A deer's range is a deer's range, however big the area around it. On a huge public area the deer on the far
+    // side might as well be on another property, so the odds of one that lives a long way off fall away with its size.
+    const acres = G.world.parcels[pid].acres, big = Math.min(1, 250 / acres);
+    if (antlered && rut && big === 1) return 1;
+    const h = WT.deerHome(pid, deer), size = Math.sqrt(Math.min(acres, 250) * 4);
+    const reach = size * (antlered ? cfg.buckReach : cfg.doeReach) * (antlered && rut ? 2.5 : 1), near = Math.exp(-Math.pow(Math.hypot(h.x - x, h.y - y) / reach, 2));
+    if (antlered && rut) return big + (1 - big) * near; // in the rut a buck covers a lot of ground, but not two miles of it
+    return cfg.far * big + (cfg.near - cfg.far * big) * near;
   };
 
   /* Sanctuary is ground you give up. A marked tile only works if it is cover (timber, tree rows, brush, slough,
@@ -350,7 +354,11 @@
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
     prop.mix = WT.landMix(pid);
-    if (d.owner === 'public') { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.publicDoe = cr.doeMult; prop.pressFloor = cr.floor; }
+    if (d.owner === 'public') { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.publicDoe = cr.doeMult; prop.pressFloor = cr.floor;
+      { // each buck faces the hunters who reach where HE lives: lots by the road, hardly any far back
+        const pc = C().publicCrowd, walk = WT.pubWalk(), W = G.world.W, memo = new Map();
+        prop.publicBuckFor = (deer) => { const key = deer.id + (deer.age >= 3.5 ? 'o' : 'y'); if (!memo.has(key)) { const h = WT.deerHome(pid, deer), wv = walk[h.y * W + h.x], e = isFinite(wv) ? Math.exp(-wv / pc.access.reach) : 0; memo.set(key, pc.natural + Math.min(pc.maxKill, pc.killPerEase * e) * (cr.bow ? pc.bow.kill : 1)); } return memo.get(key); };
+      } }
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
     return prop;
@@ -1056,7 +1064,10 @@
   // The mobile stand on your back (saddle, hang-on, climber or pop-up). Public land can't be hunted without one.
   WT.mobileStand = function () { const st = S(), id = st.loadout.mobile; return id && (st.inv.stands[id] || 0) > 0 ? id : null; };
   WT.setMobile = function (id) { const st = S(); if (id && !(st.inv.stands[id] > 0)) return 'You do not own that one.'; st.loadout.mobile = id || null; return null; };
+  // How much of the herd one stand can meet. On a huge area a stand only ever deals with the deer around it.
+  WT.localShare = (acres) => WT.viewShare(Math.min(acres, 250)) * (0.35 + 0.65 * Math.min(1, 250 / acres));
   WT.SPOT_LIMITS = { perArea: 5, total: 16 };
+  WT.spotLimit = (pid) => Math.max(WT.SPOT_LIMITS.perArea, Math.min(12, Math.round(G.world.parcels[pid].acres / 150))); // a big area has room for more spots
   WT.markSpot = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'public') return 'Spots are marked on public land. On your own land, put up a stand.';
@@ -1066,7 +1077,7 @@
     { const far = tooFar(pid, x, y); if (far) return far; }
     d.spots = d.spots || [];
     const total = WT.publicAreas().reduce((a, p) => a + (st.parcels[p.id].spots || []).length, 0);
-    if (d.spots.length >= WT.SPOT_LIMITS.perArea) return `You can mark ${WT.SPOT_LIMITS.perArea} spots per public area. Remove one first.`;
+    if (d.spots.length >= WT.spotLimit(pid)) return `You can mark ${WT.spotLimit(pid)} spots on this public area. Remove one first.`;
     if (total >= WT.SPOT_LIMITS.total) return `You can mark ${WT.SPOT_LIMITS.total} public spots in total. Remove one first.`;
     if (d.spots.some((s) => Math.abs(s.x - x) + Math.abs(s.y - y) < 3)) return 'Too close to another of your spots.';
     const s = makeStand('ground', x, y, `Spot ${d.spots.length + 1}`);
@@ -1420,7 +1431,9 @@
     const weekend = st.day % 7 >= 5;
     const cr = WT.crowd(pid); if (!(cr.company > 0)) return null;
     const deep = spot ? 1 - C().publicCrowd.access.deepCompany * WT.spotDepth(pid, spot.x, spot.y).q : 1; // few people walk that far
-    const p = (cr.company + (weekend ? 0.15 : 0) + (/Seek|Peak/.test(WT.rutPhase(st.day).name) ? 0.1 : 0)) * deep;
+    // on a big area what matters is how hunted this exact spot is, not the area's average
+    const pc = C().publicCrowd, sd = spot ? WT.spotDepth(pid, spot.x, spot.y) : null, here = sd ? Math.min(pc.companyMax, pc.companyPerEase2 * Math.pow(1 - sd.q, 2)) * (cr.bow ? pc.bow.company : 1) : cr.company;
+    const p = here + (here > 0.01 ? (weekend ? 0.15 : 0) + (/Seek|Peak/.test(WT.rutPhase(st.day).name) ? 0.1 : 0) : 0) * (sd ? 1 - sd.q : 1);
     const h = WT.hash2(pid, st.year * 1000 + st.day * 2 + (st.slot === 'evening' ? 1 : 0), 17);
     return h < p ? 'Another truck is already parked at the access. Someone is hunting near your spot.' : null;
   };
@@ -1488,7 +1501,7 @@
       tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1),
       place: 0.5, matureRating: 0.5, // neutral: the stand's worth comes through the two multipliers below
       spotMult: WT.spotMult(stand, today), matureMult: WT.matureMult(stand) * (depth ? C().publicCrowd.access.deepMature[0] + (C().publicCrowd.access.deepMature[1] - C().publicCrowd.access.deepMature[0]) * depth.q : 1),
-      hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
+      hours: plan.windowHrs, viewShare: WT.localShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
     const herd = d.herd;
     const sched = [];
@@ -1944,7 +1957,7 @@
     const rangeF = item.range / 200;
     let pick = null;
     for (const d of cands) {
-      let p = 0.035 * rutF * skill * rangeF * (d.tOP / 0.6) * (kind === 'rattle' ? 1.3 : 1) * WT.viewShare(H.parcel.acres) ** 0.5;
+      let p = 0.035 * rutF * skill * rangeF * (d.tOP / 0.6) * (kind === 'rattle' ? 1.3 : 1) * WT.localShare(H.parcel.acres) ** 0.5;
       if (kind === 'snort') p *= d.age >= 3.5 ? 1.8 : 0.3;
       if (d.age >= 3.5) p *= 0.6 * Math.exp(-H.ctx.pressure * 1.5);
       p -= overuse * 0.02;
@@ -2097,7 +2110,7 @@
         const at = WT.standForCam(p.id, cam); void spotOf;
         for (const deer of d.herd) {
           if (deer.age < 1 && rng.chance(0.6)) continue;
-          const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.viewShare(p.acres) ** 0.6 * WT.homeFactor(p.id, deer, cam.x, cam.y, rutCam) * WT.signBoost(signCam, deer, 'camera', rutCam);
+          const p0 = 0.075 * ct.detect * traffic * watched * (deer.tOP / 0.6) * WT.localShare(p.acres) ** 0.6 * WT.homeFactor(p.id, deer, cam.x, cam.y, rutCam) * WT.signBoost(signCam, deer, 'camera', rutCam);
           if (!rng.chance(p0)) continue;
           const night = deer.sex === 'b' && deer.age >= 3.5 ? rng.chance(0.85) : rng.chance(0.45);
           const dist = Math.round(4 + (sight.reach - 4) * Math.pow(rng.next(), 1.4));
