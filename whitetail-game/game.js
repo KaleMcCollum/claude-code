@@ -1949,7 +1949,7 @@
       // neighbors and other hunters
       const prop = makeProp(p.id);
       if (st.day <= 0) continue; // before Oct 1 nobody else is hunting
-      if (WT.cropsOff()) prop.harvestAdj = (prop.harvestAdj || 1) * (1 + cfg.land.crops.neighbors * prop.mix.farm); // bare fields push deer in front of the neighbors
+      if (WT.cropsOff()) prop.cropAdj = 1 + cfg.land.crops.neighbors * prop.mix.farm; // bare fields push deer in front of the neighbors
       const died = WT.inSeasonDailyMortality(prop, rng, cfg.calendar.seasonDays);
       d.herd = prop.herd;
       for (const deer of died) neighborKill(p, d, deer);

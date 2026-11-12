@@ -838,7 +838,9 @@
       if (d.sex === 'b') base = (pb[0] + pb[1]) / 2 + (d.age >= 4.5 ? 0.04 : 0);
       else base *= 1.6;
     }
-    let mult = prop.harvestAdj || 1;
+    // the map-wide balance (too many or too few deer) works on does and fawns: that is who overpopulates.
+    // Antlered bucks are left out of it, or a crowd of does would get the bucks shot.
+    let mult = (d.sex === 'b' && d.age >= 1.5 ? 1 : prop.harvestAdj || 1) * (prop.cropAdj || 1);
     mult *= 0.7 + 0.6 * (prop.neighborPressure ?? 0.5);
     // NPC hunters: 'meat' hunters shoot the first buck they see, 'manage' hunters pass young bucks
     if (d.sex === 'b' && prop.npcStyle === 'meat') mult *= d.age <= 2.5 ? 1.25 : 0.95;
@@ -993,7 +995,7 @@
         cur = nbs[Math.min(k, nbs.length - 1)];
       }
       delete d._from;
-      if (!cur || rng.chance(0.08) || (cur.herd.length > cur.capacity * 1.2 && rng.chance(0.6))) { lost++; continue; } // hit by a car, left the map, no room
+      if (!cur || rng.chance(0.08) || (cur.herd.length > cur.capacity * 1.5 && rng.chance(0.25))) { lost++; continue; } // hit by a car, left the map, no room
       d.tOP = 0.4;
       // dispersers left before the growth step, so they grow this year's rack on their new ground
       grow(d, cur, rng, env.yearFactor);
@@ -1012,7 +1014,7 @@
     // stabilizer: nudge NPC harvest when the world drifts outside 0.8-1.15 of capacity for several years
     const ratio = total / Math.max(1, cap);
     world.drift = ratio > 1.1 ? Math.max(1, world.drift + 1) : ratio < 0.85 ? Math.min(-1, world.drift - 1) : 0;
-    if (world.drift >= 2) { world.adj = Math.min(1.5, world.adj * 1.06); world.fawn = Math.max(0.7, world.fawn * 0.95); }
+    if (world.drift >= 2) { world.adj = Math.min(1.6, world.adj * 1.06); world.fawn = Math.max(0.6, world.fawn * 0.95); }
     else if (world.drift <= -2) { world.adj = Math.max(0.6, world.adj / 1.06); world.fawn = Math.min(1.25, world.fawn / 0.95); }
     else { world.adj += (1 - world.adj) * 0.1; world.fawn += (1 - world.fawn) * 0.1; }
     return { world, moved, lost, ratio, logs };
