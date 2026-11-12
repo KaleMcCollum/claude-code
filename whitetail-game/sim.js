@@ -306,7 +306,9 @@
     for (let rx = Math.round(sp * rng.range(0.4, 0.8)); rx < W - 6; rx += sp + rng.int(-6, 6)) vRoads.push(rx);
     for (let ry2 = Math.round(sp * rng.range(0.4, 0.8)); ry2 < H - 6; ry2 += sp + rng.int(-6, 6)) hRoads.push(ry2);
     // --- Version 4: roadless blocks that become the big public areas (chosen where the ground is already wild)
-    const wild = ver >= 4 ? pickWildBlocks(cover, W, H, vRoads, hRoads, seed) : [];
+    const wild = ver >= 4 && ver < 6 ? pickWildBlocks(cover, W, H, vRoads, hRoads, seed) : [];
+    // --- Version 6: lakes, and state land grown as irregular shapes that ignore the road grid
+    const v6 = ver >= 6 ? buildV6({ cover, W, H, seed, moist, elev, vRoads, hRoads }) : null;
     for (const b of wild) for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
       const i = y * W + x, c = cover[i];
       if (isWater(c) || c === T.TIMBER || c === T.SLOUGH || c === T.BRUSH) continue;
@@ -336,6 +338,32 @@
         if (x > 0) { const py = clamp(Math.round(ry3 + Math.sin((x - 1) / 19 + k * 5) * 2), 0, H - 1); for (let yy = Math.min(py, y); yy <= Math.max(py, y); yy++) road[yy * W + x] = 1; }
       }
     });
+    if (v6) { // no road crosses a lake or state land: it stops at the edge. Scraps of road left along a ragged edge are taken up.
+      for (let i = 0; i < N; i++) if (v6.lake[i] || v6.state[i]) road[i] = 0;
+      const seen = new Uint8Array(N);
+      for (let i0 = 0; i0 < N; i0++) {
+        if (!road[i0] || seen[i0]) continue;
+        const comp = [i0]; seen[i0] = 1;
+        for (let h = 0; h < comp.length; h++) { const i = comp[h], x = i % W, y = (i / W) | 0;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const k = yy * W + xx; if (road[k] && !seen[k]) { seen[k] = 1; comp.push(k); } } }
+        if (comp.length < 16) for (const i of comp) road[i] = 0;
+      }
+      // every state area has a road to its edge: where none reaches it, an access road is run in from the nearest one
+      for (let id = 1; id <= v6.areas.length; id++) {
+        let has = false;
+        for (let i = 0; i < N && !has; i++) { if (v6.state[i] !== id) continue; const x = i % W; for (const k of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) if (k >= 0 && k < N && road[k]) { has = true; break; } }
+        if (has) continue;
+        const from = new Int32Array(N).fill(-2), q = []; let end = -1;
+        for (let i = 0; i < N; i++) if (v6.state[i] === id) { from[i] = -1; q.push(i); }
+        for (let h = 0; h < q.length && end < 0; h++) { const i = q[h], x = i % W, y = (i / W) | 0;
+          for (const k of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) {
+            if (k < 0 || from[k] !== -2) continue;
+            if (road[k]) { from[k] = i; end = k; break; }
+            if (v6.lake[k] || v6.state[k] || isWater(cover[k])) continue;
+            from[k] = i; q.push(k); } }
+        for (let i = end; i >= 0 && v6.state[i] !== id; i = from[i]) road[i] = 1;
+      }
+    }
     for (let i = 0; i < N; i++) if (road[i]) cover[i] = T.ROAD; // bridges included
 
     // --- Town at a central intersection
@@ -361,7 +389,7 @@
       for (let yy = y - 1; yy <= y + 3 && ok; yy++) for (let xx = x - 1; xx <= x + 3; xx++) {
         if (xx < 0 || yy < 0 || xx >= W || yy >= H) { ok = false; break; }
         const c = cover[yy * W + xx];
-        if (isWater(c) || c === T.ROAD || c === T.TOWN || c === T.YARD) { ok = false; break; }
+        if (isWater(c) || c === T.ROAD || c === T.TOWN || c === T.YARD || (v6 && v6.state[yy * W + xx])) { ok = false; break; }
       }
       if (!ok) continue;
       for (let yy = y; yy <= y + 2; yy++) for (let xx = x; xx <= x + 2; xx++) cover[yy * W + xx] = T.YARD;
@@ -371,6 +399,7 @@
     }
 
     const world = { seed, W, H, cover, elev, soil, gen, moist, towns, farmsteads, riverPath, ver, big, wild };
+    if (v6) { world.lake = v6.lake; world.state = v6.state; world.stateAreas = v6.areas; }
     if (ver >= 2) world.fieldId = squareFields(cover, W, H, seed, big);
     computeDerivedLayers(world);
     genParcels(world, rng);
@@ -402,6 +431,122 @@
     return world;
   }
   WT.genWorld = genWorld;
+
+  /* Version 6 water and state land. Changes `cover` in place and returns two masks: `lake` (1 on the big lake, which
+     belongs to nobody) and `state` (0, or the number of the state area the tile is in). */
+  function buildV6(o) {
+    const { cover, W, H, seed, moist, elev, vRoads, hRoads } = o, N = W * H, cfg = C().world.v6, wc = C().world.wild, s = seed * 31;
+    const rng = makeRng(seed * 53 + 29);
+    const tx = vRoads[Math.floor(vRoads.length / 2)] ?? W / 2, ty = hRoads[Math.floor(hRoads.length / 2)] ?? H / 2; // where the town will be
+    const lake = new Uint8Array(N), state = new Uint8Array(N);
+    const nearTown = (x, y, r) => Math.abs(x - tx) < r && Math.abs(y - ty) < r;
+    // --- one big lake, on some maps
+    if (rng.chance(cfg.bigLake)) {
+      const tiles = rng.range(cfg.bigLakeAcres[0], cfg.bigLakeAcres[1]) / C().world.acresPerTile, ratio = rng.range(0.55, 1.7);
+      const rx = Math.sqrt(tiles / Math.PI * ratio), ry = tiles / Math.PI / rx, ang = rng.range(0, Math.PI), reach = Math.max(rx, ry);
+      let cx = W / 2, cy = H / 2, ok = false;
+      for (let t = 0; t < 80 && !ok; t++) { cx = rng.range(reach + 8, W - reach - 8); cy = rng.range(reach + 8, H - reach - 8); ok = !nearTown(cx, cy, reach + 22); }
+      if (ok) {
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        for (let y = Math.max(0, Math.floor(cy - reach - 8)); y <= Math.min(H - 1, Math.ceil(cy + reach + 8)); y++) for (let x = Math.max(0, Math.floor(cx - reach - 8)); x <= Math.min(W - 1, Math.ceil(cx + reach + 8)); x++) {
+          const dx = x - cx, dy = y - cy, u = (dx * ca + dy * sa) / rx, v = (-dx * sa + dy * ca) / ry, i = y * W + x;
+          const d = u * u + v * v, edge = 1 + (fbm(x / 8, y / 8, s + 401, 3) - 0.5) * 0.8 + (fbm(x / 21, y / 21, s + 404, 2) - 0.5) * 1.3; // bays and points
+          if (d < edge) { cover[i] = T.WATER; lake[i] = 1; }
+          else if (d < edge + 0.2 + (fbm(x / 5, y / 5, s + 402, 2) - 0.5) * 0.35 && !isWater(cover[i])) { const n = fbm(x / 4, y / 4, s + 403, 2); cover[i] = n > 0.58 ? T.TIMBER : n > 0.45 ? T.SLOUGH : n > 0.38 ? T.BRUSH : T.PRAIRIE; } // the shore: woods, cattails and grass
+        }
+      }
+    }
+    // --- small lakes, some of them sitting in a belt of swamp
+    const spots = [];
+    for (let k = 0, want = rng.int(cfg.smallLakes[0], cfg.smallLakes[1]); k < want; k++) {
+      let best = null, bs = -1e9;
+      for (let t = 0; t < 8; t++) { // the lowest, wettest of a few random spots
+        const x = rng.int(9, W - 10), y = rng.int(9, H - 10), i = y * W + x, sc = moist[i] - elev[i] + rng.range(0, 0.25);
+        if (nearTown(x, y, 15) || lake[i] || spots.some((p) => (p[0] - x) ** 2 + (p[1] - y) ** 2 < 22 * 22)) continue;
+        if (sc > bs) { bs = sc; best = [x, y]; }
+      }
+      if (!best) continue;
+      spots.push(best);
+      const acres = rng.range(cfg.smallLakeAcres[0], cfg.smallLakeAcres[1]), r = Math.sqrt(acres / C().world.acresPerTile / Math.PI);
+      const ring = rng.chance(cfg.swampRing) ? rng.range(2, 5.5) : 0, sq = rng.range(0.72, 1.4), kind = acres >= 8 ? T.WATER : T.POND, reach = Math.ceil(r * 1.6 + ring * 1.7 + 4);
+      for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+        const x = best[0] + dx, y = best[1] + dy; if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+        const i = y * W + x, dd = Math.hypot(dx * sq, dy / sq) + (fbm(x / 4, y / 4, s + 410 + k, 2) - 0.5) * r * 0.9;
+        if (dd < r) { cover[i] = kind; continue; }
+        if (isWater(cover[i])) continue;
+        if (ring && dd < r + ring * (0.55 + fbm(x / 6, y / 6, s + 420 + k, 2))) cover[i] = fbm(x / 3, y / 3, s + 430, 2) > 0.64 ? T.BRUSH : T.SLOUGH; // the swamp around it
+        else if (dd < r + 1.3) cover[i] = T.SLOUGH;                                                                        // or just a cattail edge
+        else if (ring && dd < r + ring * 1.6 + 2 && fbm(x / 5, y / 5, s + 440, 2) > 0.6) cover[i] = T.TIMBER;               // some timber on the high side of the swamp
+      }
+    }
+    // --- state land
+    const dW = distanceField(W, H, (i) => isWater(cover[i]), 30);
+    const WILD = new Set([T.TIMBER, T.BRUSH, T.SLOUGH, T.POND, T.WATER, T.CREEK]);
+    const blocked = new Uint8Array(N); // town, and a margin of private land around each state area
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (nearTown(x, y, 16)) blocked[y * W + x] = 1;
+    const lakePull = rng.chance(cfg.lakePull); // state land gathers round the big lake on some maps and keeps clear of it on others
+    if (!lakePull) { const dL = distanceField(W, H, (i) => lake[i] === 1, 8); for (let i = 0; i < N; i++) if (dL[i] <= 5) blocked[i] = 1; }
+    const step = (i) => { // what it costs the area to take this tile: cheap through woods, swamp and along water
+      if (lake[i]) return 0.35;
+      const x = i % W, y = (i / W) | 0;
+      let v = 0.25 + 1.5 * fbm(x / 26, y / 26, s + 501, 2) + 1.1 * fbm(x / 9, y / 9, s + 502, 2);
+      if (WILD.has(cover[i])) v *= 0.5; else if (dW[i] <= 6) v *= 0.65;
+      return v;
+    };
+    const areas = []; let used = 0;
+    const plan = [['big', 1 + (rng.chance(cfg.secondBig) ? 1 : 0), cfg.bigAcres], ['mid', 2 + (rng.chance(cfg.thirdMid) ? 1 : 0), cfg.midAcres], ['small', rng.int(cfg.smallCount[0], cfg.smallCount[1]), cfg.smallAcres]];
+    for (const [kind, count, acres] of plan) for (let q = 0; q < count; q++) {
+      let target = Math.round(rng.range(acres[0], acres[1]) / C().world.acresPerTile);
+      if (used + target > cfg.stateShare * N) target = Math.round(cfg.stateShare * N - used);
+      if (target < acres[0] / C().world.acresPerTile * 0.7) continue;
+      let seedI = -1, bs = -1e9; // start from the wildest of a handful of random spots
+      for (let t = 0; t < 40; t++) {
+        const x = rng.int(6, W - 7), y = rng.int(6, H - 7), i = y * W + x; if (blocked[i] || state[i]) continue;
+        let wn = 0, nn = 0;
+        for (let yy = y - 14; yy <= y + 14; yy += 4) for (let xx = x - 14; xx <= x + 14; xx += 4) { if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; nn++; const ii = yy * W + xx; if (blocked[ii]) wn -= 2; else if (WILD.has(cover[ii])) wn++; }
+        const sc = wn / nn + rng.range(0, 0.35); if (sc > bs) { bs = sc; seedI = i; }
+      }
+      if (seedI < 0) continue;
+      // grow outward over the cheapest ground until it is big enough
+      const dist = new Float32Array(N).fill(Infinity), inA = new Uint8Array(N), heap = [];
+      const push = (d, i) => { heap.push([d, i]); let k = heap.length - 1; while (k > 0) { const pk = (k - 1) >> 1; if (heap[pk][0] <= heap[k][0]) break; [heap[pk], heap[k]] = [heap[k], heap[pk]]; k = pk; } };
+      const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+      const sx = seedI % W, sy = (seedI / W) | 0, R0 = Math.sqrt(target / Math.PI); let got = 0;
+      const th = rng.range(0, Math.PI), ca = Math.cos(th), sa = Math.sin(th), kq = Math.sqrt(rng.range(cfg.stretch[0], kind === 'small' ? Math.min(1.8, cfg.stretch[1]) : cfg.stretch[1])); // drawn out along its own direction
+      const span = (dx, dy) => Math.hypot((dx * ca + dy * sa) / kq, (-dx * sa + dy * ca) * kq);
+      dist[seedI] = 0; push(0, seedI);
+      while (heap.length && got < target) {
+        const [d, i] = pop(); if (inA[i]) continue; inA[i] = 1; if (!lake[i]) got++;
+        const x = i % W, y = (i / W) | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue; const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+          const k = yy * W + xx; if (inA[k] || blocked[k]) continue;
+          const away = span(xx - sx, yy - sy) / R0, nd = d + step(k) * span(dx, dy) * (1 + 0.15 * away); // a light pull back toward the middle keeps it from running off as a ribbon
+          if (nd < dist[k]) { dist[k] = nd; push(nd, k); }
+        }
+      }
+      // tidy the edge: no one-tile whiskers, no pinholes
+      for (let pass = 0; pass < 2; pass++) { const nx = inA.slice();
+        for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; let c = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && inA[i + dy * W + dx]) c++; if (inA[i] && c <= 2) nx[i] = 0; else if (!inA[i] && c >= 6 && !blocked[i]) nx[i] = 1; }
+        inA.set(nx); }
+      // keep the one piece that holds the seed
+      const keep = new Uint8Array(N), st = [seedI]; if (!inA[seedI]) continue; keep[seedI] = 1;
+      while (st.length) { const i = st.pop(), x = i % W, y = (i / W) | 0; for (const k of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) if (k >= 0 && inA[k] && !keep[k]) { keep[k] = 1; st.push(k); } }
+      const id = areas.length + 1; let tiles = 0;
+      for (let i = 0; i < N; i++) if (keep[i]) { state[i] = id; if (!lake[i]) tiles++; }
+      areas.push({ kind, tiles }); used += tiles;
+      const near = distanceField(W, H, (i) => state[i] === id, 14);
+      for (let i = 0; i < N; i++) if (near[i] <= (kind === 'small' ? 9 : 12)) blocked[i] = 1;
+    }
+    // nobody farms it: grass, brush, woods and wet ground
+    for (let i = 0; i < N; i++) {
+      if (!state[i]) continue; const c = cover[i], x = i % W, y = (i / W) | 0;
+      if (isWater(c) || c === T.TIMBER || c === T.SLOUGH || c === T.BRUSH) continue;
+      const n = fbm(x / 10, y / 10, s + 77, 3), m = fbm(x / 7, y / 7, s + 78, 2);
+      cover[i] = n > wc.timber ? T.TIMBER : n > wc.brush ? T.BRUSH : moist[i] > 0.5 && m > wc.slough ? T.SLOUGH : T.PRAIRIE;
+    }
+    return { lake, state, areas };
+  }
 
   // Which blocks of the road grid go roadless. Grid lines are the roads plus the map edges (an edge has no road on it).
   function pickWildBlocks(cover, W, H, vRoads, hRoads, seed) {
@@ -464,14 +609,17 @@
     const cfg = C().world;
     const { W, H, cover } = world, N = W * H;
     const parcelOf = new Int16Array(N).fill(-1);
-    const passable = (i) => cover[i] !== T.ROAD && cover[i] !== T.TOWN;
+    const v6 = world.ver >= 6, lakeM = world.lake, stateM = world.state;
+    const passable = (i) => cover[i] !== T.ROAD && cover[i] !== T.TOWN && !(v6 && lakeM[i]); // the big lake belongs to nobody
     const targetTiles = cfg.parcelTargetAcres / cfg.acresPerTile;
     const minD = Math.sqrt(targetTiles) * 0.85;
     const seeds = [];
-    for (let tries = 0; tries < 6000 * (world.big || 1); tries++) {
+    // version 6: how big the places are changes slowly across the map, small farms here and whole sections there
+    const sizeAt = (x, y) => { const u = clamp((fbm(x / 42, y / 42, world.seed * 31 + 611, 2) - 0.5) / 0.22 + 0.5); return cfg.v6.parcelSmall * Math.pow(cfg.v6.parcelLarge / cfg.v6.parcelSmall, u); };
+    for (let tries = 0; tries < (v6 ? 16000 : 6000) * (world.big || 1); tries++) {
       const x = rng.int(1, W - 2), y = rng.int(1, H - 2), i = y * W + x;
-      if (!passable(i) || isWater(cover[i])) continue;
-      const md = minD * rng.range(0.7, 1.35);
+      if (!passable(i) || isWater(cover[i]) || (v6 && stateM[i])) continue;
+      const md = v6 ? minD * sizeAt(x, y) * rng.range(0.82, 1.22) : minD * rng.range(0.7, 1.35);
       if (seeds.some((p) => (p[0] - x) ** 2 + (p[1] - y) ** 2 < md * md)) continue;
       seeds.push([x, y]);
     }
@@ -480,6 +628,7 @@
     const heap = [];
     const push = (d, i, p) => { heap.push([d, i, p]); let k = heap.length - 1; while (k > 0) { const pk = (k - 1) >> 1; if (heap[pk][0] <= heap[k][0]) break; [heap[pk], heap[k]] = [heap[k], heap[pk]]; k = pk; } };
     const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+    if (v6) for (let i = 0; i < N; i++) if (stateM[i] && passable(i)) parcelOf[i] = seeds.length + stateM[i] - 1; // each state area is one piece, laid down before the private land grows around it
     seeds.forEach(([x, y], p) => { const i = y * W + x; dist[i] = 0; push(0, i, p); });
     while (heap.length) {
       const [d, i, p] = pop();
@@ -499,7 +648,7 @@
       }
     }
     // merge small parcels into the neighbor they share the longest border with
-    const minTiles = cfg.minParcelAcres / cfg.acresPerTile;
+    const minTiles = (v6 ? cfg.v6.minParcelAcres : cfg.minParcelAcres) / cfg.acresPerTile;
     for (let pass = 0; pass < 4; pass++) {
       const count = new Map();
       for (let i = 0; i < N; i++) if (parcelOf[i] >= 0) count.set(parcelOf[i], (count.get(parcelOf[i]) || 0) + 1);
@@ -555,6 +704,8 @@
     let publicTiles = 0, pubIdx = 0;
     const pubNames = PUBLIC_NAMES.slice();
     const v4 = world.ver >= 4, isRoadT = (i) => cover[i] === T.ROAD || cover[i] === T.TOWN;
+    const pubShare = v6 ? cfg.v6.publicShare : v4 ? cfg.wild.publicShare : cfg.publicShare;
+    let walkLeft = v6 ? rng.int(cfg.v6.walkIns[0], cfg.v6.walkIns[1]) : Infinity;
     const roadTouch = () => { // which parcels have a road along them, and how much border each shares with each neighbour
       const touch = new Uint8Array(parcels.length), border = parcels.map(() => new Map());
       for (let i = 0; i < N; i++) {
@@ -569,6 +720,11 @@
     let touch0 = null;
     if (v4) {
       touch0 = roadTouch().touch;
+      if (v6) (world.stateAreas || []).forEach((a, bi) => { // the state areas laid down before the parcels grew
+        const id = remap.get(seeds.length + bi); if (id === undefined) return;
+        const p = parcels[id], cname = pubNames.length ? pubNames.splice(rng.int(0, pubNames.length - 1), 1)[0] : `State Land #${bi + 1}`;
+        p.owner = 'public'; p.complex = bi; p.complexName = cname; p.name = cname; publicTiles += p.tiles; pubIdx++;
+      });
       // every parcel that sits in a roadless block is a unit of that block's public area
       world.wild.forEach((b, bi) => {
         const cname = pubNames.length ? pubNames.splice(rng.int(0, pubNames.length - 1), 1)[0] : `State Land #${bi + 1}`;
@@ -593,13 +749,14 @@
       });
     }
     for (const p of order) {
-      if (publicTiles > totalTiles * (v4 ? cfg.wild.publicShare : cfg.publicShare)) break;
+      if (publicTiles > totalTiles * pubShare || walkLeft <= 0) break;
       if (p.merged || p.owner) continue;
       if (v4 && !touch0[p.id]) continue; // a small public area always has a road along it
+      if (v6 && p.tiles * cfg.acresPerTile > cfg.v6.walkInMaxAcres) continue; // version 6: just walk-in areas, the state land is laid out already
       if ([...p.neighbors].some((q) => parcels[q].owner === 'public')) continue;
-      p.owner = 'public';
+      p.owner = 'public'; walkLeft--;
       let area = p.tiles;
-      const extra = rng.chance(0.25) ? 0 : rng.int(1, 3);
+      const extra = v6 ? 0 : rng.chance(0.25) ? 0 : rng.int(1, 3);
       const nbs = [...p.neighbors].filter((q) => !parcels[q].owner && !parcels[q].merged);
       for (let k = 0; k < extra && nbs.length; k++) {
         const q = nbs.splice(rng.int(0, nbs.length - 1), 1)[0];
@@ -635,6 +792,14 @@
           border[q].delete(q);
         }
         if (!changed) break;
+      }
+    }
+    if (v6) { // a private place mostly fenced by state land is an inholding: its owner always rents the hunting
+      const { border } = roadTouch();
+      for (const p of parcels) {
+        if (p.merged !== undefined || p.owner === 'public') continue;
+        let all = 0, pub = 0; for (const [q, n] of border[p.id]) { if (parcels[q].merged !== undefined) continue; all += n; if (parcels[q].owner === 'public' && parcels[q].complex !== undefined) pub += n; }
+        if (all > 0 && pub / all >= 0.6 && p.tiles * cfg.acresPerTile <= 260) p.inholding = true;
       }
     }
     // rebuild parcel list after merges (keep ids stable; merged parcels are removed)

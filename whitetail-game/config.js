@@ -119,6 +119,22 @@
       /* wedge: a private place that runs from the road into a roadless area (always in a big one, midWedge of the smaller ones).
          Its back fence is far from any road, so whoever may cross it walks straight into ground the public reaches only after a long hike. */
       wild: { wedgeWide: 26, wedgeDeep: 0.5, midWedge: 0.5, secondBig: 0.35, secondMid: 0.5, bigMin: 60, midMin: 30, luck: 0.25, maxShare: 0.27, publicShare: 0.22, timber: 0.56, brush: 0.52, slough: 0.55 },
+      /* Version 6 maps.
+         Water: bigLake is the chance of one large lake (bigLakeAcres); smallLakes is how many small ones are scattered
+           about (smallLakeAcres each), and swampRing is the share of those with a belt of swamp around them.
+         State land: each area grows outward from a wild spot as an irregular shape that pays no attention to the road
+           grid. Roads stop at its edge, so it cuts across sections and breaks the grid up. One big area (a second with
+           chance secondBig), two middling ones (a third with chance thirdMid) and smallCount little ones, never more
+           than stateShare of the map between them. Then walkIns roadside walk-in areas of walkInMaxAcres or less, as long
+           as public land stays under publicShare. A state area no road happens to reach gets an access road run in.
+           stretch: each area is drawn out along a direction of its own, up to this many times longer than wide.
+           lakePull: the chance state land is drawn to the big lake; otherwise the lake sits in private country.
+         Private land: how big a place is follows a slow pattern across the map, from parcelSmall to parcelLarge times
+           the usual spacing (0.72 is about 65 acres, 2.05 a whole section), down to minParcelAcres. */
+      v6: { bigLake: 0.45, bigLakeAcres: [140, 420], smallLakes: [7, 12], smallLakeAcres: [3, 18], swampRing: 0.55,
+        bigAcres: [1100, 1900], midAcres: [300, 800], smallAcres: [80, 250], secondBig: 0.4, thirdMid: 0.5, smallCount: [2, 4],
+        stateShare: 0.225, publicShare: 0.24, walkIns: [1, 4], walkInMaxAcres: 120, stretch: [1, 2.6], lakePull: 0.5,
+        parcelSmall: 0.72, parcelLarge: 2.05, minParcelAcres: 25 },
       permissionShare: 0.35,            // of NPC parcels willing to sell permission
       forSaleCount: 6,
       starterAcres: 100,
