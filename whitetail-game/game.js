@@ -342,7 +342,7 @@
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
     prop.mix = WT.landMix(pid);
-    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
+    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; if (cr.id === 'honey') { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + cr.genetics); prop.security = clamp(prop.security + cr.security); } }
     if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
@@ -1299,7 +1299,13 @@
     const cfg = C().publicCrowd, d = S().parcels[pid];
     if (d.owner !== 'public') return null;
     if (d.bowOnly) return { id: 'bow', name: 'Bow only', floor: C().deer.pressure.bowOnlyFloor, company: 0.03, note: 'few hunters, short range. The oldest bucks on public ground' };
-    const h = WT.hash2(pid, 7, G.world.seed + 311);
+    const hs = (q) => WT.hash2(q, 7, G.world.seed + 311), h = hs(pid);
+    // the honey hole: one rifle-legal public area per map, fixed for the life of the map
+    if (G.world._honey === undefined) { let best = null; for (const p of G.world.parcels) { const e = S().parcels[p.id]; if (e.owner === 'public' && !e.bowOnly && (best === null || hs(p.id) > hs(best))) best = p.id; } G.world._honey = best; }
+    if (pid === G.world._honey && cfg.honey) {
+      const found = (d.scoutSits || 0) >= cfg.honey.findSits;
+      return Object.assign({ id: 'honey', found }, cfg.honey, found ? {} : { name: cfg.quiet.name, note: cfg.quiet.note });
+    }
     const id = h < cfg.crowded.share ? 'crowded' : h < cfg.crowded.share + cfg.average.share ? 'average' : 'quiet';
     return Object.assign({ id }, cfg[id]);
   };
@@ -1434,7 +1440,7 @@
     // public land: now and then a big buck from somewhere else is passing through. You can't plan on him.
     if (d.owner === 'public') {
       const tv = cfg.traveler, cr = WT.crowd(setup.pid);
-      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'quiet' || cr.id === 'bow' ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
+      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'honey' ? tv.honey : cr.id === 'quiet' || cr.id === 'bow' ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
       if (rng.chance(pT)) {
         const big = WT.makeDeer(rng, 'b', rng.pick([4.5, 5.5, 5.5, 6.5].filter((a) => a >= tv.age[0] && a <= tv.age[1])), prop);
         big.gp = rng.range(tv.gp[0], tv.gp[1]); big.w = clamp(big.w + 0.2, 0.05, 0.95); big.traveler = true;

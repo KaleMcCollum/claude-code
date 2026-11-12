@@ -233,9 +233,11 @@
       crowded: { name: 'Crowded',  share: 0.35, buckDeaths: [0.52, 0.62], floor: 0.45, company: 0.28, note: 'trucks at every access. Lots of pressure, mostly young bucks' },
       average: { name: 'Average',  share: 0.40, buckDeaths: [0.38, 0.46], floor: 0.3,  company: 0.12, note: 'hunted, but there is room. A decent buck now and then' },
       quiet:   { name: 'Quiet',    share: 0.25, buckDeaths: [0.27, 0.33], floor: 0.15, company: 0.04, note: 'hard to get to and lightly hunted. Close to private-land deer' },
+      // One area per map that nobody else has figured out. It reads as Quiet until you have hunted it `findSits` times.
+      honey:   { name: 'Honey hole', buckDeaths: [0.13, 0.18], floor: 0.08, company: 0.02, genetics: 0.25, security: 0.2, findSits: 6, note: 'nobody else has found this place. Bucks get old here' },
     },
     // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
-    traveler: { chance: 0.035, rut: 2.2, quiet: 1.5, crowded: 0.7, gp: [170, 200], age: [4.5, 6.5], stays: 0.3 },
+    traveler: { chance: 0.005, rut: 2.2, quiet: 1.5, honey: 3, crowded: 0.5, gp: [150, 185], age: [4.5, 6.5], stays: 0.3 },
     /* Four kinds of ground.
        prairie: open grass, hay and stubble. The common middle ground: build anything, plant plots and tree rows.
        timber:  woods, tree rows and brush. Holds more deer. Build anything except plots (no open ground).
