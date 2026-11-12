@@ -21,7 +21,7 @@ An 8-bit, mostly text-based whitetail hunting game set in North Dakota-style cou
 10. **Season's end**: a recap shows your best and slowest stands, mornings against evenings, the biggest buck you saw and a short plan for next year. Then comes off-season scouting: a few searches, each a 3 x 3 block on your land or public land, that turn up beds, rubs, scrapes and sheds. Sign is real: it sits around where each buck lives, and you only find what's in the block you search. A shed means that buck survived the winter; sheds are kept in the Trophy Room and on the deer's hit list page.
 11. **Wait** passes time. Rifle season runs Oct 1 to Dec 31. At the end of the season every deer on the map goes through winter, fawning, dispersal and antler growth.
 
-Money comes from harvested deer, leveling up (a little more each level) and new hit list deer. There's no property tax. The game saves itself in your browser after every hunt and purchase.
+Money comes from harvested deer, and size is what pays: a spike is worth about $60, a 120-inch buck $400, a 140 $1,100, a 160 $3,200, and a 180 $8,000. Does pay by weight, from about $90 for a yearling to $260 for a big old one. Leveling up and hit list deer add a little. There's no property tax. The game saves itself in your browser after every hunt and purchase.
 
 ## What's simulated
 

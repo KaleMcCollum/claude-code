@@ -1069,17 +1069,16 @@
   }
   WT.estimate = estimate;
 
-  WT.payoutFor = function (d, rng) {
+  // Pay follows size along a curve: antler inches for bucks, live weight for does.
+  const payCurve = (pts, v) => {
+    if (v <= pts[0][0]) return pts[0][1];
+    for (let k = 1; k < pts.length; k++) if (v <= pts[k][0]) { const a = pts[k - 1], b = pts[k]; return a[1] + (b[1] - a[1]) * (v - a[0]) / (b[0] - a[0]); }
+    return pts[pts.length - 1][1];
+  };
+  WT.payoutFor = function (d) {
     const e = C().economy;
-    if (d.sex === 'd') return e.doePayout;
-    if (d.age < 1) return Math.round(e.doePayout * 0.8);
-    const g = d.gross;
-    for (const b of e.payouts) {
-      if (g >= b.min && g < b.max) {
-        if (b.young) return d.age <= 2.5 ? Math.round(rng ? rng.range(b.young[0], b.young[1]) : (b.young[0] + b.young[1]) / 2) : e.oldBuckUnder120;
-        return b.pay;
-      }
-    }
-    return e.doePayout;
+    if (d.age < 1) return e.fawnPay;                                             // fawns and button bucks
+    if (d.sex === 'd') return Math.round(payCurve(e.doePay, d.lw || 110) / 5) * 5;
+    return Math.round(payCurve(e.buckPay, d.gross || 0) / 5) * 5;
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

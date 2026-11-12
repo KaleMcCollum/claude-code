@@ -19,17 +19,13 @@
       newDeerCash: 12,                 // paid for each new deer added to your hit list
       landSellFee: 0.08,               // fee when selling land back
       tags: { buck: 30, doe: 20, maxDoeTags: 3 },
-      payouts: [                        // money only comes from deer
-        { min: 0,   max: 120, label: 'young buck', young: [200, 300] },
-        { min: 120, max: 130, pay: 450 },
-        { min: 130, max: 140, pay: 700 },
-        { min: 140, max: 150, pay: 1100 },
-        { min: 150, max: 160, pay: 1800 },
-        { min: 160, max: 170, pay: 3000 },
-        { min: 170, max: 180, pay: 5000 },
-        { min: 180, max: 200, pay: 8000 },
-        { min: 200, max: 999, pay: 20000 },
-      ],
+      /* What a deer pays. Size is what's rewarded, and every inch and every pound counts: the curves below are
+         joined by straight lines between the points. A spike is worth almost nothing; let him grow. A monster is a
+         windfall. Does pay by live weight, so a big old doe is worth three of a yearling. */
+      buckPay: [[0, 40], [60, 70], [80, 110], [100, 180], [120, 400], [130, 650], [140, 1100], [150, 1900], [160, 3200], [170, 5200], [180, 8000], [200, 14000], [220, 25000]], // [gross inches, dollars]
+      doePay: [[80, 50], [110, 90], [130, 130], [150, 190], [165, 260], [185, 330]],                                                                                                // [live pounds, dollars]
+      fawnPay: 40,
+      payouts: [],                      // (old table, no longer used)
       doePayout: 150,
       oldBuckUnder120: 260,             // mature buck that just never grew
       woundedLossPressure: 0.08,

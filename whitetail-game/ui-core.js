@@ -325,7 +325,14 @@
   const GUIDE = [
     ['start', 'The basics', () => `
       <p>You hunt whitetails from October 1 to December 31, one morning or evening sit at a time. Then winter passes, every deer on the map gets a year older, and you do it again.</p>
-      <p><b>Money</b> comes from deer you tag (bigger antlers pay more, a doe pays ${WT.money(WT.CONFIG.economy.doePayout)}), from leveling up, and ${WT.money(WT.CONFIG.economy.newDeerCash)} for each deer you add to your hit list. Nothing is charged when a year passes.</p>
+      <p><b>Money</b> comes from deer you tag, and size is what pays. Every inch of antler and every pound counts.</p>
+      <dl class="kv"><dt>Spike or forkhorn (under 60")</dt><dd>${WT.money(WT.payoutFor({ sex: 'b', age: 1.5, gross: 40 }))} to ${WT.money(WT.payoutFor({ sex: 'b', age: 1.5, gross: 60 }))}</dd>
+      <dt>100" buck</dt><dd>${WT.money(WT.payoutFor({ sex: 'b', age: 3.5, gross: 100 }))}</dd><dt>120"</dt><dd>${WT.money(WT.payoutFor({ sex: 'b', age: 3.5, gross: 120 }))}</dd>
+      <dt>140"</dt><dd>${WT.money(WT.payoutFor({ sex: 'b', age: 4.5, gross: 140 }))}</dd><dt>160"</dt><dd>${WT.money(WT.payoutFor({ sex: 'b', age: 5.5, gross: 160 }))}</dd>
+      <dt>180"</dt><dd>${WT.money(WT.payoutFor({ sex: 'b', age: 6.5, gross: 180 }))}</dd><dt>200"</dt><dd>${WT.money(WT.payoutFor({ sex: 'b', age: 6.5, gross: 200 }))}</dd>
+      <dt>Yearling doe (about 110 lb)</dt><dd>${WT.money(WT.payoutFor({ sex: 'd', age: 1.5, lw: 110 }))}</dd><dt>Big old doe (165 lb)</dt><dd>${WT.money(WT.payoutFor({ sex: 'd', age: 4.5, lw: 165 }))}</dd>
+      <dt>Fawn or button buck</dt><dd>${WT.money(WT.CONFIG.economy.fawnPay)}</dd></dl>
+      <p>So a young buck is worth far more if you let him walk for a year or two, and a big doe is worth three small ones. You also earn a little from leveling up, and ${WT.money(WT.CONFIG.economy.newDeerCash)} for each deer you add to your hit list. Nothing is charged when a year passes.</p>
       <p><b>You need a tag</b> for what you shoot: a buck tag for an antlered deer, a doe tag for anything without antlers. Shoot the wrong one and the DNR takes it (no pay, no mount, no fine).</p>
       <p><b>A new game opens in the off-season.</b> Use it: scout your land for sign, lay out and plant a food plot if you can afford one, and put up stands and cameras while it costs no days. It ends the moment you hunt or wait.</p>
       <p><b>A turn:</b> Shop if you need something → Hunt → pick a stand → pack → sit. <b>Wait</b> (top right) skips a morning or evening.</p>`],
