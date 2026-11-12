@@ -39,11 +39,12 @@
     progression: {
       maxLevel: 100,
       xpForLevel: (lvl) => Math.round(150 + 40 * Math.pow(lvl, 0.75)),  // xp to go lvl -> lvl+1 (L10 ~2 seasons, L30 ~9, L100 is a lifetime)
-      xpPerHourSat: 6,
-      xpPerSighting: 3,
-      xpDoe: 40,
-      xpBuckBase: 70,
-      xpPerInch: 1.2,                   // bonus per inch over 100"
+      // Killing deer is how you level. Time on stand and deer seen are only a trickle.
+      xpPerHourSat: 1,
+      xpPerSighting: 0.5,
+      xpDoe: 70,
+      xpBuckBase: 140,
+      xpPerInch: 3,                   // bonus per inch over 100"
       skillPointsPerLevel: 2,
       skillMax: 40,
     },
@@ -276,6 +277,11 @@
        stand too, less often the farther their home is from it. reach is in tiles (35 yards each); in the rut bucks
        travel farther. share is how likely a neighbour's deer is to come through compared with one of your own. */
     visitors: { buckReach: 16, doeReach: 9, rutReach: 1.6, buckShare: 0.55, doeShare: 0.3 },
+    /* What your work on the land does for the herd, on top of what the tiles themselves add.
+       Counted per 100 acres of land, so a big property needs more of everything.
+       Food plots (planted, scaled by crop and how it came in) raise food and add straight to nutrition: bigger bodies
+       and antlers. Tree rows raise bedding and security: more deer, and more of them stay and survive. */
+    landWork: { plotFood: 0.08, plotFoodMax: 0.4, plotNutrition: 0.012, plotNutritionMax: 0.07, treeBed: 0.05, treeBedMax: 0.25, treeSecurity: 0.03, treeSecurityMax: 0.15, youngTree: 0.4 },
     plotPull: 0.3,   // a stand touching a planted plot: deer seen x (1 + plotPull * (crop value now - 0.5) * how well it came in)
     sightMult: { ratingBase: 0.45, ratingGain: 1.75, ratingPow: 1.3, starBase: 0.5, starGain: 1.0, norm: 1.15, matureBase: 0.5, matureGain: 3.0, maturePow: 1.5, matureLift: 0.5 },
     // Off-season scouting: 3 x 3 blocks you can search each spring, plus one per this many Woodcraft points.
@@ -384,10 +390,10 @@
       { id: 'rattle_rack', cat: 'rattle', tier: 'High', name: "Rattlin' Rack antlers", price: 50, range: 300, realism: 75 },
       { id: 'rattle_sheds', cat: 'rattle', tier: 'Premier', name: 'Real matched sheds', price: 120, range: 350, realism: 90 },
 
-      { id: 'light_wal', cat: 'light', tier: 'Cheap', name: 'Walmart LED flashlight', price: 10, bright: 30, life: 3, red: false },
-      { id: 'light_energ', cat: 'light', tier: 'Medium', name: 'Energizer headlamp', price: 25, bright: 50, life: 5, red: true },
-      { id: 'light_bd', cat: 'light', tier: 'High', name: 'Black Diamond Spot headlamp', price: 50, bright: 70, life: 7, red: true },
-      { id: 'light_stream', cat: 'light', tier: 'Premier', name: 'Streamlight hunting headlamp', price: 90, bright: 90, life: 10, red: true },
+      { id: 'light_wal', cat: 'light', tier: 'Cheap', name: 'Walmart LED flashlight', price: 10, bright: 30, life: 20, red: false },
+      { id: 'light_energ', cat: 'light', tier: 'Medium', name: 'Energizer headlamp', price: 25, bright: 50, life: 35, red: true },
+      { id: 'light_bd', cat: 'light', tier: 'High', name: 'Black Diamond Spot headlamp', price: 50, bright: 70, life: 50, red: true },
+      { id: 'light_stream', cat: 'light', tier: 'Premier', name: 'Streamlight hunting headlamp', price: 90, bright: 90, life: 80, red: true },
 
       { id: 'heat_little', cat: 'heater', tier: 'Cheap', name: 'Mr. Heater Little Buddy', price: 70, warm: 15, hrsPerTank: 5, noise: 6 },
       { id: 'heat_port', cat: 'heater', tier: 'Medium', name: 'Mr. Heater Portable Buddy', price: 110, warm: 22, hrsPerTank: 3, noise: 6 },

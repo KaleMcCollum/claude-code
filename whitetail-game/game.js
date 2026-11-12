@@ -330,6 +330,16 @@
     prop.huntingPressure = d.pressure ?? 0.05;
     prop.sanct = WT.sanctuaryInfo(pid).counted;
     prop.bowOnly = !!d.bowOnly;
+    if (d.owner === 'player') { // your work on the land, per 100 acres of it
+      const L = C().landWork, mixL = WT.landMix(pid), per100 = 100 / Math.max(20, p.acres * (1 - mixL.water));
+      const qf = { poor: 0.6, fair: 0.85, good: 1, excellent: 1.2 };
+      const plotPts = (d.plots || []).reduce((a, pl) => a + (pl.planted && pl.type ? WT.plotType(pl.type).food / 0.8 * (qf[pl.quality] || 0.85) : 0), 0) * per100;
+      const treePts = (d.trees || []).reduce((a, tr) => a + (tr.mature ? 1 : L.youngTree), 0) * per100;
+      prop.food = clamp(prop.food + Math.min(L.plotFoodMax, L.plotFood * plotPts));
+      prop.plotNutrition = Math.min(L.plotNutritionMax, L.plotNutrition * plotPts);
+      prop.bedding = clamp(prop.bedding + Math.min(L.treeBedMax, L.treeBed * treePts));
+      prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
+    }
     prop.mix = WT.landMix(pid);
     if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
     if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground

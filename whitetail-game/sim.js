@@ -755,7 +755,7 @@
     const n = D().nutrition;
     const base = n.min + (n.max - n.min) * clamp((prop.food * 0.5 + prop.water * 0.2 + prop.soilQuality * 0.3 - 0.1) / 0.8);
     const over = Math.max(0, (prop.herd ? prop.herd.length : 0) / Math.max(1, prop.capacity) - 1);
-    return clamp(base - over * n.overCapacityPenalty, 0.6, n.max);
+    return clamp(base + (prop.plotNutrition || 0) - over * n.overCapacityPenalty, 0.6, n.max + C().landWork.plotNutritionMax); // planted plots can push past what the ground alone gives
   }
   WT.nutritionFactor = nutritionFactor;
 
