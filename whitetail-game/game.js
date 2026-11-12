@@ -2300,7 +2300,7 @@
     const winter = clamp(rng.normal(0.4, 0.2));
     const yearFactor = 1 + rng.range(-cfg.deer.yearlyVariance, cfg.deer.yearlyVariance);
     summary.winter = winter > 0.65 ? 'a brutal winter' : winter > 0.45 ? 'a typical North Dakota winter' : 'a mild winter';
-    summary.growing = yearFactor > 1.03 ? 'a wet summer with great growing conditions' : yearFactor < 0.97 ? 'a dry summer' : 'an average summer';
+    summary.growing = yearFactor > 1.03 ? 'a wet, green summer' : yearFactor < 0.97 ? 'a dry summer' : 'an average summer';
     // what every buck on your land was carrying this fall (he drops it in late winter if he lives)
     const carried = [];
     for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }

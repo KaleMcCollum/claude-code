@@ -119,7 +119,8 @@
       geneMap: { drift: 2, /* tiles a year the whole pattern slides: about one property-width a decade */ scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, inches: 5, meanCap: 0.3, stretchFrom: 160, stretch: 1.5, /* meanCap: a pocket never moves the AVERAGE buck more than this much of `inches`, however hot. On hot ground (g = 1) the part of a buck's potential above stretchFrom grows two and a half times: 170 becomes 185, 180 becomes 210. Below it nothing changes, so a hot pocket has no more 140s and 150s than its region */ hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0, managedMaxYears: 8 },
       ageCurve: { 0.5: 0, 1.5: [0.30, 0.40], 2.5: [0.55, 0.65], 3.5: [0.75, 0.82], 4.5: [0.88, 0.94], 5.5: [0.97, 1.0], 6.5: [0.97, 1.0], 7.5: [0.96, 1.0], 8.5: [0.91, 0.95], 9.5: [0.83, 0.87], 10.5: [0.78, 0.84] },
       maxAge: 10.5,
-      yearlyVariance: 0.065,
+      yearlyVariance: 0.065,          // kept for old saves; antlers no longer follow a map-wide good or bad year
+      offYear: { bad: 0.07, badBy: [0.06, 0.16], great: 0.08, greatBy: [0.04, 0.10] }, // one buck's own off year or exceptional year: share of bucks each year, and by how much
       nutrition: { antlers: 0.965, /* the one feed level every rack is grown on: where ordinary private land sat before */ min: 0.88, max: 1.06, fedCap: 1.0, overCapacityPenalty: 0.06 }, // fedCap: plots lift poor ground up to here and no further. Feed helps struggling land catch up; it does not beat naturally rich ground   // crowding costs a little; it must not cancel the food you planted
       density: { poor: 4, elite: 14 },  // deer per 100 acres
       weights: {

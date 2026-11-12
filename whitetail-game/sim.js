@@ -908,7 +908,11 @@
     const top = clamp((prop.plotNutrition || 0) / L.plotNutritionMax) * L.topEnd * clamp((d.gp - G0.mean) / G0.sd, 0, 3.5); // good groceries let the gifted ones show it
     // Antlers come from genetics and age. Feed decides how many deer the land holds, how heavy they are and whether they
     // stay home; it does not make a rack bigger or smaller, so every buck is grown on the same ordinary feed.
-    const target = Math.max(d.age < 2 ? 12 : 25, d.gp * cf * (cfg.nutrition.antlers ?? nf + top) * yearFactor * condF);
+    // There is no good or bad antler year for the whole herd. Now and then one buck has an off year (hurt, sick, a hard
+    // winter on him alone) or an exceptional one, and next year he is back to himself. Old age is in the age curve.
+    const oy = cfg.offYear; let own = 1;
+    if (oy && d.age >= 2.5) { const r = rng.next ? rng.next() : rng.range(0, 1); own = r < oy.bad ? 1 - rng.range(oy.badBy[0], oy.badBy[1]) : r < oy.bad + oy.great ? 1 + rng.range(oy.greatBy[0], oy.greatBy[1]) : 1; }
+    const target = Math.max(d.age < 2 ? 12 : 25, d.gp * cf * (cfg.nutrition.antlers ?? nf + top) * own * condF);
     // The rack is built as B&C components + 3D geometry; the score is measured from it (antlers.js).
     if (!d.style) d.style = WT.rollRackStyle(rng);
     const { comp, sheet } = WT.growRack(d.style, d.age, target, rng);
