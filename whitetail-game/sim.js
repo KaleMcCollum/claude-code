@@ -850,9 +850,9 @@
     let gp = rng.normal(g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift + (prop.geneBonus || 0), g.sd);
     if (momGp) gp += clamp((momGp - g.mean) / g.sd, -1.5, 1.5) * g.heredity;
     if (rng.chance(g.giantChance)) gp += rng.range(g.giantBonus[0], g.giantBonus[1]);
-    // Hot ground does not make more good bucks. It lets a buck that was already going to be big go further: only the
-    // part of his potential above stretchFrom grows, so a 150 is still a 150 and there are no more of them than anywhere.
-    if (warm > 0 && gp > gm.stretchFrom) gp += (gp - gm.stretchFrom) * gm.stretch * warm;
+    // The far right of the curve. On warm ground a buck who is already well above average has a little more in him
+    // still, the more so the hotter the ground. This is where a 200 comes from; it adds no 140s or 150s.
+    { const centre = g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift, notches = (gp - centre) / g.sd; if (warm > 0 && notches > gm.tailFrom) gp += (notches - gm.tailFrom) * g.sd * gm.tail * warm; }
     return clamp(gp, g.min, g.max);
   }
 
@@ -912,7 +912,12 @@
     // winter on him alone) or an exceptional one, and next year he is back to himself. Old age is in the age curve.
     const oy = cfg.offYear; let own = 1;
     if (oy && d.age >= 2.5) { const r = rng.next ? rng.next() : rng.range(0, 1); own = r < oy.bad ? 1 - rng.range(oy.badBy[0], oy.badBy[1]) : r < oy.bad + oy.great ? 1 + rng.range(oy.greatBy[0], oy.greatBy[1]) : 1; }
-    const target = Math.max(d.age < 2 ? 12 : 25, d.gp * cf * (cfg.nutrition.antlers ?? nf + top) * own * condF);
+    /* Antler score is a bell curve for every age (deer.antlers.byAge: [average, spread] on ordinary ground).
+       A buck's place in the curve is his for life: one at the top of the three-year-olds is at the top of the
+       five-year-olds too. Where he was born slides his curve right or left (that is already in d.gp, see rollPotential). */
+    const A = cfg.antlers, bell = A && ageTable(A.byAge, d.age);
+    const place = (d.gp - G0.mean) / G0.sd; // how many notches above or below average he is, for life
+    const target = Math.max(d.age < 2 ? 12 : 25, bell ? (bell[0] + place * bell[1]) * own * (1 + rng.range(-A.wobble, A.wobble)) : d.gp * cf * (cfg.nutrition.antlers ?? nf + top) * own * condF);
     // The rack is built as B&C components + 3D geometry; the score is measured from it (antlers.js).
     if (!d.style) d.style = WT.rollRackStyle(rng);
     const { comp, sheet } = WT.growRack(d.style, d.age, target, rng);
