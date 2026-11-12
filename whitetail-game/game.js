@@ -337,6 +337,7 @@
       const treePts = (d.trees || []).reduce((a, tr) => a + (tr.mature ? 1 : L.youngTree), 0) * per100;
       prop.food = clamp(prop.food + Math.min(L.plotFoodMax, L.plotFood * plotPts));
       prop.plotNutrition = Math.min(L.plotNutritionMax, L.plotNutrition * plotPts);
+      prop.plotCapacity = Math.min(L.plotCapacityMax, L.plotCapacity * plotPts);
       prop.bedding = clamp(prop.bedding + Math.min(L.treeBedMax, L.treeBed * treePts));
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }

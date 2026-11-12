@@ -804,7 +804,8 @@
     const hq = habitatQuality({ food: prop.food, bedding: prop.bedding, water: prop.water, security: prop.security, soil: prop.soilQuality });
     const per100 = den.poor + (den.elite - den.poor) * clamp((hq - 0.25) / 0.65);
     const land = 1 - ((prop.mix && prop.mix.water) || 0); // water holds no deer
-    return Math.max(2, Math.round((prop.acres * land / 100) * per100 * (1 + C().sanctuary.capacity * (prop.sanct || 0)) * (1 + C().land.timberCapacity * ((prop.mix && prop.mix.timber) || 0)))); // working sanctuary holds more deer
+    const fed = 1 + (prop.plotCapacity || 0); // planted food lets the same ground carry more deer
+    return Math.max(2, Math.round((prop.acres * land / 100) * per100 * (1 + C().sanctuary.capacity * (prop.sanct || 0)) * (1 + C().land.timberCapacity * ((prop.mix && prop.mix.timber) || 0)) * fed)); // working sanctuary holds more deer
   }
   WT.carryingCapacity = carryingCapacity;
 
@@ -844,6 +845,7 @@
     if (d.sex === 'b' && prop.npcStyle === 'manage') mult *= d.age <= 2.5 ? 0.6 : d.age >= 4.5 ? 1.2 : 0.9;
     if (d.sex === 'b' && prop.type !== 'public') mult *= 1 + (0.6 - d.tOP) * 0.7;
     mult *= 1.12 - 0.25 * prop.security;
+    if (d.sex === 'b' && d.age >= 2.5) mult *= clamp(1 - C().landWork.buckSurvival * (prop.security - 0.45), 0.6, 1.15); // safe ground is how a buck gets old
     if (prop.mix && d.age >= 1.5) mult *= 1 - C().land.water.barrier * Math.min(1, (prop.mix.shoreline || 0) / C().land.water.barrierFull); // nobody hunts the far bank
     if (d.sex === 'b' && d.age >= 3.5 && prop.mix) mult *= 1 - C().land.swampOldBucks * Math.min(1, prop.mix.swamp / C().land.swampFull); // old bucks live in the swamp
     return clamp(base * mult, 0.02, 0.95);
