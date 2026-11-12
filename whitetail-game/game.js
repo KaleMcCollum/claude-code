@@ -85,7 +85,7 @@
     const st = {
       v: 1, seed, year: 1, day: 0, slot: 'morning',
       cash: C().economy.startingCash, xp: 0, level: 1, skillPts: 2,
-      skills: { stealth: 0, shooting: 0, calling: 0, scent: 0, patience: 0, archery: 0, woodcraft: 0 },
+      skills: { stealth: 0, shooting: 0, calling: 0, scent: 0, patience: 0, archery: 0, woodcraft: 0, hiking: 0 },
       inv: {
         rifles: ['ruger_ranch'], scopes: ['simmons'], rifleScope: { ruger_ranch: 'simmons' },
         stands: { ground: 1 }, clothing: C().clothing.filter((c) => c.starter).map((c) => c.id),
@@ -544,9 +544,20 @@
   };
   WT.spendSkill = function (k) {
     const st = S();
-    if (st.skillPts <= 0 || st.skills[k] >= C().progression.skillMax) return false;
-    st.skills[k]++; st.skillPts--; return true;
+    if (st.skillPts <= 0 || (st.skills[k] || 0) >= WT.skillCap(k).now) return false;
+    st.skills[k] = (st.skills[k] || 0) + 1; st.skillPts--; return true;
   };
+  // How high a skill can go: at your level now, ever, and the next level that opens more.
+  WT.skillCap = function (k) {
+    const st = S(), sk = C().skills[k], max = sk.max || C().progression.skillMax;
+    if (!sk.unlock) return { now: max, max, next: null };
+    let now = 0, next = null;
+    for (const [lvl, cap] of sk.unlock) { if (st.level >= lvl) now = Math.min(max, cap); else if (!next) next = { level: lvl, cap: Math.min(max, cap) }; }
+    return { now, max, next };
+  };
+  // How far back on public land you can go (tiles of walking from the road).
+  WT.hikeReach = function () { const a = C().publicCrowd.access; return a.hikeBase + a.hikePer * (S().skills.hiking || 0); };
+  const tooFar = (pid, x, y) => { const a = WT.access(pid); if (a.locked) return null; const need = WT.spotDepth(pid, x, y).tiles; if (need <= WT.hikeReach() + 1e-6) return null; const pts = Math.ceil((need - C().publicCrowd.access.hikeBase) / C().publicCrowd.access.hikePer); return `That is too far back for you yet. It takes Backcountry ${pts} (you have ${S().skills.hiking || 0}).`; };
 
   /* ================================================================ shop */
   WT.buy = function (kind, id, qty = 1) {
@@ -1035,10 +1046,11 @@
   WT.markSpot = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'public') return 'Spots are marked on public land. On your own land, put up a stand.';
-    if (!WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land you own next to it.';
+    if (!WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land next to it that you own or have paid permission on.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a tree or ground spot inside the public area.';
     if (WT.landType(w.cover[i]) === 'farm') return "That's a crop field. Mark the edge of it instead.";
+    { const far = tooFar(pid, x, y); if (far) return far; }
     d.spots = d.spots || [];
     const total = WT.publicAreas().reduce((a, p) => a + (st.parcels[p.id].spots || []).length, 0);
     if (d.spots.length >= WT.SPOT_LIMITS.perArea) return `You can mark ${WT.SPOT_LIMITS.perArea} spots per public area. Remove one first.`;
@@ -1065,7 +1077,8 @@
     if (WT.earlySeason() && !WT.hasBow()) return 'Early archery season: bow only until Oct 1. Equip your bow under Gear, or press Wait.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (spot.kind !== 'spot') return null;
-    if (d.owner === 'public' && !WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land you own next to it.';
+    if (d.owner === 'public' && !WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land next to it that you own or have paid permission on.';
+    if (d.owner === 'public') { const far = tooFar(pid, spot.x, spot.y); if (far) return far; }
     const id = WT.mobileStand();
     if (!id) return 'You need a mobile stand to hunt public land. Buy a hang-on, climber, saddle or pop-up blind at the Shop and equip it under Gear.';
     const lt = WT.landType(G.world.cover[spot.y * G.world.W + spot.x]);
@@ -1328,11 +1341,12 @@
     return (w._acc[pid] = { locked, walk, ease: n ? ease / n : 0, deep: land.slice(0, Math.max(1, Math.round(land.length * cfg.oldBuckHome))).map((p) => p[0]) });
   };
   // Can you get in? Roadless public land is reached only across land you own that touches it.
-  WT.canReach = function (pid) { const a = WT.access(pid); return !a.locked || [...G.world.parcels[pid].neighbors].some((q) => S().parcels[q].owner === 'player'); };
+  WT.canReach = function (pid) { const a = WT.access(pid); return !a.locked || [...G.world.parcels[pid].neighbors].some((q) => S().parcels[q].owner === 'player' || S().parcels[q].permBought); };
   // How far back a spot is: tiles of walking, and 0..1 (0 at the road, near 1 far back).
   WT.spotDepth = function (pid, x, y) {
     const a = WT.access(pid), cfg = C().publicCrowd.access, d = a.locked ? cfg.lockedDepth : a.walk.get(y * G.world.W + x) ?? cfg.lockedDepth;
-    return { tiles: d, q: 1 - Math.exp(-d / cfg.reach), walkMin: Math.round(Math.min(cfg.walkMax, d * cfg.walkMin) / 5) * 5 };
+    const fast = 1 - cfg.hikeFaster * (S().skills.hiking || 0);
+    return { tiles: d, q: 1 - Math.exp(-d / cfg.reach), walkMin: Math.round(Math.min(cfg.walkMax, d * cfg.walkMin * fast) / 5) * 5 };
   };
   // How hard a public area gets hunted. Fixed for the life of the map.
   WT.crowd = function (pid) {

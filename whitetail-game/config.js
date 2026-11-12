@@ -51,7 +51,9 @@
       calling:  { name: 'Calling',        desc: 'Grunts, rattling and snort-wheezes sound real.' },
       scent:    { name: 'Scent Discipline', desc: 'Less human odor, fewer deer winding you.' },
       patience: { name: 'Patience',       desc: 'Sit longer. 4 pts = +1 hr. All-day sits need ~10 hrs.' },
-      archery:  { name: 'Archery',        desc: 'Bow and crossbow accuracy, and clean kills with an arrow. Rifles use Marksmanship.' },
+      // unlock: [your level, how many points the skill may hold from then on]. No unlock = open from the start.
+      archery:  { name: 'Archery',        desc: 'Bow and crossbow accuracy, and clean kills with an arrow. Rifles use Marksmanship.', unlock: [[15, 40]] },
+      hiking:   { name: 'Backcountry',    desc: 'How far from the road you can hunt on public land. Every point lets you mark spots further back, where the old bucks live, and shortens the walk in.', max: 20, unlock: [[10, 5], [20, 10], [30, 20]] },
       woodcraft:{ name: 'Woodcraft',      desc: 'Find deer that run off wounded, and get more scouting searches in the off-season (one per 8 points).' },
     },
 
@@ -240,13 +242,13 @@
       average: { name: 'Average',  buckDeaths: [0.38, 0.46], floor: 0.3,  company: 0.12, note: 'hunted, but there is room. A decent buck now and then' },
       quiet:   { name: 'Quiet',    buckDeaths: [0.27, 0.33], floor: 0.15, company: 0.04, note: 'hard to get to and lightly hunted. Close to private-land deer' },
       // No road touches it. Nobody hunts it; bucks die there only of old age or when they wander next door.
-      landlocked: { name: 'Landlocked', buckDeaths: [0.11, 0.16], floor: 0.04, company: 0, note: 'no road reaches it. You can only walk in from land you own next to it' },
+      landlocked: { name: 'Landlocked', buckDeaths: [0.11, 0.16], floor: 0.04, company: 0, note: 'no road reaches it. You can only walk in from land next to it that you own or have permission on' },
       /* How busy an area is comes from the map. Hunters walk in from the road and thin out the further they must go:
          reach is how many tiles until two thirds of them have stopped. Water, swamp and timber cost extra to cross.
          ease is the share of the area that sees real traffic: above `crowded` it is Crowded, above `average` Average, else Quiet.
          A deep spot costs you walkMin minutes a tile off the sit, sees deepCompany fewer trucks, and mature bucks go from
          deepMature[0] (roadside) to deepMature[1] (far back) of the usual odds. */
-      access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, crowded: 0.38, average: 0.26, walkMin: 2.5, walkMax: 75, deepCompany: 0.85, deepMature: [0.6, 1.5], lockedDepth: 14, oldBuckHome: 0.35 },
+      access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, crowded: 0.38, average: 0.26, walkMin: 2.5, walkMax: 75, hikeBase: 5, hikePer: 1.25, hikeFaster: 0.02, /* tiles from the road you can go with no Backcountry skill, more per point, and the share of walk time each point saves */ deepCompany: 0.85, deepMature: [0.6, 1.5], lockedDepth: 14, oldBuckHome: 0.35 },
     },
     // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
     traveler: { chance: 0.005, rut: 2.2, quiet: 1.5, crowded: 0.5, gp: [150, 185], age: [4.5, 6.5], stays: 0.3 },

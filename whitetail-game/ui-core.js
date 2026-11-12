@@ -353,8 +353,8 @@
       <p><b>Pressure</b> builds every time you sit a stand, miss, or get busted, and drains when you leave it alone. A full meter means rest it.</p>
       <p><b>Genetics change across the map.</b> Most of it is ordinary. Some regions run a few inches bigger or smaller, and now and then there is a small pocket where bucks are simply better, or worse. The pattern also drifts, slowly: over ten years the best ground can slide about one property over, so no spot stays the best forever. Nothing on the map shows it. You learn it from what turns up on camera and from the stand, so hunting public ground or paying for permission across the map is a way to scout land before you buy it. Food plots help thin ground grow deer as well as good ground does. They cannot give a buck antler he was not born with.</p>
       <p><b>Public land is as good as it is hard to reach.</b> Hunters walk in from the road, so an area with road all along it and open ground is Crowded: high pressure, mostly young bucks. An area that is mostly swamp, timber or across water from the road is Quiet, and bucks there get older. Each area's card says which it is.</p>
-      <p><b>Go deep.</b> Inside any public area, a spot by the road sees the most hunters and the youngest deer. The further back you mark a spot, the fewer trucks you meet and the more likely an old buck lives there. The walk in comes off your sit, so a far spot means a shorter hunt.</p>
-      <p><b>Landlocked public land.</b> Now and then a public area has no road touching it at all. Nobody hunts it, and bucks there die of old age. You can only get in from land you own that touches it, so the property next door is worth more than it looks.</p>
+      <p><b>Go deep.</b> Inside any public area, a spot by the road sees the most hunters and the youngest deer. The further back you mark a spot, the fewer trucks you meet and the more likely an old buck lives there. The walk in comes off your sit, so a far spot means a shorter hunt. How far back you can go is the <b>Backcountry</b> skill: it opens at level 10 and goes further at levels 20 and 30.</p>
+      <p><b>Landlocked public land.</b> Now and then a public area has no road touching it at all. Nobody hunts it, and bucks there die of old age. You can only get in from land touching it that you own or have paid permission on, so the property next door is worth more than it looks.</p>
       <p><b>Public land</b> needs a mobile stand on your back: a hang-on, climber or saddle (these need a tree) or a pop-up blind (works anywhere). Buy one at the Shop and equip it under Gear. Mobile stands aren't left up on your own land.</p>
       <p><b>Timber or open:</b> in timber deer show at 20 to 200 yards. In open country you see more ground but deer are 150 to 500 yards out.</p>
       <p><b>Stand types</b> add concealment, quiet, a steadier rest, comfort and height. Box blinds and hunting houses hide you best and let you sit all day in the cold.</p>`],
@@ -564,8 +564,7 @@
           <div><h3>In your truck</h3>${Object.entries(inv.stands).filter(([, n]) => n > 0).map(([id, n]) => `<p>${esc(WT.standType(id).name)} ×${n}</p>`).join('') || ''}${Object.entries(inv.cameras).filter(([, n]) => n > 0).map(([id, n]) => `<p>${esc(WT.camType(id).name)} ×${n}</p>`).join('')}${inv.equipment.some((e) => WT.equip(e).cat === 'light') ? `<p class="dim">Light battery: ${inv.lightCharge} hunts left</p>` : ''}</div>
         </div>
         <h3>Skills${st.skillPts ? ` · <span class="good">${st.skillPts} point${st.skillPts === 1 ? '' : 's'} to spend</span>` : ''}</h3>
-        <div class="list">${Object.entries(C().skills).map(([k, sk]) => `<div class="item"><div><span class="nm">${esc(sk.name)}</span> <span class="dim">${st.skills[k]} / ${C().progression.skillMax}</span></div>
-          <button class="btn small" data-sk="${k}" ${st.skillPts && st.skills[k] < C().progression.skillMax ? '' : 'disabled'}>+1</button><div class="st">${esc(sk.desc)}</div></div>`).join('')}</div>
+        <div class="list">${Object.entries(C().skills).map(([k, sk]) => UI.skillRow(k, sk)).join('')}</div>
       </section>`;
     el.querySelectorAll('[data-mob]').forEach((b) => b.addEventListener('click', () => { if (UI.err(WT.setMobile(b.dataset.mob))) return; WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); }));
     el.querySelectorAll('[data-sk]').forEach((b) => b.addEventListener('click', () => { WT.spendSkill(b.dataset.sk); WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); }));
@@ -584,12 +583,18 @@
   };
 
   /* ================================================================ SKILLS */
+  // One skill on the list. Some skills open, or open further, as you level up.
+  UI.skillRow = function (k, sk) {
+    const st = S(), have = st.skills[k] || 0, cap = WT.skillCap(k);
+    const lock = cap.now === 0 ? `Opens at level ${cap.next.level}.` : have >= cap.now && cap.next ? `As far as it goes for now. Level ${cap.next.level} opens it to ${cap.next.cap}.` : '';
+    return `<div class="item"><div><span class="nm">${esc(sk.name)}</span> <span class="dim">${have} / ${cap.max}</span></div>
+      <button class="btn small" data-sk="${k}" ${st.skillPts && have < cap.now ? '' : 'disabled'}>+1</button><div class="st">${esc(sk.desc)}${lock ? ` <span class="warn">${lock}</span>` : ''}</div></div>`;
+  };
   UI.screens.skills = function (el) {
     const st = S(), cfg = C();
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Skills</h2><button class="btn small" data-back>Back to lodge</button></div>
       <p>Level ${st.level}. You earn points by sitting, seeing deer and harvesting. <b>${st.skillPts}</b> point${st.skillPts === 1 ? '' : 's'} to spend.</p>
-      <div class="list">${Object.entries(cfg.skills).map(([k, s]) => `<div class="item"><div><span class="nm">${esc(s.name)}</span> <span class="dim">${st.skills[k]} / ${cfg.progression.skillMax}</span></div>
-        <button class="btn small" data-sk="${k}" ${st.skillPts && st.skills[k] < cfg.progression.skillMax ? '' : 'disabled'}>+1</button><div class="st">${esc(s.desc)}</div></div>`).join('')}</div>
+      <div class="list">${Object.entries(cfg.skills).map(([k, s]) => UI.skillRow(k, s)).join('')}</div>
       <p class="faint">Patience now gives ${(cfg.comfort.basePatienceHrs + st.skills.patience * cfg.comfort.hrsPerPatiencePt).toFixed(1)} hours before stand comfort, clothing and snacks.</p></section>`;
     el.querySelectorAll('[data-sk]').forEach((b) => b.addEventListener('click', () => { WT.spendSkill(b.dataset.sk); WT.save(); UI.refresh(); }));
     el.querySelector('[data-back]').addEventListener('click', () => UI.go('lodge'));
