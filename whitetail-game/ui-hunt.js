@@ -393,11 +393,10 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
     setSceneSize();
     el.innerHTML = UI.stage(SW, SH, `<div class="ov" style="left:6px;top:6px;font-size:18px;background:rgba(28,20,16,.75);padding:2px 6px" id="clock"></div>
       <div class="ov" style="right:6px;bottom:6px;font-size:18px;background:rgba(28,20,16,.75);padding:2px 6px" id="hud"></div>`) + `
-      <section class="panel" style="margin-top:10px">
+      <section class="panel" style="margin-top:8px;padding:8px"><div class="row" id="ctl" style="gap:6px"></div></section>
+      <section class="panel" style="margin-top:8px">
         <div class="log" id="log" aria-live="polite"></div>
-      </section>`;
-    // the buttons live above the view so Shoot is never a scroll away
-    el.insertAdjacentHTML('afterbegin', '<section class="panel" style="margin-bottom:8px;padding:8px"><div class="row" id="ctl" style="gap:6px"></div></section>');
+      </section>`; // Shoot, Watch and Fast forward sit right under the view, above the log
     const canvas = $('canvas', el);
     // a tall view that fills the screen; the buttons and the log sit below it
     Object.assign(el.querySelector('.stage').style, { aspectRatio: `${SW} / ${SH}`, width: `min(100%, calc(86vh * ${SW} / ${SH}))`, margin: '0 auto' });
