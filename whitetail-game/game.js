@@ -2198,7 +2198,7 @@
     for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
     summary.recap = buildRecap();
     // whole-map year: every parcel's cycle, dispersal between real parcels, population stabilizer
-    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; const pf = plotFed[p.id]; if (pf) { pr.food = Math.max(pr.food, pf.food); pr.plotNutrition = Math.max(pr.plotNutrition || 0, pf.n); pr.plotCapacity = Math.max(pr.plotCapacity || 0, pf.c); } return pr; });
+    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; const pf = plotFed[p.id]; if (pf) { pr.plotNutrition = Math.max(pr.plotNutrition || 0, pf.n); pr.plotCapacity = Math.max(pr.plotCapacity || 0, pf.c); } return pr; });
     const res = WT.worldYear(props, rng, { winter, yearFactor, seasonMortalityApplied: true }, st.worldSim);
     st.worldSim = res.world;
     props.forEach((pr, k) => {
