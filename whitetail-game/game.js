@@ -1546,18 +1546,6 @@
         }
       }
     }
-    // public land: now and then a big buck from somewhere else is passing through. You can't plan on him.
-    if (d.owner === 'public') {
-      const tv = cfg.traveler, cr = WT.crowd(setup.pid);
-      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'quiet' || cr.id === 'remote' || cr.id === 'landlocked' || cr.bow ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
-      if (rng.chance(pT)) {
-        const big = WT.makeDeer(rng, 'b', rng.pick([4.5, 5.5, 5.5, 6.5].filter((a) => a >= tv.age[0] && a <= tv.age[1])), prop);
-        big.gp = rng.range(tv.gp[0], tv.gp[1]); big.w = clamp(big.w + 0.2, 0.05, 0.95); big.traveler = true;
-        WT.growDeer(big, prop, rng, 1);
-        if (rng.chance(tv.stays)) herd.push(big); // sometimes he likes it here and stays
-        sched.push({ t: pickTime(big), members: [big] });
-      }
-    }
     // walking in can bump deer, but only ones that were already close (due within the hour)
     const nearby = sched.filter((g) => g.t < start + 1);
     if (nearby.length && rng.chance(walkNoise * 0.45)) {

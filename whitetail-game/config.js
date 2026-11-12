@@ -265,8 +265,6 @@
          and mature bucks show from deepMature[0] (roadside) to deepMature[1] (far back) of the usual odds. */
       access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, hikeBase: 6, hikePer: 3, hikeFaster: 0.02, walkMin: 1.5, walkMax: 90, deepCompany: 0.85, deepMature: [0.7, 1.35], oldBuckHome: 0.35 },
     },
-    // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
-    traveler: { chance: 0.005, rut: 2.2, quiet: 1.5, crowded: 0.5, gp: [150, 185], age: [4.5, 6.5], stays: 0.3 },
     /* Four kinds of ground.
        prairie: open grass, hay and stubble. The common middle ground: build anything, plant plots and tree rows.
        timber:  woods, tree rows and brush. Holds more deer. Build anything except plots (no open ground).
