@@ -2175,6 +2175,10 @@
     void plans; // cellular cameras no longer charge a yearly plan: nothing is taken automatically when a year passes
     // improvements mature
     const TT = T();
+    // this year's plots fed this year's deer: remember what they gave before the plots go back to dirt,
+    // or next year's antlers would be grown as if nothing had been planted
+    const plotFed = {};
+    for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') { const pr = makeProp(p.id); plotFed[p.id] = { food: pr.food, n: pr.plotNutrition || 0, c: pr.plotCapacity || 0 }; }
     for (const p of w.parcels) {
       const d = st.parcels[p.id];
       // the season is over: every plot is bare dirt again until you replant it this spring
@@ -2194,7 +2198,7 @@
     for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
     summary.recap = buildRecap();
     // whole-map year: every parcel's cycle, dispersal between real parcels, population stabilizer
-    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; return pr; });
+    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; const pf = plotFed[p.id]; if (pf) { pr.food = Math.max(pr.food, pf.food); pr.plotNutrition = Math.max(pr.plotNutrition || 0, pf.n); pr.plotCapacity = Math.max(pr.plotCapacity || 0, pf.c); } return pr; });
     const res = WT.worldYear(props, rng, { winter, yearFactor, seasonMortalityApplied: true }, st.worldSim);
     st.worldSim = res.world;
     props.forEach((pr, k) => {
