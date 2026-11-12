@@ -243,7 +243,9 @@
   }
   WT.deerHome = function (pid, deer) {
     const w = G.world, list = parcelTiles(pid), home = deer.mom && S().parcels[pid].herd.some((m) => m.id === deer.mom) ? deer.mom : deer.id; // a fawn lives where its mother does
-    const i = list[Math.floor(WT.hash2(home, pid, 91) * list.length) % list.length];
+    let pool = list;
+    if (S().parcels[pid].owner === 'public' && deer.sex === 'b' && deer.age >= 3.5) pool = WT.access(pid).deep; // old bucks on public live where people don't walk
+    const i = pool[Math.floor(WT.hash2(home, pid, 91) * pool.length) % pool.length];
     return { x: i % w.W, y: (i / w.W) | 0 };
   };
   WT.homeFactor = function (pid, deer, x, y, rut) {
@@ -348,7 +350,7 @@
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
     prop.mix = WT.landMix(pid);
-    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; if (cr.id === 'honey') { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + cr.genetics); prop.security = clamp(prop.security + cr.security); prop.plotNutrition = (prop.plotNutrition || 0) + (cr.nutrition || 0); } }
+    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; }
     if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
@@ -1033,6 +1035,7 @@
   WT.markSpot = function (pid, x, y) {
     const st = S(), d = st.parcels[pid], w = G.world, i = tileAt(x, y);
     if (d.owner !== 'public') return 'Spots are marked on public land. On your own land, put up a stand.';
+    if (!WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land you own next to it.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (i < 0 || w.parcelOf[i] !== pid || !standableTile(w.cover[i])) return 'Pick a tree or ground spot inside the public area.';
     if (WT.landType(w.cover[i]) === 'farm') return "That's a crop field. Mark the edge of it instead.";
@@ -1062,6 +1065,7 @@
     if (WT.earlySeason() && !WT.hasBow()) return 'Early archery season: bow only until Oct 1. Equip your bow under Gear, or press Wait.';
     if (d.bowOnly && !WT.hasBow()) return 'This area is bow only. Equip a bow under Gear.';
     if (spot.kind !== 'spot') return null;
+    if (d.owner === 'public' && !WT.canReach(pid)) return 'No road reaches this public land. You can only walk in from land you own next to it.';
     const id = WT.mobileStand();
     if (!id) return 'You need a mobile stand to hunt public land. Buy a hang-on, climber, saddle or pop-up blind at the Shop and equip it under Gear.';
     const lt = WT.landType(G.world.cover[spot.y * G.world.W + spot.x]);
@@ -1301,25 +1305,52 @@
   };
 
   // Public land: other hunters
+  /* How people get into a public area. Hunters start at any road that touches it and walk; every tile costs a step,
+     more through timber, swamp and water. walk[i] is the cost to reach tile i; ease is how much of the area is an easy
+     walk; locked means no road touches it at all. Worked out from the map, once. */
+  WT.access = function (pid) {
+    const w = G.world; w._acc = w._acc || {};
+    if (w._acc[pid]) return w._acc[pid];
+    const cfg = C().publicCrowd.access, TT = T(), W = w.W, p0 = w.parcels[pid], list = [], walk = new Map(), open = [];
+    for (let y = p0.minY; y <= p0.maxY; y++) for (let x = p0.minX; x <= p0.maxX; x++) if (w.parcelOf[y * W + x] === pid) list.push(y * W + x);
+    const isRoad = (i) => w.cover[i] === TT.ROAD || w.cover[i] === TT.TOWN;
+    const step = (i) => { const c = w.cover[i]; if (isRoad(i)) return 0.2; if (WT.isWater(c)) return cfg.water; const lt = WT.landType(c); return lt === 'swamp' ? cfg.swamp : lt === 'timber' ? cfg.timber : 1; };
+    const nb = (i) => { const x = i % W, y = (i / W) | 0, o = []; if (x > 0) o.push(i - 1); if (x < W - 1) o.push(i + 1); if (y > 0) o.push(i - W); if (y < w.H - 1) o.push(i + W); return o; };
+    for (const i of list) if (isRoad(i) || nb(i).some(isRoad)) { walk.set(i, isRoad(i) ? 0 : step(i)); open.push(i); }
+    const locked = !open.length;
+    while (open.length) { // small areas: a plain relaxing pass is plenty
+      const i = open.shift(), d0 = walk.get(i);
+      for (const j of nb(i)) { if (w.parcelOf[j] !== pid) continue; const d1 = d0 + step(j); if (!walk.has(j) || d1 < walk.get(j) - 1e-6) { walk.set(j, d1); open.push(j); } }
+    }
+    let ease = 0, n = 0; const land = [];
+    for (const i of list) { if (WT.isWater(w.cover[i]) || isRoad(i)) continue; n++; const d = locked ? cfg.lockedDepth : walk.get(i) ?? cfg.lockedDepth; ease += Math.exp(-d / cfg.reach); land.push([i, d]); }
+    land.sort((p, q) => q[1] - p[1]);
+    return (w._acc[pid] = { locked, walk, ease: n ? ease / n : 0, deep: land.slice(0, Math.max(1, Math.round(land.length * cfg.oldBuckHome))).map((p) => p[0]) });
+  };
+  // Can you get in? Roadless public land is reached only across land you own that touches it.
+  WT.canReach = function (pid) { const a = WT.access(pid); return !a.locked || [...G.world.parcels[pid].neighbors].some((q) => S().parcels[q].owner === 'player'); };
+  // How far back a spot is: tiles of walking, and 0..1 (0 at the road, near 1 far back).
+  WT.spotDepth = function (pid, x, y) {
+    const a = WT.access(pid), cfg = C().publicCrowd.access, d = a.locked ? cfg.lockedDepth : a.walk.get(y * G.world.W + x) ?? cfg.lockedDepth;
+    return { tiles: d, q: 1 - Math.exp(-d / cfg.reach), walkMin: Math.round(Math.min(cfg.walkMax, d * cfg.walkMin) / 5) * 5 };
+  };
   // How hard a public area gets hunted. Fixed for the life of the map.
   WT.crowd = function (pid) {
     const cfg = C().publicCrowd, d = S().parcels[pid];
     if (d.owner !== 'public') return null;
+    if (WT.access(pid).locked) return Object.assign({ id: 'landlocked' }, cfg.landlocked);
     if (d.bowOnly) return { id: 'bow', name: 'Bow only', floor: C().deer.pressure.bowOnlyFloor, company: 0.03, note: 'few hunters, short range. The oldest bucks on public ground' };
-    const hs = (q) => WT.hash2(q, 7, G.world.seed + 311), h = hs(pid);
-    // honey holes: a rare slice of the areas that would otherwise be quiet. Fixed for the life of the map.
-    if (cfg.honey && h >= 1 - cfg.honey.share) {
-      const found = (d.scoutSits || 0) >= cfg.honey.findSits;
-      return Object.assign({ id: 'honey', found }, cfg.honey, found ? {} : { name: cfg.quiet.name, note: cfg.quiet.note });
-    }
-    const id = h < cfg.crowded.share ? 'crowded' : h < cfg.crowded.share + cfg.average.share ? 'average' : 'quiet';
+    const a = WT.access(pid);
+    const id = a.ease > cfg.access.crowded ? 'crowded' : a.ease > cfg.access.average ? 'average' : 'quiet';
     return Object.assign({ id }, cfg[id]);
   };
-  WT.publicCompetition = function (pid) {
+  WT.publicCompetition = function (pid, spot) {
     const st = S(), d = st.parcels[pid];
     if (d.owner !== 'public') return null;
     const weekend = st.day % 7 >= 5;
-    const p = WT.crowd(pid).company + (weekend ? 0.15 : 0) + (/Seek|Peak/.test(WT.rutPhase(st.day).name) ? 0.1 : 0);
+    const cr = WT.crowd(pid); if (cr.id === 'landlocked') return null;
+    const deep = spot ? 1 - C().publicCrowd.access.deepCompany * WT.spotDepth(pid, spot.x, spot.y).q : 1; // few people walk that far
+    const p = (cr.company + (weekend ? 0.15 : 0) + (/Seek|Peak/.test(WT.rutPhase(st.day).name) ? 0.1 : 0)) * deep;
     const h = WT.hash2(pid, st.year * 1000 + st.day * 2 + (st.slot === 'evening' ? 1 : 0), 17);
     return h < p ? 'Another truck is already parked at the access. Someone is hunting near your spot.' : null;
   };
@@ -1347,6 +1378,8 @@
     if (hasLight) st.inv.lightCharge--;
 
     let start = plan.win[0];
+    const depth = d.owner === 'public' && stand.kind === 'spot' ? WT.spotDepth(setup.pid, stand.x, stand.y) : null;
+    if (depth) start += depth.walkMin / 60; // the walk in comes off the sit
     const end = plan.win[1];
     const log = [];
     if (!hasLight && setup.session !== 'evening') start = plan.legalStart + 0.4;
@@ -1382,7 +1415,7 @@
       // early archery: deer haven't been hunted yet
       tod: (setup.session === 'allday' ? 1.15 : 1) * (st.day < 0 ? 1.2 : 1),
       place: 0.5, matureRating: 0.5, // neutral: the stand's worth comes through the two multipliers below
-      spotMult: WT.spotMult(stand, today), matureMult: WT.matureMult(stand),
+      spotMult: WT.spotMult(stand, today), matureMult: WT.matureMult(stand) * (depth ? C().publicCrowd.access.deepMature[0] + (C().publicCrowd.access.deepMature[1] - C().publicCrowd.access.deepMature[0]) * depth.q : 1),
       hours: plan.windowHrs, viewShare: WT.viewShare(parcel.acres) * (0.6 + sType.visibility / 100 * 0.5) * (0.92 + stand.r.visibility * 0.2),
     };
     const herd = d.herd;
@@ -1446,7 +1479,7 @@
     // public land: now and then a big buck from somewhere else is passing through. You can't plan on him.
     if (d.owner === 'public') {
       const tv = cfg.traveler, cr = WT.crowd(setup.pid);
-      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'honey' ? tv.honey : cr.id === 'quiet' || cr.id === 'bow' ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
+      const pT = tv.chance * (rutOn ? tv.rut : 1) * (cr.id === 'quiet' || cr.id === 'bow' || cr.id === 'landlocked' ? tv.quiet : cr.id === 'crowded' ? tv.crowded : 1) * (setup.session === 'allday' ? 1.6 : 1);
       if (rng.chance(pT)) {
         const big = WT.makeDeer(rng, 'b', rng.pick([4.5, 5.5, 5.5, 6.5].filter((a) => a >= tv.age[0] && a <= tv.age[1])), prop);
         big.gp = rng.range(tv.gp[0], tv.gp[1]); big.w = clamp(big.w + 0.2, 0.05, 0.95); big.traveler = true;

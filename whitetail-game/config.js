@@ -233,18 +233,23 @@
     home: { near: 2.0, far: 0.55, doeReach: 0.5, buckReach: 0.7 },
     // Sanctuary: cover you never hunt. It only counts in cover, away from your stands, and up to a share of the land.
     sanctuary: { maxShare: 0.25, standTiles: 3, holdBucks: 1.2, capacity: 0.6 }, // at the cap: 30% fewer young bucks leave, 15% more deer fit
-    /* Public land comes in three kinds (bow-only areas are their own thing). buckDeaths is the share of adult bucks
+    /* Public land comes in kinds, decided by how easy it is to get into (see access below; bow-only areas are their own thing). buckDeaths is the share of adult bucks
        killed each year; floor is the pressure it never drops below; company is the base chance someone beat you there. */
     publicCrowd: {
-      crowded: { name: 'Crowded',  share: 0.35, buckDeaths: [0.52, 0.62], floor: 0.45, company: 0.28, note: 'trucks at every access. Lots of pressure, mostly young bucks' },
-      average: { name: 'Average',  share: 0.40, buckDeaths: [0.38, 0.46], floor: 0.3,  company: 0.12, note: 'hunted, but there is room. A decent buck now and then' },
-      quiet:   { name: 'Quiet',    share: 0.25, buckDeaths: [0.27, 0.33], floor: 0.15, company: 0.04, note: 'hard to get to and lightly hunted. Close to private-land deer' },
-      // A rare area nobody else has figured out: about one rifle area in ten, so a map may have none or a couple.
-      // It reads as Quiet until you have hunted it `findSits` times.
-      honey:   { name: 'Honey hole', share: 0.1, buckDeaths: [0.13, 0.18], floor: 0.08, company: 0.02, genetics: 0.4, nutrition: 0.12, security: 0.2, findSits: 6, note: 'nobody else has found this place. Bucks get old here' },
+      crowded: { name: 'Crowded',  buckDeaths: [0.52, 0.62], floor: 0.45, company: 0.28, note: 'trucks at every access. Lots of pressure, mostly young bucks' },
+      average: { name: 'Average',  buckDeaths: [0.38, 0.46], floor: 0.3,  company: 0.12, note: 'hunted, but there is room. A decent buck now and then' },
+      quiet:   { name: 'Quiet',    buckDeaths: [0.27, 0.33], floor: 0.15, company: 0.04, note: 'hard to get to and lightly hunted. Close to private-land deer' },
+      // No road touches it. Nobody hunts it; bucks die there only of old age or when they wander next door.
+      landlocked: { name: 'Landlocked', buckDeaths: [0.11, 0.16], floor: 0.04, company: 0, note: 'no road reaches it. You can only walk in from land you own next to it' },
+      /* How busy an area is comes from the map. Hunters walk in from the road and thin out the further they must go:
+         reach is how many tiles until two thirds of them have stopped. Water, swamp and timber cost extra to cross.
+         ease is the share of the area that sees real traffic: above `crowded` it is Crowded, above `average` Average, else Quiet.
+         A deep spot costs you walkMin minutes a tile off the sit, sees deepCompany fewer trucks, and mature bucks go from
+         deepMature[0] (roadside) to deepMature[1] (far back) of the usual odds. */
+      access: { reach: 7, water: 6, swamp: 2.5, timber: 1.3, crowded: 0.38, average: 0.26, walkMin: 2.5, walkMax: 75, deepCompany: 0.85, deepMature: [0.6, 1.5], lockedDepth: 14, oldBuckHome: 0.35 },
     },
     // A big buck from somewhere else passing through public land. Per sit; more in the rut and on quiet ground.
-    traveler: { chance: 0.005, rut: 2.2, quiet: 1.5, honey: 3, crowded: 0.5, gp: [150, 185], age: [4.5, 6.5], stays: 0.3 },
+    traveler: { chance: 0.005, rut: 2.2, quiet: 1.5, crowded: 0.5, gp: [150, 185], age: [4.5, 6.5], stays: 0.3 },
     /* Four kinds of ground.
        prairie: open grass, hay and stubble. The common middle ground: build anything, plant plots and tree rows.
        timber:  woods, tree rows and brush. Holds more deer. Build anything except plots (no open ground).

@@ -598,6 +598,8 @@
         const q = WT.habitatQuality(p.habitat) * (1 - (d.pressure || 0.5) * 0.4);
         const scouted = sc >= 3 ? Math.max(1, Math.min(5, Math.round(1 + q * 5 + (WT.hash2(pid, 1, 2) - 0.5) * 2 / sc))) : 0;
         if (standObj) html += standBlock();
+        if (standObj) { const dp = WT.spotDepth(pid, standObj.x, standObj.y); html += `<p class="dim">${dp.walkMin < 10 ? 'Right by the road. Easy to reach, so everybody hunts here: expect company and mostly young deer.' : dp.q < 0.6 ? `About a ${dp.walkMin} minute walk in, which comes off your sit. Fewer hunters make it this far.` : `Far back: about a ${dp.walkMin} minute walk in, which comes off your sit. Hardly anyone comes this far, and this is where the old bucks live.`}</p>`; }
+        if (!WT.canReach(pid)) html += `<p class="warn">No road reaches this ground, so nobody hunts it. You can only walk in from land you own that touches it.</p>`;
         html += `<p class="dim">${mixLine(pid)}</p><p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
           <dl class="kv"><dt>How busy</dt><dd><b>${WT.crowd(pid).name}</b> <span class="faint">${WT.crowd(pid).note}</span></dd><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
@@ -634,7 +636,7 @@
       card.querySelectorAll('[data-guide]').forEach((b) => b.addEventListener('click', () => UI.guide(b.dataset.guide)));
       on('srename', () => { WT.renameStand(standObj, $('#sname', card).value); WT.save(); UI.toast('Renamed.'); renderCard(); });
       on('huntHere', () => {
-        const comp = WT.publicCompetition(pid);
+        const comp = WT.publicCompetition(pid, standObj);
         const go = (competition) => UI.go('loadout', { pid, sid: standObj.sid, competition });
         { const blk = WT.spotBlock(pid, standObj); if (blk && /bow only/i.test(blk)) return UI.toast(blk, 'bad'); }
         if (!comp) return go(false);
