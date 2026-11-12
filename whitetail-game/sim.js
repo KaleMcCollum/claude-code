@@ -901,7 +901,9 @@
     const condF = 0.9 + 0.1 * d.cond;
     const L = C().landWork, G0 = cfg.genetics;
     const top = clamp((prop.plotNutrition || 0) / L.plotNutritionMax) * L.topEnd * clamp((d.gp - G0.mean) / G0.sd, 0, 3.5); // good groceries let the gifted ones show it
-    const target = Math.max(d.age < 2 ? 12 : 25, d.gp * cf * (nf + top) * yearFactor * condF);
+    // Antlers come from genetics and age. Feed decides how many deer the land holds, how heavy they are and whether they
+    // stay home; it does not make a rack bigger or smaller, so every buck is grown on the same ordinary feed.
+    const target = Math.max(d.age < 2 ? 12 : 25, d.gp * cf * (cfg.nutrition.antlers ?? nf + top) * yearFactor * condF);
     // The rack is built as B&C components + 3D geometry; the score is measured from it (antlers.js).
     if (!d.style) d.style = WT.rollRackStyle(rng);
     const { comp, sheet } = WT.growRack(d.style, d.age, target, rng);

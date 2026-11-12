@@ -120,7 +120,7 @@
       ageCurve: { 0.5: 0, 1.5: [0.30, 0.40], 2.5: [0.55, 0.65], 3.5: [0.75, 0.82], 4.5: [0.88, 0.94], 5.5: [0.97, 1.0], 6.5: [0.97, 1.0], 7.5: [0.96, 1.0], 8.5: [0.91, 0.95], 9.5: [0.83, 0.87], 10.5: [0.78, 0.84] },
       maxAge: 10.5,
       yearlyVariance: 0.065,
-      nutrition: { min: 0.88, max: 1.06, fedCap: 1.0, overCapacityPenalty: 0.06 }, // fedCap: plots lift poor ground up to here and no further. Feed helps struggling land catch up; it does not beat naturally rich ground   // crowding costs a little; it must not cancel the food you planted
+      nutrition: { antlers: 0.965, /* the one feed level every rack is grown on: where ordinary private land sat before */ min: 0.88, max: 1.06, fedCap: 1.0, overCapacityPenalty: 0.06 }, // fedCap: plots lift poor ground up to here and no further. Feed helps struggling land catch up; it does not beat naturally rich ground   // crowding costs a little; it must not cancel the food you planted
       density: { poor: 4, elite: 14 },  // deer per 100 acres
       weights: {
         buck: { 0.5: [60, 95], 1.5: [125, 165], 2.5: [155, 200], 3.5: [185, 230], 4.5: [205, 285] },
