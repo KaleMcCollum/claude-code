@@ -912,7 +912,9 @@
     d.yz = Math.round(yearZ * 100) / 100;
     const Gi = A.giant, heat = prop.geneG || 0, gs = heat >= 0 ? Gi.base + (Gi.hot - Gi.base) * Math.min(1, heat) : Gi.base * Math.max(0, 1 + heat);
     const giant = Math.min(Gi.max, gs * Math.max(0, potentialZ - Gi.from)); // the rare buck far above average for his age gets more on warm ground
-    const target = Math.max(d.age < 2 ? 10 : 25, (A.mean[ai] + Math.min(Gi.top, z + giant) * A.stdDev[ai]) * (prop.landQuality ?? A.land.neutral)); // the floor only keeps the rack builder sane: a tiny yearling is a spike
+    let raw = (A.mean[ai] + Math.min(Gi.top, z + giant) * A.stdDev[ai]) * (prop.landQuality ?? A.land.neutral);
+    { const F = A.flat; if (F && raw > F.from) { const e = raw - F.from; raw = Math.min(F.cap, e <= F.over ? F.from + e * (F.squeeze + (1 - F.squeeze) * e / F.over) : F.from + F.over + (e - F.over) * (1 + F.stretch)); } } // the flattened back half of the curve
+    const target = Math.max(d.age < 2 ? 10 : 25, raw); // the floor only keeps the rack builder sane: a tiny yearling is a spike
     // The rack is built as B&C components + 3D geometry; the score is measured from it (antlers.js).
     if (!d.style) d.style = WT.rollRackStyle(rng);
     const { comp, sheet } = WT.growRack(d.style, d.age, target, rng);
