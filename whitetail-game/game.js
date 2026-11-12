@@ -76,7 +76,7 @@
   /* ================================================================ new game */
   WT.newGame = function (seed) {
     seed = seed || ((Math.random() * 1e9) | 0);
-    const world = WT.genWorld(seed, 7); // version 6 worlds: lakes, state land that cuts across the road grid, private places of every size. Version 7: no land left belonging to nobody
+    const world = WT.genWorld(seed, 8); // version 6 worlds: lakes, state land that cuts across the road grid, private places of every size. Version 7: no land left belonging to nobody. Version 8: no town
     captureNatural(world);
     G.world = world;
     const rng = WT.makeRng(seed ^ 0x5eed);
@@ -94,7 +94,7 @@
       loadout: { rifle: 'ruger_ranch', clothing: { base: 'tee', mid: 'sweat_blaze', pants: 'jeans', feet: 'sneakers' }, equip: {}, pack: {} },
       tags: { buck: 0, doe: 0, buckFilled: 0, doeFilled: 0 },
       parcels: {}, tileMods: {}, forSale: [],
-      genV: 7,
+      genV: 8,
       journal: [], news: [], hitList: [], photos: [], settings: { hand: 'right', bowThird: true, pubHerds: true, pubCrowd: true, bowHerds: true, fineRefund: true },
       stats: { hunts: 0, hours: 0, seen: 0, shots: 0, misses: 0, wounded: 0 },
       weather: null, rngState: 0, deerSeq: 1, lastHunt: null, seasonLog: { hunts: 0, harvest: [] },

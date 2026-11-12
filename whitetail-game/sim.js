@@ -308,7 +308,7 @@
     // --- Version 4: roadless blocks that become the big public areas (chosen where the ground is already wild)
     const wild = ver >= 4 && ver < 6 ? pickWildBlocks(cover, W, H, vRoads, hRoads, seed) : [];
     // --- Version 6: lakes, and state land grown as irregular shapes that ignore the road grid
-    const v6 = ver >= 6 ? buildV6({ cover, W, H, seed, moist, elev, vRoads, hRoads }) : null;
+    const v6 = ver >= 6 ? buildV6({ cover, W, H, seed, moist, elev, vRoads, hRoads, town: ver < 8 }) : null;
     for (const b of wild) for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
       const i = y * W + x, c = cover[i];
       if (isWater(c) || c === T.TIMBER || c === T.SLOUGH || c === T.BRUSH) continue;
@@ -368,8 +368,8 @@
 
     // --- Town at a central intersection
     const tx = vRoads[Math.floor(vRoads.length / 2)] || W / 2, ty = hRoads[Math.floor(hRoads.length / 2)] || H / 2;
-    const towns = [{ name: rng.pick(TOWN_NAMES), x: tx, y: ty }];
-    for (let y = ty - 4; y <= ty + 4; y++) for (let x = tx - 5; x <= tx + 5; x++) {
+    const towns = ver >= 8 ? [] : [{ name: rng.pick(TOWN_NAMES), x: tx, y: ty }]; // version 8: no town, the roads just cross
+    if (towns.length) for (let y = ty - 4; y <= ty + 4; y++) for (let x = tx - 5; x <= tx + 5; x++) {
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
       const i = y * W + x;
       if (cover[i] !== T.ROAD && !isWater(cover[i])) cover[i] = T.TOWN;
@@ -384,7 +384,7 @@
       let x, y;
       if (vertical) { y = rng.int(4, H - 6); x = r0 + (rng.chance(0.5) ? 3 : -5); }
       else { x = rng.int(4, W - 6); y = r0 + (rng.chance(0.5) ? 3 : -5); }
-      if (Math.abs(x - tx) < 12 && Math.abs(y - ty) < 10) continue;
+      if (towns.length && Math.abs(x - tx) < 12 && Math.abs(y - ty) < 10) continue;
       let ok = true;
       for (let yy = y - 1; yy <= y + 3 && ok; yy++) for (let xx = x - 1; xx <= x + 3; xx++) {
         if (xx < 0 || yy < 0 || xx >= W || yy >= H) { ok = false; break; }
@@ -439,7 +439,7 @@
     const rng = makeRng(seed * 53 + 29);
     const tx = vRoads[Math.floor(vRoads.length / 2)] ?? W / 2, ty = hRoads[Math.floor(hRoads.length / 2)] ?? H / 2; // where the town will be
     const lake = new Uint8Array(N), state = new Uint8Array(N);
-    const nearTown = (x, y, r) => Math.abs(x - tx) < r && Math.abs(y - ty) < r;
+    const nearTown = (x, y, r) => o.town !== false && Math.abs(x - tx) < r && Math.abs(y - ty) < r; // version 8 maps have no town to keep clear of
     // --- one big lake, on some maps
     if (rng.chance(cfg.bigLake)) {
       const tiles = rng.range(cfg.bigLakeAcres[0], cfg.bigLakeAcres[1]) / C().world.acresPerTile, ratio = rng.range(0.55, 1.7);
@@ -843,7 +843,7 @@
     for (const p of world.parcels) {
       if (p.owner !== 'npc' || p.inholding) continue;
       const hq = habitatQuality(p.habitat);
-      const sc = Math.abs(p.acres - cfg.starterAcres) * 1.5 + Math.abs(hq - 0.48) * 120 + (Math.hypot(p.cx - town.x, p.cy - town.y) < 25 ? 60 : 0);
+      const sc = Math.abs(p.acres - cfg.starterAcres) * 1.5 + Math.abs(hq - 0.48) * 120 + (town && Math.hypot(p.cx - town.x, p.cy - town.y) < 25 ? 60 : 0);
       if (sc < bestScore) { bestScore = sc; best = p; }
     }
     best.owner = 'player';

@@ -285,11 +285,11 @@
     let road = false;
     for (let y = p.minY; y <= p.maxY && !road; y++) for (let x = p.minX; x <= p.maxX; x++) { const i = y * w.W + x; if (w.parcelOf[i] === p.id && w.distRoad[i] <= 1) { road = true; break; } }
     const town = w.towns[0];
-    const miles = (Math.hypot(p.cx - town.x, p.cy - town.y) * 104 / 5280).toFixed(1);
+    const miles = town ? (Math.hypot(p.cx - town.x, p.cy - town.y) * 104 / 5280).toFixed(1) : null;
     const nbs = [...p.neighbors].map((q) => st.parcels[q].owner).reduce((a, o) => { a[o] = (a[o] || 0) + 1; return a; }, {});
     const nbTxt = Object.entries(nbs).map(([o, n]) => `${n} ${o === 'player' ? 'yours' : o === 'public' ? 'public' : 'private'}`).join(', ');
     return `<dl class="kv"><dt>Acres</dt><dd>${p.acres}</dd><dt>Price</dt><dd>${WT.money(price)} (${WT.money(price / p.acres)}/acre)</dd>
-      <dt>Cover</dt><dd>${esc(cb)}</dd><dt>Road</dt><dd>${road ? 'Gravel road frontage' : 'Landlocked, field access only'}</dd><dt>Town</dt><dd>${miles} miles to ${esc(town.name)}</dd><dt>Neighbors</dt><dd>${esc(nbTxt)}</dd></dl>
+      <dt>Cover</dt><dd>${esc(cb)}</dd><dt>Road</dt><dd>${road ? 'Gravel road frontage' : 'Landlocked, field access only'}</dd>${town ? `<dt>Town</dt><dd>${miles} miles to ${esc(town.name)}</dd>` : ''}<dt>Neighbors</dt><dd>${esc(nbTxt)}</dd></dl>
       <p class="dim">${esc(flavor(h))}</p>`;
   }
   function flavor(h) {
