@@ -342,7 +342,7 @@
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
     prop.mix = WT.landMix(pid);
-    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; if (cr.id === 'honey') { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + cr.genetics); prop.security = clamp(prop.security + cr.security); } }
+    if (d.owner === 'public' && !d.bowOnly) { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.pressFloor = cr.floor; if (cr.id === 'honey') { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + cr.genetics); prop.security = clamp(prop.security + cr.security); prop.plotNutrition = (prop.plotNutrition || 0) + (cr.nutrition || 0); } }
     if (prop.bowOnly) { prop.regionalGenetics = clamp((prop.regionalGenetics ?? 0.5) + 0.3); prop.security = clamp(prop.security + 0.15); } // lightly hunted, long-protected ground
     prop.npcStyle = d.npcStyle;
     prop.capacity = WT.carryingCapacity(prop);
@@ -1300,9 +1300,8 @@
     if (d.owner !== 'public') return null;
     if (d.bowOnly) return { id: 'bow', name: 'Bow only', floor: C().deer.pressure.bowOnlyFloor, company: 0.03, note: 'few hunters, short range. The oldest bucks on public ground' };
     const hs = (q) => WT.hash2(q, 7, G.world.seed + 311), h = hs(pid);
-    // the honey hole: one rifle-legal public area per map, fixed for the life of the map
-    if (G.world._honey === undefined) { let best = null; for (const p of G.world.parcels) { const e = S().parcels[p.id]; if (e.owner === 'public' && !e.bowOnly && (best === null || hs(p.id) > hs(best))) best = p.id; } G.world._honey = best; }
-    if (pid === G.world._honey && cfg.honey) {
+    // honey holes: a rare slice of the areas that would otherwise be quiet. Fixed for the life of the map.
+    if (cfg.honey && h >= 1 - cfg.honey.share) {
       const found = (d.scoutSits || 0) >= cfg.honey.findSits;
       return Object.assign({ id: 'honey', found }, cfg.honey, found ? {} : { name: cfg.quiet.name, note: cfg.quiet.note });
     }
