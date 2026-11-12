@@ -1373,6 +1373,19 @@
     land.sort((p, q) => q[1] - p[1]);
     return (w._acc[pid] = { locked: !isFinite(near), ease: land.length ? ease / land.length : 0, near, far, deep: land.slice(0, Math.max(1, Math.round(land.length * cfg.oldBuckHome))).map((p) => p[0]) });
   };
+  // Private land that shares a fence with a public area: crossing it is a way in that skips the walk from the road.
+  WT.waysIn = function (pid) {
+    const w = G.world, st = S(), p0 = w.parcels[pid]; w._adj = w._adj || {};
+    if (!w._adj[pid]) {
+      const set = new Set();
+      for (let y = p0.minY; y <= p0.maxY; y++) for (let x = p0.minX; x <= p0.maxX; x++) {
+        const i = y * w.W + x; if (w.parcelOf[i] !== pid) continue;
+        for (const k of [x > 0 ? i - 1 : -1, x < w.W - 1 ? i + 1 : -1, i - w.W, i + w.W]) { if (k < 0 || k >= w.cover.length) continue; const q = w.parcelOf[k]; if (q >= 0 && q !== pid && w.parcels[q].owner !== 'public') set.add(q); }
+      }
+      w._adj[pid] = [...set];
+    }
+    return w._adj[pid].map((q) => { const d = st.parcels[q]; return { pid: q, name: w.parcels[q].name, yours: d.owner === 'player', paid: !!d.permBought, rents: d.owner === 'npc' && !!d.permission, fee: d.permFee, forSale: (st.forSale || []).includes(q) }; });
+  };
   // Can you get in at all?
   WT.canReach = function (pid) {
     const w = G.world, walk = myWalk(), p0 = w.parcels[pid];

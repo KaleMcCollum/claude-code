@@ -605,8 +605,14 @@
         }
         { const ac = WT.access(pid), A = WT.CONFIG.publicCrowd.access, per = A.walkMin * (1 - A.hikeFaster * (S().skills.hiking || 0)), mins = (t) => Math.max(5, Math.round(Math.min(A.walkMax, t * per) / 5) * 5), mine = WT.hikeReach();
           if (!WT.canReach(pid)) html += `<p class="warn">No road reaches this ground, so nobody hunts it. You can only walk in from land touching it that you own or have paid permission on.</p>`;
-          else if (isFinite(ac.near)) html += `<p class="dim">From the nearest road, the near side of this ground is about a ${mins(ac.near)} minute walk and the far side about ${mins(ac.far)}. ${mine >= ac.far ? 'Your Backcountry skill covers all of it.' : mine < ac.near ? `Your Backcountry skill is good for about ${mins(mine)} minutes, which does not reach it yet.` : `Your Backcountry skill is good for about ${mins(mine)} minutes, so part of it.`} Land touching it that you own or have permission on is a way in from that side.</p>`; }
-        html += `<p class="dim">${mixLine(pid)}</p><p>${p.acres} acres of public ground. Free to hunt, but everybody else knows about it too.${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
+          else if (isFinite(ac.near)) html += `<p class="dim">From the nearest road, the near side of this ground is about a ${mins(ac.near)} minute walk and the far side about ${mins(ac.far)}. ${mine >= ac.far ? 'Your Backcountry skill covers all of it.' : mine < ac.near ? `Your Backcountry skill is good for about ${mins(mine)} minutes, which does not reach it yet.` : `Your Backcountry skill is good for about ${mins(mine)} minutes, so part of it.`} </p>`;
+          if (WT.canReach(pid) && mine < ac.far) { // name the places next door, so the other way in is something you can act on
+            const ways = WT.waysIn(pid), open = ways.filter((v) => v.yours || v.paid);
+            if (open.length) html += `<p class="good">You can walk straight in across ${open.map((v) => esc(v.name)).join(' or ')}, without the hike from the road.</p>`;
+            if (ways.length) html += `<p class="dim">${open.length ? 'Land next door' : 'The other way in is across the fence from land next door'}: ${ways.map((v) => `<button class="btn small" data-jump="${v.pid}">${esc(v.name)}</button> <span class="faint">${v.yours ? 'yours' : v.paid ? 'you have permission' : v.rents ? `rents permission, ${WT.money(v.fee)}` : v.forSale ? 'for sale' : 'not renting'}</span>`).join(' ')}</p>`;
+            else html += `<p class="faint">No private land touches this unit: the only way in is the walk.</p>`;
+          } }
+        html += `<p class="dim">${mixLine(pid)}</p><p>${p.acres} acres of public ground. ${['quiet', 'remote', 'landlocked'].includes(WT.crowd(pid).id) ? 'Free to hunt, if you can get to it.' : 'Free to hunt, but everybody else knows about it too.'}${d.bowOnly ? ' <span class="warn">Bow only: equip a bow under Gear to hunt here.</span>' : ''}</p>
           <dl class="kv"><dt>How busy</dt><dd><b>${WT.crowd(pid).name}</b> <span class="faint">${WT.crowd(pid).note}</span></dd><dt>Scouted</dt><dd>${sc} hunt${sc === 1 ? '' : 's'}</dd><dt>Hunting</dt><dd>${scouted ? `<span class="stars">${stars(scouted)}</span>` : '<span class="faint">Hunt it a few times to get a feel for it</span>'}</dd>
           <dt>Your spots</dt><dd>${(d.spots || []).length} / ${WT.SPOT_LIMITS.perArea} here</dd></dl>
           ${state.tile ? scoutRow(pid, state.tile) : ''}
@@ -640,6 +646,7 @@
       on('toLand', () => UI.go('map', { mode: 'land', pid, sid: state.sid }));
       card.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => { const [x, y] = b.dataset.goto.split(',').map(Number); selectTile(pid, x, y); refreshMap(); renderCard(); }));
       card.querySelectorAll('[data-guide]').forEach((b) => b.addEventListener('click', () => UI.guide(b.dataset.guide)));
+      card.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => { state.pid = +b.dataset.jump; state.tile = null; state.sid = null; state.cid = null; view.focus(state.pid); refreshMap(); renderCard(); }));
       on('srename', () => { WT.renameStand(standObj, $('#sname', card).value); WT.save(); UI.toast('Renamed.'); renderCard(); });
       on('huntHere', () => {
         const comp = WT.publicCompetition(pid, standObj);

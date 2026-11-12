@@ -97,7 +97,9 @@
       /* Version 4 maps: roadless country. A few blocks of the road grid lose their inside roads and become big public
          areas, reached only from the roads around them, so the middle is a long walk from anywhere. big = 2 x 2 road
          squares, mid = 2 x 1. Every private parcel is guaranteed a road. publicShare: small roadside areas fill up to this. */
-      wild: { secondBig: 0.35, secondMid: 0.5, bigMin: 60, midMin: 30, luck: 0.25, maxShare: 0.27, publicShare: 0.22, timber: 0.56, brush: 0.52, slough: 0.55 },
+      /* wedge: a private place that runs from the road into a roadless area (always in a big one, midWedge of the smaller ones).
+         Its back fence is far from any road, so whoever may cross it walks straight into ground the public reaches only after a long hike. */
+      wild: { wedgeWide: 26, wedgeDeep: 0.5, midWedge: 0.5, secondBig: 0.35, secondMid: 0.5, bigMin: 60, midMin: 30, luck: 0.25, maxShare: 0.27, publicShare: 0.22, timber: 0.56, brush: 0.52, slough: 0.55 },
       permissionShare: 0.35,            // of NPC parcels willing to sell permission
       forSaleCount: 6,
       starterAcres: 100,

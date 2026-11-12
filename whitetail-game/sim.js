@@ -572,9 +572,19 @@
       // every parcel that sits in a roadless block is a unit of that block's public area
       world.wild.forEach((b, bi) => {
         const cname = pubNames.length ? pubNames.splice(rng.int(0, pubNames.length - 1), 1)[0] : `State Land #${bi + 1}`;
+        // the private place that reaches in from one of the roads around it
+        let wedge = null;
+        if (b.kind === 'big' || hash2(bi, 9, world.seed + 55) < cfg.wild.midWedge) {
+          const sides = []; if (b.ry0 >= 0) sides.push('top'); if (b.ry1 < H) sides.push('bottom'); if (b.rx0 >= 0) sides.push('left'); if (b.rx1 < W) sides.push('right');
+          const side = sides[Math.floor(hash2(bi, 10, world.seed + 55) * sides.length) % sides.length], t = 0.3 + 0.4 * hash2(bi, 11, world.seed + 55);
+          const bw = b.x1 - b.x0 + 1, bh = b.y1 - b.y0 + 1, wd = cfg.wild.wedgeWide / 2, dp = cfg.wild.wedgeDeep;
+          if (side === 'top' || side === 'bottom') { const cx = b.x0 + bw * t; wedge = { x0: cx - wd, x1: cx + wd, y0: side === 'top' ? b.y0 - 6 : b.y1 - bh * dp, y1: side === 'top' ? b.y0 + bh * dp : b.y1 + 6 }; }
+          else if (side) { const cy = b.y0 + bh * t; wedge = { y0: cy - wd, y1: cy + wd, x0: side === 'left' ? b.x0 - 6 : b.x1 - bw * dp, x1: side === 'left' ? b.x0 + bw * dp : b.x1 + 6 }; }
+        }
         let unit = 0;
         for (const p of parcels) {
           if (p.owner || p.cx < b.x0 || p.cx > b.x1 || p.cy < b.y0 || p.cy > b.y1) continue;
+          if (wedge && p.cx >= wedge.x0 && p.cx <= wedge.x1 && p.cy >= wedge.y0 && p.cy <= wedge.y1) { p.inholding = true; continue; }
           p.owner = 'public'; p.complex = bi; p.complexName = cname; p.name = `${cname}, Unit ${++unit}`;
           publicTiles += p.tiles; pubIdx++;
         }
@@ -617,6 +627,7 @@
           const q = from.sort((a, b) => b[1] - a[1])[0][0];
           for (let i = 0; i < N; i++) if (parcelOf[i] === p.id) parcelOf[i] = q;
           p.merged = q; parcels[q].tiles += p.tiles; changed = true;
+          if (p.inholding && parcels[q].owner !== 'public') parcels[q].inholding = true;
           for (const [r, n] of border[p.id]) if (r !== q) border[q].set(r, (border[q].get(r) || 0) + n);
           for (const m of border) if (m.has(p.id)) { m.set(q, (m.get(q) || 0) + m.get(p.id)); m.delete(p.id); } // its fences are q's now
           border[q].delete(q);
@@ -641,12 +652,13 @@
       const bit = p.habitat.water > 0.5 && rng.chance(0.5) ? rng.pick(['Bottoms', 'Creek', 'Slough']) : rng.pick(PLACE_BITS);
       p.name = `${sur} ${bit}`;
       p.permission = rng.chance(cfg.permissionShare);
+      if (p.inholding) p.permission = true; // the place inside the public land always rents its hunting
     }
     // starter parcel: NPC land nearest 100 acres with average-ish habitat, away from town
     const town = world.towns[0];
     let best = null, bestScore = 1e9;
     for (const p of world.parcels) {
-      if (p.owner !== 'npc') continue;
+      if (p.owner !== 'npc' || p.inholding) continue;
       const hq = habitatQuality(p.habitat);
       const sc = Math.abs(p.acres - cfg.starterAcres) * 1.5 + Math.abs(hq - 0.48) * 120 + (Math.hypot(p.cx - town.x, p.cy - town.y) < 25 ? 60 : 0);
       if (sc < bestScore) { bestScore = sc; best = p; }
