@@ -470,7 +470,7 @@
     if (shopTab === 'rifles') {
       body = C().rifles.filter((r) => !r.award || inv.rifles.includes(r.id)).map((r) => row({
         name: `${r.name} (${r.cal})`, tags: [`Lv ${r.level}`, r.bow ? 'Bow' : null, r.collect ? 'Collector' : null].filter(Boolean), price: r.price,
-        stats: r.bow ? `Accuracy ${r.acc} · Good to about ${r.range * 3} yd · Quiet: barely adds pressure · ${r.mag} arrows · opens bow-only public land` : `Accuracy ${r.acc} · Range ${r.range} (about ${r.range * 3} yd) · Power ${r.power} · Recoil ${r.recoil} · ${r.mag} rounds`,
+        stats: r.bow ? `Accuracy ${r.acc} · Good to about ${WT.bowRange(r)} yd with your Archery, ${r.maxYd} at full skill · Quiet: barely adds pressure · ${r.mag} arrows · opens bow-only public land` : `Accuracy ${r.acc} · Range ${r.range} (about ${r.range * 3} yd) · Power ${r.power} · Recoil ${r.recoil} · ${r.mag} rounds`,
         owned: inv.rifles.includes(r.id) ? 'Owned' : null, buy: inv.rifles.includes(r.id) ? null : 'rifle:' + r.id, locked: r.level > st.level,
       })).join('') + `<p class="faint">Grandpa's Winchester 94 can't be bought. Some rifles are earned.</p>`;
     } else if (shopTab === 'scopes') {

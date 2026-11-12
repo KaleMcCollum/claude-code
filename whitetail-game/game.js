@@ -1050,6 +1050,8 @@
   WT.ownsBow = () => S().inv.rifles.some((id) => WT.isBow(id));
   WT.earlySeason = () => S().day < 0; // Sep 17 to Sep 30: archery only, and nobody else is in the woods yet
   WT.isBow = (id) => !!(WT.rifle(id) || {}).bow;
+  // How far a bow is good to in your hands, in yards. The bow sets the ceiling; Archery decides how much of it you get.
+  WT.bowRange = function (r) { r = typeof r === 'string' ? WT.rifle(r) : r; const P = C().progression, k = clamp((S().skills.archery || 0) / P.skillMax); return Math.round((r.maxYd || r.range * 3) * (P.bowSkillStart + (1 - P.bowSkillStart) * k)); };
   WT.hasBow = () => WT.isBow(S().loadout.rifle); // a bow in your hands, not just in the closet
   // The mobile stand on your back (saddle, hang-on, climber or pop-up). Public land can't be hunted without one.
   WT.mobileStand = function () { const st = S(), id = st.loadout.mobile; return id && (st.inv.stands[id] || 0) > 0 ? id : null; };
@@ -1750,7 +1752,7 @@
     if (!WT.huntLegal(H)) return { ok: false, reason: 'Not legal shooting light.' };
     if (st.tags.buck < 1 && st.tags.doe < 1) return { ok: false, reason: 'You have no unfilled tags.' };
     if (H.rounds <= 0) return { ok: false, reason: H.rifle.bow ? 'Out of arrows.' : 'Out of rounds.' };
-    if (H.rifle.bow && Math.max(5, t.g.dist + t.m.dd) > H.rifle.range * 3 + 20) return { ok: false, reason: `Too far for a bow. Wait until it's inside about ${H.rifle.range * 3} yards.` };
+    if (H.rifle.bow && Math.max(5, t.g.dist + t.m.dd) > WT.bowRange(H.rifle) + 12) return { ok: false, reason: `Too far for you with a bow. Wait until it's inside about ${WT.bowRange(H.rifle)} yards. More Archery skill stretches that.` };
     return { ok: true, clear: t.g.clear };
   };
 
@@ -1758,11 +1760,11 @@
     const st = S();
     const r = H.rifle, sc = H.scope;
     const dist = Math.max(5, g.dist + m.dd);
-    const effRange = r.range * 3;
-    if (r.bow) { // an arrow: deadly close, fading fast past 20 yards, hopeless past its range
-      const ar = st.skills.archery || 0;
+    const effRange = r.bow ? WT.bowRange(r) : r.range * 3;
+    if (r.bow) { // an arrow: deadly close, fading as it nears your range (which Archery sets), hopeless past it
+      const ar = st.skills.archery || 0, close = effRange * 0.4;
       let a = r.acc + ar * 0.7 + H.sType.accuracy * 0.18 + 18;
-      if (dist > 20) a -= (dist - 20) * 1.1;
+      if (dist > close) a -= (Math.min(dist, effRange) - close) * 30 / (effRange - close);
       if (dist > effRange) a -= (dist - effRange) * 2.5;
       if (WT.lightFactor(H) < 1) a -= 10;
       if (!g.clear) a -= 30;
@@ -1812,8 +1814,8 @@
       else { g.gone = true; H.log.push({ t: H.now, kind: 'bad', text: 'Gone.' }); }
       cleanup(H); return;
     }
-    const effRange = r.range * 3;
-    const vital = r.bow ? clamp(0.7 + (st.skills.archery || 0) * 0.006 + (g.clear ? 0.05 : -0.2) - Math.max(0, dist - 25) * 0.008) : clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) + (dist <= 40 ? 0.2 : dist < 100 ? 0.2 * (100 - dist) / 60 : 0));
+    const effRange = r.bow ? WT.bowRange(r) : r.range * 3;
+    const vital = r.bow ? clamp(0.7 + (st.skills.archery || 0) * 0.006 + (g.clear ? 0.05 : -0.2) - Math.max(0, dist - effRange * 0.5) * 0.008) : clamp(0.62 + r.power * 0.0035 - Math.max(0, dist - effRange) * 0.005 + st.skills.shooting * 0.004 + (g.clear ? 0.05 : -0.2) + (dist <= 40 ? 0.2 : dist < 100 ? 0.2 * (100 - dist) / 60 : 0));
     g.gone = true;
     if (rng.chance(vital)) harvest(H, g, deer, dist, rng.chance(0.5) ? 'drops in its tracks' : `runs ${rng.int(30, 90)} yards and piles up`);
     else {

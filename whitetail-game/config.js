@@ -43,6 +43,7 @@
       xpPerInch: 3,                   // bonus per inch over 100"
       skillPointsPerLevel: 2,
       skillMax: 40,
+      bowSkillStart: 0.5,             // a bow's reach is yours to earn: with no Archery you are good to this share of its maxYd, with full Archery all of it
     },
 
     skills: {
@@ -52,7 +53,7 @@
       scent:    { name: 'Scent Discipline', desc: 'Less human odor, fewer deer winding you.' },
       patience: { name: 'Patience',       desc: 'Sit longer. 4 pts = +1 hr. All-day sits need ~10 hrs.' },
       // unlock: [your level, how many points the skill may hold from then on]. No unlock = open from the start.
-      archery:  { name: 'Archery',        desc: 'Bow and crossbow accuracy, and clean kills with an arrow. Rifles use Marksmanship.', unlock: [[15, 40]] },
+      archery:  { name: 'Archery',        desc: 'How far you can shoot a bow, how well, and how cleanly. With none, a bow is good to half its reach; at 40 you get all of it. Rifles use Marksmanship.', unlock: [[15, 40]] },
       hiking:   { name: 'Backcountry',    desc: 'How far from the road you can hunt on public land. Every point lets you mark spots further back, where the old bucks live, and shortens the walk in.', max: 20, unlock: [[10, 5], [20, 10], [30, 20]] },
       woodcraft:{ name: 'Woodcraft',      desc: 'Find deer that run off wounded, and get more scouting searches in the off-season (one per 8 points).' },
     },
@@ -173,9 +174,9 @@
     // Bows are coming later. level = level needed to buy. award = only unlocked, not sold.
     rifles: [
       // bows: quiet and short. Good to about 3 x range yards; needed for bow-only public land.
-      { id: 'bear_cruzer',  level: 15,  name: 'Bear Cruzer G3 compound',     cal: 'compound bow',    bow: true, acc: 56, range: 12, power: 30, recoil: 0, mag: 4, price: 900 },
-      { id: 'ravin_r10',    level: 22,  name: 'Ravin R10 crossbow',          cal: 'crossbow',        bow: true, acc: 66, range: 20, power: 42, recoil: 0, mag: 3, price: 1800 },
-      { id: 'mathews_v3x',  level: 30,  name: 'Mathews V3X compound',        cal: 'compound bow',    bow: true, acc: 72, range: 17, power: 38, recoil: 0, mag: 5, price: 2400 },
+      { id: 'bear_cruzer',  level: 15,  name: 'Bear Cruzer G3 compound',     cal: 'compound bow',    bow: true, maxYd: 50, acc: 56, range: 12, power: 30, recoil: 0, mag: 4, price: 900 },
+      { id: 'ravin_r10',    level: 22,  name: 'Ravin R10 crossbow',          cal: 'crossbow',        bow: true, maxYd: 60, acc: 66, range: 20, power: 42, recoil: 0, mag: 3, price: 1800 },
+      { id: 'mathews_v3x',  level: 30,  name: 'Mathews V3X compound',        cal: 'compound bow',    bow: true, maxYd: 70, acc: 72, range: 17, power: 38, recoil: 0, mag: 5, price: 2400 },
       { id: 'ruger_ranch',  level: 1,   name: 'Ruger American Ranch',        cal: '.223 Rem',        acc: 60, range: 35, power: 30, recoil: 10, mag: 5, price: 0 },
       { id: 'mossberg_pat', level: 3,   name: 'Mossberg Patriot',            cal: '.243 Win',        acc: 63, range: 50, power: 45, recoil: 22, mag: 5, price: 380 },
       { id: 'savage_axis',  level: 5,   name: 'Savage Axis II',              cal: '.243 Win',        acc: 68, range: 55, power: 50, recoil: 25, mag: 4, price: 420 },
