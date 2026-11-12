@@ -43,19 +43,37 @@
       xpPerInch: 3,                   // bonus per inch over 100"
       skillPointsPerLevel: 2,
       skillMax: 40,
+      /* What a skill point is worth, for the skills added with the three-branch tree.
+         toughness: degrees F colder you stay comfortable, and degrees of extra leeway before overheating, per point.
+         composure: accuracy lost to buck fever by rack size (inches: points lost), how much each point takes back, and
+           the point at which a spooked deer no longer rattles you.
+         judging: how much farther you can read a rack per point, and how much of your score-guess error is gone at 40.
+         habitat: plot quality gained and share of planting cost saved, per point. */
+      skill: { toughness: { cold: 0.35, heat: 0.2 }, composure: { fever: [[170, 24], [150, 18], [130, 13]], perPoint: 0.6, alertFull: 60 },
+        judging: { reach: 0.0075, errorCut: 0.5 }, habitat: { quality: 0.006, cost: 0.0075 } },
       bowSkillStart: 0.5,             // a bow's reach is yours to earn: with no Archery you are good to this share of its maxYd, with full Archery all of it
     },
 
+    /* Skills. Three kinds: what your body can do, what your head can do, and what you know about deer and ground.
+       unlock: [your level, how many points the skill may hold from then on]. Every skill opens in stages, so nobody
+       masters anything early; the specialist skills open later. max: 40 unless it says otherwise.
+       The numbers each point is worth are in progression.skill below. */
     skills: {
-      stealth:  { name: 'Stealth',        desc: 'Quieter walk-ins and less noise when shifting.' },
-      shooting: { name: 'Marksmanship',   desc: 'Steadier aim, handles recoil, fewer misses and wounds.' },
-      calling:  { name: 'Calling',        desc: 'Grunts, rattling and snort-wheezes sound real.' },
-      scent:    { name: 'Scent Discipline', desc: 'Less human odor, fewer deer winding you.' },
-      patience: { name: 'Patience',       desc: 'Sit longer. 4 pts = +1 hr. All-day sits need ~10 hrs.' },
-      // unlock: [your level, how many points the skill may hold from then on]. No unlock = open from the start.
-      archery:  { name: 'Archery',        desc: 'How far you can shoot a bow, how well, and how cleanly. With none, a bow is good to half its reach; at 40 you get all of it. Rifles use Marksmanship.', unlock: [[15, 40]] },
-      hiking:   { name: 'Backcountry',    desc: 'How far from the road you can hunt on public land. Every point lets you mark spots further back, where the old bucks live, and shortens the walk in.', max: 20, unlock: [[10, 5], [20, 10], [30, 20]] },
-      woodcraft:{ name: 'Woodcraft',      desc: 'Find deer that run off wounded, and get more scouting searches in the off-season (one per 8 points).' },
+      // ---- Body
+      shooting:  { branch: 'Body', name: 'Marksmanship', desc: 'Steadier aim with a rifle, and recoil bothers you less. Every point is accuracy at any range.', unlock: [[1, 10], [10, 20], [20, 30], [30, 40]] },
+      archery:   { branch: 'Body', name: 'Archery', desc: 'How far you can shoot a bow, how well, and how cleanly. With none, a bow is good to half its reach; at 40 you get all of it.', unlock: [[15, 10], [22, 20], [30, 30], [40, 40]] },
+      hiking:    { branch: 'Body', name: 'Backcountry', desc: 'How far from the road you can hunt on public land. Every point lets you mark spots further back, where the old bucks live, and shortens the walk in.', max: 20, unlock: [[10, 5], [20, 10], [30, 20]] },
+      toughness: { branch: 'Body', name: 'Toughness', desc: 'Cold, wind and wet send other hunters home. You stay comfortable in colder weather than your clothes alone allow, and you overheat less on warm days.', unlock: [[1, 10], [10, 20], [20, 30], [30, 40]] },
+      // ---- Mind
+      patience:  { branch: 'Mind', name: 'Patience', desc: 'Sit longer before you get restless. 4 points is another hour; an all-day sit takes about 10 hours.', unlock: [[1, 10], [10, 20], [20, 30], [30, 40]] },
+      stealth:   { branch: 'Mind', name: 'Stealth', desc: 'Quieter walking in and quieter in the stand: fewer deer hear you coming or catch you shifting.', unlock: [[1, 10], [10, 20], [20, 30], [30, 40]] },
+      scent:     { branch: 'Mind', name: 'Scent Discipline', desc: 'The habits that keep your smell down: fewer deer wind you, whatever the wind is doing.', unlock: [[1, 10], [10, 20], [20, 30], [30, 40]] },
+      composure: { branch: 'Mind', name: 'Composure', desc: 'Buck fever. A big rack shakes your aim, and a bigger one shakes it more. Composure takes that away, and steadies you on a deer that is already on edge.', unlock: [[8, 10], [16, 20], [26, 30], [36, 40]] },
+      // ---- Woodsmanship
+      woodcraft: { branch: 'Woodsmanship', name: 'Woodcraft', desc: 'Reading the ground. You find deer that ran off wounded, and you get more scouting searches in the off-season (one more for every 8 points).', unlock: [[1, 10], [10, 20], [20, 30], [30, 40]] },
+      judging:   { branch: 'Woodsmanship', name: 'Field Judging', desc: 'Sizing up a deer on the hoof. You can read a rack from farther off, and your guess at score and weight is closer to the truth.', unlock: [[5, 10], [12, 20], [22, 30], [32, 40]] },
+      calling:   { branch: 'Woodsmanship', name: 'Calling', desc: 'Grunts, rattling and snort-wheezes that sound like a deer and not a man with a tube. More bucks come to the call.', unlock: [[5, 10], [15, 20], [25, 30], [35, 40]] },
+      habitat:   { branch: 'Woodsmanship', name: 'Land Management', desc: 'Knowing dirt and seed. Your food plots come up better, and planting costs you less.', unlock: [[12, 10], [22, 20], [32, 30], [42, 40]] },
     },
 
     /* ------------------------------------------------------------ calendar */
@@ -456,4 +474,26 @@
       { id: 'batteries', name: 'AA batteries (4-pack)', price: 6, battery: true },
     ],
   };
+
+  /* The gear ladder: the level at which each thing can be bought. One table, so it can be read and tuned in one place.
+     Rifles and bows carry their own level in the list above. Anything you already own stays yours. */
+  const CFG = WT.CONFIG;
+  CFG.unlocks = {
+    clothing: { Starter: 1, Cheap: 1, Light: 1, Medium: 6, High: 14, Premier: 24 },
+    equipment: {
+      binoculars: { Cheap: 1, Medium: 10, High: 20, Premier: 35 }, rangefinder: { Cheap: 3, Medium: 9, High: 18, Premier: 28 },
+      grunt: { Cheap: 1, Medium: 7, High: 15, Premier: 25 }, snort: { Cheap: 4, Medium: 9, High: 17, Premier: 27 }, rattle: { Cheap: 2, Medium: 8, High: 16, Premier: 26 },
+      light: { Cheap: 1, Medium: 3, High: 8, Premier: 15 }, heater: { Cheap: 5, Medium: 10, High: 16, Premier: 22 }, scentdevice: { Premier: 26 },
+    },
+    scopes: { none: 1, simmons: 1, bushnell: 4, vortex: 12, leupold: 22, zeiss: 34 },
+    stands: { ground: 1, hangon: 1, ladder: 1, tripod: 3, popup: 4, climber: 8, box: 18, saddle: 20, house: 32 },
+    cameras: { tasco: 1, browning: 6, reveal: 12, spypoint: 20, reconyx: 28 },
+    plots: { rye: 1, clover: 4, brassica: 8, soy: 12, corn: 18 },
+  };
+  for (const it of CFG.clothing) it.level = CFG.unlocks.clothing[it.tier] || 1;
+  for (const it of CFG.equipment) it.level = (CFG.unlocks.equipment[it.cat] || {})[it.tier] || 1;
+  for (const it of CFG.scopes) it.level = CFG.unlocks.scopes[it.id] || 1;
+  for (const it of CFG.stands) it.level = CFG.unlocks.stands[it.id] || 1;
+  for (const it of CFG.cameras) it.level = CFG.unlocks.cameras[it.id] || 1;
+  for (const it of CFG.improvements.foodplot.types) it.level = CFG.unlocks.plots[it.id] || 1;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

@@ -8,7 +8,7 @@ const seed = +process.argv[2] || 7;
 let t = Date.now();
 const st = WT.newGame(seed);
 console.log('new game ms', Date.now() - t, 'parcels', WT.game.world.parcels.length, 'cash', st.cash);
-console.log(WT.buy('tag', 'buck') || 'bought buck tag', '|', WT.buy('tag', 'doe') || 'bought doe tag', '|', WT.buy('equip', 'bino_bush') || 'bought binos', '|', WT.buy('stand', 'climber') || 'bought climber');
+console.log(WT.buy('tag', 'buck') || 'bought buck tag', '|', WT.buy('tag', 'doe') || 'bought doe tag', '|', WT.buy('equip', 'bino_bush') || 'bought binos', '|', WT.buy('stand', 'hangon') || 'bought climber');
 for (const c of ['beanie_wal', 'gl_jersey', 'bt_rubber', 'jk_hw', 'bib_wal', 'vest_blaze']) WT.buy('clothing', c);
 const cloth = Object.assign({}, st.loadout.clothing, { head: 'beanie_wal', hands: 'gl_jersey', feet: 'bt_rubber', jacket: 'jk_hw', bibs: 'bib_wal', vest: 'vest_blaze' });
 WT.buy('consum', 'handwarm', 6);
@@ -19,7 +19,7 @@ console.log('hunt spots', spots.map((s) => s.kind + ':' + (s.stand.name || s.sta
 let seen = 0, shots = 0, kills = 0;
 for (let h = 0; h < 30 && WT.game.state.day < 92; h++) {
   const sp = spots[h % spots.length];
-  const H = WT.startHunt({ pid: sp.pid, stand: sp.stand, carry: sp.kind === 'public' ? 'climber' : null, session: WT.game.state.slot, rifle: 'ruger_ranch', clothing: cloth, equip: { binoculars: 'bino_bush' }, pack: { handwarm: (st.inv.consum.handwarm || 0) > 0 ? 1 : 0 } });
+  const H = WT.startHunt({ pid: sp.pid, stand: sp.stand, carry: sp.kind === 'public' ? 'hangon' : null, session: WT.game.state.slot, rifle: 'ruger_ranch', clothing: cloth, equip: { binoculars: 'bino_bush' }, pack: { handwarm: (st.inv.consum.handwarm || 0) > 0 ? 1 : 0 } });
   let guard = 0;
   while (!H.over && guard++ < 200) {
     WT.tick();

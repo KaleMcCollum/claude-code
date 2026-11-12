@@ -85,7 +85,7 @@
     const st = {
       v: 1, seed, year: 1, day: 0, slot: 'morning',
       cash: C().economy.startingCash, xp: 0, level: 1, skillPts: 2,
-      skills: { stealth: 0, shooting: 0, calling: 0, scent: 0, patience: 0, archery: 0, woodcraft: 0, hiking: 0 },
+      skills: Object.fromEntries(Object.keys(C().skills).map((k) => [k, 0])),
       inv: {
         rifles: ['ruger_ranch'], scopes: ['simmons'], rifleScope: { ruger_ranch: 'simmons' },
         stands: { ground: 1 }, clothing: C().clothing.filter((c) => c.starter).map((c) => c.id),
@@ -434,6 +434,7 @@
     if (st.cropDay === undefined) st.cropDay = 9;
     // older saves: plots paid for under the old rules count as planted for this season
     for (const p of G.world.parcels) for (const pl of (st.parcels[p.id].plots || [])) if (pl.planted === undefined) { pl.planted = !!pl.type; pl.last = pl.type || null; if (pl.type) pl.tiles.forEach((i) => { G.world.cover[i] = T().PLOT; st.tileMods[i] = T().PLOT; }); }
+    if (st.skills.composure === undefined) st.skills.composure = Math.min(20, Math.floor(Math.max(st.skills.shooting || 0, st.skills.archery || 0) / 2)); // buck fever used to sit under Marksmanship and Archery
     for (const k in C().skills) if (st.skills[k] === undefined) st.skills[k] = 0; // skills added since this save
     // older saves: bow-only public land now holds an older, bigger herd. Restock it once.
     if (!st.settings || !st.settings.bowHerds) {
@@ -568,6 +569,25 @@
     for (const [lvl, cap] of sk.unlock) { if (st.level >= lvl) now = Math.min(max, cap); else if (!next) next = { level: lvl, cap: Math.min(max, cap) }; }
     return { now, max, next };
   };
+  // What a skill is doing for you right now, in plain numbers, so a point is never a mystery.
+  WT.skillNow = function (k) {
+    const st = S(), P = C().progression, K = P.skill, n = st.skills[k] || 0, cf = C().comfort, A = C().publicCrowd.access;
+    switch (k) {
+      case 'shooting': return `+${Math.round(n * 0.8)} rifle accuracy, recoil bothers you ${Math.round(100 * n / 60)}% less`;
+      case 'archery': return `starter bow good to ${WT.bowRange('bear_cruzer')} yd, the crossbow to ${WT.bowRange('ravin_r10')} yd`;
+      case 'hiking': return `you can hunt about ${Math.round(Math.min(A.walkMax, WT.hikeReach() * A.walkMin * (1 - A.hikeFaster * n)) / 5) * 5} minutes from the road, and walk ${Math.round(100 * A.hikeFaster * n)}% faster`;
+      case 'toughness': return `comfortable ${Math.round(n * K.toughness.cold)}°F colder than your clothes alone`;
+      case 'patience': return `${(cf.basePatienceHrs + n * cf.hrsPerPatiencePt).toFixed(1)} hours on stand before comfort, clothing and snacks`;
+      case 'stealth': return `about ${n}% quieter in the stand, and quieter walking in`;
+      case 'scent': return `scent control +${Math.round(n * 1.2)} on top of your clothes and stand`;
+      case 'composure': return `a 150" buck costs you ${Math.round(WT.buckFever({ sex: 'b', gross: 155 }))} accuracy to buck fever, a 170" costs ${Math.round(WT.buckFever({ sex: 'b', gross: 175 }))} (18 and 24 with none)`;
+      case 'woodcraft': return `${Math.round((0.3 + n * 0.012) * 100)}% base chance to recover a wounded deer, ${C().scouting.searches + Math.floor(n / C().scouting.woodcraftPer)} scouting searches`;
+      case 'judging': return `you read a rack ${Math.round(100 * n * K.judging.reach)}% farther off, and your score guess is ${Math.round(100 * K.judging.errorCut * n / P.skillMax)}% tighter`;
+      case 'calling': return `calls pull about ${Math.round(n * 1.2)}% better`;
+      case 'habitat': return `planting costs ${Math.round(100 * n * K.habitat.cost)}% less, and plots come up better`;
+      default: return '';
+    }
+  };
   // How far back on public land you can go (tiles of walking from the road).
   WT.hikeReach = function () { const a = C().publicCrowd.access; return a.hikeBase + a.hikePer * (S().skills.hiking || 0); };
   const tooFar = (pid, x, y) => {
@@ -597,6 +617,7 @@
         break;
       default: return 'Unknown item.';
     }
+    if (item && kind !== 'rifle' && (item.level || 1) > st.level) return `${item.name} opens at level ${item.level}. You are level ${st.level}.`;
     if (st.cash < price) return `Not enough money. You need ${WT.money(price)}.`;
     st.cash -= price;
     ledger(kind === 'tag' ? 'Tags' : kind === 'consum' ? 'Consumables' : 'Gear', -price);
@@ -866,15 +887,18 @@
   };
   WT.plantingOpen = () => !!S().plantingOpen;
   // choices: [{ pid, k, type }] (type null = leave it dirt this year)
+  // What one plot costs you to plant: the seed price, less what Land Management saves.
+  WT.plotCost = (typeId) => Math.round(WT.plotType(typeId).cost * WT.PLOT_ACRES * (1 - (S().skills.habitat || 0) * C().progression.skill.habitat.cost));
   WT.plantPlots = function (choices) {
     const st = S(), w = G.world, TT = T(), rng = G.rng;
     if (!WT.plantingOpen()) return 'Planting is done in spring, after the season ends.';
     const todo = choices.filter((c) => c.type && st.parcels[c.pid] && st.parcels[c.pid].plots[c.k] && !st.parcels[c.pid].plots[c.k].planted);
-    const cost = todo.reduce((a, c) => a + Math.round(WT.plotType(c.type).cost * WT.PLOT_ACRES), 0);
+    { const lock = todo.map((c) => WT.plotType(c.type)).find((t) => (t.level || 1) > st.level); if (lock) return `${lock.name} seed opens at level ${lock.level}.`; }
+    const cost = todo.reduce((a, c) => a + WT.plotCost(c.type), 0);
     if (st.cash < cost) return `That comes to ${WT.money(cost)} and you have ${WT.money(st.cash)}.`;
     for (const c of todo) {
       const p = w.parcels[c.pid], pl = st.parcels[c.pid].plots[c.k], pt = WT.plotType(c.type);
-      const q = clamp(0.5 + p.habitat.soil * 0.35 + rng.range(-0.25, 0.25));
+      const q = clamp(0.5 + p.habitat.soil * 0.35 + rng.range(-0.25, 0.25) + (st.skills.habitat || 0) * C().progression.skill.habitat.quality); // someone who knows dirt gets a better stand of it
       pl.type = c.type; pl.last = c.type; pl.planted = true; pl.year = st.year;
       pl.quality = q < 0.3 ? 'poor' : q < 0.55 ? 'fair' : q < 0.8 ? 'good' : 'excellent'; pl.q = q * pt.food;
       pl.tiles.forEach((i) => setTile(i, TT.PLOT));
@@ -1014,13 +1038,14 @@
       else heater = h;
     }
     const effTemp = air - windPart - wetPart + (heater ? heater.warm * Math.min(1, (pack.propane * heater.hrsPerTank) / 6) : 0);
-    const comfortable = cf.neutralTemp - warmth;
+    const tk = C().progression.skill.toughness, tough = st.skills.toughness || 0;
+    const dressedFor = cf.neutralTemp - warmth, comfortable = dressedFor - tough * tk.cold; // a tough hunter is fine a few degrees colder than the clothes say
     const deficit = comfortable - effTemp;
     let hrs = cf.basePatienceHrs + st.skills.patience * cf.hrsPerPatiencePt + stand.patienceHrs;
     for (const id in pack) { const c = WT.consum(id); if (c && pack[id] > 0 && c.sitMin) hrs += (c.sitMin * Math.min(pack[id], 2)) / 60; }
     let cold = 0, hot = 0, sweat = 0;
     if (deficit > 0) { cold = deficit; hrs -= (deficit * cf.minPerDegree) / 60; }
-    const over = effTemp - comfortable - cf.overheatMargin;
+    const over = effTemp - dressedFor - cf.overheatMargin - tough * tk.heat;
     if (over > 0) {
       hot = over;
       let heatHrs = over * 4 / 60 * (1 - o.cooling / 150);
@@ -1124,6 +1149,7 @@
   WT.weatherDrop = (st) => (st.weather.precip ? 1 : 0);
   WT.detailLevel = function (H, dist, optic) {
     const st = S();
+    dist = dist / (1 + (st.skills.judging || 0) * C().progression.skill.judging.reach); // a practised eye reads a rack from farther off
     const lf = WT.lightFactor(H);
     let lvl;
     if (!optic) {
@@ -1190,7 +1216,7 @@
     if (deer.nt) extras.push('some junk points');
     if (level === 3) {
       // point range of 2-3 that always includes the truth
-      const width = tier >= 3 ? 1 : 2;
+      const width = tier >= 3 || (S().skills.judging || 0) >= 20 ? 1 : 2;
       const lo = Math.max(2, P - Math.floor(h(1) * (width + 1)));
       const hi = lo + width;
       const an = (n) => (n === 8 || n === 11 || n === 18 ? 'an' : 'a');
@@ -1199,11 +1225,12 @@
     }
     // detailed: count the points, call it, and give a rough score and weight
     const adj = g < 85 ? 'small' : g < 115 ? 'decent' : g < 135 ? 'good' : g < 155 ? 'big' : 'giant';
-    const err = [22, 16, 12, 9, 6][tier];
+    const jk = C().progression.skill.judging, jf = 1 - jk.errorCut * clamp((S().skills.judging || 0) / C().progression.skillMax);
+    const err = [22, 16, 12, 9, 6][tier] * jf;
     const mid = g + (h(2) - 0.5) * err * 0.8;
     const sc = [Math.max(10, Math.round((mid - err / 2) / 5) * 5), Math.round((mid + err / 2) / 5) * 5];
     if (sc[1] <= sc[0]) sc[1] = sc[0] + 5;
-    const wr = wRange(Math.max(20, 50 - tier * 7));
+    const wr = wRange(Math.max(15, (50 - tier * 7) * jf));
     const label = `${adj} ${P <= 2 ? 'spike' : P}${deer.nt ? ' with stickers' : ''}`;
     return { text: `${label}${extras.length ? ' (' + extras.filter((x) => x !== 'some junk points').join(', ') + ')' : ''}. Rough guess ${sc[0]}-${sc[1]}", ${wr[0]}-${wr[1]} lb`, level, label, score: sc, weight: wr, pts: [P, P] };
   };
@@ -1771,6 +1798,12 @@
     return { ok: true, clear: t.g.clear };
   };
 
+  // Buck fever: accuracy lost on a big rack. Bigger rack, more shake; Composure takes it back.
+  WT.buckFever = function (deer) {
+    const k = C().progression.skill.composure, s = deer.sex === 'b' ? deer.gross || 0 : 0, row = k.fever.find((r) => s >= r[0]);
+    return row ? Math.max(0, row[1] - (S().skills.composure || 0) * k.perPoint) : 0;
+  };
+  WT.nerves = () => ({ alert: Math.max(0, 1 - (S().skills.composure || 0) / C().progression.skill.composure.alertFull) });
   function hitChance(H, g, m) {
     const st = S();
     const r = H.rifle, sc = H.scope;
@@ -1784,8 +1817,8 @@
       if (WT.lightFactor(H) < 1) a -= 10;
       if (!g.clear) a -= 30;
       if (g.pose === 'walk') a -= 12;
-      if (g.alert) a -= 12; // a wound-up deer jumps the string
-      if (m.deer.sex === 'b' && m.deer.gross > 130) a -= Math.max(0, 14 - ar * 0.5);
+      if (g.alert) a -= 12 * WT.nerves().alert; // a wound-up deer jumps the string
+      a -= WT.buckFever(m.deer);
       return clamp(a / 100, 0.02, 0.96);
     }
     let acc = r.acc * 0.55 + sc.acc + st.skills.shooting * 0.8 + H.sType.accuracy * 0.18 + 25;
@@ -1796,8 +1829,8 @@
     if (!g.clear) acc -= 35;
     if (g.pose === 'walk') acc -= 8;
     if (H.plan.cold > 8) acc -= Math.min(15, (H.plan.cold - 8) * 0.8) * clamp((H.now - H.start) / Math.max(0.5, H.plan.maxHrs));
-    if (m.deer.sex === 'b' && m.deer.gross > 130) acc -= Math.max(0, 14 - st.skills.shooting * 0.5); // buck fever
-    if (g.alert) acc -= 5;
+    acc -= WT.buckFever(m.deer); // buck fever: a head game, so it is Composure that beats it, not Marksmanship
+    if (g.alert) acc -= 5 * WT.nerves().alert;
     // close deer are hard to miss with a rifle: full bonus inside 40 yards, fading out by 100
     acc += dist <= 40 ? 40 : dist < 100 ? 40 * (100 - dist) / 60 : 0;
     const floor = dist <= 40 ? (g.clear ? 0.95 : 0.7) : 0.05;

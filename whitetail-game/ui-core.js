@@ -393,7 +393,12 @@
       <p><b>Clothing</b> has warmth (how cold you can sit), concealment, quiet and scent control. October's first week is mild; after the first cold front you need real layers to sit long.</p>
       <p><b>Optics:</b> binoculars and better scopes let you judge deer from farther away. A rangefinder gives exact yardage.</p>
       <p><b>Levels</b> come from hunting: seeing deer, long sits, and deer you tag. Each level pays cash and gives skill points, and unlocks better rifles.</p>
-      <p><b>Skills:</b> Stealth (quieter, less noticed), Marksmanship (accuracy, less buck fever), Calling, Scent Discipline, Patience (longer sits) and Woodcraft (finding hit deer).</p>`],
+      <p><b>Skills</b> come in three kinds, and every level gives you two points that must be spent before your next hunt.</p>
+      <p><b>Body:</b> Marksmanship (rifle accuracy and recoil), Archery (how far and how well you shoot a bow), Backcountry (how far from the road you can hunt public land) and Toughness (sitting through cold, wind and wet).</p>
+      <p><b>Mind:</b> Patience (longer sits), Stealth (quiet walking in and quiet in the stand), Scent Discipline (fewer deer wind you) and Composure (buck fever: a big rack shakes your aim until you learn to settle).</p>
+      <p><b>Woodsmanship:</b> Woodcraft (finding hit deer, more scouting searches), Field Judging (reading a rack from farther and guessing score closer), Calling, and Land Management (better, cheaper food plots).</p>
+      <p><b>Nothing is mastered early.</b> Every skill opens in stages as you level: a basic skill holds 10 points at first, 20 from level 10, 30 from level 20 and all 40 from level 30. The specialist skills open later: Field Judging and Calling at level 5, Composure at 8, Backcountry at 10, Land Management at 12 and Archery at 15.</p>
+      <p><b>Gear opens the same way.</b> Rifles, bows, scopes, clothing, optics, calls, stands, cameras and even seed each have a level. The Shop shows everything, with the level it opens at. Anything you already own is yours to keep.</p>`],
     ['books', 'Hit list and trophies', () => `
       <p><b>Hit list:</b> nothing goes on it by itself. Add a deer from the stand once you've had a clear look, or from a trail camera photo. Each row shows where he was last seen, you can filter by property, and Pull cameras collects every card at once. Name them, guess their age, and mark them Hit list, Pass, Cull or Watch. The game doesn't tell you if a deer is alive, with two exceptions: you hear about it when a neighbor kills one of your hit list deer, and finding his sheds while scouting means he made it through the winter.</p>
       <p><b>Off-season scouting.</b> Between seasons you get a few searches (more with Woodcraft). Each one covers a 3 × 3 block on your land or public land. Every buck leaves sign around where he lives: a bed at home, rubs on timber and tree lines nearby, scrapes on the edges he travels, and his sheds if he survived the winter. You only find what is in the block you search. Found sign stays marked on the map for the season. Sign belongs to the buck that made it: a stand touching his scrape sees him about twice as often (nearly three times in the rut), touching his bed nearly twice, and a camera on his scrape photographs him three times as often. So the way to hunt one deer is: find his sign, put a camera on it to see who he is, then hunt a stand touching it. Sheds go to the Trophy Room and onto a hit list deer's page.</p>
@@ -415,19 +420,19 @@
 
   /* Spring planting: once a year, after shed hunting. One row per plot site; pick a crop or leave it dirt. */
   UI.planting = function (after) {
-    const st = S(), sites = WT.plotSites().filter((x) => !x.plot.planted), types = C().improvements.foodplot.types;
+    const st = S(), sites = WT.plotSites().filter((x) => !x.plot.planted), allTypes = C().improvements.foodplot.types, types = allTypes.filter((t) => (t.level || 1) <= st.level), nextSeed = allTypes.filter((t) => (t.level || 1) > st.level).sort((a, b) => a.level - b.level)[0];
     const done = after || (() => UI.go('lodge'));
     if (!sites.length || !WT.plantingOpen()) return done();
-    const pick = sites.map((x) => x.plot.last || '');
+    const pick = sites.map((x) => (x.plot.last && types.some((t) => t.id === x.plot.last) ? x.plot.last : ''));
     const show = () => {
-      const cost = pick.reduce((a, id) => a + (id ? Math.round(WT.plotType(id).cost * WT.PLOT_ACRES) : 0), 0);
+      const cost = pick.reduce((a, id) => a + (id ? WT.plotCost(id) : 0), 0);
       UI.modal(`<h2>Spring planting</h2>
         <p class="dim">Every plot went back to dirt over the winter. Pick what goes in each one for the coming season, or leave it bare. This is the only time of year you can plant.</p>
         <div class="list" style="max-height:46vh;overflow:auto">${sites.map((x, i) => `<div class="item" style="display:block"><span class="nm">${esc(x.parcel)}</span> <span class="dim">plot ${x.k + 1}${x.plot.last ? ` · last year: ${esc(WT.plotType(x.plot.last).name)}` : ' · new site'}</span>
-          <div class="row" style="margin-top:4px"><select data-pl="${i}"><option value="">Leave it dirt</option>${types.map((t) => `<option value="${t.id}" ${pick[i] === t.id ? 'selected' : ''}>${esc(t.name)} · ${money(t.cost)} · ${esc(t.note)}</option>`).join('')}</select></div></div>`).join('')}</div>
+          <div class="row" style="margin-top:4px"><select data-pl="${i}"><option value="">Leave it dirt</option>${types.map((t) => `<option value="${t.id}" ${pick[i] === t.id ? 'selected' : ''}>${esc(t.name)} · ${money(WT.plotCost(t.id))} · ${esc(t.note)}</option>`).join('')}</select></div></div>`).join('')}</div>
         <p style="margin-top:8px">Total <b>${money(cost)}</b> · you have ${money(st.cash)}${cost > st.cash ? ' <span class="bad">Not enough.</span>' : ''}</p>
         <div class="row"><button class="btn blaze" id="plGo" ${cost > st.cash ? 'disabled' : ''}>${cost ? 'Plant them' : 'Leave them all bare'}</button><button class="btn ghost" id="plLater">Decide later</button></div>
-        <p class="faint">"Decide later" keeps planting open until your first hunt or the first day you wait.</p>`, (m) => {
+        <p class="faint">"Decide later" keeps planting open until your first hunt or the first day you wait.${nextSeed ? ` ${esc(nextSeed.name)} seed opens at level ${nextSeed.level}.` : ''}</p>`, (m) => {
         m.querySelectorAll('[data-pl]').forEach((sel) => sel.addEventListener('change', () => { pick[+sel.dataset.pl] = sel.value; show(); }));
         $('#plGo', m).addEventListener('click', () => { if (UI.err(WT.plantPlots(sites.map((x, i) => ({ pid: x.pid, k: x.k, type: pick[i] || null }))))) return; WT.save(); UI.closeModal(); UI.toast(cost ? 'Planted. They will be up all season.' : 'Left bare this year.', 'good'); UI.topbar(); done(); });
         $('#plLater', m).addEventListener('click', () => { UI.closeModal(); done(); });
@@ -463,7 +468,8 @@
   UI.screens.shop = function (el) {
     const st = S(), inv = st.inv;
     const tabBtns = TABS.map(([k, n]) => `<button class="btn small ${k === shopTab ? 'on' : ''}" data-tab="${k}">${n}</button>`).join('');
-    const row = (o) => `<div class="item ${o.locked ? 'locked' : ''}"><div><span class="nm">${esc(o.name)}</span>${(o.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+    const row = (o0) => { const o = Object.assign({}, o0); if (o.level > 1 && !o.owned) o.tags = (o.tags || []).concat([`Lv ${o.level}`]); if (o.level > st.level && !o.owned) { o.locked = true; o.btn = `Level ${o.level}`; } return rowHtml(o); };
+    const rowHtml = (o) => `<div class="item ${o.locked ? 'locked' : ''}"><div><span class="nm">${esc(o.name)}</span>${(o.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       <div class="row">${o.owned ? `<span class="good">${esc(o.owned)}</span>` : ''}${o.price != null ? `<span class="dim">${o.price === 0 ? 'Free' : money(o.price)}</span>` : ''}${o.buy ? `<button class="btn small" data-buy="${o.buy}" ${o.locked ? 'disabled' : ''}>${esc(o.btn || 'Buy')}</button>` : ''}</div>
       ${o.stats ? `<div class="st">${o.stats}</div>` : ''}</div>`;
     let body = '';
@@ -474,31 +480,31 @@
         owned: inv.rifles.includes(r.id) ? 'Owned' : null, buy: inv.rifles.includes(r.id) ? null : 'rifle:' + r.id, locked: r.level > st.level,
       })).join('') + `<p class="faint">Grandpa's Winchester 94 can't be bought. Some rifles are earned.</p>`;
     } else if (shopTab === 'scopes') {
-      body = C().scopes.filter((s) => s.id !== 'none').map((s) => row({ name: s.name, price: s.price, stats: `Accuracy +${s.acc} · Low light ${s.low}`, owned: inv.scopes.includes(s.id) ? 'Owned' : null, buy: inv.scopes.includes(s.id) ? null : 'scope:' + s.id })).join('') + '<p class="faint">Mount scopes on your rifles in Inventory.</p>';
+      body = C().scopes.filter((s) => s.id !== 'none').map((s) => row({ name: s.name, level: s.level, price: s.price, stats: `Accuracy +${s.acc} · Low light ${s.low}`, owned: inv.scopes.includes(s.id) ? 'Owned' : null, buy: inv.scopes.includes(s.id) ? null : 'scope:' + s.id })).join('') + '<p class="faint">Mount scopes on your rifles in Inventory.</p>';
     } else if (shopTab === 'stands') {
       body = C().stands.filter((s) => s.id !== 'ground').map((s) => row({
         name: s.name, tags: [s.kind === 'permanent' ? 'Your land only' : s.kind === 'mobile' ? 'Carried: equip under Gear' : 'Your land, or carried to public', s.id !== 'popup' && s.kind === 'mobile' ? 'Needs a tree' : null].filter(Boolean), price: s.price,
         stats: `Cover ${s.cover} · Quiet ${s.noise} · Scent ${s.scent} · Steady rest ${s.accuracy} · Comfort ${s.comfort} · View ${s.visibility}${s.patienceHrs ? ` · ${s.patienceHrs > 0 ? '+' : ''}${s.patienceHrs} hr sit` : ''}${s.note ? '. ' + s.note : ''}`,
-        owned: inv.stands[s.id] ? `${inv.stands[s.id]} in truck` : null, buy: 'stand:' + s.id,
+        level: inv.stands[s.id] ? 1 : s.level, owned: inv.stands[s.id] ? `${inv.stands[s.id]} in truck` : null, buy: 'stand:' + s.id,
       })).join('') + '<p class="faint">Stands go in your truck. Put them up from Land, or carry a portable one to a marked spot on public land.</p>';
     } else if (shopTab === 'clothing') {
       const slots = C().clothingSlots;
       body = slots.map((slot) => `<h3>${slot}</h3>` + C().clothing.filter((c) => c.slot === slot && !c.starter).map((c) => row({
-        name: c.name, tags: [c.tier, c.blaze ? 'Blaze' : null].filter(Boolean), price: c.price,
+        name: c.name, level: c.level, tags: [c.tier, c.blaze ? 'Blaze' : null].filter(Boolean), price: c.price,
         stats: `Warmth ${c.w} · Wind ${c.wd} · Water ${c.wa} · Cooling ${c.c} · Quiet ${c.q} · Scent ${c.s} · Camo ${c.cn}`,
         owned: inv.clothing.includes(c.id) ? 'Owned' : null, buy: inv.clothing.includes(c.id) ? null : 'clothing:' + c.id,
       })).join('')).join('');
     } else if (shopTab === 'optics' || shopTab === 'calls') {
       const cats = shopTab === 'optics' ? ['binoculars', 'rangefinder', 'light', 'heater', 'scentdevice'] : ['grunt', 'rattle', 'snort'];
       const statOf = (e) => e.cat === 'binoculars' ? `Spot ${e.spot} yd · Low light ${e.low} · Judging ${e.judge}` : e.cat === 'rangefinder' ? `Max ${e.maxRange} yd · Accuracy ${e.acc}` : e.cat === 'light' ? `Brightness ${e.bright} · ${e.life} hunts per battery set${e.red ? ' · red mode' : ''}` : e.cat === 'heater' ? `+${e.warm}°F in a blind · 1 lb lasts ${e.hrsPerTank} hr` : e.cat === 'scentdevice' ? 'Cuts scent detection about 35% downwind' : `Range ${e.range} yd · Realism ${e.realism}`;
-      body = cats.map((cat) => `<h3>${cat === 'scentdevice' ? 'Scent control' : cat}</h3>` + C().equipment.filter((e) => e.cat === cat).map((e) => row({ name: e.name, tags: [e.tier], price: e.price, stats: statOf(e), owned: inv.equipment.includes(e.id) ? 'Owned' : null, buy: inv.equipment.includes(e.id) ? null : 'equip:' + e.id })).join('')).join('');
+      body = cats.map((cat) => `<h3>${cat === 'scentdevice' ? 'Scent control' : cat}</h3>` + C().equipment.filter((e) => e.cat === cat).map((e) => row({ name: e.name, level: e.level, tags: [e.tier], price: e.price, stats: statOf(e), owned: inv.equipment.includes(e.id) ? 'Owned' : null, buy: inv.equipment.includes(e.id) ? null : 'equip:' + e.id })).join('')).join('');
     } else if (shopTab === 'consum') {
       body = C().consumables.map((c) => row({
         name: c.packOf ? `${c.name.replace(/ \(1 use\)/, '')} (${c.packOf} uses)` : c.name, price: c.packOf ? c.packPrice : c.price,
         stats: consumDesc(c), owned: c.fuel ? (inv.propane ? `${inv.propane} on hand` : null) : inv.consum[c.id] ? `${inv.consum[c.id]} on hand` : null, buy: 'consum:' + c.id,
       })).join('');
     } else if (shopTab === 'cams') {
-      body = C().cameras.map((c) => row({ name: c.name, tags: c.cell ? ['Cellular'] : [], price: c.price, stats: `Clear to ${c.clear} yd · Sees to ${c.reach} yd · Detection ${Math.round(c.detect * 100)} · Night photos ${Math.round(c.night * 100)}${c.cell ? ' · photos come to your phone, no monthly plan' : ' · walk in to pull the card (spooks deer)'}`, owned: inv.cameras[c.id] ? `${inv.cameras[c.id]} in truck` : null, buy: 'camera:' + c.id })).join('');
+      body = C().cameras.map((c) => row({ name: c.name, level: c.level, tags: c.cell ? ['Cellular'] : [], price: c.price, stats: `Clear to ${c.clear} yd · Sees to ${c.reach} yd · Detection ${Math.round(c.detect * 100)} · Night photos ${Math.round(c.night * 100)}${c.cell ? ' · photos come to your phone, no monthly plan' : ' · walk in to pull the card (spooks deer)'}`, owned: inv.cameras[c.id] ? `${inv.cameras[c.id]} in truck` : null, buy: 'camera:' + c.id })).join('');
     } else if (shopTab === 'tags') {
       const T = C().economy.tags;
       body = row({ name: 'Buck tag (any antlered deer)', price: T.buck, owned: st.tags.buck ? 'In wallet' : st.tags.buckFilled ? 'Filled' : null, buy: st.tags.buck + st.tags.buckFilled >= 1 ? null : 'tag:buck', stats: 'One per season. Antlerless deer (does, fawns, button bucks) need a doe tag.' }) +
@@ -506,7 +512,7 @@
         `<p class="faint">Shoot an antlered deer without a buck tag (or the other way around) and the DNR takes the deer: no money and no mount. Judge before you shoot.</p>`;
     }
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Shop</h2><button class="btn small" data-back>Back to lodge</button></div>
-      <p class="dim">You have ${money(st.cash)}. The only way to earn money is to kill deer.</p>
+      <p class="dim">You have ${money(st.cash)} and you are level ${st.level}. The only way to earn money is to kill deer. Better gear opens as you level up; what you already own is yours to keep.</p>
       <div class="tabs">${tabBtns}</div><div class="list">${body}</div></section>`;
     el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { shopTab = b.dataset.tab; UI.refresh(); }));
     el.querySelector('[data-back]').addEventListener('click', () => UI.go('lodge'));
@@ -565,7 +571,7 @@
           <div><h3>In your truck</h3>${Object.entries(inv.stands).filter(([, n]) => n > 0).map(([id, n]) => `<p>${esc(WT.standType(id).name)} ×${n}</p>`).join('') || ''}${Object.entries(inv.cameras).filter(([, n]) => n > 0).map(([id, n]) => `<p>${esc(WT.camType(id).name)} ×${n}</p>`).join('')}${inv.equipment.some((e) => WT.equip(e).cat === 'light') ? `<p class="dim">Light battery: ${inv.lightCharge} hunts left</p>` : ''}</div>
         </div>
         <h3>Skills${st.skillPts ? ` · <span class="good">${st.skillPts} point${st.skillPts === 1 ? '' : 's'} to spend</span>` : ''}</h3>
-        <div class="list">${Object.entries(C().skills).map(([k, sk]) => UI.skillRow(k, sk)).join('')}</div>
+        ${UI.skillTree()}
       </section>`;
     el.querySelectorAll('[data-mob]').forEach((b) => b.addEventListener('click', () => { if (UI.err(WT.setMobile(b.dataset.mob))) return; WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); }));
     el.querySelectorAll('[data-sk]').forEach((b) => b.addEventListener('click', () => { WT.spendSkill(b.dataset.sk); WT.save(); const y = window.scrollY; UI.refresh(); window.scrollTo(0, y); }));
@@ -587,16 +593,21 @@
   // One skill on the list. Some skills open, or open further, as you level up.
   UI.skillRow = function (k, sk) {
     const st = S(), have = st.skills[k] || 0, cap = WT.skillCap(k);
-    const lock = cap.now === 0 ? `Opens at level ${cap.next.level}.` : have >= cap.now && cap.next ? `As far as it goes for now. Level ${cap.next.level} opens it to ${cap.next.cap}.` : '';
-    return `<div class="item"><div><span class="nm">${esc(sk.name)}</span> <span class="dim">${have} / ${cap.max}</span></div>
-      <button class="btn small" data-sk="${k}" ${st.skillPts && have < cap.now ? '' : 'disabled'}>+1</button><div class="st">${esc(sk.desc)}${lock ? ` <span class="warn">${lock}</span>` : ''}</div></div>`;
+    const lock = cap.now === 0 ? `Opens at level ${cap.next.level}.` : have >= cap.now && cap.next ? `As far as it goes for now. Level ${cap.next.level} opens it to ${cap.next.cap}.` : have >= cap.max ? 'Mastered.' : '';
+    return `<div class="item ${cap.now === 0 ? 'locked' : ''}"><div><span class="nm">${esc(sk.name)}</span> <span class="dim">${have} / ${cap.max}${cap.now > 0 && cap.now < cap.max ? ` · up to ${cap.now} at your level` : ''}</span></div>
+      <button class="btn small" data-sk="${k}" ${st.skillPts && have < cap.now ? '' : 'disabled'}>+1</button><div class="st">${esc(sk.desc)}${cap.now > 0 ? ` <b>Now:</b> ${esc(WT.skillNow(k))}.` : ''}${lock ? ` <span class="warn">${lock}</span>` : ''}</div></div>`;
+  };
+  // The whole tree, by branch: what your body can do, what your head can do, what you know.
+  UI.skillTree = function () {
+    const all = Object.entries(C().skills), note = { Body: 'What your body can do.', Mind: 'What your head can do.', Woodsmanship: 'What you know about deer and ground.' };
+    return [...new Set(all.map(([, s]) => s.branch))].map((b) => `<h3>${esc(b)} <span class="faint">${note[b] || ''}</span></h3><div class="list">${all.filter(([, s]) => s.branch === b).map(([k, s]) => UI.skillRow(k, s)).join('')}</div>`).join('');
   };
   UI.screens.skills = function (el) {
     const st = S(), cfg = C();
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Skills</h2><button class="btn small" data-back>Back to lodge</button></div>
       <p>Level ${st.level}. You earn points by levelling up, and points can't be saved: spend them before your next hunt. Some skills only open, or open further, at higher levels, so mastering them takes a career. <b>${st.skillPts}</b> point${st.skillPts === 1 ? '' : 's'} to spend.</p>
-      <div class="list">${Object.entries(cfg.skills).map(([k, s]) => UI.skillRow(k, s)).join('')}</div>
-      <p class="faint">Patience now gives ${(cfg.comfort.basePatienceHrs + st.skills.patience * cfg.comfort.hrsPerPatiencePt).toFixed(1)} hours before stand comfort, clothing and snacks.</p></section>`;
+      ${UI.skillTree()}
+<p class="faint">The "Now" line under each skill is what it is doing for you at this moment.</p></section>`;
     el.querySelectorAll('[data-sk]').forEach((b) => b.addEventListener('click', () => { WT.spendSkill(b.dataset.sk); WT.save(); UI.refresh(); }));
     el.querySelector('[data-back]').addEventListener('click', () => UI.go('lodge'));
   };
