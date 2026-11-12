@@ -116,7 +116,7 @@
          inches: what g = 1 adds to the average buck's potential. tail: on warm ground the spread widens and freaks are
          likelier, so the top end stretches more than the average moves. managed: land you keep planted breeds a little
          better every year, up to maxYears. */
-      geneMap: { drift: 2, /* tiles a year the whole pattern slides: about one property-width a decade */ scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, inches: 5, tail: 0.1, giant: 2, hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0, managedMaxYears: 8 },
+      geneMap: { drift: 2, /* tiles a year the whole pattern slides: about one property-width a decade */ scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, inches: 5, meanCap: 0.3, stretchFrom: 160, stretch: 1.5, /* meanCap: a pocket never moves the AVERAGE buck more than this much of `inches`, however hot. On hot ground (g = 1) the part of a buck's potential above stretchFrom grows two and a half times: 170 becomes 185, 180 becomes 210. Below it nothing changes, so a hot pocket has no more 140s and 150s than its region */ hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0, managedMaxYears: 8 },
       ageCurve: { 0.5: 0, 1.5: [0.30, 0.40], 2.5: [0.55, 0.65], 3.5: [0.75, 0.82], 4.5: [0.88, 0.94], 5.5: [0.97, 1.0], 6.5: [0.97, 1.0], 7.5: [0.96, 1.0], 8.5: [0.91, 0.95], 9.5: [0.83, 0.87], 10.5: [0.78, 0.84] },
       maxAge: 10.5,
       yearlyVariance: 0.065,

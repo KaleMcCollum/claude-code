@@ -335,7 +335,7 @@
     { // genetics come from where the land sits on the map, not from the parcel itself
       const gm = C().deer.geneMap, gs = C().deer.genetics;
       prop.geneG = WT.geneAt(pid);
-      prop.regionalGenetics = 0.5 + prop.geneG * gm.inches / (2 * gs.regionalShift);
+      prop.regionalGenetics = 0.5 + Math.max(-1, Math.min(gm.meanCap, prop.geneG)) * gm.inches / (2 * gs.regionalShift); // a hot pocket stretches the top end (sim.js); it does not lift everyone
       prop.geneBonus = d.owner === 'player' ? Math.min(gm.managedMaxYears, d.managed || 0) * gm.managedPerYear : 0;
     }
     prop.herd = d.herd || [];

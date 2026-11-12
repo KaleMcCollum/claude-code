@@ -847,9 +847,12 @@
   function rollPotential(rng, prop, momGp) {
     const g = D().genetics;
     const warm = Math.max(0, prop.geneG || 0), gm = C().deer.geneMap;
-    let gp = rng.normal(g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift + (prop.geneBonus || 0), g.sd * (1 + gm.tail * warm));
+    let gp = rng.normal(g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift + (prop.geneBonus || 0), g.sd);
     if (momGp) gp += clamp((momGp - g.mean) / g.sd, -1.5, 1.5) * g.heredity;
-    if (rng.chance(g.giantChance * (1 + gm.giant * warm))) gp += rng.range(g.giantBonus[0], g.giantBonus[1]);
+    if (rng.chance(g.giantChance)) gp += rng.range(g.giantBonus[0], g.giantBonus[1]);
+    // Hot ground does not make more good bucks. It lets a buck that was already going to be big go further: only the
+    // part of his potential above stretchFrom grows, so a 150 is still a 150 and there are no more of them than anywhere.
+    if (warm > 0 && gp > gm.stretchFrom) gp += (gp - gm.stretchFrom) * gm.stretch * warm;
     return clamp(gp, g.min, g.max);
   }
 
