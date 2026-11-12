@@ -547,6 +547,12 @@
     if (st.skillPts <= 0 || (st.skills[k] || 0) >= WT.skillCap(k).now) return false;
     st.skills[k] = (st.skills[k] || 0) + 1; st.skillPts--; return true;
   };
+  // Skill points can't be banked: while one is unspent and something can take it, you don't go hunting.
+  WT.mustSpend = function () {
+    const st = S(); if (!(st.skillPts > 0)) return null;
+    if (!Object.keys(C().skills).some((k) => (st.skills[k] || 0) < WT.skillCap(k).now)) return null;
+    return `You have ${st.skillPts} skill point${st.skillPts === 1 ? '' : 's'} to spend. Points can't be saved up: spend ${st.skillPts === 1 ? 'it' : 'them'} before you hunt.`;
+  };
   // How high a skill can go: at your level now, ever, and the next level that opens more.
   WT.skillCap = function (k) {
     const st = S(), sk = C().skills[k], max = sk.max || C().progression.skillMax;

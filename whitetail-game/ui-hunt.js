@@ -83,6 +83,7 @@ ${isSpot && sel.carry ? `<span class="dim">Carrying: ${esc(WT.standType(sel.carr
       UI.bindOutfit(el, lo, () => render());
       $('#go', el).addEventListener('click', () => {
         if (block) return UI.toast(block, 'bad');
+        { const ms = WT.mustSpend(); if (ms) { UI.toast(ms, 'bad'); return UI.go('skills'); } }
         WT.save();
         WT.startHunt({ pid: args.pid, stand, carry: sel.carry, session: sel.session, rifle: lo.rifle, clothing: Object.assign({}, lo.clothing), equip: Object.assign({}, lo.equip), pack: Object.assign({}, lo.pack), competition: !!args.competition });
         UI.go('hunt');

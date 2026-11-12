@@ -593,7 +593,7 @@
   UI.screens.skills = function (el) {
     const st = S(), cfg = C();
     el.innerHTML = `<section class="panel"><div class="row" style="justify-content:space-between"><h2>Skills</h2><button class="btn small" data-back>Back to lodge</button></div>
-      <p>Level ${st.level}. You earn points by sitting, seeing deer and harvesting. <b>${st.skillPts}</b> point${st.skillPts === 1 ? '' : 's'} to spend.</p>
+      <p>Level ${st.level}. You earn points by levelling up, and points can't be saved: spend them before your next hunt. Some skills only open, or open further, at higher levels, so mastering them takes a career. <b>${st.skillPts}</b> point${st.skillPts === 1 ? '' : 's'} to spend.</p>
       <div class="list">${Object.entries(cfg.skills).map(([k, s]) => UI.skillRow(k, s)).join('')}</div>
       <p class="faint">Patience now gives ${(cfg.comfort.basePatienceHrs + st.skills.patience * cfg.comfort.hrsPerPatiencePt).toFixed(1)} hours before stand comfort, clothing and snacks.</p></section>`;
     el.querySelectorAll('[data-sk]').forEach((b) => b.addEventListener('click', () => { WT.spendSkill(b.dataset.sk); WT.save(); UI.refresh(); }));
