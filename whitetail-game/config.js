@@ -107,11 +107,11 @@
          inches: what g = 1 adds to the average buck's potential. tail: on warm ground the spread widens and freaks are
          likelier, so the top end stretches more than the average moves. managed: land you keep planted breeds a little
          better every year, up to maxYears. */
-      geneMap: { scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, inches: 5, tail: 0.1, giant: 2, hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0.25, managedMaxYears: 8 },
+      geneMap: { scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, inches: 5, tail: 0.1, giant: 2, hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0, managedMaxYears: 8 },
       ageCurve: { 0.5: 0, 1.5: [0.30, 0.40], 2.5: [0.55, 0.65], 3.5: [0.75, 0.82], 4.5: [0.88, 0.94], 5.5: [0.97, 1.0], 6.5: [0.97, 1.0], 7.5: [0.96, 1.0], 8.5: [0.91, 0.95], 9.5: [0.83, 0.87], 10.5: [0.78, 0.84] },
       maxAge: 10.5,
       yearlyVariance: 0.065,
-      nutrition: { min: 0.88, max: 1.06, overCapacityPenalty: 0.06 },   // crowding costs a little; it must not cancel the food you planted
+      nutrition: { min: 0.88, max: 1.06, fedCap: 1.0, overCapacityPenalty: 0.06 }, // fedCap: plots lift poor ground up to here and no further. Feed helps struggling land catch up; it does not beat naturally rich ground   // crowding costs a little; it must not cancel the food you planted
       density: { poor: 4, elite: 14 },  // deer per 100 acres
       weights: {
         buck: { 0.5: [60, 95], 1.5: [125, 165], 2.5: [155, 200], 3.5: [185, 230], 4.5: [205, 285] },
@@ -286,7 +286,7 @@
        Counted per 100 acres of land, so a big property needs more of everything.
        Food plots (planted, scaled by crop and how it came in) raise food and add straight to nutrition: bigger bodies
        and antlers. Tree rows raise bedding and security: more deer, and more of them stay and survive. */
-    landWork: { plotFood: 0.08, plotFoodMax: 0.4, plotNutrition: 0.006, plotNutritionMax: 0.03, topEnd: 0.04, /* topEnd: on fully planted land a buck gains this much more for every notch (sd) his genetics sit above average. Feed barely moves an ordinary buck; it lets a gifted one show it */ plotCapacity: 0.06, plotCapacityMax: 0.35, buckSurvival: 0.55, treeBed: 0.05, treeBedMax: 0.25, treeSecurity: 0.03, treeSecurityMax: 0.15, youngTree: 0.4 },
+    landWork: { plotFood: 0.08, plotFoodMax: 0.4, plotNutrition: 0.016, plotNutritionMax: 0.08, topEnd: 0, /* topEnd: on fully planted land a buck gains this much more for every notch (sd) his genetics sit above average. Feed barely moves an ordinary buck; it lets a gifted one show it */ plotCapacity: 0.06, plotCapacityMax: 0.35, buckSurvival: 0.55, treeBed: 0.05, treeBedMax: 0.25, treeSecurity: 0.03, treeSecurityMax: 0.15, youngTree: 0.4 },
     plotPull: 0.3,   // a stand touching a planted plot: deer seen x (1 + plotPull * (crop value now - 0.5) * how well it came in)
     sightMult: { ratingBase: 0.45, ratingGain: 1.75, ratingPow: 1.3, starBase: 0.5, starGain: 1.0, norm: 1.15, matureBase: 0.5, matureGain: 3.0, maturePow: 1.5, matureLift: 0.5 },
     // Off-season scouting: 3 x 3 blocks you can search each spring, plus one per this many Woodcraft points.
