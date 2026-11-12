@@ -844,16 +844,14 @@
   }
   WT.ageTable = ageTable;
 
+  /* A buck's potential: how far above or below average he will be for his age, all his life (the spec's potentialZ).
+     Standard normal, rolled once at birth. It is kept in inches as d.gp = mean + sd * z, so old saves and the rest of
+     the game read it the same way. A fawn leans a little toward its mother without changing the overall spread. */
   function rollPotential(rng, prop, momGp) {
     const g = D().genetics;
-    const warm = Math.max(0, prop.geneG || 0), gm = C().deer.geneMap;
-    let gp = rng.normal(g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift + (prop.geneBonus || 0), g.sd);
-    if (momGp) gp += clamp((momGp - g.mean) / g.sd, -1.5, 1.5) * g.heredity;
-    if (rng.chance(g.giantChance)) gp += rng.range(g.giantBonus[0], g.giantBonus[1]);
-    // The far right of the curve. On warm ground a buck who is already well above average has a little more in him
-    // still, the more so the hotter the ground. This is where a 200 comes from; it adds no 140s or 150s.
-    { const centre = g.mean + (prop.regionalGenetics - 0.5) * 2 * g.regionalShift, notches = (gp - centre) / g.sd; if (warm > 0 && notches > gm.tailFrom) gp += (notches - gm.tailFrom) * g.sd * gm.tail * warm; }
-    return clamp(gp, g.min, g.max);
+    let z = rng.normal(0, 1);
+    if (momGp) { const h = g.inherit, mz = clamp((momGp - g.mean) / g.sd, -3, 3); z = Math.sqrt(1 - h * h) * z + h * mz; }
+    return g.mean + g.sd * clamp(z, -3, 3);
   }
 
   function makeDeer(rng, sex, age, prop, momGp, momStyle) {
@@ -901,23 +899,17 @@
     if (d.age >= 8.5) lw *= 0.94;
     d.lw = Math.round(lw);
     if (d.sex !== 'b' || d.age < 1.5) { d.gross = 0; d.net = 0; d.pL = 0; d.pR = 0; d.nt = false; d.abn = 0; d.rack = null; return; }
-    const curve = ageTable(cfg.ageCurve, d.age);
-    const cf = Array.isArray(curve) ? rng.range(curve[0], curve[1]) : curve;
-    const condF = 0.9 + 0.1 * d.cond;
-    const L = C().landWork, G0 = cfg.genetics;
-    const top = clamp((prop.plotNutrition || 0) / L.plotNutritionMax) * L.topEnd * clamp((d.gp - G0.mean) / G0.sd, 0, 3.5); // good groceries let the gifted ones show it
-    // Antlers come from genetics and age. Feed decides how many deer the land holds, how heavy they are and whether they
-    // stay home; it does not make a rack bigger or smaller, so every buck is grown on the same ordinary feed.
-    // There is no good or bad antler year for the whole herd. Now and then one buck has an off year (hurt, sick, a hard
-    // winter on him alone) or an exceptional one, and next year he is back to himself. Old age is in the age curve.
-    const oy = cfg.offYear; let own = 1;
-    if (oy && d.age >= 2.5) { const r = rng.next ? rng.next() : rng.range(0, 1); own = r < oy.bad ? 1 - rng.range(oy.badBy[0], oy.badBy[1]) : r < oy.bad + oy.great ? 1 + rng.range(oy.greatBy[0], oy.greatBy[1]) : 1; }
-    /* Antler score is a bell curve for every age (deer.antlers.byAge: [average, spread] on ordinary ground).
-       A buck's place in the curve is his for life: one at the top of the three-year-olds is at the top of the
-       five-year-olds too. Where he was born slides his curve right or left (that is already in d.gp, see rollPotential). */
-    const A = cfg.antlers, bell = A && ageTable(A.byAge, d.age);
-    const place = (d.gp - G0.mean) / G0.sd; // how many notches above or below average he is, for life
-    const target = Math.max(d.age < 2 ? 12 : 25, bell ? (bell[0] + place * bell[1]) * own * (1 + rng.range(-A.wobble, A.wobble)) : d.gp * cf * (cfg.nutrition.antlers ?? nf + top) * own * condF);
+    /* Antler score, as the model file gives it (deer-antler-score-model.md):
+         score = (mean[age] + z * stdDev[age]) * landQuality,   z = keep * potentialZ + year * yearZ, clamped to +-3.
+       Age sets the bell curve, the buck's own potential sets his place in it for life, a fresh roll each year moves him
+       a little, and the ground he lives on (food and soil only) scales the whole curve. Hunting never enters into it:
+       pressure only decides which bucks live long enough to be measured here. Worked out once a season and stored. */
+    const A = cfg.antlers, G0 = cfg.genetics;
+    let ai = 0; for (let k = 0; k < A.ages.length; k++) if (Math.min(d.age, A.ages[A.ages.length - 1]) >= A.ages[k]) ai = k;
+    const potentialZ = clamp((d.gp - G0.mean) / G0.sd, -3, 3), yearZ = rng.normal(0, 1);
+    const z = clamp(A.keep * potentialZ + A.year * yearZ, -A.clampZ, A.clampZ);
+    d.yz = Math.round(yearZ * 100) / 100;
+    const target = Math.max(d.age < 2 ? 10 : 25, (A.mean[ai] + z * A.stdDev[ai]) * (prop.landQuality ?? A.land.farm)); // the floor only keeps the rack builder sane: a tiny yearling is a spike
     // The rack is built as B&C components + 3D geometry; the score is measured from it (antlers.js).
     if (!d.style) d.style = WT.rollRackStyle(rng);
     const { comp, sheet } = WT.growRack(d.style, d.age, target, rng);
@@ -938,7 +930,7 @@
   /* ---------------------------------------------------------------- property model for deer */
   function propFromHabitat(base, h) {
     base.food = h.food; base.water = h.water; base.bedding = h.bedding; base.security = h.security;
-    base.soilQuality = h.soil; base.regionalGenetics = h.genetics;
+    base.soilQuality = h.soil;
     return base;
   }
   WT.propFromHabitat = propFromHabitat;

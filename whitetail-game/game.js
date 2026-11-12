@@ -332,12 +332,7 @@
     p.habitat = h;
     const prop = WT.propFromHabitat({ id: pid, acres: p.acres, type: d.owner === 'public' ? 'public' : 'private', neighborPressure: d.owner === 'public' ? 0.5 : d.neighborPressure }, h); // on public the hunters are counted by access, not here
     prop.effectiveAcres = contiguousAcres(pid);
-    { // genetics come from where the land sits on the map, not from the parcel itself
-      const gm = C().deer.geneMap, gs = C().deer.genetics;
-      prop.geneG = WT.geneAt(pid);
-      prop.regionalGenetics = 0.5 + prop.geneG * gm.inches / (2 * gs.regionalShift); // hot ground slides the whole bell curve right, cold ground left
-      prop.geneBonus = d.owner === 'player' ? Math.min(gm.managedMaxYears, d.managed || 0) * gm.managedPerYear : 0;
-    }
+    prop.geneG = WT.geneAt(pid); // the soil map: rich pockets and thin ones, sliding slowly across the country
     prop.herd = d.herd || [];
     prop.huntingPressure = d.pressure ?? 0.05;
     prop.sanct = WT.sanctuaryInfo(pid).counted;
@@ -353,6 +348,7 @@
       prop.bedding = clamp(prop.bedding + Math.min(L.treeBedMax, L.treeBed * treePts));
       prop.security = clamp(prop.security + Math.min(L.treeSecurityMax, L.treeSecurity * treePts));
     }
+    prop.landQuality = WT.landQualityOf(prop.food, prop.geneG); // food and soil only: what the antler model multiplies by
     prop.mix = WT.landMix(pid);
     if (d.owner === 'public') { const cr = WT.crowd(pid); prop.publicBuck = cr.buckDeaths; prop.publicDoe = cr.doeMult; prop.pressFloor = cr.floor;
       { // each buck faces the hunters who reach where HE lives: lots by the road, hardly any far back
@@ -363,6 +359,14 @@
     prop.capacity = WT.carryingCapacity(prop);
     return prop;
   }
+  /* Land quality for antlers, from food and soil only (see deer.antlers.land). Food sets the tier: big woods and swamp
+     are poor, grass and mixed timber average, crops with cover good farmland. Soil moves it from there. */
+  WT.landQualityOf = function (food, soilG) {
+    const L = C().deer.antlers.land, up = (v, a, b) => clamp((v - a) / (b - a));
+    const tier = food <= L.foodAverage ? L.poor + (L.average - L.poor) * up(food, L.foodPoor, L.foodAverage) : L.average + (L.farm - L.average) * up(food, L.foodAverage, L.foodFarm);
+    return Math.max(L.poor, Math.min(L.prime, tier + L.soil * (soilG || 0)));
+  };
+  WT.landQualityName = (q) => { const L = C().deer.antlers.land; return q < (L.poor + L.average) / 2 ? 'Poor' : q < (L.average + L.farm) / 2 ? 'Average' : q < (L.farm + L.prime) / 2 ? 'Good farmland' : 'Prime'; };
   WT.makeProp = makeProp;
   WT.geneAt = function (pid) { const w = G.world, p = w.parcels[pid], yr = S().year || 1; if (w._geneYr !== yr) { w._gene = {}; w._geneYr = yr; } if (w._gene[pid] === undefined) w._gene[pid] = WT.geneField(w, p.cx, p.cy, yr - 1); return w._gene[pid]; };
 
@@ -2319,7 +2323,7 @@
     // this year's plots fed this year's deer: remember what they gave before the plots go back to dirt,
     // or next year's antlers would be grown as if nothing had been planted
     const plotFed = {};
-    for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') { const pr = makeProp(p.id); plotFed[p.id] = { food: pr.food, n: pr.plotNutrition || 0, c: pr.plotCapacity || 0 }; }
+    for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') { const pr = makeProp(p.id); plotFed[p.id] = { food: pr.food, n: pr.plotNutrition || 0, c: pr.plotCapacity || 0, q: pr.landQuality }; }
     for (const p of w.parcels) {
       const d = st.parcels[p.id];
       // the season is over: every plot is bare dirt again until you replant it this spring
@@ -2339,7 +2343,7 @@
     for (const p of w.parcels) { const d = st.parcels[p.id]; if (d.owner !== 'player' && d.owner !== 'public') continue; for (const deer of d.herd) if (deer.sex === 'b' && deer.age >= 1.5 && deer.rack) carried.push({ id: deer.id, pid: p.id, age: deer.age, pR: deer.pR || 0, pL: deer.pL || 0, gross: deer.gross || 0, snap: WT.snapshot(deer) }); }
     summary.recap = buildRecap();
     // whole-map year: every parcel's cycle, dispersal between real parcels, population stabilizer
-    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; const pf = plotFed[p.id]; if (pf) { pr.plotNutrition = Math.max(pr.plotNutrition || 0, pf.n); pr.plotCapacity = Math.max(pr.plotCapacity || 0, pf.c); } return pr; });
+    const props = w.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; const pf = plotFed[p.id]; if (pf) { pr.plotNutrition = Math.max(pr.plotNutrition || 0, pf.n); pr.plotCapacity = Math.max(pr.plotCapacity || 0, pf.c); pr.landQuality = Math.max(pr.landQuality, pf.q); } /* this year's plots fed this year's antlers */ return pr; });
     const res = WT.worldYear(props, rng, { winter, yearFactor, seasonMortalityApplied: true }, st.worldSim);
     st.worldSim = res.world;
     props.forEach((pr, k) => {

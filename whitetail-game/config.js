@@ -128,17 +128,24 @@
 
     /* ------------------------------------------------------------ deer */
     deer: {
-      /* Antler score by age, on ordinary ground: [average, spread] of the bell curve for bucks of that age.
-         A buck keeps his place in the curve for life. Hot and cold ground slide every curve right or left (geneMap.inches).
-         wobble: the small year-to-year difference in one buck's rack, on top of his rare off or exceptional year. */
-      antlers: { byAge: { 1.5: [47, 9], 2.5: [81, 11], 3.5: [106, 13], 4.5: [122, 14], 5.5: [133, 15], 6.5: [135, 15], 7.5: [134, 15], 8.5: [126, 14.5], 9.5: [114, 14], 10.5: [106, 13] }, wobble: 0.015 },
-      genetics: { mean: 140, sd: 15, regionalShift: 9, giantChance: 1 / 400, giantBonus: [20, 40], min: 90, max: 235, heredity: 4 },
+      /* Antler score: the model in deer-antler-score-model.md, number for number.
+         Average and spread of gross score at each age on ground of quality 1.00 (ages past 8.5 use the 8.5 row).
+         keep / year: how much of a buck's place in the curve is his own for life and how much is this year's luck
+           (keep^2 + year^2 = 1). clampZ: nobody is more than this many spreads from average.
+         land: the quality multiplier, from food and soil only. Food sets the tier: at or below foodPoor it is `poor`
+           (big woods, swamp), at foodAverage `average` (mixed timber, pasture, grass), at foodFarm and above `farm`
+           (corn and beans with cover, the usual ground here). Soil then moves it: `soil` per notch on the soil map,
+           so rich-soil farmland reaches `prime` and thin soil falls short. Never below poor or above prime. */
+      antlers: { ages: [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5], mean: [36.1, 80.7, 102.9, 118.7, 129.9, 133.2, 131.5, 127.1], stdDev: [13.7, 16.7, 17.9, 20.4, 16.6, 17.6, 15.9, 17.4],
+        keep: 0.85, year: 0.53, clampZ: 3.5, /* the model file says 3, but its own rarity test (1 in 1,000 six-year-olds over 210 on 1.12 ground) needs 3.09, which a clamp of 3 makes impossible */
+        land: { poor: 0.90, average: 1.00, farm: 1.12, prime: 1.25, foodPoor: 0.33, foodAverage: 0.45, foodFarm: 0.57, soil: 0.08 } },
+      genetics: { mean: 140, sd: 15, inherit: 0.25 }, // how potential is stored (mean + sd x his place in the curve) and how much a fawn takes after its mother
       /* Genetics drift slowly across the map. Most ground is neutral; a region can run a few inches up or down, and now and
          then there is a small hot pocket (or a cold one). g runs about -1..+1 (a hot pocket can reach 1.6).
          inches: what g = 1 adds to the average buck's potential. tail: on warm ground the spread widens and freaks are
          likelier, so the top end stretches more than the average moves. managed: land you keep planted breeds a little
          better every year, up to maxYears. */
-      geneMap: { drift: 2, /* tiles a year the whole pattern slides: about one property-width a decade */ scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, inches: 8, /* how far the whole bell curve slides on ground rated 1: hot ground right, cold ground left. A hot pocket can reach 1.6, a cold one -1.5 */ tailFrom: 1.3, tail: 1.2, /* the far right of the curve: on ground rated 1, the part of a buck above tailFrom notches over average counts for this much more. Cold and ordinary ground get none */ hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0, managedMaxYears: 8 },
+      geneMap: { drift: 2, /* tiles a year the whole pattern slides: about one property-width a decade */ scale: 0.42, amp: 2.6, tilt: 0.25, shape: 2, hotChance: 0.6, hot: 1.3, coldChance: 0.4, cold: 1.0, pocket: 0.07, managedPerYear: 0, managedMaxYears: 8 },
       ageCurve: { 0.5: 0, 1.5: [0.30, 0.40], 2.5: [0.55, 0.65], 3.5: [0.75, 0.82], 4.5: [0.88, 0.94], 5.5: [0.97, 1.0], 6.5: [0.97, 1.0], 7.5: [0.96, 1.0], 8.5: [0.91, 0.95], 9.5: [0.83, 0.87], 10.5: [0.78, 0.84] },
       maxAge: 10.5,
       yearlyVariance: 0.065,          // kept for old saves; antlers no longer follow a map-wide good or bad year
@@ -159,11 +166,11 @@
            nearly all shoot a 150). wary: how much less an older buck shows himself than a yearling. trait: how much a
            buck's own wariness moves that, per notch. natural: yearly deaths that have nothing to do with hunters.
            refPublic / refPrivate: the [score, age] of the buck a piece of ground's set death rate is for. On public land
-           a 100-inch three-year-old keeps the rate the ground sets; on private land a 125-inch four-year-old does.
+           a 100-inch three-year-old keeps the rate the ground sets; on private land a 133-inch four-year-old does.
            meat / manage: neighbours who shoot the first buck they see, and neighbours who pass anything young. */
         hunters: { share: [[0, 0.10], [80, 0.10], [100, 0.20], [120, 0.55], [130, 0.72], [140, 0.85], [150, 0.93], [160, 0.98], [170, 1]],
           wary: { 1.5: 1.0, 2.5: 0.9, 3.5: 0.75, 4.5: 0.6, 5.5: 0.5, 6.5: 0.45 }, trait: 0.15, natural: 0.12,
-          refPublic: [100, 3.5], refPrivate: [125, 4.5], meat: 0.35, manage: 1.6, maxKill: 0.9 },
+          refPublic: [100, 3.5], refPrivate: [133, 4.5], meat: 0.35, manage: 1.6, maxKill: 0.9 },
         inSeasonShare: 0.45,          // share of neighbor/hunter mortality that happens during the season
         winterBase: 0.03, winterSevere: 0.10,
       },
