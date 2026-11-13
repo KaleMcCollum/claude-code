@@ -6,7 +6,17 @@ import type { RichDoc } from "./richtext";
  * lost if a phone closes the page. It stays on that device only and is
  * cleared as soon as the text is saved or discarded.
  */
-export type Draft = { doc: RichDoc; at: number };
+export type Draft = {
+  doc: RichDoc;
+  at: number;
+  /**
+   * What the text was typed against: an id that changes whenever the saved
+   * text it started from changes (for official text, the official version;
+   * null when there was no saved text yet). Left out for notes and comments,
+   * and missing in copies written before this was recorded.
+   */
+  base?: string | null;
+};
 
 const CHANGE_EVENT = "ppf-draft-change";
 
@@ -50,15 +60,20 @@ export function readDraft(key: string): Draft | null {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const value = JSON.parse(raw) as Draft;
-    return value && value.doc?.type === "doc" && typeof value.at === "number" ? value : null;
+    if (!value || value.doc?.type !== "doc" || typeof value.at !== "number") return null;
+    const draft: Draft = { doc: value.doc, at: value.at };
+    if (typeof value.base === "string" || value.base === null) draft.base = value.base;
+    return draft;
   } catch {
     return null;
   }
 }
 
-export function writeDraft(key: string, doc: RichDoc): void {
+/** Keep a copy. `base` says what the text was typed against (see `Draft`); leave it out where that is not tracked. */
+export function writeDraft(key: string, doc: RichDoc, base?: string | null): void {
   try {
-    window.localStorage.setItem(key, JSON.stringify({ doc, at: Date.now() } satisfies Draft));
+    const draft: Draft = base === undefined ? { doc, at: Date.now() } : { doc, at: Date.now(), base };
+    window.localStorage.setItem(key, JSON.stringify(draft));
     window.dispatchEvent(new Event(CHANGE_EVENT));
   } catch {
     // Storage full or blocked: typing still works, there is just no safety copy.

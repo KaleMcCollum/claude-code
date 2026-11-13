@@ -23,7 +23,6 @@ import {
   canEditProposal,
   canEndorse,
   changesNotApprovedBy,
-  describeStructure,
   displayTitle,
   loadProposal,
   loadProposalComments,
@@ -31,12 +30,16 @@ import {
   proposalsForNotes,
   sourceNoteIds,
   statusLine,
-  waitingFor,
+  waitingOn,
+  waitingText,
 } from "@/lib/proposals";
 import { findNode, loadTree } from "@/lib/sections";
 import { formatDate, formatDateTime } from "@/lib/time";
 
-type PageProps = { params: Promise<{ id: string }> };
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+};
 
 const loadPage = cache(async (id: string) => {
   const user = await requireUser();
@@ -84,7 +87,7 @@ const COMPARED_WITH = {
 };
 
 /** One proposal: what it changes, where it stands, who approved, and the talk about it. */
-export default async function ProposalPage({ params }: PageProps) {
+export default async function ProposalPage({ params, searchParams }: PageProps) {
   const data = await loadPage((await params).id);
   if (!data) notFound();
   const { user, view, tree, approvers, change, unapproved, notes, noteProposals, comments } = data;
@@ -95,8 +98,39 @@ export default async function ProposalPage({ params }: PageProps) {
   const choices = approveChoices(view, user, approvers);
   const others = approvers.filter((owner) => owner.id !== user.id).map((owner) => owner.name);
   const created = view.createdSectionId ? findNode(tree, view.createdSectionId) : null;
-  const waiting = waitingFor(view, approvers);
+  const mine = view.proposedById === user.id;
+  // Who it is waiting for, and for what (approvals, or its proposer's check).
+  const waiting = waitingOn(view, approvers);
+  const waitingLine = waitingText(view, approvers, user.id);
+  // The section it is about is no longer among the sections: it can only be
+  // withdrawn or declined. Approving or changing it could never go through,
+  // so those buttons are not offered.
   const sectionGone = open && view.sectionId !== null && section?.node === null;
+  // The official text changed after it was proposed (text proposals only).
+  const outOfDate = open && view.outOfDate && !sectionGone;
+  const proposerName = view.proposedByName ?? "the person who proposed it";
+  // Just back from the edit page, where its proposer saved it again after
+  // the official text had changed.
+  const justChecked =
+    (await searchParams).checked === "1" && open && mine && view.type !== "structure" && !view.outOfDate && !sectionGone;
+  const mayEdit = canEditProposal(view, user) && !sectionGone;
+  // The proposer has no Edit because someone else put their name on it: say who.
+  const approvedByOthers = view.approvals.filter((a) => a.userId !== user.id).map((a) => a.name);
+  const endorsedByOthers = view.endorsements.filter((e) => e.userId !== user.id).map((e) => e.name);
+  const signedByOthers = [
+    approvedByOthers.length > 0 ? `${joinNames(approvedByOthers)} approved it` : "",
+    endorsedByOthers.length > 0 ? `${joinNames(endorsedByOthers)} endorsed it` : "",
+  ].filter(Boolean);
+  const whyNoEdit =
+    open && mine && can(user, "propose") && !sectionGone && !canEditProposal(view, user) && signedByOthers.length > 0
+      ? `It can no longer be changed because ${signedByOthers.join(" and ")}. To change it, withdraw it and make a new one.`
+      : null;
+  const sectionGoneNotice = sectionGone && (
+    <p className="notice">
+      The section this is about no longer exists (it may have been archived). Withdraw or decline
+      this proposal.
+    </p>
+  );
   // The newest change to the section's official text that this person never
   // approved. Versions are numbered from 1 without gaps, so when every one of
   // them is unapproved, they have never approved this section's text at all.
@@ -153,10 +187,38 @@ export default async function ProposalPage({ params }: PageProps) {
         <h2 id="change-heading">{open ? "What will change" : approved ? "What changed" : "What it would have changed"}</h2>
         {change ? (
           <>
-            {open && change.changedSince && (
-              <p className="notice">
-                The official text of this section has changed since this was proposed. Read the
-                differences again before approving.
+            {sectionGoneNotice}
+            {outOfDate &&
+              (waiting?.step === "check" && mine ? (
+                <div className="notice notice-action">
+                  <p>
+                    The official text of this section has changed since you proposed this. Check your
+                    proposal against the new text and save it again. Until then it cannot be approved.
+                  </p>
+                  <Link className="btn btn-primary" href={`/proposals/${view.id}/edit`}>
+                    Check and save again
+                  </Link>
+                </div>
+              ) : waiting?.step === "check" ? (
+                <p className="notice">
+                  The official text of this section has changed since {proposerName} proposed this.{" "}
+                  {proposerName} needs to check the proposal against the new text and save it again
+                  before it can be approved.
+                </p>
+              ) : mine ? (
+                <p className="notice">
+                  The official text of this section has changed since you proposed this, and you can
+                  no longer change it. Withdraw it and make a new proposal.
+                </p>
+              ) : (
+                <p className="notice">
+                  The official text of this section has changed since this was proposed, and the
+                  person who proposed it can no longer change it. Decline it and make a new proposal.
+                </p>
+              ))}
+            {justChecked && (
+              <p className="notice" role="status">
+                Checked against the new official text. It can be approved now.
               </p>
             )}
             {/* Not for a section that is gone: there the proposal cannot be approved at all. */}
@@ -187,6 +249,7 @@ export default async function ProposalPage({ params }: PageProps) {
                     : "Official text when it was proposed"
               }
               afterHeading={approved ? "Text as approved" : "Proposed text"}
+              whereToLook={approved ? "Open the full text as approved to see it." : "Open the full proposed text to see it."}
             />
             <details className="full-text">
               <summary>{approved ? "Full text as approved" : "Full proposed text"}</summary>
@@ -197,18 +260,15 @@ export default async function ProposalPage({ params }: PageProps) {
           </>
         ) : (
           <>
-            {sectionGone && (
-              <p className="notice">
-                The section this is about no longer exists (it may have been archived). Withdraw
-                or decline this proposal.
+            {sectionGoneNotice}
+            {/* Open: what it will do, with the sections as they are named now. Decided: the sentence it was decided under. */}
+            <p>{displayTitle(view, tree)}.</p>
+            {open && view.structureChange?.action === "archive" && (
+              <p className="muted">
+                Archiving hides the section and everything under it. Nothing is deleted, and it can be
+                restored.
               </p>
             )}
-            <p>
-              {open && view.structureChange
-                ? describeStructure(tree, view.sectionId, view.structureChange)
-                : view.title}
-              .
-            </p>
             {approved && created && (
               <p>
                 The new section:{" "}
@@ -229,15 +289,23 @@ export default async function ProposalPage({ params }: PageProps) {
             : { revision: view.revision }
         }
         show={{
-          approve: choices.approve,
-          alone: choices.alone,
-          decline: open && can(user, "approve") && view.proposedById !== user.id,
-          edit: canEditProposal(view, user),
-          withdraw: open && can(user, "propose") && view.proposedById === user.id,
+          approve: choices.approve && !sectionGone,
+          alone: choices.alone && !sectionGone,
+          decline: open && can(user, "approve") && !mine,
+          edit: mayEdit,
+          withdraw: open && can(user, "propose") && mine,
           endorse: canEndorse(view, user),
           approveToo: canApproveToo(view, user),
         }}
         otherApprovers={joinNames(others)}
+        // Someone who can approve is asked first: Endorse is not a softer Approve.
+        endorseAsks={can(user, "approve")}
+        afterEndorse={
+          waiting?.step === "approve" && waiting.ids.includes(user.id)
+            ? "Endorsed. It is still waiting for your approval."
+            : null
+        }
+        note={whyNoEdit}
       />
 
       <section className="block" aria-labelledby="approvals-heading">
@@ -249,11 +317,7 @@ export default async function ProposalPage({ params }: PageProps) {
               {approval.userId === view.proposedById && !view.direct ? " (proposed it)" : ""}
             </li>
           ))}
-          {waiting.map((name) => (
-            <li key={name} className="muted">
-              Waiting for {name}
-            </li>
-          ))}
+          {waitingLine && <li className="muted">{waitingLine}</li>}
         </ul>
         {view.endorsements.map((endorsement) => (
           <p key={endorsement.userId} className="endorsements">
@@ -273,6 +337,7 @@ export default async function ProposalPage({ params }: PageProps) {
                 note={toNoteBlockData(
                   note,
                   user.id,
+                  tree,
                   (noteProposals.get(note.id) ?? []).filter((proposal) => proposal.id !== view.id),
                 )}
                 mode="discussion"

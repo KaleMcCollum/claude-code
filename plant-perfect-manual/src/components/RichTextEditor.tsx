@@ -68,8 +68,19 @@ const extensions = [
  * without buttons of its own (the proposal form).
  */
 export type EditorControl = {
-  /** The text as it is right now. Also refreshes the safety copy on this device. */
+  /** The text as it is right now. (Anything typed a moment ago is put in the safety copy first.) */
   getDoc: () => RichDoc;
+  /**
+   * What the text was typed against (see `baseId`): the one the editor
+   * started from, or the one a picked-up copy was typed against. Null when
+   * there was no saved text, or when the editor is not told (`baseId` left out).
+   */
+  getBase: () => string | null;
+  /**
+   * A choice the person has to make before the text can be sent (an
+   * out-of-date copy was picked up), in words for them. Null when there is none.
+   */
+  problem: () => string | null;
   /** Call once the form has been saved: the safety copy is no longer needed. */
   saved: () => void;
 };
@@ -86,6 +97,21 @@ type Shared = {
    * out) does nothing; each new number does it again.
    */
   focusRequest?: number;
+  /**
+   * An id that changes whenever the saved text the editor starts from
+   * (`initialDoc`) changes: for official text, the official version. Null:
+   * there is no saved text yet. Left out: not used (notes and comments).
+   *
+   * The editor remembers the one it started from and keeps it in the copy on
+   * the device. A copy picked up later that was typed against something
+   * else is out of date: the person is told, shown `currentText`, and has to
+   * choose before they can save.
+   */
+  baseId?: string | null;
+  /** The saved text as it is now, drawn for reading, shown next to an out-of-date copy. */
+  currentText?: React.ReactNode;
+  /** What the saved text is called in the out-of-date notice. Usually "the official text". */
+  baseName?: string;
 };
 
 /** The usual way: the editor has its own Save and Cancel buttons. */
@@ -93,7 +119,11 @@ type WithButtons = Shared & {
   saveLabel: string;
   /** Shown next to the Save button, e.g. what saving will record. */
   note?: string;
-  onSave: (doc: RichDoc) => Promise<ActionResult<unknown>>;
+  /**
+   * `base` is what the text was typed against (see `baseId`; null when that
+   * is not used). Send this one to the server, never the page's own value.
+   */
+  onSave: (doc: RichDoc, base: string | null) => Promise<ActionResult<unknown>>;
   /** Called when the editor should close: after a save, or after Cancel. */
   onDone: () => void;
   /**
@@ -129,11 +159,17 @@ function normalizeLink(input: string): string {
   return `https://${value}`;
 }
 
-/** Keep the unsaved text on this device (or drop the copy when there is nothing to keep). */
-function keepCopy(draftKey: string, doc: RichDoc, dropIfEmpty: boolean): void {
+/**
+ * Keep the unsaved text on this device (or drop the copy when there is
+ * nothing to keep). `base` is what it was typed against.
+ */
+function keepCopy(draftKey: string, doc: RichDoc, dropIfEmpty: boolean, base: string | null | undefined): void {
   if (dropIfEmpty && isEmptyDoc(doc)) clearDraft(draftKey);
-  else writeDraft(draftKey, doc);
+  else writeDraft(draftKey, doc, base);
 }
+
+/** Said when Save is pressed while an out-of-date copy is waiting for a choice. */
+const CHOOSE_FIRST = "Choose first: start over from the current text, or keep what you typed.";
 
 const timeFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/Chicago",
@@ -155,13 +191,32 @@ export default function RichTextEditor({
   onSaved,
   focusRequest = 0,
   onReady,
+  baseId,
+  currentText,
+  baseName = "the official text",
 }: Props) {
   // Inside a form: the form has the button, this is only the text.
   const insideForm = onReady !== undefined;
   // This component only ever runs in the browser (it is loaded on demand).
   const [draft] = useState(() => readDraft(draftKey));
+  const [openedAt] = useState(() => Date.now());
   const [restoredAt, setRestoredAt] = useState<number | null>(draft?.at ?? null);
   const [changed, setChanged] = useState(draft !== null);
+  // What the text in the editor was typed against. Set once, when the editor
+  // opens: a picked-up copy brings its own (none at all for a copy from
+  // before this was recorded), otherwise it is the saved text on the page.
+  // It only changes when the person chooses to start over or to keep going.
+  const [base, setBaseState] = useState<string | null | undefined>(() =>
+    baseId === undefined ? undefined : draft ? draft.base : baseId,
+  );
+  // The same value for the timers and handlers below, which outlive a render.
+  const baseRef = useRef(base);
+  const setBase = (next: string | null | undefined) => {
+    baseRef.current = next;
+    setBaseState(next);
+  };
+  // The text here was typed against something other than what is saved now.
+  const outOfDate = baseId !== undefined && base !== baseId;
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -204,10 +259,10 @@ export default function RichTextEditor({
       setChanged(true);
       setError(null);
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(
-        () => keepCopy(draftKey, current.getJSON() as RichDoc, startsEmpty),
-        400,
-      );
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        keepCopy(draftKey, current.getJSON() as RichDoc, startsEmpty, baseRef.current);
+      }, 400);
     },
   });
 
@@ -218,7 +273,7 @@ export default function RichTextEditor({
       if (!timer.current) return;
       clearTimeout(timer.current);
       timer.current = null;
-      keepCopy(draftKey, editor.getJSON() as RichDoc, startsEmpty);
+      keepCopy(draftKey, editor.getJSON() as RichDoc, startsEmpty, baseRef.current);
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
@@ -275,12 +330,18 @@ export default function RichTextEditor({
     if (!onReady || !editor) return;
     onReady({
       getDoc: () => {
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = null;
-        const doc = editor.getJSON() as RichDoc;
-        keepCopy(draftKey, doc, startsEmpty);
-        return doc;
+        // Words typed a moment ago go into the safety copy now. Nothing else
+        // is written: text nobody touched is not worth a copy, and a copy of
+        // it would later be taken for the person's own changes.
+        if (timer.current) {
+          clearTimeout(timer.current);
+          timer.current = null;
+          keepCopy(draftKey, editor.getJSON() as RichDoc, startsEmpty, baseRef.current);
+        }
+        return editor.getJSON() as RichDoc;
       },
+      getBase: () => baseRef.current ?? null,
+      problem: () => (outOfDate ? CHOOSE_FIRST : null),
       saved: () => {
         if (timer.current) clearTimeout(timer.current);
         timer.current = null;
@@ -288,18 +349,25 @@ export default function RichTextEditor({
       },
     });
     return () => onReady(null);
-  }, [onReady, editor, draftKey, startsEmpty]);
+  }, [onReady, editor, draftKey, startsEmpty, outOfDate]);
 
   const save = () => {
     if (!editor || saving || !onSave) return;
-    stopTimer();
+    if (outOfDate) {
+      setError(CHOOSE_FIRST);
+      return;
+    }
     const doc = editor.getJSON() as RichDoc;
-    keepCopy(draftKey, doc, startsEmpty);
+    // As in getDoc above: only what was typed a moment ago is written.
+    if (timer.current) {
+      stopTimer();
+      keepCopy(draftKey, doc, startsEmpty, baseRef.current);
+    }
     startSaving(async () => {
       if (onSaved) savingEditors.add(editor);
       let result: ActionResult<unknown>;
       try {
-        result = await onSave(doc);
+        result = await onSave(doc, baseRef.current ?? null);
       } catch {
         // The request never reached the app (for example a phone with no
         // signal). The text is still here and in the safety copy.
@@ -345,6 +413,7 @@ export default function RichTextEditor({
     onDone?.();
   };
 
+  /** Drop what was typed and begin again from the saved text as it is now. */
   const startOver = () => {
     if (!editor) return;
     stopTimer();
@@ -352,6 +421,21 @@ export default function RichTextEditor({
     clearDraft(draftKey);
     setRestoredAt(null);
     setChanged(false);
+    setError(null);
+    if (baseId !== undefined) setBase(baseId);
+  };
+
+  /**
+   * An out-of-date copy: go on with what was typed, knowing the saved text
+   * has changed. From here on it counts as typed against the saved text as
+   * it is now, and the copy on the device says so too.
+   */
+  const keepTyped = () => {
+    if (!editor || baseId === undefined) return;
+    stopTimer();
+    setBase(baseId);
+    setError(null);
+    keepCopy(draftKey, editor.getJSON() as RichDoc, startsEmpty, baseId);
   };
 
   const openLink = () => {
@@ -406,7 +490,31 @@ export default function RichTextEditor({
 
   return (
     <div ref={rootRef} className={compact ? "editor-block compact" : "editor-block"}>
-      {restoredAt !== null &&
+      {outOfDate ? (
+        <>
+          <div className="notice editor-outdated">
+            <p>
+              You typed this on {timeFormat.format(new Date(restoredAt ?? openedAt))}, before {baseName}{" "}
+              was last changed. It does not include that change.
+            </p>
+            <div className="row">
+              <button type="button" className="btn-text" onClick={startOver}>
+                Start over from the current text
+              </button>
+              <button type="button" className="btn-text" onClick={keepTyped}>
+                Keep what I typed
+              </button>
+            </div>
+          </div>
+          {currentText && (
+            <div className="editor-current">
+              <h3>The official text now</h3>
+              {currentText}
+            </div>
+          )}
+        </>
+      ) : (
+        restoredAt !== null &&
         (startsEmpty ? (
           <p className="muted small editor-restored">
             Picked up what you typed on {timeFormat.format(new Date(restoredAt))}. It was kept on
@@ -419,7 +527,8 @@ export default function RichTextEditor({
               Start over from the saved text
             </button>
           </p>
-        ))}
+        ))
+      )}
       <div className={compact ? "editor compact" : "editor"}>
         {showTools && (
         <div className="toolbar" role="toolbar" aria-label="Formatting">

@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionButton } from "@/components/decisions/ActionButton";
-import { waitingLine } from "@/components/decisions/words";
 import { NoteBlock } from "@/components/notes/NoteBlock";
 import { toNoteBlockData, toSectionOptions } from "@/components/notes/data";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/permissions";
-import { SOLO_FLAG_DAYS, canApproveToo, displayTitle, proposalsForNotes } from "@/lib/proposals";
+import {
+  type ProposalView,
+  SOLO_FLAG_DAYS,
+  canApproveToo,
+  displayTitle,
+  groupOneOwnerDecisions,
+  proposalsForNotes,
+  waitingText,
+} from "@/lib/proposals";
 import { loadTree } from "@/lib/sections";
 import { type StaleSection, loadToday } from "@/lib/today";
 import { formatDate, formatDateKey, formatDateKeyLong } from "@/lib/time";
@@ -23,6 +30,17 @@ function countdown(days: number): string {
   if (days === 1) return "1 day until opening";
   if (days === 0) return "Opening day is today";
   return days === -1 ? "Opened 1 day ago" : `Opened ${-days} days ago`;
+}
+
+/**
+ * What an earlier one-person change of a section is called in the line under
+ * the newest one. A direct edit or a restore goes by the version it made and
+ * its day ("version 2 (Nov 10)"); a written proposal by its title.
+ */
+function earlierLabel(view: ProposalView): string {
+  if (!view.direct || !view.resultVersion) return view.title;
+  const day = formatDate(view.decidedAt ?? view.createdAt).replace(/, \d{4}$/, "");
+  return `version ${view.resultVersion.version} (${day})`;
 }
 
 function StaleList({ sections }: { sections: StaleSection[] }) {
@@ -96,7 +114,7 @@ export default async function TodayPage() {
                 <p className="muted small">
                   Proposed{view.proposedByName ? ` by ${view.proposedByName}` : ""}, {formatDate(view.createdAt)}
                 </p>
-                <p className="small">{waitingLine(view, user, approvers)}</p>
+                <p className="small">{waitingText(view, approvers, user.id)}</p>
               </li>
             ))}
           </ul>
@@ -117,15 +135,14 @@ export default async function TodayPage() {
               Approved by one Owner in the last {SOLO_FLAG_DAYS} days.
             </p>
             <ul className="decision-list">
-              {decidedAlone.map((view) => {
+              {/* One row for each section that was changed: the newest change,
+                  with the earlier ones in one line under it. None is left out. */}
+              {groupOneOwnerDecisions(decidedAlone).map(({ head: view, earlier }) => {
+                // (The title of a direct edit names its section and its version.)
                 const title = displayTitle(view, tree);
                 // The person who decided it: not always the first name on it
                 // (the proposer may have stopped being an Owner since).
                 const by = view.decidedByName ?? view.approvals[0]?.name;
-                // Two direct edits of one section carry the same title, so
-                // the button also names the version it is for.
-                const which =
-                  view.direct && view.resultVersion ? `${title}, version ${view.resultVersion.version}` : title;
                 return (
                   <li key={view.id}>
                     <Link className="title" href={`/proposals/${view.id}`}>
@@ -139,10 +156,21 @@ export default async function TodayPage() {
                       <div className="actions">
                         <ActionButton
                           label="I approve too"
-                          ariaLabel={`I approve too: ${which}`}
+                          ariaLabel={`I approve too: ${title}`}
                           action={addApprovalAction.bind(null, view.id)}
                         />
                       </div>
+                    )}
+                    {earlier.length > 0 && (
+                      <p className="muted small earlier-changes">
+                        Earlier one-person changes to this section:{" "}
+                        {earlier.map((change, index) => (
+                          <span key={change.id}>
+                            {index > 0 && ", "}
+                            <Link href={`/proposals/${change.id}`}>{earlierLabel(change)}</Link>
+                          </span>
+                        ))}
+                      </p>
                     )}
                   </li>
                 );
@@ -165,7 +193,7 @@ export default async function TodayPage() {
               {unsorted.notes.map((note) => (
                 <NoteBlock
                   key={note.id}
-                  note={toNoteBlockData(note, user.id, noteProposals.get(note.id))}
+                  note={toNoteBlockData(note, user.id, tree, noteProposals.get(note.id))}
                   mode="today"
                   canWrite={canWrite}
                   canComment={canComment}

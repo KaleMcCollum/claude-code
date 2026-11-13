@@ -12,6 +12,7 @@ import {
 } from "@/app/(app)/proposals/actions";
 import type { ActionResult } from "@/lib/actions";
 import { ActionButton } from "./ActionButton";
+import { ENDORSE_QUESTION } from "./endorse";
 
 type Props = {
   proposalId: string;
@@ -33,7 +34,17 @@ type Props = {
   };
   /** The other people who can approve ("Casey"), or "" when there is nobody else. */
   otherApprovers: string;
+  /**
+   * Ask before recording an endorsement. For people who can approve, so
+   * that nobody takes Endorse for a softer kind of Approve.
+   */
+  endorseAsks: boolean;
+  /** What to say in place once this person has endorsed it (null: nothing). */
+  afterEndorse: string | null;
+  /** A muted line under the buttons, e.g. why the proposer has no Edit any more. */
+  note: string | null;
 };
+
 
 const NOT_SENT = "That did not go through. Check your connection and try again.";
 
@@ -42,7 +53,7 @@ const NOT_SENT = "That did not go through. Check your connection and try again."
  * or the reason field opens where the button was, and a refusal from the
  * app is shown right there.
  */
-export function ProposalActions({ proposalId, seen, show, otherApprovers }: Props) {
+export function ProposalActions({ proposalId, seen, show, otherApprovers, endorseAsks, afterEndorse, note }: Props) {
   // What the app said after the last button that worked ("Approved. It is official now.").
   const [message, setMessage] = useState<string | null>(null);
   const [declining, setDeclining] = useState(false);
@@ -51,7 +62,7 @@ export function ProposalActions({ proposalId, seen, show, otherApprovers }: Prop
   const [busy, startWork] = useTransition();
 
   const anything = Object.values(show).some(Boolean);
-  if (!anything && !message) return null;
+  if (!anything && !message && !note) return null;
 
   const run = (work: () => Promise<ActionResult<unknown>>, after?: () => void) => {
     startWork(async () => {
@@ -193,12 +204,18 @@ export function ProposalActions({ proposalId, seen, show, otherApprovers }: Prop
               <ActionButton
                 label="Endorse"
                 action={() => endorseProposalAction(proposalId, seen)}
-                onDone={() => setMessage(null)}
+                confirm={endorseAsks ? ENDORSE_QUESTION : undefined}
+                onDone={() => {
+                  setError(null);
+                  setMessage(afterEndorse);
+                }}
               />
             )}
           </div>
         )
       )}
+
+      {note && !declining && <p className="muted small action-note">{note}</p>}
 
       {error && (
         <p className="notice error" role="alert">

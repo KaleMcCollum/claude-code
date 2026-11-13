@@ -81,7 +81,7 @@ export default async function DailyLogDayPage({ params }: PageProps) {
             ) : (
               <NoteBlock
                 key={note.id}
-                note={toNoteBlockData(note, user.id, noteProposals.get(note.id))}
+                note={toNoteBlockData(note, user.id, tree, noteProposals.get(note.id))}
                 mode="log"
                 canWrite={canWrite}
                 canComment={canComment}

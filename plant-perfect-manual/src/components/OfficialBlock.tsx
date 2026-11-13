@@ -62,7 +62,14 @@ export function OfficialBlock({ sectionId, doc, versionId, canEdit, canPropose, 
           label="Official text"
           saveLabel="Save as official"
           note="Saving makes this official right away, approved by you alone. The other Owner will see it flagged on Today. To ask for approval first, use Propose a change."
-          onSave={(next) => saveOfficialAction(sectionId, next, versionId)}
+          // The editor remembers which version its text was typed against,
+          // also in the copy it keeps on the device, and hands that one back
+          // when saving. The version on this page is never sent in its place:
+          // text typed before someone else's change must not replace that
+          // change without a word.
+          baseId={versionId}
+          currentText={children}
+          onSave={(next, base) => saveOfficialAction(sectionId, next, base)}
           onDone={() => setEditing(false)}
         />
       ) : (

@@ -32,6 +32,28 @@ type Props = {
   section: { id: string; label: string } | null;
   /** Text proposals: what the editor starts with. */
   startDoc: RichDoc | null;
+  /**
+   * Text proposals: an id for the saved text the editor starts from. A new
+   * proposal: the section's current official version (null when it has no
+   * official text). Editing: the proposal's own revision ("rev:3"). The
+   * editor uses it to notice a copy on this device that was typed against
+   * something older.
+   */
+  baseId?: string | null;
+  /** A new text proposal: the section's official text as it is now, for reading. */
+  currentText?: React.ReactNode;
+  /**
+   * Editing a text proposal: the section's official version when the page
+   * was drawn (null when it had none). Sent back with Save changes, which is
+   * how the proposer says "I checked my proposal against this text".
+   */
+  seenVersionId?: string | null;
+  /** Editing: the proposal is out of date, so saving it brings it up to date. */
+  checking?: boolean;
+  /** Editing: shown right above the proposed text (the official text now, when it has changed). */
+  aboveText?: React.ReactNode;
+  /** The names of the three kinds, as they read everywhere else (`PROPOSAL_TYPE_LABELS`). */
+  kindLabels: Record<ProposalKind, string>;
   /** Every section, in manual order. */
   options: SectionOption[];
   /** Sections the source note is filed under: offered first when choosing. */
@@ -56,18 +78,10 @@ type Props = {
   };
 };
 
-const KINDS: { value: ProposalKind; label: string; hint: string }[] = [
-  {
-    value: "decision",
-    label: "A decision",
-    hint: "Sets or changes something official: a wage, hours, a policy, a vendor.",
-  },
-  {
-    value: "official_text",
-    label: "Wording only",
-    hint: "Rewords the official text without changing what was decided.",
-  },
-  { value: "structure", label: "Sections", hint: "Add, rename, move or archive a section." },
+const KINDS: { value: ProposalKind; hint: string }[] = [
+  { value: "decision", hint: "Sets or changes something official: a wage, hours, a policy, a vendor." },
+  { value: "official_text", hint: "Rewords the official text without changing what was decided." },
+  { value: "structure", hint: "Add, rename, move or archive a section." },
 ];
 
 const ACTIONS: { value: StructureAction; label: string }[] = [
@@ -94,6 +108,12 @@ export function ProposalForm({
   kind: startKind,
   section,
   startDoc,
+  baseId,
+  currentText,
+  seenVersionId,
+  checking = false,
+  aboveText,
+  kindLabels,
   options,
   suggested = [],
   noteId = null,
@@ -113,7 +133,13 @@ export function ProposalForm({
   // For "add": the section to add under ("" = top level). Otherwise the section to change.
   const [addUnder, setAddUnder] = useState(initial.action === "add" ? (initial.sectionId ?? "") : "");
   const [target, setTarget] = useState(initial.action !== "add" ? (initial.sectionId ?? "") : "");
-  const [moveUnder, setMoveUnder] = useState(initial.parentId ?? "");
+  // Sections that can have a section added or moved under them (three levels at most).
+  const parents = options.filter((option) => option.depth <= 2);
+  // The stored place to move it under is only kept when it can still be
+  // chosen. Otherwise the box would show "Top level" while the old place was sent.
+  const destinationGone =
+    editing && initial.action === "move" && !!initial.parentId && !parents.some((option) => option.id === initial.parentId);
+  const [moveUnder, setMoveUnder] = useState(destinationGone ? "" : (initial.parentId ?? ""));
   const [name, setName] = useState(initial.name ?? "");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -130,9 +156,11 @@ export function ProposalForm({
   const draftKey =
     editing && proposalId ? proposalDraftKey(proposalId) : section ? newProposalDraftKey(section.id) : null;
   const needsSection = isText && !section;
-  // Sections that can have a section added or moved under them (three levels at most).
-  const parents = options.filter((option) => option.depth <= 2);
   const fixedTarget = options.find((option) => option.id === initial.sectionId);
+  // A section cannot be moved under itself. What is offered is what can be
+  // sent: a choice that is not among these counts as "Top level".
+  const moveChoices = parents.filter((option) => option.id !== target);
+  const moveTo = moveChoices.some((option) => option.id === moveUnder) ? moveUnder : "";
 
   /** The address of this form for one section, keeping the kind and the note. */
   const hrefFor = (sectionId: string | null) => {
@@ -154,6 +182,12 @@ export function ProposalForm({
         setError("The editor is still opening. Try again in a moment.");
         return;
       }
+      // A copy picked up from this device that is out of date: choose first.
+      const problem = control.problem();
+      if (problem) {
+        setError(problem);
+        return;
+      }
       form = {
         kind,
         sectionId: section.id,
@@ -162,6 +196,9 @@ export function ProposalForm({
         proposedOfficial: control.getDoc(),
         why,
       };
+      // A new proposal says which official text it was typed against: the
+      // one the editor started from, or the one its picked-up copy remembers.
+      if (!editing) form.baseVersionId = control.getBase();
     } else {
       const change =
         action === "add"
@@ -169,7 +206,7 @@ export function ProposalForm({
           : action === "rename"
             ? { action, sectionId: target, title: name }
             : action === "move"
-              ? { action, sectionId: target, parentId: moveUnder }
+              ? { action, sectionId: target, parentId: moveTo }
               : { action, sectionId: target };
       form = { kind, change, why };
     }
@@ -180,7 +217,7 @@ export function ProposalForm({
       try {
         result =
           editing && proposalId
-            ? await editProposalAction(proposalId, form)
+            ? await editProposalAction(proposalId, form, isText ? { currentVersionId: seenVersionId ?? null } : undefined)
             : await createProposalAction(form);
       } catch {
         result = { ok: false, error: NOT_SENT };
@@ -192,7 +229,8 @@ export function ProposalForm({
       // Saved: the copy of the text kept on this device is no longer needed.
       editor.current?.saved();
       const id = editing ? proposalId : result.data?.id;
-      router.push(id ? `/proposals/${id}` : "/proposals");
+      // An out-of-date proposal that was just saved again: its page says so.
+      router.push(id ? `/proposals/${id}${editing && isText && checking ? "?checked=1" : ""}` : "/proposals");
     });
   };
 
@@ -255,13 +293,31 @@ export function ProposalForm({
     <form
       className="proposal-form"
       aria-label={editing ? "Edit proposal" : "New proposal"}
+      // The app checks what is typed and says what is wrong in its own words.
+      // (The browser's own check would also stop the form over a half-typed
+      // link address in the editor's link box, without a word from the app.)
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         if (!busy) submit();
       }}
+      onKeyDown={(event) => {
+        // Return in a one-line box (Title, Name, Find a section) must not
+        // send the form: on a phone it is how the keyboard is put away. Only
+        // the button, or Ctrl/Cmd+Enter in the text, sends it.
+        const box = event.target;
+        if (
+          event.key === "Enter" &&
+          box instanceof HTMLInputElement &&
+          !["checkbox", "radio", "button", "submit", "reset", "file"].includes(box.type)
+        ) {
+          event.preventDefault();
+          box.blur();
+        }
+      }}
     >
       {editing ? (
-        fixed("What is this about?", KINDS.find((item) => item.value === kind)?.label ?? "")
+        fixed("What is this about?", kindLabels[kind])
       ) : (
         <fieldset>
           <legend>What is this about?</legend>
@@ -279,7 +335,7 @@ export function ProposalForm({
                     setKind(item.value);
                   }}
                 />
-                <span>{item.label}</span>
+                <span>{kindLabels[item.value]}</span>
               </label>
               <p className="hint" id={`${ids}-kind-${item.value}`}>
                 {item.hint}
@@ -287,6 +343,14 @@ export function ProposalForm({
             </div>
           ))}
         </fieldset>
+      )}
+
+      {/* Coming from a note with no section chosen yet: the note is shown here already. */}
+      {isText && needsSection && fromNote && (
+        <div className="field">
+          <p className="field-label">From this note</p>
+          {fromNote}
+        </div>
       )}
 
       {isText && needsSection && (
@@ -310,10 +374,6 @@ export function ProposalForm({
               autoComplete="off"
               enterKeyHint="search"
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                // Enter here is for searching, not for sending the form.
-                if (event.key === "Enter") event.preventDefault();
-              }}
             />
           </label>
           {text && (
@@ -374,6 +434,8 @@ export function ProposalForm({
             />
           </div>
 
+          {aboveText}
+
           <div className="field">
             <p className="field-label">Proposed official text</p>
             <p className="hint">
@@ -387,6 +449,9 @@ export function ProposalForm({
                 draftKey={draftKey}
                 label="Proposed official text"
                 onReady={editorReady}
+                baseId={baseId}
+                currentText={currentText}
+                baseName={editing ? "this proposal" : undefined}
               />
             )}
           </div>
@@ -449,24 +514,32 @@ export function ProposalForm({
           ) : (
             <>
               {editing
-                ? fixed(
+                ? // (A proposal whose section is gone cannot be edited, so there always is one.)
+                  fixed("Section", fixedTarget ? optionLabel(fixedTarget) : "")
+                : sectionSelect(
+                    `${ids}-target`,
                     "Section",
-                    fixedTarget ? optionLabel(fixedTarget) : "a section that has been archived",
-                  )
-                : sectionSelect(`${ids}-target`, "Section", target, setTarget, options, {
-                    value: "",
-                    text: "Choose a section",
-                  })}
+                    target,
+                    (next) => {
+                      setTarget(next);
+                      // The section itself is no longer offered as the place to move it under.
+                      if (next === moveUnder) setMoveUnder("");
+                    },
+                    options,
+                    { value: "", text: "Choose a section" },
+                  )}
               {action === "rename" && nameField("New name")}
               {action === "move" &&
-                sectionSelect(
-                  `${ids}-move`,
-                  "Move it under",
-                  moveUnder,
-                  setMoveUnder,
-                  parents.filter((option) => option.id !== target),
-                  { value: "", text: "Top level" },
-                )}
+                sectionSelect(`${ids}-move`, "Move it under", moveTo, setMoveUnder, moveChoices, {
+                  value: "",
+                  text: "Top level",
+                })}
+              {action === "move" && destinationGone && (
+                <p className="hint">
+                  The section it was going to move under is no longer there (it may have been
+                  archived). Choose where it should go.
+                </p>
+              )}
               {action === "archive" && (
                 <p className="hint">
                   Archiving hides the section and everything under it. Nothing is deleted, and it
@@ -508,6 +581,12 @@ export function ProposalForm({
             <button type="submit" className="btn btn-primary" disabled={busy}>
               {editing ? "Save changes" : "Propose"}
             </button>
+            {editing && proposalId && (
+              // Leaves without saving. What was typed in the text stays on this device.
+              <Link className="tap-link" href={`/proposals/${proposalId}`}>
+                Cancel
+              </Link>
+            )}
           </div>
           {!editing && (
             <p className="muted small form-foot">

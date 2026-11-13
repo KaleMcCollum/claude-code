@@ -4,7 +4,7 @@ import Link from "next/link";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { BUSINESS_LABELS, isBusinessTag } from "@/lib/business";
-import { PROPOSAL_STATUS_LABELS } from "@/lib/proposals";
+import { PROPOSAL_STATUS_LABELS, displayTitle } from "@/lib/proposals";
 import {
   type CommentHit,
   type NoteHit,
@@ -15,7 +15,7 @@ import {
   search,
   searchWords,
 } from "@/lib/search";
-import { findNode, flattenTree, isUuid, loadTree } from "@/lib/sections";
+import { type SectionNode, findNode, flattenTree, isUuid, loadTree } from "@/lib/sections";
 import { formatDate, formatDateTime, isDateKey } from "@/lib/time";
 import { loadUserNames } from "@/lib/users";
 
@@ -132,9 +132,11 @@ function CommentHits({ hits, more, query }: { hits: CommentHit[]; more: boolean;
       <ul className="results">
         {hits.map((hit) => (
           <li key={hit.commentId}>
-            <Link href={`/daily-log/${hit.logDate}#note-${hit.noteId}`}>
+            {/* A comment is on a note or on a proposal: the link goes to whichever it is. */}
+            <Link href={hit.proposalId ? `/proposals/${hit.proposalId}` : `/daily-log/${hit.logDate}#note-${hit.noteId}`}>
               Comment by {hit.authorName}, {formatDateTime(hit.createdAt)}
             </Link>
+            {hit.proposalId && <span className="muted small"> (on a proposal)</span>}
             <p className="excerpt">
               <Highlight text={hit.excerpt} query={query} />
             </p>
@@ -145,7 +147,13 @@ function CommentHits({ hits, more, query }: { hits: CommentHit[]; more: boolean;
   );
 }
 
-function ProposalHits({ hits, query }: { hits: ProposalHit[]; query: string }) {
+/**
+ * Proposals are named as in every other list (`displayTitle`): a section
+ * proposal by what it does with the sections as they are named now. What was
+ * searched is the title as stored, so the marked words can be in the line
+ * under the title only.
+ */
+function ProposalHits({ hits, query, tree }: { hits: ProposalHit[]; query: string; tree: SectionNode[] }) {
   if (hits.length === 0) return null;
   return (
     <section aria-label="Proposals">
@@ -154,7 +162,7 @@ function ProposalHits({ hits, query }: { hits: ProposalHit[]; query: string }) {
         {hits.map((hit) => (
           <li key={hit.proposalId}>
             <Link href={`/proposals/${hit.proposalId}`}>
-              <Highlight text={hit.title} query={query} />
+              <Highlight text={displayTitle(hit, tree)} query={query} />
             </Link>
             <p className="muted small" style={{ margin: "2px 0 0" }}>
               {PROPOSAL_STATUS_LABELS[hit.status]} · proposed
@@ -289,7 +297,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       <SectionHits title="Sections" hits={results.sections} query={query} />
       <SectionHits title="Official text" hits={results.official} query={query} />
-      <ProposalHits hits={results.proposals} query={query} />
+      <ProposalHits hits={results.proposals} query={query} tree={tree} />
       <NoteHits hits={results.notes} more={results.moreNotes} query={query} />
       <CommentHits hits={results.comments} more={results.moreComments} query={query} />
 

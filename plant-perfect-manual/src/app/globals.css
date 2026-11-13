@@ -29,6 +29,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* What a phone flashes on something tapped: light gray, not the browser's blue. */
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.08);
 }
 
 body {
@@ -788,6 +790,41 @@ p {
   margin-top: 10px;
 }
 
+/* A copy picked up from this device that was typed before the saved text changed. */
+.editor-outdated {
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+}
+
+.editor-outdated > p {
+  margin: 0 0 4px;
+}
+
+.editor-outdated > .row {
+  gap: 0 12px;
+  margin-left: -8px;
+}
+
+.editor-outdated .btn-text {
+  font-size: 15px;
+}
+
+/* The saved text as it is now, for reading next to what was typed. */
+.editor-current {
+  margin-bottom: 16px;
+}
+
+.editor-current > h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* A notice with one button under its sentence. */
+.notice-action > p {
+  margin: 0 0 10px;
+}
+
 /* ---------- Manage sections ---------- */
 
 .manage-list,
@@ -1150,6 +1187,21 @@ mark {
   .btn-text {
     min-height: 40px;
     padding: 6px 10px;
+  }
+
+  /* The small gray links above a heading: easier to tap, without moving anything. */
+  .crumbs a {
+    display: inline-block;
+    margin: -13px 0;
+    padding: 13px 0;
+  }
+
+  .editor-outdated > .row {
+    margin-left: -10px;
+  }
+
+  .editor-outdated .btn-text {
+    min-height: 44px;
   }
 
   .official-box,

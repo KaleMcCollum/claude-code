@@ -1,11 +1,11 @@
 "use server";
 
 import { type ActionResult, runAction } from "@/lib/actions";
-import { joinNames } from "@/lib/official";
 import { AppError } from "@/lib/permissions";
 import {
   type ProposalInput,
   type Seen,
+  type TextProposalInput,
   addApproval,
   addProposalComment,
   approveAlone,
@@ -57,13 +57,21 @@ function readSeen(value: unknown): Seen {
     throw new AppError(UNREADABLE);
   }
   const seen: Seen = { revision: value.revision as number };
-  if (value.currentVersionId !== undefined) {
-    if (value.currentVersionId !== null && (typeof value.currentVersionId !== "string" || !isUuid(value.currentVersionId))) {
-      throw new AppError(UNREADABLE);
-    }
-    seen.currentVersionId = value.currentVersionId as string | null;
-  }
+  if (value.currentVersionId !== undefined) seen.currentVersionId = versionOrNone(value.currentVersionId);
   return seen;
+}
+
+/** An official version a page showed: its id, or null when there was no official text. */
+function versionOrNone(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || !isUuid(value)) throw new AppError(UNREADABLE);
+  return value;
+}
+
+/** "Casey", "Casey or Dana", "Casey, Dana or Sam": any one of them. */
+function anyOf(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
 }
 
 /**
@@ -71,7 +79,9 @@ function readSeen(value: unknown): Seen {
  *
  *   text proposals   { kind: "decision" | "official_text", sectionId, title,
  *                      businessTag ("" | garden_center | coffee_shop | both),
- *                      proposedOfficial (editor document), why, noteIds }
+ *                      proposedOfficial (editor document), why, noteIds,
+ *                      baseVersionId (a new proposal only: the official
+ *                      version its text was typed against, null for none) }
  *   section changes  { kind: "structure", why, noteIds, change: one of
  *                      { action: "add", parentId ("" or null = top level), title }
  *                      { action: "rename", sectionId, title }
@@ -81,7 +91,7 @@ function readSeen(value: unknown): Seen {
  * `why` is the optional explanation, typed in a plain multi-line box. It is
  * kept exactly as typed, one paragraph per line.
  */
-function readForm(raw: unknown): ProposalInput {
+function readForm(raw: unknown, mode: "new" | "edit"): ProposalInput {
   if (!isRecord(raw)) throw new AppError(UNREADABLE);
   const why = raw.why === undefined || raw.why === null ? "" : text(raw.why, UNREADABLE);
   if (why.length > 20_000) throw new AppError("Keep the explanation shorter, or put the detail in a comment.");
@@ -111,7 +121,7 @@ function readForm(raw: unknown): ProposalInput {
 
   if (raw.kind !== "decision" && raw.kind !== "official_text") throw new AppError("Choose what kind of proposal this is.");
   if (!isRecord(raw.proposedOfficial)) throw new AppError("That text could not be read. Please try again.");
-  return {
+  const input: TextProposalInput = {
     kind: raw.kind,
     sectionId: requireSectionId(raw.sectionId),
     title: text(raw.title, "Say in a few words what is being decided."),
@@ -120,19 +130,40 @@ function readForm(raw: unknown): ProposalInput {
     proposedOfficial: raw.proposedOfficial,
     noteIds,
   };
+  // A new text proposal always says which official text it was typed
+  // against, so that text typed before someone else's change is not proposed
+  // as if it had been written with that change in view. (An edit says what
+  // its page showed in `seen` instead.)
+  if (mode === "new") input.baseVersionId = versionOrNone(raw.baseVersionId);
+  return input;
 }
 
 /** Make a proposal. Hands back its id so the screen can go to its page. */
 export async function createProposalAction(form: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction<{ id: string }>(async (actor) => {
-    const id = await createProposal(actor, readForm(form));
+    const id = await createProposal(actor, readForm(form, "new"));
     return { data: { id } };
   });
 }
 
-export async function editProposalAction(proposalId: unknown, form: unknown): Promise<ActionResult> {
+/**
+ * "Save changes" on an open proposal. For a text proposal, `seen` carries
+ * the section's official version that the edit page showed
+ * (`{ currentVersionId }`, null for none): saving says "I checked my
+ * proposal against that text", which is what brings an out-of-date proposal
+ * up to date. A section proposal sends no `seen`.
+ */
+export async function editProposalAction(proposalId: unknown, form: unknown, seen?: unknown): Promise<ActionResult> {
   return runAction(async (actor) => {
-    await editProposal(actor, requireProposalId(proposalId), readForm(form));
+    const input = readForm(form, "edit");
+    if (input.kind === "structure") {
+      await editProposal(actor, requireProposalId(proposalId), input);
+      return;
+    }
+    if (!isRecord(seen)) throw new AppError(UNREADABLE);
+    await editProposal(actor, requireProposalId(proposalId), input, {
+      currentVersionId: versionOrNone(seen.currentVersionId),
+    });
   });
 }
 
@@ -146,7 +177,7 @@ export async function approveProposalAction(
     return {
       message: outcome.approved
         ? "Approved. It is official now."
-        : `Your approval is recorded. Waiting for ${outcome.waitingFor.length > 0 ? joinNames(outcome.waitingFor) : "another Owner"}.`,
+        : `Your approval is recorded. Waiting for ${outcome.waitingFor.length > 0 ? anyOf(outcome.waitingFor) : "another Owner"}.`,
       data: { approved: outcome.approved },
     };
   });

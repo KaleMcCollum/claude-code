@@ -34,11 +34,6 @@ a.btn-text {
   padding: 0 2px;
 }
 
-/* A few words that read badly when a narrow screen breaks them in two. */
-.keep-together {
-  white-space: nowrap;
-}
-
 .block > h2 {
   margin-bottom: 8px;
 }
@@ -106,6 +101,11 @@ a.btn-text {
   margin: 12px 0 0;
 }
 
+/* Why a button is not there any more ("It can no longer be changed because..."). */
+.action-note {
+  margin: 10px 0 0;
+}
+
 /* ---------- Section page: the Official area ---------- */
 
 .block-head {
@@ -146,6 +146,15 @@ a.btn-text {
 
 .official-actions .action-error {
   margin: 4px 0 8px 8px;
+}
+
+/* A question ("Endorse this?") takes the place of the row. */
+.official-actions:has(> .action-confirm) > :not(.action-confirm) {
+  display: none;
+}
+
+.official-actions > .action-confirm {
+  margin: 8px 0 12px 8px;
 }
 
 /* ---------- One proposal ---------- */
@@ -303,6 +312,11 @@ a.btn-text {
   margin: -4px 0 8px;
 }
 
+/* Under a one-person change on Today: the earlier changes to the same section. */
+.decision-list > li > .earlier-changes {
+  margin-top: 8px;
+}
+
 /* ---------- The proposal form ---------- */
 
 .proposal-form {
@@ -363,6 +377,11 @@ a.btn-text {
 
 .form-foot {
   margin: 10px 0 0;
+}
+
+/* Edit proposal: the official text as it is now, above the proposed text. */
+.official-now > .notice {
+  margin-bottom: 12px;
 }
 
 .section-picker {
@@ -454,8 +473,9 @@ a.btn-text {
   font-size: 15px;
 }
 
-.version-open .actions {
-  margin-top: 14px;
+.version-open .actions,
+.version-same {
+  margin: 14px 0 0;
 }
 
 /* ---------- Decisions Log filters ---------- */
@@ -514,6 +534,11 @@ a.btn-text {
 
   .decision-list .title {
     padding-top: 12px;
+  }
+
+  .earlier-changes a {
+    display: inline-block;
+    padding: 10px 0;
   }
 
   .version-list > li {

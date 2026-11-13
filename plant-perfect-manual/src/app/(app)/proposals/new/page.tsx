@@ -9,7 +9,8 @@ import { requireUser } from "@/lib/auth/session";
 import { loadNote } from "@/lib/notes";
 import { loadOfficial } from "@/lib/official";
 import { can } from "@/lib/permissions";
-import { activeApprovers } from "@/lib/proposals";
+import { PROPOSAL_TYPE_LABELS, activeApprovers } from "@/lib/proposals";
+import { isEmptyDoc } from "@/lib/richtext";
 import { findNode, isUuid, loadTree } from "@/lib/sections";
 import { formatDateTime } from "@/lib/time";
 
@@ -71,8 +72,23 @@ export default async function NewProposalPage({ searchParams }: { searchParams: 
       <ProposalForm
         mode="new"
         kind={kind}
+        kindLabels={PROPOSAL_TYPE_LABELS}
         section={node ? { id: node.id, label: `${node.number} ${node.title}` } : null}
         startDoc={official?.content ?? null}
+        // The official version the proposed text starts from. The form sends
+        // it back, so a proposal is never made against text that has changed since.
+        baseId={official?.id ?? null}
+        currentText={
+          <div className="official-box">
+            {official && !isEmptyDoc(official.content) ? (
+              <RichText doc={official.content} />
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>
+                No official text yet.
+              </p>
+            )}
+          </div>
+        }
         options={options}
         suggested={suggested}
         noteId={note?.id ?? null}

@@ -1,6 +1,6 @@
 import type { BusinessTag } from "@/lib/business";
 import type { NoteSectionLink, NoteView } from "@/lib/notes";
-import { PROPOSAL_STATUS_LABELS, type ProposalStatus } from "@/lib/proposals";
+import { type NoteProposalLine, PROPOSAL_STATUS_LABELS, displayTitle } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
 import { type SectionNode, flattenTree } from "@/lib/sections";
 import { formatDate, formatDateKey, formatDateTime, formatTime } from "@/lib/time";
@@ -36,9 +36,6 @@ export type NoteBlockData = {
   mine: boolean;
 };
 
-/** A proposal made from a note, as `proposalsForNotes` lists it. */
-export type NoteProposal = { id: string; title: string; status: ProposalStatus };
-
 /** A removed note, as Owners see it in the Daily Log (one line with Restore). */
 export type RemovedNoteData = {
   id: string;
@@ -55,10 +52,17 @@ export type RemovedNoteData = {
 /** A section that a note can be filed under. */
 export type SectionOption = { id: string; number: string; title: string; depth: number };
 
+/**
+ * `proposals` are the proposals made from this note (`proposalsForNotes`).
+ * Each is named as in every other list (`displayTitle`), which needs the
+ * sections as they are now: a section proposal is described with today's
+ * names and numbers, not with the ones stored when it was made.
+ */
 export function toNoteBlockData(
   note: NoteView,
   viewerId: string,
-  proposals: NoteProposal[] = [],
+  tree: SectionNode[],
+  proposals: NoteProposalLine[] = [],
 ): NoteBlockData {
   return {
     id: note.id,
@@ -84,7 +88,7 @@ export function toNoteBlockData(
     })),
     proposals: proposals.map((proposal) => ({
       id: proposal.id,
-      title: proposal.title,
+      title: displayTitle(proposal, tree),
       status: PROPOSAL_STATUS_LABELS[proposal.status].toLowerCase(),
     })),
     mine: note.authorId === viewerId,

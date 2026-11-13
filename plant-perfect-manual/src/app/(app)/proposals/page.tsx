@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { sectionOf, waitingLine } from "@/components/decisions/words";
+import { sectionOf } from "@/components/decisions/words";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/permissions";
@@ -12,6 +12,7 @@ import {
   listClosedProposals,
   listOpenProposals,
   statusLine,
+  waitingText,
 } from "@/lib/proposals";
 import { type SectionNode, loadTree } from "@/lib/sections";
 import { formatDate } from "@/lib/time";
@@ -71,7 +72,7 @@ export default async function ProposalsPage() {
                   {displayTitle(view, tree)}
                 </Link>
                 <p className="muted small">{factsLine(view, tree)}</p>
-                <p className="small">{waitingLine(view, user, approvers)}</p>
+                <p className="small">{waitingText(view, approvers, user.id)}</p>
               </li>
             ))}
           </ul>

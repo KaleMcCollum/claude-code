@@ -5,6 +5,7 @@ import { cache } from "react";
 import { OfficialBlock } from "@/components/OfficialBlock";
 import { RichText } from "@/components/RichText";
 import { ActionButton } from "@/components/decisions/ActionButton";
+import { ENDORSE_QUESTION } from "@/components/decisions/endorse";
 import { NoteBlock } from "@/components/notes/NoteBlock";
 import { toNoteBlockData } from "@/components/notes/data";
 import { asUser } from "@/db/client";
@@ -14,12 +15,14 @@ import { loadDiscussion } from "@/lib/notes";
 import { approvalLine, endorsementLine, loadOfficial } from "@/lib/official";
 import { can } from "@/lib/permissions";
 import {
+  activeApprovers,
   canApproveToo,
   canEndorse,
   displayTitle,
   listOpenProposalsForSection,
   loadProposal,
   proposalsForNotes,
+  waitingText,
 } from "@/lib/proposals";
 import { isEmptyDoc } from "@/lib/richtext";
 import { isUuid, loadTree, pathTo } from "@/lib/sections";
@@ -76,6 +79,7 @@ const loadPage = cache(async (id: string) => {
       // The approved change behind the text on screen: its approvals can still grow.
       officialProposal: official ? await loadProposal(tx, official.proposalId) : null,
       waiting: await listOpenProposalsForSection(tx, id),
+      approvers: await activeApprovers(tx),
       names: await loadUserNames(tx),
     };
   });
@@ -89,7 +93,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function SectionPage({ params, searchParams }: PageProps) {
   const data = await loadPage((await params).id);
   if (!data) notFound();
-  const { user, tree, path, node, official, officialProposal, waiting, names } = data;
+  const { user, tree, path, node, official, officialProposal, waiting, approvers, names } = data;
 
   // The Discussion's order and business filter live in the address.
   const query = await searchParams;
@@ -165,12 +169,17 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
       >
         {waiting.length > 0 && (
           <div className="official-notices">
-            {waiting.map((proposal) => (
-              <p key={proposal.id} className="notice">
-                Waiting for approval:{" "}
-                <Link href={`/proposals/${proposal.id}`}>{displayTitle(proposal, tree)}</Link>
-              </p>
-            ))}
+            {waiting.map((proposal) => {
+              // Who it is waiting for, and for what ("Waiting for you").
+              const who = waitingText(proposal, approvers, user.id);
+              return (
+                <p key={proposal.id} className="notice">
+                  Waiting for approval:{" "}
+                  <Link href={`/proposals/${proposal.id}`}>{displayTitle(proposal, tree)}</Link>
+                  {who && `. ${who}${who.endsWith(".") ? "" : "."}`}
+                </p>
+              );
+            })}
           </div>
         )}
         <div className="official-box">
@@ -208,6 +217,8 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
                   action={endorseProposalAction.bind(null, officialProposal.id, {
                     revision: officialProposal.revision,
                   })}
+                  // Someone who can approve is asked first: it is not a softer "I approve too".
+                  confirm={can(user, "approve") ? ENDORSE_QUESTION : undefined}
                 />
               )}
               <Link href={`/sections/${node.id}/history`}>Version history</Link>
@@ -258,7 +269,7 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
               {thread.map((note) => (
                 <NoteBlock
                   key={note.id}
-                  note={toNoteBlockData(note, user.id, noteProposals.get(note.id))}
+                  note={toNoteBlockData(note, user.id, tree, noteProposals.get(note.id))}
                   mode="discussion"
                   canWrite={false}
                   canComment={canComment}

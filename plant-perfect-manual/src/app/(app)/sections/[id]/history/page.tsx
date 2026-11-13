@@ -139,10 +139,18 @@ export default async function VersionHistoryPage({ params, searchParams }: PageP
                           before={previous.content}
                           after={version.content}
                           sameMessage={`The words are the same as in version ${previous.version}.`}
+                          whereToLook="The full text of this version is above."
                           beforeHeading={`Version ${previous.version}`}
                           afterHeading={`Version ${version.version}`}
                         />
                       </>
+                    )}
+                    {/* An earlier version that says what the current one says (for example
+                        the one that was just restored): nothing to restore, and it says so. */}
+                    {current && index > 0 && sameDoc(version.content, current.content) && (
+                      <p className="muted version-same">
+                        These are the same words as the current version (version {current.version}).
+                      </p>
                     )}
                     {canRestore && current && index > 0 && !sameDoc(version.content, current.content) && (
                       <div className="actions">
