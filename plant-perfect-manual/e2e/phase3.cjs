@@ -1622,6 +1622,9 @@ async function main() {
   await mobile.getByRole("button", { name: "Cancel" }).tap();
   await mobile.getByRole("button", { name: "Edit official" }).waitFor();
 
+  // (From Today, so the menu opens at its top, where the number is.)
+  await mobile.goto(`${BASE_URL}/`);
+  await mobile.getByRole("heading", { level: 1, name: "Today" }).waitFor();
   await mobile.getByRole("button", { name: "Open menu" }).click();
   const mobileNav = navOf(mobile);
   await shot(mobile, "p3-phone-04-menu-count");
@@ -1636,6 +1639,9 @@ async function main() {
   await mobile.getByRole("heading", { level: 1, name: "Decisions Log" }).waitFor();
   await mobile.getByText("Filters", { exact: true }).tap();
   await mobile.getByRole("button", { name: "Apply" }).waitFor();
+  // Let the browser's own flash on the tapped word fade (light gray now, but it
+  // would still be in a picture taken straight after the tap).
+  await mobile.waitForTimeout(700);
   await shot(mobile, "p3-phone-06-decisions-log", { fullPage: true });
   await fits("The Decisions Log with Filters open");
 
@@ -1677,6 +1683,8 @@ async function main() {
   await mobile.getByRole("heading", { name: "What changed from version 1" }).waitFor();
   check("on a phone Show keeps the version in view", await eventually(() => inView(mobile.getByRole("heading", { name: "Version 2", exact: true }))));
   check("an Owner can restore an earlier version from a phone too", await mobile.getByRole("button", { name: "Restore this version (version 2)" }).isVisible());
+  // As above: let the flash on the tapped link fade before the picture.
+  await mobile.waitForTimeout(700);
   await shot(mobile, "p3-phone-10-version-history", { fullPage: true });
   await fits("Version history with a version open");
 

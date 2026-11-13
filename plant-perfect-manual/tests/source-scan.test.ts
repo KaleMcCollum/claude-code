@@ -105,3 +105,30 @@ describe("the app's source", () => {
     expect(executesWithoutTemplate(`${fine[0]}\n${glued[0]}\n${glued[3]}`)).toHaveLength(2);
   });
 });
+
+/**
+ * The editor hands out the settings of a block or of a link (a link's
+ * address, a ticked checkbox, the size of a heading) as objects of a special
+ * kind. Sent to the app as they are, those settings are silently left out,
+ * and the link is saved as plain words. So the editor's document is read in
+ * exactly one place, `docOf` in src/components/RichTextEditor.tsx, which
+ * turns it into plain data first. The browser test saves a link, a checkbox
+ * and a small heading (e2e/phase3.cjs, part 19); this is the tripwire for a
+ * second place that reads the document directly.
+ */
+describe("the editor's document", () => {
+  it("is read in one place only, which turns it into plain data", async () => {
+    const reads: string[] = [];
+    for (const file of await sourceFiles(SRC)) {
+      const text = await readFile(file, "utf8");
+      const name = path.relative(process.cwd(), file).split(path.sep).join("/");
+      for (const match of text.matchAll(/\.\s*getJSON\s*\(/g)) {
+        const line = text.slice(text.lastIndexOf("\n", match.index) + 1, text.indexOf("\n", match.index)).trim();
+        reads.push(`${name}: ${line}`);
+      }
+    }
+    expect(reads).toEqual([
+      "src/components/RichTextEditor.tsx: return JSON.parse(JSON.stringify(editor.getJSON())) as RichDoc;",
+    ]);
+  });
+});
