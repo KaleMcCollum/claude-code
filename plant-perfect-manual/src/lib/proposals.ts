@@ -265,6 +265,11 @@ const destinationSection = alias(sections, "destination_section");
  */
 const isDestinationOfMove = sql`${destinationSection.id}::text = ${proposals.structureChange} ->> 'parentId'`;
 
+/** The name that join found, kept only for a stored change that really is a move. */
+function destinationOfMove(storedChange: unknown, joinedTitle: string | null): string | null {
+  return readStructureChange(storedChange)?.action === "move" ? joinedTitle : null;
+}
+
 type ProposalRow = typeof proposals.$inferSelect;
 
 // ---------------------------------------------------------------- reading
@@ -371,8 +376,7 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
       description: (row.description as RichDoc | null) ?? null,
       sectionId: row.sectionId,
       sectionTitle: names.sectionTitle,
-      // (Only a move has a destination; a stored "add" or "rename" has no such field.)
-      destinationTitle: names.destinationTitle,
+      destinationTitle: destinationOfMove(row.structureChange, names.destinationTitle),
       businessTag: row.businessTag,
       proposedOfficial: (row.proposedOfficial as RichDoc | null) ?? null,
       baseVersionId: row.baseVersionId,
@@ -485,13 +489,10 @@ export type DecisionFilters = {
 
 /**
  * A section and everything under it, read from the stored sections, so
- * archived sections and sections under an archived one are included. Empty
- * when there is no such section.
+ * archived sections and sections under an archived one are included.
  */
 async function sectionAndBelow(q: Queryable, sectionId: string): Promise<string[]> {
-  if (!isUuid(sectionId)) return [];
   const rows = await q.select({ id: sections.id, parentId: sections.parentId }).from(sections);
-  if (!rows.some((row) => row.id === sectionId)) return [];
   const found = [sectionId];
   // (A section is found once, so this ends even if two sections named each other as parent.)
   for (let next = 0; next < found.length; next += 1) {
@@ -522,8 +523,9 @@ export async function listDecisions(
   void tree;
   let sectionIds: string[] | null = null;
   if (filters.sectionId) {
+    // (An address can carry anything; only a real id is handed to the database.)
+    if (!isUuid(filters.sectionId)) return [];
     sectionIds = await sectionAndBelow(q, filters.sectionId);
-    if (sectionIds.length === 0) return [];
   }
   const conditions: (SQL | undefined)[] = [
     eq(proposals.status, "approved"),
@@ -997,9 +999,10 @@ export async function titleFieldsFor(q: Queryable, proposalIds: string[]): Promi
     // (A proposal produces at most one official version.)
     .leftJoin(officialVersions, eq(officialVersions.proposalId, proposals.id))
     .where(inArray(proposals.id, ids));
-  for (const { id, versionId, version, structureChange, ...row } of rows) {
+  for (const { id, versionId, version, structureChange, destinationTitle, ...row } of rows) {
     result.set(id, {
       ...row,
+      destinationTitle: destinationOfMove(structureChange, destinationTitle),
       structureChange: (structureChange as StructureChange | null) ?? null,
       resultVersion: versionId !== null && version !== null ? { id: versionId, version } : null,
     });

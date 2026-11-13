@@ -305,6 +305,12 @@ describe("comparing two versions of official text", () => {
       ],
     });
     expect(compareDocs(d(p("Order form", link("https://example.com/"))), inTwo)).toEqual(onlyLayout);
+    // A link on nothing but the space between two words draws nothing and is not counted.
+    const onTheSpace = d({
+      type: "paragraph",
+      content: [{ type: "text", text: "Order" }, { type: "text", text: " ", marks: [link("https://example.com/")] }, { type: "text", text: "form" }],
+    });
+    expect(compareDocs(d(p("Order form")), onTheSpace)).toEqual(onlyLayout);
     // A link changed and the paragraph split in two at once.
     expect(
       compareDocs(d(p("Order form. Call first.", link("https://example.com/a"))), d(p("Order form.", link("https://example.com/b")), p("Call first."))),

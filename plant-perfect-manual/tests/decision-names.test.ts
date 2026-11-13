@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
-import { asSystem } from "@/db/client";
-import { activityLog, officialVersions, sections } from "@/db/schema";
+import { asSystem, asUser } from "@/db/client";
+import { activityLog, officialVersions, proposals, sections } from "@/db/schema";
 import { DIRECT_EDIT_TITLE, listVersions, loadOfficial, restoreVersion, restoredTitle, saveOfficial } from "@/lib/official";
 import type { Actor } from "@/lib/permissions";
 import {
@@ -20,9 +20,10 @@ import {
   loadProposal,
   sectionText,
   storedSectionNames,
+  titleFieldsFor,
 } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
-import { archiveSection, createSection, flattenTree, loadTree, restoreSection } from "@/lib/sections";
+import { archiveSection, createSection, flattenTree, loadTree, renameSection, restoreSection } from "@/lib/sections";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
 withTestDatabase();
@@ -312,6 +313,29 @@ describe("a section that has been archived", () => {
     await restoreSection(kale, training);
     expect(await shown(rename)).toBe(`Rename ${await numbered("Signage")} to "Signs"`);
   });
+
+  it("only a move has a section it would go under", async () => {
+    const finance = await sectionId("Finance");
+    const overview = await sectionId("Company Overview");
+    // A stored "add" that also carries, by whatever route, the id of some other section.
+    const add = await createProposal(kale, { kind: "structure", change: { action: "add", parentId: overview, title: "History" } });
+    await asUser(kale.id, (tx) =>
+      tx
+        .update(proposals)
+        .set({ structureChange: { action: "add", title: "History", parentId: finance } })
+        .where(eq(proposals.id, add)),
+    );
+    const stored = await view(add);
+    expect(stored.structureChange).toEqual({ action: "add", title: "History", parentId: finance });
+    expect(stored).toMatchObject({ sectionTitle: "Company Overview", destinationTitle: null });
+    const fields = await asSystem((db) => titleFieldsFor(db, [add, "not-an-id", add]));
+    expect([...fields.keys()]).toEqual([add]);
+    expect(fields.get(add)).toMatchObject({ sectionTitle: "Company Overview", destinationTitle: null, type: "structure", status: "open" });
+    expect(await shown(add)).toBe(`Add a section "History" under ${await numbered("Company Overview")}`);
+    // Nothing asked for, nothing read.
+    expect((await asSystem((db) => titleFieldsFor(db, []))).size).toBe(0);
+    expect((await asSystem((db) => titleFieldsFor(db, ["not-an-id"]))).size).toBe(0);
+  });
 });
 
 describe("Edit official and Restore on a section that is no longer among the sections", () => {
@@ -395,6 +419,21 @@ describe("activity log lines about a direct edit or a restore", () => {
       "Commented on the proposal: Go with Holly Lumber",
       "Approved by Kale: Go with Holly Lumber",
       "Added their approval: Go with Holly Lumber",
+    ]);
+
+    // A section proposal too: the log goes by the title it was proposed
+    // under, so its lines can be matched with one another, also after the
+    // section got another name.
+    const place = await numbered("Quotes");
+    const rename = await createProposal(kale, { kind: "structure", change: { action: "rename", sectionId: quotes, title: "Bids" } });
+    await renameSection(casey, quotes, "Quotes and Offers");
+    await endorseProposal(karen, rename, { revision: 1 });
+    await addProposalComment(karen, rename, doc("Bids is shorter."));
+    expect(await shown(rename)).toBe(`Rename ${place} and Offers to "Bids"`);
+    expect(await logLines(rename)).toEqual([
+      `Proposed: Rename ${place} to "Bids"`,
+      `Endorsed: Rename ${place} to "Bids"`,
+      `Commented on the proposal: Rename ${place} to "Bids"`,
     ]);
   });
 });
