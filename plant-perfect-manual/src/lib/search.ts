@@ -4,7 +4,7 @@ import type { Queryable } from "@/db/client";
 import { comments, noteSections, notes, officialVersions, proposals, users } from "@/db/schema";
 import type { BusinessTag } from "./business";
 import { type NoteSectionLink, businessFilterTags, loadNoteSectionLinks } from "./notes";
-import { type ProposalTitleFields, titleFieldsFor } from "./proposals";
+import { type ProposalTitleFields, sectionAndBelow, titleFieldsFor } from "./proposals";
 import { type SectionNode, findNode, flattenTree } from "./sections";
 import { centralDay } from "./sqltime";
 import { centralDateKey } from "./time";
@@ -153,11 +153,20 @@ export async function search(
   const byId = new Map(nodes.map((node) => [node.id, node]));
 
   // A section filter covers the section and everything under it.
+  //  - Section names, official text and notes (with the comments on them)
+  //    look at the sections as they are now: `sectionIds`. An archived
+  //    subsection is not among them.
+  //  - Proposals and the comments on them look at the stored sections,
+  //    archived ones included: `proposalSectionIds`. What was proposed about
+  //    a subsection stays under the section above it after the subsection
+  //    is archived, as in the Decisions Log.
   let sectionIds: string[] | null = null;
+  let proposalSectionIds: string[] | null = null;
   if (filters.sectionId) {
     const node = findNode(tree, filters.sectionId);
     if (!node) return EMPTY;
     sectionIds = [node, ...flattenTree(node.children)].map((n) => n.id);
+    proposalSectionIds = await sectionAndBelow(q, node.id);
   }
   const businessTags = filters.business ? businessFilterTags(filters.business) : null;
   const hasDateOrPerson = Boolean(filters.from || filters.to || filters.authorId);
@@ -273,7 +282,10 @@ export async function search(
     sections: links.get(row.noteId) ?? [],
   }));
 
-  /** True for proposals about one of the wanted sections (or that created one of them). */
+  /**
+   * True for proposals about one of the wanted sections (or that created one
+   * of them). Hand it `proposalSectionIds`, which keeps archived subsections.
+   */
   const aboutSection = (ids: string[]) =>
     sql`(${inArray(proposals.sectionId, ids)} or ${inArray(proposals.createdSectionId, ids)})`;
 
@@ -307,7 +319,9 @@ export async function search(
         businessTags
           ? sql`(${inArray(notes.businessTag, businessTags)} or ${inArray(proposals.businessTag, businessTags)})`
           : undefined,
-        sectionIds ? sql`(${filedUnder(sectionIds)} or ${aboutSection(sectionIds)})` : undefined,
+        sectionIds && proposalSectionIds
+          ? sql`(${filedUnder(sectionIds)} or ${aboutSection(proposalSectionIds)})`
+          : undefined,
       ),
     )
     .orderBy(desc(comments.createdAt), desc(comments.id))
@@ -341,7 +355,7 @@ export async function search(
       and(
         eq(proposals.direct, false),
         and(...words.map((word) => sql`${proposalText} ilike ${likePattern(word)}`)),
-        sectionIds ? aboutSection(sectionIds) : undefined,
+        proposalSectionIds ? aboutSection(proposalSectionIds) : undefined,
         businessTags ? inArray(proposals.businessTag, businessTags) : undefined,
         filters.authorId ? eq(proposals.proposedBy, filters.authorId) : undefined,
         filters.from ? sql`${centralDay(proposals.createdAt)} >= ${filters.from}::date` : undefined,

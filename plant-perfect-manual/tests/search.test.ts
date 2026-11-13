@@ -16,7 +16,7 @@ import {
 } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
 import { type SearchFilters, search, searchWords } from "@/lib/search";
-import { flattenTree, loadTree, renameSection } from "@/lib/sections";
+import { archiveSection, createSection, flattenTree, loadTree, renameSection } from "@/lib/sections";
 import { addDays, centralDateKey } from "@/lib/time";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
@@ -492,5 +492,96 @@ describe("what a list needs to name a proposal", () => {
     expect(hit.title).toBe("Move 5.2 Signage under 9 Marketing and Events");
     expect(displayTitle(hit, await tree())).toBe("Move 5.2 Signs and Banners under Marketing and Events (archived)");
     expect((await run("banners")).proposals).toEqual([]);
+  });
+});
+
+describe("a section filter after a subsection was archived", () => {
+  const ids: Record<string, string> = {};
+
+  beforeAll(async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const karen = await actorFor("karen@example.com");
+    ids.finance = await sectionId("Finance");
+    ids.quotes = await sectionId("Quotes");
+    // A third level under Quotes, so "everything under it" is more than one step.
+    await createSection(kale, { parentId: ids.quotes, title: "Tank Quotes" });
+    ids.tank = await sectionId("Tank Quotes");
+    await saveOfficial(kale, ids.quotes, doc("Every narwhal quote is kept for a year."));
+    ids.open = await createProposal(kale, {
+      kind: "decision",
+      sectionId: ids.quotes,
+      title: "Two signatures on a narwhal quote",
+      proposedOfficial: doc("Every narwhal quote is kept for a year and signed twice."),
+    });
+    ids.declined = await createProposal(kale, {
+      kind: "decision",
+      sectionId: ids.tank,
+      title: "Tank quotes go to the narwhal keeper",
+      proposedOfficial: doc("Tank quotes go to the keeper."),
+    });
+    await declineProposal(casey, ids.declined, "Not yet");
+    ids.rename = await createProposal(casey, {
+      kind: "structure",
+      change: { action: "rename", sectionId: ids.tank, title: "Narwhal Tank Quotes" },
+    });
+    ids.onOpen = await addProposalComment(karen, ids.open, doc("The narwhal keeper should be one of the two."));
+    ids.onDeclined = await addProposalComment(casey, ids.declined, doc("Ask the narwhal keeper first."));
+    const note = await addNote(casey, { body: doc("Narwhal tank quote came in high") });
+    await sortNote(casey, note.id, await tree(), { sectionIds: [ids.quotes], businessTag: null, sorted: true });
+    ids.note = note.id;
+    ids.onNote = await addComment(karen, note.id, doc("The narwhal can wait a month."));
+  });
+
+  const found = async (filters?: SearchFilters) => {
+    const results = await run("narwhal", filters);
+    return {
+      proposals: results.proposals.map((p) => p.proposalId).sort(),
+      comments: results.comments.map((c) => c.commentId).sort(),
+      notes: results.notes.map((n) => n.noteId),
+      official: results.official.map((s) => s.title),
+    };
+  };
+  const these = (...names: string[]) => names.map((name) => ids[name]).sort();
+
+  it("keeps proposals and the comments on them under the section above; notes and official text follow the sections as they are now", async () => {
+    const kale = await actorFor("kale@example.com");
+    const everything = {
+      proposals: these("open", "declined", "rename"),
+      comments: these("onOpen", "onDeclined", "onNote"),
+      notes: [ids.note],
+      official: ["Quotes"],
+    };
+    // Before anything is archived, all of it is found under Finance.
+    expect(await found({ sectionId: ids.finance })).toEqual(everything);
+    expect(await found()).toEqual(everything);
+
+    // Quotes is archived, and Tank Quotes goes with it.
+    await archiveSection(kale, ids.quotes);
+    expect(flattenTree(await tree()).some((node) => node.id === ids.quotes || node.id === ids.tank)).toBe(false);
+
+    const underFinance = await found({ sectionId: ids.finance });
+    // Proposals about the archived subsection, and about the section under
+    // it, open or declined, text or section change: still under Finance.
+    expect(underFinance.proposals).toEqual(these("open", "declined", "rename"));
+    // So are the comments on those proposals. The comment on the note is not:
+    // it follows its note.
+    expect(underFinance.comments).toEqual(these("onOpen", "onDeclined"));
+    // Unchanged: a note filed only under an archived section is left out by a
+    // section filter, and so is the official text of an archived section.
+    expect(underFinance.notes).toEqual([]);
+    expect(underFinance.official).toEqual([]);
+
+    // Without a section filter: everything but the official text of the
+    // archived section, which search leaves out altogether.
+    expect(await found()).toEqual({ ...everything, official: [] });
+    // Another section's filter finds none of it.
+    expect(await found({ sectionId: await sectionId("People") })).toEqual({ proposals: [], comments: [], notes: [], official: [] });
+    // The other filters still apply on top of the section.
+    expect((await found({ sectionId: ids.finance, authorId: kale.id })).proposals).toEqual(these("open", "declined"));
+    expect((await found({ sectionId: ids.finance, authorId: kale.id })).comments).toEqual([]);
+    // An archived section cannot be chosen as the filter itself (the screen
+    // does not offer it): nothing is found, as before.
+    expect(await found({ sectionId: ids.quotes })).toEqual({ proposals: [], comments: [], notes: [], official: [] });
   });
 });

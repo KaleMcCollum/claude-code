@@ -489,9 +489,12 @@ export type DecisionFilters = {
 
 /**
  * A section and everything under it, read from the stored sections, so
- * archived sections and sections under an archived one are included.
+ * archived sections and sections under an archived one are included. For
+ * filters on proposals: what was proposed or decided about a subsection
+ * stays under the section above it after the subsection is archived (the
+ * Decisions Log, and proposals and their comments in search).
  */
-async function sectionAndBelow(q: Queryable, sectionId: string): Promise<string[]> {
+export async function sectionAndBelow(q: Queryable, sectionId: string): Promise<string[]> {
   const rows = await q.select({ id: sections.id, parentId: sections.parentId }).from(sections);
   const found = [sectionId];
   // (A section is found once, so this ends even if two sections named each other as parent.)
