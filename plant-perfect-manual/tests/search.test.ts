@@ -1,13 +1,23 @@
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { asSystem } from "@/db/client";
-import { sections } from "@/db/schema";
+import { officialVersions, sections } from "@/db/schema";
 import { addComment, addNote, removeNote, restoreNote, sortNote } from "@/lib/notes";
 import { saveOfficial } from "@/lib/official";
-import { createProposal, declineProposal } from "@/lib/proposals";
+import {
+  addProposalComment,
+  approveAlone,
+  approveProposal,
+  createProposal,
+  declineProposal,
+  displayTitle,
+  proposalsForNotes,
+  withdrawProposal,
+} from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
 import { type SearchFilters, search, searchWords } from "@/lib/search";
-import { flattenTree, loadTree } from "@/lib/sections";
+import { flattenTree, loadTree, renameSection } from "@/lib/sections";
+import { addDays, centralDateKey } from "@/lib/time";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
 withTestDatabase();
@@ -293,5 +303,194 @@ describe("search over proposals", () => {
     expect((await titles("quokka", { authorId: casey.id })).length).toBe(2);
     expect(await titles("quokka", { from: "2026-11-18", to: "2026-11-18" })).toEqual(["Winter hours"]);
     expect(await titles("quokka", { to: "2026-11-17" })).toEqual(["Raise the quokka wage"]);
+  });
+});
+
+describe("search over what was said about a proposal", () => {
+  const ids: Record<string, string> = {};
+
+  beforeAll(async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const karen = await actorFor("karen@example.com");
+    const all = (await run("quokka")).proposals;
+    ids.wage = all.find((p) => p.title === "Raise the quokka wage")!.proposalId;
+    ids.winter = all.find((p) => p.title === "Winter hours")!.proposalId;
+    // A comment on an open proposal, on a declined one, and on a direct edit.
+    ids.onWage = await addProposalComment(karen, ids.wage, doc("Axolotl-striped aprons would cost extra."));
+    ids.onWinter = await addProposalComment(casey, ids.winter, doc("Ask the axolotl again in spring."));
+    const benefits = await sectionId("Benefits");
+    const [direct] = await asSystem((db) => db.select().from(officialVersions).where(eq(officialVersions.sectionId, benefits)));
+    ids.direct = direct.proposalId;
+    ids.onDirect = await addProposalComment(kale, ids.direct, doc("The axolotl likes this."));
+    // And a comment on a note, for comparison.
+    const note = await addNote(casey, { body: doc("Aquarium idea for the coffee shop"), now: new Date("2026-11-12T16:00:00Z") });
+    await sortNote(casey, note.id, await tree(), { sectionIds: [await sectionId("Coffee Shop")], businessTag: "coffee_shop", sorted: true });
+    ids.note = note.id;
+    ids.onNote = await addComment(karen, note.id, doc("An axolotl needs cold water."));
+    // Proposals that were declined for a reason, withdrawn, and declined without a word.
+    ids.okapi = await createProposal(kale, { kind: "decision", sectionId: await sectionId("Vendor Contacts"), title: "Sign with the feed supplier", proposedOfficial: doc("Feed: one supplier.") });
+    await declineProposal(casey, ids.okapi, "Okapi prices   first.\n Then decide. ");
+    ids.withdrawn = await createProposal(kale, { kind: "decision", sectionId: await sectionId("Vendor Contacts"), title: "Sign with the seed supplier", proposedOfficial: doc("Seed: one supplier.") });
+    await withdrawProposal(kale, ids.withdrawn);
+    ids.silent = await createProposal(kale, { kind: "decision", sectionId: await sectionId("Vendor Contacts"), title: "Sign with the pot supplier", proposedOfficial: doc("Pots: one supplier.") });
+    await declineProposal(casey, ids.silent, "  ");
+  });
+
+  const comments = async (query: string, filters?: SearchFilters) =>
+    (await run(query, filters)).comments.map((c) => c.commentId).sort();
+  const these = (...names: string[]) => names.map((name) => ids[name]).sort();
+
+  it("finds a comment on a proposal and says which proposal it is on", async () => {
+    const found = (await run("axolotl")).comments;
+    // Newest first.
+    expect(found.map((c) => c.commentId)).toEqual([ids.onNote, ids.onDirect, ids.onWinter, ids.onWage]);
+    const today = centralDateKey(new Date());
+    expect(found.map((c) => [c.authorName, c.noteId, c.proposalId, c.logDate])).toEqual([
+      // On a note: the note, and the Daily Log day the note is on.
+      ["Karen", ids.note, null, "2026-11-12"],
+      // On a proposal (a direct edit counts): the proposal, and the day the comment was written.
+      ["Kale", null, ids.direct, today],
+      ["Casey", null, ids.winter, today],
+      ["Karen", null, ids.wage, today],
+    ]);
+    expect(found[3].excerpt).toBe("Axolotl-striped aprons would cost extra.");
+    // Exactly one of the two is set on every comment found, here and in the older tests' data.
+    for (const hit of [...found, ...(await run("scanners can wait")).comments]) {
+      expect([hit.noteId === null, hit.proposalId === null].filter(Boolean)).toHaveLength(1);
+    }
+    // A comment does not put its proposal in the proposals group: the words are not in the proposal.
+    expect((await run("axolotl")).proposals).toEqual([]);
+    expect(await comments("axolotl giraffe")).toEqual([]);
+  });
+
+  it("applies the filters through what the comment is on", async () => {
+    const karen = await actorFor("karen@example.com");
+    const kale = await actorFor("kale@example.com");
+    // Section: where the note is filed; the section the proposal is about (subsections included).
+    expect(await comments("axolotl", { sectionId: await sectionId("People") })).toEqual(these("onWage", "onDirect"));
+    expect(await comments("axolotl", { sectionId: await sectionId("Wages") })).toEqual(these("onWage"));
+    expect(await comments("axolotl", { sectionId: await sectionId("Store Hours") })).toEqual(these("onWinter"));
+    expect(await comments("axolotl", { sectionId: await sectionId("Departments") })).toEqual(these("onNote"));
+    expect(await comments("axolotl", { sectionId: await sectionId("Finance") })).toEqual([]);
+    // Business: the note's tag, or the proposal's. Untagged proposals and direct edits drop out, as untagged notes do.
+    expect(await comments("axolotl", { business: "coffee_shop" })).toEqual(these("onWage", "onNote"));
+    expect(await comments("axolotl", { business: "garden_center" })).toEqual([]);
+    // Who wrote the comment, not who proposed.
+    expect(await comments("axolotl", { authorId: karen.id })).toEqual(these("onWage", "onNote"));
+    expect(await comments("axolotl", { authorId: kale.id })).toEqual(these("onDirect"));
+    // The day the comment was written (today), not the day of the proposal (November 17 and 18) or of the note.
+    const today = centralDateKey(new Date());
+    expect(await comments("axolotl", { from: today, to: today })).toEqual(these("onWage", "onWinter", "onDirect", "onNote"));
+    expect(await comments("axolotl", { to: addDays(today, -1) })).toEqual([]);
+    expect(await comments("axolotl", { from: addDays(today, 1) })).toEqual([]);
+    expect(await comments("axolotl", { from: "2026-11-17", to: "2026-11-18" })).toEqual(today >= "2026-11-17" && today <= "2026-11-18" ? these("onWage", "onWinter", "onDirect", "onNote") : []);
+    // Several at once.
+    expect(await comments("axolotl", { sectionId: await sectionId("People"), business: "coffee_shop", authorId: karen.id })).toEqual(these("onWage"));
+  });
+
+  it("finds a proposal by the reason it was declined for", async () => {
+    const found = (await run("okapi")).proposals;
+    expect(found.map((p) => [p.proposalId, p.title, p.status])).toEqual([[ids.okapi, "Sign with the feed supplier", "declined"]]);
+    expect(found[0].excerpt).toContain("Okapi prices first. Then decide.");
+    // Words spread over the title and the reason.
+    expect((await run("feed okapi decide")).proposals.map((p) => p.proposalId)).toEqual([ids.okapi]);
+    expect((await run("okapi giraffe")).proposals).toEqual([]);
+    // Proposals without a reason are found as before, by their own words.
+    expect((await run("seed supplier")).proposals.map((p) => p.proposalId)).toEqual([ids.withdrawn]);
+    expect((await run("pot supplier")).proposals.map((p) => p.proposalId)).toEqual([ids.silent]);
+    expect((await run("supplier")).proposals.map((p) => p.proposalId)).toEqual([ids.silent, ids.withdrawn, ids.okapi]);
+  });
+});
+
+describe("what a list needs to name a proposal", () => {
+  it("comes with every proposal found, so search can show the same title as the other lists", async () => {
+    const kale = await actorFor("kale@example.com");
+    const departments = await sectionId("Departments");
+    const wages = await sectionId("Wages");
+    let found = (await run("quokka")).proposals;
+    const corner = found.find((p) => p.type === "structure")!;
+    expect(corner).toMatchObject({
+      title: 'Add a section "Quokka Corner" under 4 Departments',
+      type: "structure",
+      status: "open",
+      direct: false,
+      sectionId: departments,
+      sectionTitle: "Departments",
+      destinationTitle: null,
+      structureChange: { action: "add", title: "Quokka Corner" },
+      decidedTitle: null,
+      resultVersion: null,
+    });
+    expect(found.find((p) => p.title === "Raise the quokka wage")).toMatchObject({
+      type: "decision",
+      status: "open",
+      direct: false,
+      sectionId: wages,
+      sectionTitle: "Wages",
+      structureChange: null,
+      decidedTitle: null,
+      resultVersion: null,
+    });
+
+    // The section is renamed while the proposal waits. What was stored (and
+    // is searched) stays; what the lists show follows the new name.
+    await renameSection(kale, departments, "Plant Departments");
+    found = (await run("quokka")).proposals;
+    const renamed = found.find((p) => p.proposalId === corner.proposalId)!;
+    expect(renamed.title).toBe('Add a section "Quokka Corner" under 4 Departments');
+    expect(displayTitle(renamed, await tree())).toBe('Add a section "Quokka Corner" under 4 Plant Departments');
+    // Approved: the sentence it was approved under, and for a text proposal the version it produced.
+    await approveProposal(kale, corner.proposalId, { revision: 1 });
+    const wage = found.find((p) => p.title === "Raise the quokka wage")!;
+    await approveAlone(kale, wage.proposalId, { revision: 1 });
+    await renameSection(kale, departments, "Departments");
+    found = (await run("quokka")).proposals;
+    const approved = found.find((p) => p.proposalId === corner.proposalId)!;
+    expect(approved).toMatchObject({ status: "approved", decidedTitle: 'Add a section "Quokka Corner" under 4 Plant Departments' });
+    expect(displayTitle(approved, await tree())).toBe('Add a section "Quokka Corner" under 4 Plant Departments');
+    const decidedWage = found.find((p) => p.proposalId === wage.proposalId)!;
+    expect(decidedWage.status).toBe("approved");
+    expect(decidedWage.resultVersion?.version).toBeGreaterThan(1);
+    expect(displayTitle(decidedWage, await tree())).toBe("Raise the quokka wage");
+  });
+
+  it("comes with the proposal line on a note as well", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const signage = await sectionId("Signage");
+    const marketing = await sectionId("Marketing and Events");
+    const note = await addNote(kale, { body: doc("The old signs can go") });
+    const archive = await createProposal(kale, { kind: "structure", change: { action: "archive", sectionId: signage }, noteIds: [note.id] });
+    const move = await createProposal(kale, { kind: "structure", change: { action: "move", sectionId: signage, parentId: marketing }, noteIds: [note.id] });
+    await renameSection(casey, signage, "Signs and Banners");
+    const lines = (await asSystem((db) => proposalsForNotes(db, [note.id]))).get(note.id)!;
+    expect(lines.map((line) => line.id)).toEqual([archive, move]);
+    // The stored title still carries the old name; the line can show the same title as the Proposals page.
+    expect(lines.map((line) => line.title)).toEqual(["Archive 5.2 Signage", "Move 5.2 Signage under 9 Marketing and Events"]);
+    const now = await tree();
+    expect(lines.map((line) => displayTitle(line, now))).toEqual([
+      "Archive 5.2 Signs and Banners",
+      "Move 5.2 Signs and Banners under 9 Marketing and Events",
+    ]);
+    expect(lines[1]).toMatchObject({
+      status: "open",
+      type: "structure",
+      direct: false,
+      sectionId: signage,
+      sectionTitle: "Signs and Banners",
+      destinationTitle: "Marketing and Events",
+      structureChange: { action: "move", parentId: marketing },
+      decidedTitle: null,
+      resultVersion: null,
+    });
+    // Where it would go is archived: named by its stored name.
+    await asSystem((db) => db.update(sections).set({ archivedAt: new Date() }).where(eq(sections.id, marketing)));
+    expect(displayTitle(lines[1], await tree())).toBe("Move 5.2 Signs and Banners under Marketing and Events (archived)");
+    // The same in search, which finds it by its stored words.
+    const hit = (await run("move signage")).proposals.find((p) => p.proposalId === move)!;
+    expect(hit.title).toBe("Move 5.2 Signage under 9 Marketing and Events");
+    expect(displayTitle(hit, await tree())).toBe("Move 5.2 Signs and Banners under Marketing and Events (archived)");
+    expect((await run("banners")).proposals).toEqual([]);
   });
 });

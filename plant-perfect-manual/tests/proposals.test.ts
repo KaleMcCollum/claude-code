@@ -556,10 +556,13 @@ describe("endorsements", () => {
     const id = await propose(kale, "Point of Sale", "Use Square registers", "Registers: Square.");
 
     await endorseProposal(karen, id, { revision: 1 });
+    // Pressed again: quietly nothing. One endorsement, one line in the log.
     await endorseProposal(karen, id, { revision: 1 });
     let view = await proposal(id);
     expect(view.status).toBe("open");
     expect(view.endorsements.map((e) => e.name)).toEqual(["Karen"]);
+    const endorsed = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)));
+    expect(endorsed.filter((line) => line.action === "proposal.endorsed").map((line) => line.summary)).toEqual(["Endorsed: Use Square registers"]);
 
     await expect(approveProposal(karen, id, { revision: 1 })).rejects.toThrow(AppError);
     await expect(approveAlone(karen, id, { revision: 1 })).rejects.toThrow(AppError);

@@ -313,6 +313,48 @@ describe.skipIf(!onServer)("at the same moment (real Postgres only)", () => {
     expect(mail.sent).toHaveLength(12);
   });
 
+  it("Endorse pressed twice at the same moment: one endorsement, one line in the log, never the general error", async () => {
+    const hardGoods = await section("Hard Goods");
+    for (let i = 0; i < 30; i += 1) {
+      const id = await createProposal(kale, { kind: "decision", sectionId: hardGoods, title: `Stock soil ${i}`, proposedOfficial: doc(`Potting soil: ${i} pallets.`) });
+      const press = () => endorseProposal(karen, id, { revision: 1 });
+      const [first, second] = await together(press, press, i % 3 === 0 ? 0 : 1);
+      // Neither press is answered with an error of any kind.
+      expect([first.ok, second.ok]).toEqual([true, true]);
+      const stamps = await asSystem((db) => db.select().from(endorsements).where(eq(endorsements.proposalId, id)));
+      expect(stamps.map((stamp) => stamp.userId)).toEqual([karen.id]);
+      const lines = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)).orderBy(asc(activityLog.id)));
+      expect(lines.map((line) => line.action)).toEqual(["proposal.created", "proposal.endorsed"]);
+    }
+    // The same on a direct edit, whose page an Advisor can endorse too.
+    await saveOfficial(kale, hardGoods, doc("Potting soil: 12 pallets."));
+    const direct = (await asSystem((db) => loadOfficial(db, hardGoods)))!;
+    const both = await together(
+      () => endorseProposal(karen, direct.proposalId, { revision: 1 }),
+      () => endorseProposal(karen, direct.proposalId, { revision: 1 }),
+      0,
+    );
+    expect(both.map((result) => result.ok)).toEqual([true, true]);
+    const lines = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, direct.proposalId)));
+    expect(lines.map((line) => line.summary)).toEqual(["Endorsed: Edited directly: 4.6 Hard Goods (version 1)"]);
+  });
+
+  it("Save pressed twice at the same moment with the same text: one version, and the second is told there is nothing to save", async () => {
+    const perennials = await section("Perennials");
+    await saveOfficial(kale, perennials, doc("Perennials text 0."));
+    for (let i = 1; i <= 20; i += 1) {
+      const start = (await asSystem((db) => loadOfficial(db, perennials)))!;
+      const press = () => saveOfficial(kale, perennials, doc(`Perennials text ${i}.`), { baseVersionId: start.id });
+      const [first, second] = await together(press, press, i % 3 === 0 ? 0 : 1);
+      expect([first.ok, second.ok]).toEqual([true, true]);
+      const answers = [first, second].map((result) => (result.ok ? result.value : null));
+      // One of the two saved it; the other found exactly that text already official.
+      expect(answers).toContainEqual({ changed: true, version: start.version + 1 });
+      expect(answers).toContainEqual({ changed: false, version: start.version + 1 });
+      expect((await versionsOf(perennials)).filter((v) => v.version > start.version)).toHaveLength(1);
+    }
+  });
+
   it("three presses at once on one proposal make exactly one decision and one version", async () => {
     const training = await section("Training");
     for (let i = 0; i < 12; i += 1) {

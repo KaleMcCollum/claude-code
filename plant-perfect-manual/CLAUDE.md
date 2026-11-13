@@ -26,6 +26,11 @@ secrets here.
 
 1. Text a person writes is stored and shown exactly as typed. Never rewrite,
    trim, reorder or "clean up" it. AI rewrites are suggestions only.
+   This covers everything written in a text box: notes, comments, official
+   text, a proposal's "Why", the reason for declining. The one stated
+   exception is one-line names: a proposal's title, a section's name and a
+   person's name are trimmed and single-spaced (so two names can never
+   differ only by spaces nobody can see), and never reworded.
 2. Official and Discussion are separate, in the data and on screen.
 3. Nothing becomes official without a recorded approval (who, when).
 4. The AI never changes structure or official text directly. It proposes;
@@ -140,9 +145,29 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   and send back exactly the `seen` values they rendered. Never work any of
   that out on a screen.
 - Lists outside a section show `displayTitle(view, tree)`: a direct edit
-  has no written title; an open section change is described from the
-  sections as they are named and numbered now; an approved one shows the
-  sentence it was approved under (`decidedTitle`).
+  or restore has no written title, so it is named by its section and the
+  version it produced ("Edited directly: 2.1 Wages (version 3)"); an open
+  section change is described from the sections as they are named and
+  numbered now; an approved one shows the sentence it was approved under
+  (`decidedTitle`). Activity log lines about a direct edit use the same
+  words. The section line next to a proposal is `sectionText(view, tree)`.
+- A section that is no longer among the sections (archived, or under an
+  archived one) is named by its stored name, "Hiring (archived)". Every
+  reader hands that name back with the proposal (`sectionTitle`, and
+  `destinationTitle` for a move); readers that do not return whole
+  proposals (`proposalsForNotes`, search) return `ProposalTitleFields`, which
+  is exactly what `displayTitle` needs. Never write that wording on a screen.
+- The Decisions Log's section filter is built from the stored sections, not
+  from the tree, so decisions about an archived subsection stay in its
+  parent's list. "Edit official" and "Restore" refuse a section that is not
+  in the tree, as approving a proposal does.
+- One-person decisions stay listed for 14 days, every one of them
+  (`listOneOwnerDecisions`); `groupOneOwnerDecisions` puts the text changes
+  of one section together for showing, without leaving any out.
+- When the sections changed while a section proposal waited, so that it
+  can no longer be carried out, the approver is told so in approval-time
+  words (`noLongerPossible`), not in the words of the proposing form
+  (`moveProblem`). Both read the same check, `moveProblemKind`.
 
 ## What the database guarantees for people and sections
 
@@ -269,6 +294,16 @@ cannot. Tests of what happens "at the same moment"
   Production uses a real Postgres through `DATABASE_URL`. Both are tested.
 - The editor (`RichTextEditor`) is loaded only in the browser, on demand, so
   it uses `immediatelyRender: true`. Keep it out of server rendering.
+- Comparing two versions (`src/lib/diff.ts`): `compareDocs` answers
+  "formatting" when the words are the same, with `links` and `checks` set
+  when a link's address or a ticked checkbox differs, which is more than
+  layout. `diffWords` drops the unchanged start and end first; read the
+  comment on `MAX_DIFF_WORDS` before touching the limit, it is what keeps
+  one comparison to about 13 MB.
+- A button press can arrive twice (a lost answer, a second device). Saving
+  official text that is already exactly the official text answers "no
+  changes" before anything else is checked, and a second endorsement by the
+  same person is quietly not added (`tests/same-moment.test.ts`).
 - JSON stored in Postgres can come back with its fields in a different
   order. Compare documents with `sameDoc`, and anything else stored as JSON
   field by field (as `sameStructureChange` does), never with

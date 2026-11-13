@@ -1158,6 +1158,11 @@ function readStructureChange(raw: unknown): StructureChange | null {
 
 // --------------------------------------------------------------- checking
 
+/**
+ * A proposal's title, tidied. One-line names (this, a section's name, a
+ * person's name) are the one stated exception to "kept exactly as typed"
+ * (CLAUDE.md, rule 1): trimmed and single-spaced, never reworded.
+ */
 function cleanTitle(input: unknown): string {
   const title = typeof input === "string" ? input.replace(/\s+/g, " ").trim() : "";
   if (!title) throw new AppError("Say in a few words what is being decided.");

@@ -85,6 +85,39 @@ describe("saving official text", () => {
     expect(empty).toEqual({ changed: false, version: null });
   });
 
+  it("saving the same text again from the same page changes nothing, and is not told someone else changed it", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const id = await sectionId("Closing Procedures");
+    await saveOfficial(kale, id, doc("Lock the back door."));
+    const onScreen = (await asSystem((db) => loadOfficial(db, id)))!;
+    const saves = async () => (await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)))).length;
+
+    // Kale changes the text and presses Save. It goes through, but the
+    // answer never reaches his phone.
+    const typed = doc("Lock the back door.", "Count the till.");
+    expect(await saveOfficial(kale, id, typed, { baseVersionId: onScreen.id })).toEqual({ changed: true, version: 2 });
+    // He presses Save again on the same page: same text, and still the
+    // version the page started from. Nothing to save; nobody else changed anything.
+    expect(await saveOfficial(kale, id, typed, { baseVersionId: onScreen.id })).toEqual({ changed: false, version: 2 });
+    expect(await saveOfficial(kale, id, typed, { baseVersionId: onScreen.id })).toEqual({ changed: false, version: 2 });
+    expect((await asSystem((db) => listVersions(db, id))).map((v) => v.version)).toEqual([2, 1]);
+    expect(await saves()).toBe(2);
+
+    // Casey's page is just as old. Saving the very text that is official now is "no changes" for her too;
+    // saving anything else from that page is refused, as before, so Kale's change is not undone.
+    expect(await saveOfficial(casey, id, typed, { baseVersionId: onScreen.id })).toEqual({ changed: false, version: 2 });
+    await expect(saveOfficial(casey, id, doc("Lock both doors."), { baseVersionId: onScreen.id })).rejects.toThrow(
+      "Someone else changed this official text after you opened it.",
+    );
+    // An empty first text from a page that is out of date is refused like any other.
+    await expect(saveOfficial(casey, id, { type: "doc", content: [{ type: "paragraph" }] }, { baseVersionId: null })).rejects.toThrow(
+      "Someone else changed this official text after you opened it.",
+    );
+    expect((await asSystem((db) => listVersions(db, id))).map((v) => v.version)).toEqual([2, 1]);
+    expect(await saves()).toBe(2);
+  });
+
   it("refuses Advisors", async () => {
     const karen = await insertUser("Karen", "karen@example.com", "advisor");
     await expect(saveOfficial(karen, await sectionId("Wages"), doc("Advisors decide wages"))).rejects.toThrow(AppError);
