@@ -4,13 +4,16 @@ import type { Queryable } from "@/db/client";
 import { comments, noteSections, notes, officialVersions, proposals, users } from "@/db/schema";
 import type { BusinessTag } from "./business";
 import { type NoteSectionLink, businessFilterTags, loadNoteSectionLinks } from "./notes";
+import { type ProposalTitleFields, titleFieldsFor } from "./proposals";
 import { type SectionNode, findNode, flattenTree } from "./sections";
 import { centralDay } from "./sqltime";
+import { centralDateKey } from "./time";
 
 /**
  * Global search. So far it covers section names, current official text,
- * notes (which are also the Discussion) and comments. Proposals, to-dos,
- * quotes, vendors, payments and document names join as those parts are built.
+ * notes (which are also the Discussion), comments (on notes and on
+ * proposals) and proposals. To-dos, quotes, vendors, payments and document
+ * names join as those parts are built.
  */
 
 export type SearchHit = {
@@ -32,23 +35,39 @@ export type NoteHit = {
   sections: NoteSectionLink[];
 };
 
+/**
+ * A comment that matched. It is on a note or on a proposal: exactly one of
+ * `noteId` and `proposalId` is set, and that is where its link goes
+ * (`/daily-log/<logDate>#note-<noteId>` or `/proposals/<proposalId>`).
+ */
 export type CommentHit = {
   commentId: string;
-  noteId: string;
+  /** The note it is on. Null for a comment on a proposal. */
+  noteId: string | null;
+  /** The proposal it is on (a direct edit counts). Null for a comment on a note. */
+  proposalId: string | null;
+  /**
+   * A comment on a note: the Daily Log day that note is on, e.g.
+   * "2026-11-10". A comment on a proposal has no such day; this is then the
+   * (US Central) day the comment was written.
+   */
   logDate: string;
   createdAt: Date;
   authorName: string;
   excerpt: string;
 };
 
-export type ProposalHit = {
+/**
+ * A proposal that matched. `title` is the stored title, which is what was
+ * searched. The fields of `ProposalTitleFields` are there so the screen can
+ * show `displayTitle(hit, tree)`, the same title as every other list.
+ */
+export type ProposalHit = ProposalTitleFields & {
   proposalId: string;
-  title: string;
-  status: "open" | "approved" | "declined" | "withdrawn";
   createdAt: Date;
   /** Empty when the AI proposed it (Phase 5). */
   proposedByName: string | null;
-  /** A piece of the title, description or proposed text around the match. */
+  /** A piece of the title, description, proposed text or decline reason around the match. */
   excerpt: string;
 };
 
@@ -254,19 +273,29 @@ export async function search(
     sections: links.get(row.noteId) ?? [],
   }));
 
-  // Comments are found by their own words, author and date; the section and
-  // business filters look at the note the comment is on.
+  /** True for proposals about one of the wanted sections (or that created one of them). */
+  const aboutSection = (ids: string[]) =>
+    sql`(${inArray(proposals.sectionId, ids)} or ${inArray(proposals.createdSectionId, ids)})`;
+
+  // Comments, on notes and on proposals alike, are found by their own words,
+  // author and date. The section and business filters look at what the
+  // comment is on: a note's business tag and where it is filed; a proposal's
+  // business tag and the section it is about (the same test as for the
+  // proposals themselves, below). A comment on a direct edit is found too:
+  // it is on that edit's own page. A comment on a removed note is not.
   const commentRows = await q
     .select({
       commentId: comments.id,
       noteId: comments.noteId,
-      logDate: notes.logDate,
+      proposalId: comments.proposalId,
+      noteLogDate: notes.logDate,
       createdAt: comments.createdAt,
       authorName: users.name,
       text: comments.bodyText,
     })
     .from(comments)
-    .innerJoin(notes, eq(notes.id, comments.noteId))
+    .leftJoin(notes, eq(notes.id, comments.noteId))
+    .leftJoin(proposals, eq(proposals.id, comments.proposalId))
     .innerJoin(users, eq(users.id, comments.createdBy))
     .where(
       and(
@@ -275,8 +304,10 @@ export async function search(
         filters.from ? sql`${centralDay(comments.createdAt)} >= ${filters.from}::date` : undefined,
         filters.to ? sql`${centralDay(comments.createdAt)} <= ${filters.to}::date` : undefined,
         filters.authorId ? eq(comments.createdBy, filters.authorId) : undefined,
-        businessTags ? inArray(notes.businessTag, businessTags) : undefined,
-        sectionIds ? filedUnder(sectionIds) : undefined,
+        businessTags
+          ? sql`(${inArray(notes.businessTag, businessTags)} or ${inArray(proposals.businessTag, businessTags)})`
+          : undefined,
+        sectionIds ? sql`(${filedUnder(sectionIds)} or ${aboutSection(sectionIds)})` : undefined,
       ),
     )
     .orderBy(desc(comments.createdAt), desc(comments.id))
@@ -285,22 +316,21 @@ export async function search(
   commentRows.length = Math.min(commentRows.length, MAX_PER_TYPE);
   const commentHits: CommentHit[] = commentRows.map((row) => ({
     commentId: row.commentId,
-    // (Joined to its note above, so the note id is always there.)
-    noteId: row.noteId as string,
-    logDate: row.logDate,
+    noteId: row.noteId,
+    proposalId: row.proposalId,
+    logDate: row.noteLogDate ?? centralDateKey(row.createdAt),
     createdAt: row.createdAt,
     authorName: row.authorName,
     excerpt: excerptAround(row.text, words),
   }));
 
-  // Proposals: found by their title, description or proposed text. The date
-  // filter uses the day it was proposed, the author filter who proposed it.
-  const proposalText = sql<string>`${proposals.title} || E'\n' || ${proposals.descriptionText} || E'\n' || coalesce(${proposals.proposedOfficialText}, '')`;
+  // Proposals: found by their title, description, proposed text or the
+  // reason they were declined for. The date filter uses the day it was
+  // proposed, the author filter who proposed it.
+  const proposalText = sql<string>`${proposals.title} || E'\n' || ${proposals.descriptionText} || E'\n' || coalesce(${proposals.proposedOfficialText}, '') || E'\n' || coalesce(${proposals.declineReason}, '')`;
   const proposalRows = await q
     .select({
       proposalId: proposals.id,
-      title: proposals.title,
-      status: proposals.status,
       createdAt: proposals.createdAt,
       proposedByName: users.name,
       text: proposalText,
@@ -311,9 +341,7 @@ export async function search(
       and(
         eq(proposals.direct, false),
         and(...words.map((word) => sql`${proposalText} ilike ${likePattern(word)}`)),
-        sectionIds
-          ? sql`(${inArray(proposals.sectionId, sectionIds)} or ${inArray(proposals.createdSectionId, sectionIds)})`
-          : undefined,
+        sectionIds ? aboutSection(sectionIds) : undefined,
         businessTags ? inArray(proposals.businessTag, businessTags) : undefined,
         filters.authorId ? eq(proposals.proposedBy, filters.authorId) : undefined,
         filters.from ? sql`${centralDay(proposals.createdAt)} >= ${filters.from}::date` : undefined,
@@ -322,14 +350,24 @@ export async function search(
     )
     .orderBy(desc(proposals.createdAt), desc(proposals.id))
     .limit(MAX_PER_TYPE);
-  const proposalHits: ProposalHit[] = proposalRows.map((row) => ({
-    proposalId: row.proposalId,
-    title: row.title,
-    status: row.status,
-    createdAt: row.createdAt,
-    proposedByName: row.proposedByName,
-    excerpt: excerptAround(row.text, words),
-  }));
+  // What `displayTitle` needs to name each of them (one more query).
+  const titleFields = await titleFieldsFor(
+    q,
+    proposalRows.map((row) => row.proposalId),
+  );
+  const proposalHits: ProposalHit[] = proposalRows.flatMap((row) => {
+    const fields = titleFields.get(row.proposalId);
+    if (!fields) return [];
+    return [
+      {
+        ...fields,
+        proposalId: row.proposalId,
+        createdAt: row.createdAt,
+        proposedByName: row.proposedByName,
+        excerpt: excerptAround(row.text, words),
+      },
+    ];
+  });
 
   return {
     sections: sectionHits,

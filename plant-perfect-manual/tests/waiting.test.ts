@@ -55,6 +55,8 @@ function open(proposer: Actor, approvedBy: Actor[], more: Partial<ProposalView> 
     title: "Coffee wages",
     description: null,
     sectionId: "section",
+    sectionTitle: "Wages",
+    destinationTitle: null,
     businessTag: null,
     proposedOfficial: null,
     baseVersionId: null,

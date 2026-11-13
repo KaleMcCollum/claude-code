@@ -340,9 +340,13 @@ describe("declining and withdrawing", () => {
     await expect(declineProposal(kale, id, "changed my mind")).rejects.toThrow("Withdraw it instead");
     await expect(withdrawProposal(casey, id)).rejects.toThrow("decline it instead");
 
-    await declineProposal(casey, id, "  Too much before we see the quotes.  ");
+    // The reason is kept exactly as typed: spaces at its ends, runs of spaces and line breaks included.
+    const typed = "  Too much   before we see the quotes.\n\n  Ask again in *March*.\t ";
+    await declineProposal(casey, id, typed);
     const view = await proposal(id);
-    expect(view).toMatchObject({ status: "declined", decidedByName: "Casey", declineReason: "Too much before we see the quotes." });
+    expect(view).toMatchObject({ status: "declined", decidedByName: "Casey", declineReason: typed });
+    const [logged] = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.action, "proposal.declined")));
+    expect(logged).toMatchObject({ entityId: id, data: { reason: typed } });
     expect(await official(await sectionId("Budget"))).toBeNull();
 
     // Decided means decided.
@@ -363,12 +367,29 @@ describe("declining and withdrawing", () => {
     expect(decisions.map((d) => d.id)).not.toContain(other);
   });
 
-  it("keeps a reason short", async () => {
+  it("keeps a reason short, counting what was typed", async () => {
     const { kale, casey } = await people();
     const id = await propose(kale, "Quotes", "Go with Holly Lumber", "Signs: Holly Lumber.");
-    await expect(declineProposal(casey, id, "x".repeat(501))).rejects.toThrow(AppError);
-    await declineProposal(casey, id, "");
-    expect((await proposal(id)).declineReason).toBeNull();
+    const tooLong = "Keep the reason under 500 characters, or leave a comment instead.";
+    await expect(declineProposal(casey, id, "x".repeat(501))).rejects.toThrow(tooLong);
+    // Spaces are typed characters too: 499 letters between two spaces are 501.
+    await expect(declineProposal(casey, id, ` ${"x".repeat(499)} `)).rejects.toThrow(tooLong);
+    expect((await proposal(id)).status).toBe("open");
+    // Exactly 500 fit, spaces and all.
+    const fits = ` ${"x".repeat(498)} `;
+    await declineProposal(casey, id, fits);
+    expect((await proposal(id)).declineReason).toBe(fits);
+  });
+
+  it("takes a reason that is all blank as no reason", async () => {
+    const { kale, casey } = await people();
+    for (const blank of ["", "   ", " \n\t \n", undefined, null, 42]) {
+      const id = await propose(kale, "Quotes", `Go with Holly Lumber (${JSON.stringify(blank)})`, `Signs: Holly Lumber ${JSON.stringify(blank)}.`);
+      await declineProposal(casey, id, blank);
+      expect((await proposal(id)).declineReason).toBeNull();
+      const logged = await asSystem((db) => db.select().from(activityLog).where(eq(activityLog.entityId, id)));
+      expect(logged.find((line) => line.action === "proposal.declined")?.data ?? null).toBeNull();
+    }
   });
 });
 
@@ -767,7 +788,21 @@ describe("notes, comments and the log", () => {
     });
     expect((await asSystem((db) => sourceNoteIds(db, id))).sort()).toEqual([first.id, second.id].sort());
     const byNote = await asSystem((db) => proposalsForNotes(db, [first.id, second.id]));
-    expect(byNote.get(first.id)).toEqual([{ id, title: "Coffee staff start at $16/hr", status: "open" }]);
+    expect(byNote.get(first.id)).toEqual([
+      {
+        id,
+        title: "Coffee staff start at $16/hr",
+        status: "open",
+        type: "decision",
+        direct: false,
+        sectionId: await sectionId("Wages"),
+        sectionTitle: "Wages",
+        destinationTitle: null,
+        structureChange: null,
+        decidedTitle: null,
+        resultVersion: null,
+      },
+    ]);
     await approveProposal(casey, id, await seen(id));
     expect((await asSystem((db) => proposalsForNotes(db, [first.id]))).get(first.id)?.[0].status).toBe("approved");
 

@@ -16,7 +16,7 @@ import {
 import { logActivity } from "./activity";
 import { type BusinessTag, parseBusinessTag } from "./business";
 import { type CommentView, businessFilterTags } from "./notes";
-import { addVersion, approvalLine, joinNames, latestVersionRow, lockSection } from "./official";
+import { DIRECT_EDIT_TITLE, addVersion, approvalLine, joinNames, latestVersionRow, lockSection } from "./official";
 import { type Actor, AppError, assertCan, can } from "./permissions";
 import { type RichDoc, docToText, isEmptyDoc, sameDoc, sanitizeDoc } from "./richtext";
 import {
@@ -26,10 +26,10 @@ import {
   checkSectionTitle,
   createSectionIn,
   findNode,
-  flattenTree,
   isUuid,
   loadTree,
   moveProblem,
+  moveProblemKind,
   moveSectionToIn,
   renameSectionIn,
 } from "./sections";
@@ -96,6 +96,18 @@ export type ProposalView = {
   description: RichDoc | null;
   /** The section it is about. For "add a section": the parent (null = top level). */
   sectionId: string | null;
+  /**
+   * That section's name as it is stored right now, whether the section is
+   * archived or not (null when there is no section). Lists use it to name a
+   * section that is no longer among the sections: "Hiring (archived)".
+   */
+  sectionTitle: string | null;
+  /**
+   * "Move a section" proposals: the stored name of the section it would go
+   * under, archived or not. Null for a move to the top level and for every
+   * other kind of proposal.
+   */
+  destinationTitle: string | null;
   businessTag: BusinessTag | null;
   proposedOfficial: RichDoc | null;
   /** The official version the text was written against (null if there was none). */
@@ -243,6 +255,15 @@ const UNREADABLE_CHANGE =
 const proposer = alias(users, "proposer");
 const proposerRole = alias(roles, "proposer_role");
 const decider = alias(users, "decider");
+/** The section a proposal is about, and the one a "move" would put it under: read whether archived or not. */
+const aboutSection = alias(sections, "about_section");
+const destinationSection = alias(sections, "destination_section");
+/**
+ * Joins the section a "move" proposal would put its section under. The id
+ * sits inside the stored change, so it is compared as text: a stored change
+ * that holds something else there simply finds no section.
+ */
+const isDestinationOfMove = sql`${destinationSection.id}::text = ${proposals.structureChange} ->> 'parentId'`;
 
 type ProposalRow = typeof proposals.$inferSelect;
 
@@ -256,11 +277,15 @@ function selectProposals(q: Queryable) {
       proposerRemovedAt: proposer.removedAt,
       proposerPermissions: proposerRole.permissions,
       decidedByName: decider.name,
+      sectionTitle: aboutSection.title,
+      destinationTitle: destinationSection.title,
     })
     .from(proposals)
     .leftJoin(proposer, eq(proposer.id, proposals.proposedBy))
     .leftJoin(proposerRole, eq(proposerRole.key, proposer.roleKey))
-    .leftJoin(decider, eq(decider.id, proposals.decidedBy));
+    .leftJoin(decider, eq(decider.id, proposals.decidedBy))
+    .leftJoin(aboutSection, eq(aboutSection.id, proposals.sectionId))
+    .leftJoin(destinationSection, isDestinationOfMove);
 }
 
 type Joined = {
@@ -269,6 +294,8 @@ type Joined = {
   proposerRemovedAt: Date | null;
   proposerPermissions: string[] | null;
   decidedByName: string | null;
+  sectionTitle: string | null;
+  destinationTitle: string | null;
 };
 
 /** The id of each of these sections' current official version (sections with no official text are left out). */
@@ -331,7 +358,7 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
   ];
   const current = await currentVersionIds(q, openTextSections);
 
-  return joined.map(({ row, proposedByName, proposerRemovedAt, proposerPermissions, decidedByName }) => {
+  return joined.map(({ row, proposedByName, proposerRemovedAt, proposerPermissions, decidedByName, ...names }) => {
     const version = versionRows.find((v) => v.proposalId === row.id);
     const pick = (list: (PersonStamp & { proposalId: string })[]) =>
       list.filter((s) => s.proposalId === row.id).map(({ userId, name, at }) => ({ userId, name, at }));
@@ -343,6 +370,9 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
       title: row.title,
       description: (row.description as RichDoc | null) ?? null,
       sectionId: row.sectionId,
+      sectionTitle: names.sectionTitle,
+      // (Only a move has a destination; a stored "add" or "rename" has no such field.)
+      destinationTitle: names.destinationTitle,
       businessTag: row.businessTag,
       proposedOfficial: (row.proposedOfficial as RichDoc | null) ?? null,
       baseVersionId: row.baseVersionId,
@@ -454,9 +484,34 @@ export type DecisionFilters = {
 };
 
 /**
+ * A section and everything under it, read from the stored sections, so
+ * archived sections and sections under an archived one are included. Empty
+ * when there is no such section.
+ */
+async function sectionAndBelow(q: Queryable, sectionId: string): Promise<string[]> {
+  if (!isUuid(sectionId)) return [];
+  const rows = await q.select({ id: sections.id, parentId: sections.parentId }).from(sections);
+  if (!rows.some((row) => row.id === sectionId)) return [];
+  const found = [sectionId];
+  // (A section is found once, so this ends even if two sections named each other as parent.)
+  for (let next = 0; next < found.length; next += 1) {
+    for (const row of rows) {
+      if (row.parentId === found[next] && !found.includes(row.id)) found.push(row.id);
+    }
+  }
+  return found;
+}
+
+/**
  * The Decisions Log: every approved change, newest first. It is not a
  * separate record: it is the approved proposals themselves, including direct
  * edits and restores.
+ *
+ * The section filter covers the chosen section and everything under it,
+ * archived sections included: a decision about a subsection stays in its
+ * parent's list after the subsection is archived (the decision to archive
+ * it too). `tree` is no longer needed for that and is not used; it is still
+ * accepted so that existing callers keep working.
  */
 export async function listDecisions(
   q: Queryable,
@@ -464,11 +519,11 @@ export async function listDecisions(
   filters: DecisionFilters = {},
   limit = 200,
 ): Promise<ProposalView[]> {
+  void tree;
   let sectionIds: string[] | null = null;
   if (filters.sectionId) {
-    const node = findNode(tree, filters.sectionId);
-    if (!node) return [];
-    sectionIds = [node, ...flattenTree(node.children)].map((n) => n.id);
+    sectionIds = await sectionAndBelow(q, filters.sectionId);
+    if (sectionIds.length === 0) return [];
   }
   const conditions: (SQL | undefined)[] = [
     eq(proposals.status, "approved"),
@@ -532,6 +587,41 @@ export function canApproveToo(view: ProposalView, actor: Actor): boolean {
     can(actor, "approve") &&
     !view.approvals.some((a) => a.userId === actor.id)
   );
+}
+
+export type OneOwnerGroup = { head: ProposalView; earlier: ProposalView[] };
+
+/**
+ * One-person decisions (`listOneOwnerDecisions`) put together for showing,
+ * so that a section saved three times is one entry and not three. Nothing is
+ * left out: every change is either a `head` or in an `earlier` list.
+ *
+ * Text changes are grouped by section: `head` is the newest still-flagged
+ * change of that section, `earlier` the older ones, newest first. A section
+ * change is always a group of its own. Groups are ordered by the head's
+ * decision time, newest first.
+ */
+export function groupOneOwnerDecisions(views: ProposalView[]): OneOwnerGroup[] {
+  const time = (view: ProposalView) => view.decidedAt?.getTime() ?? 0;
+  // Newest first. Two saves of one section can carry the same time; their
+  // version numbers always say which came later.
+  const newestFirst = (a: ProposalView, b: ProposalView) =>
+    (b.resultVersion?.version ?? 0) - (a.resultVersion?.version ?? 0) || time(b) - time(a);
+  const bySection = new Map<string, ProposalView[]>();
+  const groups: OneOwnerGroup[] = [];
+  for (const view of views) {
+    if (view.type === "structure" || !view.sectionId) {
+      groups.push({ head: view, earlier: [] });
+    } else {
+      bySection.set(view.sectionId, [...(bySection.get(view.sectionId) ?? []), view]);
+    }
+  }
+  for (const changes of bySection.values()) {
+    const [head, ...earlier] = [...changes].sort(newestFirst);
+    groups.push({ head, earlier });
+  }
+  // (Sorting keeps the order they came in for groups decided at the same moment.)
+  return groups.sort((a, b) => time(b.head) - time(a.head));
 }
 
 export type UnapprovedChange = {
@@ -743,10 +833,17 @@ export function statusLine(view: ProposalView): string {
   return `${verb}${by}${view.decidedAt ? `, ${formatDate(view.decidedAt)}` : ""}`;
 }
 
+/** What `displayTitle` needs to know about a proposal. A `ProposalView` has all of it. */
+export type TitleParts = Pick<ProposalView, "title" | "direct" | "sectionId" | "type" | "status" | "structureChange"> &
+  Partial<Pick<ProposalView, "decidedTitle" | "resultVersion" | "sectionTitle" | "destinationTitle">>;
+
 /**
  * The title to show in lists.
- *  - A direct edit or restore has no written title, so its section is added:
- *    "Edited directly: 2.1 Wages".
+ *  - A direct edit or restore has no written title, so its section is added,
+ *    and the version it produced, because two saves of one section would
+ *    otherwise read the same: "Edited directly: 2.1 Wages (version 3)",
+ *    "Restored version 1: 3.1 Store Hours (as version 4)". (Without
+ *    `resultVersion` the version is left out.)
  *  - A structure proposal that is still open is described from what it will
  *    actually do, with the sections' names and numbers as they are right
  *    now, never from its stored title.
@@ -755,18 +852,40 @@ export function statusLine(view: ProposalView): string {
  *    that moment, when the approver pressed the button. Section changes
  *    approved before that sentence was recorded, and declined or withdrawn
  *    ones, show the title stored when they were proposed or last changed.
+ *
+ * A section that is no longer among the sections (archived, or under an
+ * archived one) is named by its stored name: "Hiring (archived)". That
+ * needs `sectionTitle` (and `destinationTitle` for a move); without them it
+ * reads "a section that has been archived".
  */
-export function displayTitle(
-  view: Pick<ProposalView, "title" | "direct" | "sectionId" | "type" | "status" | "structureChange"> &
-    Partial<Pick<ProposalView, "decidedTitle">>,
-  tree: SectionNode[],
-): string {
-  if (view.direct) return `${view.title}: ${sectionLabel(tree, view.sectionId)}`;
+export function displayTitle(view: TitleParts, tree: SectionNode[]): string {
+  const names = storedSectionNames(view);
+  if (view.direct) {
+    const section = sectionLabel(tree, view.sectionId, names);
+    if (!view.resultVersion) return `${view.title}: ${section}`;
+    // Told apart by the title the app itself gave it, never by reading the words.
+    return view.title === DIRECT_EDIT_TITLE
+      ? `${view.title}: ${section} (version ${view.resultVersion.version})`
+      : `${view.title}: ${section} (as version ${view.resultVersion.version})`;
+  }
   if (view.type === "structure") {
     if (view.status !== "open") return view.decidedTitle ?? view.title;
-    if (view.structureChange) return describeStructure(tree, view.sectionId, view.structureChange);
+    if (view.structureChange) return describeStructure(tree, view.sectionId, view.structureChange, names);
   }
   return view.title;
+}
+
+/**
+ * The section a proposal is about, to show next to it: its number and name
+ * as they are now ("2.3 Hiring"), or its stored name when it is no longer
+ * among the sections ("Hiring (archived)"). Null when the proposal has no
+ * section (adding a top-level section).
+ */
+export function sectionText(
+  view: Pick<ProposalView, "sectionId"> & Partial<Pick<ProposalView, "sectionTitle">>,
+  tree: SectionNode[],
+): string | null {
+  return view.sectionId ? sectionLabel(tree, view.sectionId, storedSectionNames(view)) : null;
 }
 
 export type TextChange = {
@@ -833,21 +952,85 @@ export async function loadTextChange(q: Queryable, view: ProposalView): Promise<
   };
 }
 
-/** Proposals (not direct edits) made from each of these notes. */
-export async function proposalsForNotes(
-  q: Queryable,
-  noteIds: string[],
-): Promise<Map<string, { id: string; title: string; status: ProposalStatus }[]>> {
-  const result = new Map<string, { id: string; title: string; status: ProposalStatus }[]>();
+/**
+ * Everything `displayTitle` needs about a proposal, for the readers that do
+ * not hand back whole `ProposalView`s (the proposal line on a note, search
+ * results). `title` is the stored title: show `displayTitle(fields, tree)`.
+ */
+export type ProposalTitleFields = Pick<
+  ProposalView,
+  | "title"
+  | "type"
+  | "status"
+  | "direct"
+  | "sectionId"
+  | "sectionTitle"
+  | "destinationTitle"
+  | "structureChange"
+  | "decidedTitle"
+  | "resultVersion"
+>;
+
+/** `ProposalTitleFields` for each of these proposals, by id (one query). */
+export async function titleFieldsFor(q: Queryable, proposalIds: string[]): Promise<Map<string, ProposalTitleFields>> {
+  const result = new Map<string, ProposalTitleFields>();
+  const ids = [...new Set(proposalIds)].filter(isUuid);
+  if (ids.length === 0) return result;
+  const rows = await q
+    .select({
+      id: proposals.id,
+      title: proposals.title,
+      type: proposals.type,
+      status: proposals.status,
+      direct: proposals.direct,
+      sectionId: proposals.sectionId,
+      sectionTitle: aboutSection.title,
+      destinationTitle: destinationSection.title,
+      structureChange: proposals.structureChange,
+      decidedTitle: proposals.decidedTitle,
+      versionId: officialVersions.id,
+      version: officialVersions.version,
+    })
+    .from(proposals)
+    .leftJoin(aboutSection, eq(aboutSection.id, proposals.sectionId))
+    .leftJoin(destinationSection, isDestinationOfMove)
+    // (A proposal produces at most one official version.)
+    .leftJoin(officialVersions, eq(officialVersions.proposalId, proposals.id))
+    .where(inArray(proposals.id, ids));
+  for (const { id, versionId, version, structureChange, ...row } of rows) {
+    result.set(id, {
+      ...row,
+      structureChange: (structureChange as StructureChange | null) ?? null,
+      resultVersion: versionId !== null && version !== null ? { id: versionId, version } : null,
+    });
+  }
+  return result;
+}
+
+/** A proposal made from a note: its id and what `displayTitle` needs to name it. */
+export type NoteProposalLine = { id: string } & ProposalTitleFields;
+
+/**
+ * Proposals (not direct edits) made from each of these notes, oldest first.
+ * `title` is the stored title, as before; the other fields are there so the
+ * note can show `displayTitle(line, tree)`, the same title as everywhere else.
+ */
+export async function proposalsForNotes(q: Queryable, noteIds: string[]): Promise<Map<string, NoteProposalLine[]>> {
+  const result = new Map<string, NoteProposalLine[]>();
   if (noteIds.length === 0) return result;
   const rows = await q
-    .select({ noteId: proposalNotes.noteId, id: proposals.id, title: proposals.title, status: proposals.status })
+    .select({ noteId: proposalNotes.noteId, id: proposals.id })
     .from(proposalNotes)
     .innerJoin(proposals, eq(proposals.id, proposalNotes.proposalId))
     .where(inArray(proposalNotes.noteId, noteIds))
     .orderBy(asc(proposals.createdAt), asc(proposals.id));
-  for (const { noteId, ...proposal } of rows) {
-    result.set(noteId, [...(result.get(noteId) ?? []), proposal]);
+  const fields = await titleFieldsFor(
+    q,
+    rows.map((row) => row.id),
+  );
+  for (const { noteId, id } of rows) {
+    const line = fields.get(id);
+    if (line) result.set(noteId, [...(result.get(noteId) ?? []), { id, ...line }]);
   }
   return result;
 }
@@ -879,36 +1062,63 @@ export async function loadProposalComments(q: Queryable, proposalId: string): Pr
 
 // ------------------------------------------------------------- describing
 
-function sectionLabel(tree: SectionNode[], id: string | null): string {
+/** Stored names of sections by id, for naming one that is no longer among the sections. */
+export type StoredSectionNames = ReadonlyMap<string, string>;
+
+/**
+ * The stored names a proposal carries: of the section it is about and, for
+ * a move, of the section it would go under. For `describeStructure`.
+ */
+export function storedSectionNames(
+  view: Pick<ProposalView, "sectionId"> &
+    Partial<Pick<ProposalView, "sectionTitle" | "destinationTitle" | "structureChange">>,
+): StoredSectionNames {
+  const names = new Map<string, string>();
+  if (view.sectionId && view.sectionTitle) names.set(view.sectionId, view.sectionTitle);
+  const change = view.destinationTitle ? readStructureChange(view.structureChange) : null;
+  if (change?.action === "move" && change.parentId) names.set(change.parentId, view.destinationTitle as string);
+  return names;
+}
+
+/**
+ * "2.3 Hiring" for a section that is among the sections now. For one that is
+ * not (archived, or under an archived section): its stored name, "Hiring
+ * (archived)", when `names` has it.
+ */
+function sectionLabel(tree: SectionNode[], id: string | null, names?: StoredSectionNames): string {
   if (!id) return "the top level";
   const node = findNode(tree, id);
-  return node ? `${node.number} ${node.title}` : "a section that has been archived";
+  if (node) return `${node.number} ${node.title}`;
+  const stored = names?.get(id);
+  return stored ? `${stored} (archived)` : "a section that has been archived";
 }
 
 /**
  * One plain sentence saying what a structure proposal does, using the
- * sections' names and numbers as they are right now.
+ * sections' names and numbers as they are right now. `names` (see
+ * `storedSectionNames`) lets it name a section that is no longer among the
+ * sections: "Move 5.2 Signage under Marketing and Events (archived)".
  */
 export function describeStructure(
   tree: SectionNode[],
   sectionId: string | null,
   change: StructureChange,
+  names?: StoredSectionNames,
 ): string {
   const known = readStructureChange(change);
   if (!known) return UNREADABLE_CHANGE_SENTENCE;
+  const label = (id: string | null) => sectionLabel(tree, id, names);
   switch (known.action) {
     case "add":
-      return sectionId
-        ? `Add a section "${known.title}" under ${sectionLabel(tree, sectionId)}`
-        : `Add a top-level section "${known.title}"`;
+      return sectionId ? `Add a section "${known.title}" under ${label(sectionId)}` : `Add a top-level section "${known.title}"`;
     case "rename":
-      return `Rename ${sectionLabel(tree, sectionId)} to "${known.title}"`;
+      return `Rename ${label(sectionId)} to "${known.title}"`;
     case "move":
       return known.parentId
-        ? `Move ${sectionLabel(tree, sectionId)} under ${sectionLabel(tree, known.parentId)}`
-        : `Move ${sectionLabel(tree, sectionId)} to the top level`;
+        ? `Move ${label(sectionId)} under ${label(known.parentId)}`
+        : `Move ${label(sectionId)} to the top level`;
     case "archive":
-      return `Archive ${sectionLabel(tree, sectionId)}`;
+      return `Archive ${label(sectionId)}`;
   }
 }
 
@@ -1191,6 +1401,12 @@ async function outOfDateWords(tx: Tx, row: ProposalRow): Promise<string> {
  * Under the same lock the database checks that the proposal has not just
  * been declined or withdrawn. An Advisor's endorsement cannot take that lock
  * beforehand, so for them this is the check that counts.
+ *
+ * Says whether a row was added. It is not when this person's approval or
+ * endorsement is already there, which happens when the same button press
+ * arrives twice at the same moment: the second is then simply not needed
+ * (the database allows one per person, and the checks above have still been
+ * made for it).
  */
 async function addStamp(
   tx: Tx,
@@ -1198,13 +1414,15 @@ async function addStamp(
   row: Pick<ProposalRow, "id" | "proposedBy">,
   stamp: { userId: string; revision: number; now: Date },
   verb: "approve" | "endorse",
-): Promise<void> {
+): Promise<boolean> {
   // Looked up first: once the database has refused a row, nothing more can
   // be read in this transaction.
   const proposerName = await nameOf(tx, row.proposedBy);
-  await tx
+  const added = await tx
     .insert(table)
     .values({ proposalId: row.id, userId: stamp.userId, revision: stamp.revision, createdAt: stamp.now })
+    .onConflictDoNothing()
+    .returning({ id: table.id })
     .catch((error: unknown) => {
       const refusedWith = sqlState(error);
       if (refusedWith === STALE_REVISION) throw new AppError(changedAfterOpening(proposerName, verb));
@@ -1215,6 +1433,20 @@ async function addStamp(
       }
       throw error;
     });
+  return added.length > 0;
+}
+
+/**
+ * The title an activity log line about a proposal carries. A direct edit or
+ * a restore has no written title of its own ("Edited directly"), so the line
+ * names its section and version, in the same words lists use
+ * (`displayTitle`): "Edited directly: 2.1 Wages (version 3)". Anything else
+ * goes by its stored title.
+ */
+async function titleForLog(tx: Tx, row: ProposalRow): Promise<string> {
+  if (!row.direct) return row.title;
+  const fields = (await titleFieldsFor(tx, [row.id])).get(row.id);
+  return fields ? displayTitle(fields, await loadTree(tx)) : row.title;
 }
 
 // -------------------------------------------------------------- proposing
@@ -1405,6 +1637,62 @@ export async function editProposal(
 // --------------------------------------------------------------- deciding
 
 /**
+ * Why a section change that was fine when it was proposed can no longer be
+ * carried out, with the sections as they are now. A few plain words that
+ * read on after "This can no longer be done as proposed: ". Null when it
+ * still can. (The section itself being gone is told separately, before this
+ * is asked.)
+ *
+ * Two sections with the same name under one parent are allowed everywhere
+ * in the app, so an "add" is not refused for that.
+ */
+function noLongerPossible(tree: SectionNode[], sectionId: string | null, change: StructureChange): string | null {
+  const section = sectionId ? findNode(tree, sectionId) : null;
+  switch (change.action) {
+    case "add":
+      return section && section.depth >= MAX_DEPTH ? "it would put the new section more than three levels deep" : null;
+    case "rename":
+      return section && section.title === checkSectionTitle(change.title)
+        ? `the section is already called "${section.title}"`
+        : null;
+    case "move":
+      switch (sectionId ? moveProblemKind(tree, sectionId, change.parentId) : null) {
+        case "already_there":
+          return "the section is already there";
+        case "destination_gone":
+          return "the section it would go under no longer exists (it may have been archived)";
+        case "under_itself":
+          return "a section cannot go under itself or under one of its own subsections";
+        case "too_deep":
+          return "it would put sections more than three levels deep";
+        default:
+          return null;
+      }
+    case "archive":
+      return null;
+  }
+}
+
+/**
+ * What the person approving is told when a section change can no longer be
+ * carried out: why, and what they can do about it. They cannot choose again
+ * (that was the proposer's form), so the way forward is to decline it, or
+ * for its proposer to change or withdraw it.
+ */
+async function cannotBeDoneNow(tx: Tx, actor: Actor, row: ProposalRow, reason: string): Promise<string> {
+  const [who] = row.proposedBy
+    ? await tx.select({ name: users.name, removedAt: users.removedAt }).from(users).where(eq(users.id, row.proposedBy))
+    : [];
+  const whatNow =
+    row.proposedBy === actor.id
+      ? "Change it, or withdraw it."
+      : who && who.removedAt === null
+        ? `Decline it, or ask ${who.name} to change or withdraw it.`
+        : "Decline it.";
+  return `This can no longer be done as proposed: ${reason}. ${whatNow}`;
+}
+
+/**
  * Mark the proposal approved and apply its change, in the transaction that
  * is already open. If the change cannot be applied, the error undoes
  * everything, including the approval just recorded.
@@ -1430,21 +1718,29 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, ifOut
     // was proposed may no longer say what is being approved.
     const decidedTitle = describeStructure(tree, row.sectionId, change);
     recordedTitle = decidedTitle;
+    // The section it is about must still be there (for "add": the section
+    // to add it under, unless it goes to the top level).
+    if (change.action === "add" ? row.sectionId && !findNode(tree, row.sectionId) : !row.sectionId || !findNode(tree, row.sectionId)) {
+      throw new AppError(SECTION_GONE);
+    }
+    // And the sections must not have changed, while it waited, in a way
+    // that leaves nothing to carry out.
+    const reason = noLongerPossible(tree, row.sectionId, change);
+    if (reason) throw new AppError(await cannotBeDoneNow(tx, actor, row, reason));
     if (change.action === "add") {
-      if (row.sectionId && !findNode(tree, row.sectionId)) throw new AppError(SECTION_GONE);
       const createdSectionId = await createSectionIn(tx, actor, { parentId: row.sectionId, title: change.title });
       await tx.update(proposals).set({ ...decided, decidedTitle, createdSectionId }).where(eq(proposals.id, row.id));
     } else {
-      if (!row.sectionId || !findNode(tree, row.sectionId)) throw new AppError(SECTION_GONE);
+      const sectionId = row.sectionId as string;
       switch (change.action) {
         case "rename":
-          await renameSectionIn(tx, actor, row.sectionId, change.title);
+          await renameSectionIn(tx, actor, sectionId, change.title);
           break;
         case "move":
-          await moveSectionToIn(tx, actor, row.sectionId, change.parentId);
+          await moveSectionToIn(tx, actor, sectionId, change.parentId);
           break;
         case "archive":
-          await archiveSectionIn(tx, actor, row.sectionId);
+          await archiveSectionIn(tx, actor, sectionId);
           break;
         default: {
           // A kind of change added later must be handled here on purpose.
@@ -1503,8 +1799,7 @@ async function recordApproval(
   now: Date,
 ): Promise<boolean> {
   if ((await approvalsOf(tx, row.id)).some((a) => a.userId === actor.id)) return false;
-  await addStamp(tx, approvals, row, { userId: actor.id, revision, now }, "approve");
-  return true;
+  return addStamp(tx, approvals, row, { userId: actor.id, revision, now }, "approve");
 }
 
 /**
@@ -1625,12 +1920,17 @@ export async function addApproval(actor: Actor, id: string, options: { now?: Dat
       action: "proposal.approval_added",
       entityType: "proposal",
       entityId: id,
-      summary: `Added their approval: ${row.title}`,
+      summary: `Added their approval: ${await titleForLog(tx, row)}`,
     });
   });
 }
 
-/** Decline someone else's open proposal, with an optional reason. Nothing is applied. */
+/**
+ * Decline someone else's open proposal, with an optional reason. Nothing is
+ * applied. The reason is kept exactly as typed, spaces at its ends and line
+ * breaks included; one that is all blank counts as no reason. The length
+ * limit is on what was typed.
+ */
 export async function declineProposal(
   actor: Actor,
   id: string,
@@ -1638,10 +1938,11 @@ export async function declineProposal(
   options: { now?: Date } = {},
 ): Promise<void> {
   assertCan(actor, "approve");
-  const text = typeof reason === "string" ? reason.trim() : "";
-  if (text.length > MAX_REASON_LENGTH) {
+  const typed = typeof reason === "string" ? reason : "";
+  if (typed.length > MAX_REASON_LENGTH) {
     throw new AppError(`Keep the reason under ${MAX_REASON_LENGTH} characters, or leave a comment instead.`);
   }
+  const text = typed.trim().length === 0 ? "" : typed;
   const now = options.now ?? new Date();
   await asUser(actor.id, async (tx) => {
     const row = await lockProposal(tx, id);
@@ -1718,12 +2019,15 @@ export async function endorseProposal(
     // again under a lock (see addStamp), which is what holds if the proposer
     // saves a change at this very moment.
     await checkSeen(tx, row, { revision: seen.revision }, "endorse");
-    await addStamp(tx, endorsements, row, { userId: actor.id, revision: seen.revision, now }, "endorse");
+    const added = await addStamp(tx, endorsements, row, { userId: actor.id, revision: seen.revision, now }, "endorse");
+    // Pressed twice at the same moment, and the other press got there first:
+    // their endorsement is on it, once, and the log says so once.
+    if (!added) return;
     await logActivity(tx, actor.id, {
       action: "proposal.endorsed",
       entityType: "proposal",
       entityId: id,
-      summary: `Endorsed: ${row.title}`,
+      summary: `Endorsed: ${await titleForLog(tx, row)}`,
     });
   });
 }
@@ -1744,7 +2048,7 @@ export async function addProposalComment(actor: Actor, id: string, rawBody: unkn
       action: "comment.added",
       entityType: "proposal",
       entityId: id,
-      summary: `Commented on the proposal: ${row.title}`,
+      summary: `Commented on the proposal: ${await titleForLog(tx, row)}`,
       data: { commentId: created.id },
     });
     return created.id;

@@ -298,27 +298,41 @@ function heightOf(node: SectionNode): number {
   return 1 + Math.max(0, ...node.children.map(heightOf));
 }
 
+/** The reasons a section cannot be moved somewhere. */
+export type MoveProblem = "gone" | "already_there" | "destination_gone" | "under_itself" | "too_deep";
+
 /**
  * Why a section cannot be moved under `parentId` (null = top level), or null
- * if it can. Used when a move is proposed and again when it is approved.
+ * if it can. Used when a move is proposed and again when it is approved;
+ * each of the two puts the reason in its own words.
  */
-export function moveProblem(tree: SectionNode[], id: string, parentId: string | null): string | null {
+export function moveProblemKind(tree: SectionNode[], id: string, parentId: string | null): MoveProblem | null {
   const path = pathTo(tree, id);
   const node = path.at(-1);
-  if (!node) return GONE;
+  if (!node) return "gone";
   const currentParentId = path.at(-2)?.id ?? null;
-  if (currentParentId === parentId) return "That section is already there.";
+  if (currentParentId === parentId) return "already_there";
   if (parentId === null) return null;
   const targetPath = pathTo(tree, parentId);
   const target = targetPath.at(-1);
-  if (!target) return "The section to move it under no longer exists. Reload the page and choose again.";
-  if (targetPath.some((step) => step.id === id)) {
-    return "A section cannot be moved under itself or under one of its own subsections.";
-  }
-  if (target.depth + heightOf(node) > MAX_DEPTH) {
-    return "That would put sections more than three levels deep (for example 1.1.1.1).";
-  }
+  if (!target) return "destination_gone";
+  if (targetPath.some((step) => step.id === id)) return "under_itself";
+  if (target.depth + heightOf(node) > MAX_DEPTH) return "too_deep";
   return null;
+}
+
+/** The same, in words for the person who is choosing where to move it (a form they can change). */
+const MOVE_PROBLEM_WORDS: Record<MoveProblem, string> = {
+  gone: GONE,
+  already_there: "That section is already there.",
+  destination_gone: "The section to move it under no longer exists. Reload the page and choose again.",
+  under_itself: "A section cannot be moved under itself or under one of its own subsections.",
+  too_deep: "That would put sections more than three levels deep (for example 1.1.1.1).",
+};
+
+export function moveProblem(tree: SectionNode[], id: string, parentId: string | null): string | null {
+  const kind = moveProblemKind(tree, id, parentId);
+  return kind ? MOVE_PROBLEM_WORDS[kind] : null;
 }
 
 /**

@@ -125,7 +125,7 @@ describe("which buttons a proposal shows", () => {
     const benefits = await sectionId("Benefits");
     await saveOfficial(kale, benefits, doc("One free coffee per shift."), { now: at("2026-11-14") });
     const [direct] = await asSystem(async (db) => listDecisions(db, await loadTree(db), { sectionId: benefits }));
-    expect(displayTitle(direct, await tree())).toBe("Edited directly: 2.2 Benefits");
+    expect(displayTitle(direct, await tree())).toBe("Edited directly: 2.2 Benefits (version 1)");
     expect(statusLine(direct)).toBe("Approved by Kale, Nov 14, 2026");
   });
 });

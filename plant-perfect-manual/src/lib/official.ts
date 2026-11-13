@@ -5,7 +5,7 @@ import { approvals, endorsements, officialVersions, proposals, sections, users }
 import { logActivity } from "./activity";
 import { type Actor, AppError, assertCan } from "./permissions";
 import { type RichDoc, docToText, sameDoc, sanitizeDoc } from "./richtext";
-import { isUuid } from "./sections";
+import { findNode, isUuid, loadTree } from "./sections";
 import { formatDate } from "./time";
 
 /**
@@ -160,6 +160,17 @@ export async function lockSection(tx: Tx, sectionId: string): Promise<typeof sec
   return row ?? null;
 }
 
+/**
+ * Lock a section for a direct change to its official text, and refuse one
+ * that is not among the sections any more: archived, or under a section
+ * that was archived (the same test approving a proposal uses).
+ */
+async function lockSectionInUse(tx: Tx, sectionId: string): Promise<typeof sections.$inferSelect> {
+  const section = await lockSection(tx, sectionId);
+  if (!section || !findNode(await loadTree(tx), section.id)) throw new AppError(GONE);
+  return section;
+}
+
 /** "Kale", "Kale and Casey", "Kale, Casey and Sam" */
 export function joinNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
@@ -279,7 +290,9 @@ async function saveDirectly(
  *
  * `baseVersionId` is the version the person had on screen when they started
  * (null if there was none). If someone else has changed the text since, the
- * save is refused so their change is not silently undone.
+ * save is refused so their change is not silently undone. Saving exactly
+ * what the official text already says changes nothing and is never refused
+ * for that reason.
  */
 export async function saveOfficial(
   actor: Actor,
@@ -295,14 +308,17 @@ export async function saveOfficial(
 
   return asUser(actor.id, async (tx) => {
     // First of all: one change to this section's official text at a time.
-    const section = await lockSection(tx, sectionId);
-    if (!section || section.archivedAt) throw new AppError(GONE);
+    const section = await lockSectionInUse(tx, sectionId);
     const current = await latestVersionRow(tx, sectionId);
-    if (options.baseVersionId !== undefined && (current?.id ?? null) !== options.baseVersionId) {
-      throw new AppError(CHANGED_MEANWHILE);
-    }
+    // The official text already says exactly this: nothing to save. Asked
+    // before the next check on purpose. When a save went through but its
+    // answer was lost (a phone without signal), pressing Save again on the
+    // same page must not be told that someone else changed the text.
     if (current && sameDoc(current.content as RichDoc, content)) {
       return { changed: false, version: current.version };
+    }
+    if (options.baseVersionId !== undefined && (current?.id ?? null) !== options.baseVersionId) {
+      throw new AppError(CHANGED_MEANWHILE);
     }
     if (!current && contentText.length === 0) {
       return { changed: false, version: null };
@@ -344,8 +360,7 @@ export async function restoreVersion(
   const now = options.now ?? new Date();
   return asUser(actor.id, async (tx) => {
     // First of all: one change to this section's official text at a time.
-    const section = await lockSection(tx, sectionId);
-    if (!section || section.archivedAt) throw new AppError(GONE);
+    const section = await lockSectionInUse(tx, sectionId);
     const [old] = isUuid(versionId)
       ? await tx.select().from(officialVersions).where(eq(officialVersions.id, versionId))
       : [];
