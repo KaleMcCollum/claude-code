@@ -111,6 +111,15 @@
       st.parcels[p.id] = dyn;
     }
     for (const p of world.parcels) initParcelHerd(p.id);
+    { // the map lives a few seasons before you arrive, so year one is an ordinary year and not a boom
+      const S0 = C().deer.settle; st.worldSim = { adj: S0.adj, drift: 0, fawn: S0.fawn };
+      for (let k = 0; k < S0.years; k++) {
+        const props = world.parcels.map((p) => { const pr = makeProp(p.id); pr.neighbors = [...p.neighbors]; pr.npcStyle = st.parcels[p.id].npcStyle; return pr; });
+        const res = WT.worldYear(props, rng, { winter: rng.range(0.2, 0.6), yearFactor: 1, seasonMortalityApplied: false }, st.worldSim);
+        st.worldSim = res.world;
+        props.forEach((pr, i) => { const d = st.parcels[world.parcels[i].id]; d.herd = pr.herd; d.capacity = pr.capacity; });
+      }
+    }
     // neighbors' stands on parcels that sell permission
     for (const p of world.parcels) {
       const d = st.parcels[p.id];
@@ -159,7 +168,7 @@
   function initParcelHerd(pid) {
     const p = G.world.parcels[pid], d = S().parcels[pid];
     const prop = makeProp(pid);
-    WT.initHerd(prop, G.rng);
+    WT.initHerd(prop, G.rng, C().deer.settle.own);
     d.herd = prop.herd; d.capacity = prop.capacity; d.pressure = prop.huntingPressure;
   }
 
@@ -374,6 +383,21 @@
   WT.geneTile = function (x, y) { const w = G.world, yr = S().year || 1; if (w._geneTYr !== yr || !w._geneT) { w._geneT = new Float32Array(w.W * w.H).fill(NaN); w._geneTYr = yr; } const i = y * w.W + x; if (w._geneT[i] !== w._geneT[i]) w._geneT[i] = WT.geneField(w, x, y, yr - 1); return w._geneT[i]; };
   // How the genetics map lies across one property: its coldest, average and hottest ground.
   WT.geneRange = function (pid) { const w = G.world, p = w.parcels[pid]; let lo = 9, hi = -9, sum = 0, n = 0; const st = p.tiles > 1600 ? 2 : 1; for (let y = p.minY; y <= p.maxY; y += st) for (let x = p.minX; x <= p.maxX; x += st) { if (w.parcelOf[y * w.W + x] !== pid) continue; const g = WT.geneTile(x, y); if (g < lo) lo = g; if (g > hi) hi = g; sum += g; n++; } return n ? { lo, hi, avg: sum / n } : { lo: 0, hi: 0, avg: 0 }; };
+  /* The deer living on one property right now, how many it could carry, and a plain warning when the does are going
+     faster than the ground replaces them. A hundred acres raises only a few fawns a year. */
+  WT.herdReport = function (pid) {
+    const st = S(), p = G.world.parcels[pid], d = st.parcels[pid], herd = d.herd || [];
+    const does = herd.filter((x) => x.sex === 'd' && x.age >= 1.5).length, bucks = herd.filter((x) => x.sex === 'b' && x.age >= 1.5).length, fawns = herd.filter((x) => x.age < 1.5).length;
+    const taken = ((st.seasonLog && st.seasonLog.harvest) || []).filter((r) => r.sex === 'd' && r.age >= 1.5 && (r.pid === pid || (r.pid === undefined && r.parcel === p.name))).length;
+    const cap = d.capacity || makeProp(pid).capacity, fall = does + taken, share = fall ? taken / fall : 0;
+    let warn = null;
+    if (taken && share >= 0.4) warn = { level: 'bad', does: true, text: `You have taken ${taken} of the ${fall} does that lived here this fall. The place cannot replace that many. Expect fewer deer here next year.` };
+    else if (taken && share >= 0.25) warn = { level: 'warn', does: true, text: `You have taken ${taken} of the ${fall} does that lived here this fall. That is about all this ground replaces in a year.` };
+    else if (does === 0 && herd.length < cap * 0.6) warn = { level: 'bad', text: 'No does live here now. No fawns will be born on this ground until some move in.' };
+    else if (does <= 2 && herd.length < cap * 0.6) warn = { level: 'warn', text: `Only ${does} doe${does === 1 ? '' : 's'} left here. Each one you take now costs you next year's fawns.` };
+    else if (herd.length < cap * 0.5) warn = { level: 'warn', text: 'This ground is carrying about half the deer it could.' };
+    return { deer: herd.length, cap, does, bucks, fawns, taken, warn };
+  };
   WT.geneAt = function (pid) { const w = G.world, p = w.parcels[pid], yr = S().year || 1; if (w._geneYr !== yr) { w._gene = {}; w._geneYr = yr; } if (w._gene[pid] === undefined) w._gene[pid] = WT.geneField(w, p.cx, p.cy, yr - 1); return w._gene[pid]; };
 
   function contiguousAcres(pid) {
@@ -583,7 +607,7 @@
   WT.skillNow = function (k) {
     const st = S(), P = C().progression, K = P.skill, n = st.skills[k] || 0, cf = C().comfort, A = C().publicCrowd.access;
     switch (k) {
-      case 'shooting': return `+${Math.round(n * 0.8)} rifle accuracy, recoil bothers you ${Math.round(100 * n / 60)}% less`;
+      case 'shooting': return `+${Math.round(n * 0.8)} rifle accuracy, recoil bothers you ${Math.round(100 * n / 60)}% less, and long shots cost you ${Math.round(100 * n / P.rifleFall.skillFull)}% less`;
       case 'archery': return `starter bow good to ${WT.bowRange('bear_cruzer')} yd, the crossbow to ${WT.bowRange('ravin_r10')} yd`;
       case 'hiking': return `you can hunt about ${Math.round(Math.min(A.walkMax, WT.hikeReach() * A.walkMin * (1 - A.hikeFaster * n)) / 5) * 5} minutes from the road, and walk ${Math.round(100 * A.hikeFaster * n)}% faster`;
       case 'toughness': return `comfortable ${Math.round(n * K.toughness.cold)}°F colder than your clothes alone`;
@@ -1833,6 +1857,7 @@
     }
     let acc = r.acc * 0.55 + sc.acc + st.skills.shooting * 0.8 + H.sType.accuracy * 0.18 + 25;
     acc -= r.recoil * 0.15 * (1 - st.skills.shooting / 60);
+    { const F = C().progression.rifleFall; if (F && dist > F.from) acc -= (Math.min(dist, effRange) - F.from) * F.perYard * Math.max(0, 1 - st.skills.shooting / F.skillFull); } // farther is harder, even inside the rifle's reach
     if (dist > effRange) acc -= (dist - effRange) * 0.45;
     if (dist > 150) acc -= H.ranged[g.gid] ? 0 : (dist - 150) * 0.08;
     if (WT.lightFactor(H) < 1) acc -= 18 * (1 - sc.low / 100);
@@ -1914,7 +1939,7 @@
     const rec = {
       id: deer.id, y: st.year, d: st.day, sex: deer.sex, age: deer.age, lw: deer.lw, dw: Math.round(deer.lw * cfg.deer.weights.dressed),
       gross: deer.gross || 0, net: deer.net || 0, pL: deer.pL || 0, pR: deer.pR || 0, nt: !!deer.nt, abn: deer.abn || 0, sheet,
-      pay, xp: Math.round(xp), parcel: H.parcel.name, rifle: H.rifle.name, cal: H.rifle.cal, dist, label: WT.deerLabel(deer), session: H.setup.session, time: H.now,
+      pay, xp: Math.round(xp), parcel: H.parcel.name, pid: H.parcel.id, rifle: H.rifle.name, cal: H.rifle.cal, dist, label: WT.deerLabel(deer), session: H.setup.session, time: H.now,
       snap: WT.snapshot(deer), legal, tagUsed, hit: entry ? { name: entry.name, estAge: WT.estAgeNow(entry), status: entry.status, log: entry.log.slice(0, 12), photos: entry.photos.slice(0, 3), notes: entry.notes } : null,
       mount: null,
     };
@@ -2328,6 +2353,7 @@
     const TT = T();
     // this year's plots fed this year's deer: remember what they gave before the plots go back to dirt,
     // or next year's antlers would be grown as if nothing had been planted
+    for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') { const hr = WT.herdReport(p.id); if (hr.warn && hr.warn.does) summary.events.push(`${p.name}: ${hr.warn.text}`); }
     const plotFed = {};
     for (const p of w.parcels) if (st.parcels[p.id].owner === 'player') { const pr = makeProp(p.id); plotFed[p.id] = { food: pr.food, n: pr.plotNutrition || 0, c: pr.plotCapacity || 0, a: pr.plotAntler || 0 }; }
     for (const p of w.parcels) {

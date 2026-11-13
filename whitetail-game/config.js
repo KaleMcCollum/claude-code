@@ -51,6 +51,10 @@
          habitat: plot quality gained and share of planting cost saved, per point. */
       skill: { toughness: { cold: 0.35, heat: 0.2 }, composure: { fever: [[170, 24], [150, 18], [130, 13]], perPoint: 0.6, alertFull: 60 },
         judging: { reach: 0.0075, errorCut: 0.5 }, habitat: { quality: 0.006, cost: 0.0075 } },
+      /* A rifle shot gets a little harder with every yard past `from`, out to the rifle's rated reach (beyond that the
+         old, much steeper penalty takes over). perYard: accuracy points lost per yard for a new hunter; Marksmanship
+         takes it back, all of it at `skillFull` points. */
+      rifleFall: { from: 100, perYard: 0.12, skillFull: 80 },
       bowSkillStart: 0.5,             // a bow's reach is yours to earn: with no Archery you are good to this share of its maxYd, with full Archery all of it
     },
 
@@ -181,7 +185,16 @@
       yearlyVariance: 0.065,          // kept for old saves; antlers no longer follow a map-wide good or bad year
       offYear: { bad: 0.07, badBy: [0.06, 0.16], great: 0.08, greatBy: [0.04, 0.10] }, // one buck's own off year or exceptional year: share of bucks each year, and by how much
       nutrition: { antlers: 0.965, /* the one feed level every rack is grown on: where ordinary private land sat before */ min: 0.88, max: 1.06, fedCap: 1.0, overCapacityPenalty: 0.06 }, // fedCap: plots lift poor ground up to here and no further. Feed helps struggling land catch up; it does not beat naturally rich ground   // crowding costs a little; it must not cancel the food you planted
-      density: { poor: 4, elite: 14 },  // deer per 100 acres
+      density: { poor: 4.7, elite: 16.4 },  // deer per 100 acres. Raised 17% when the herd was made to hold level, so the settled map carries the big bucks the boom years used to
+      /* A new game starts settled. The map has two map-wide controls that hold the herd near what the land can carry:
+         how hard the neighbours hunt does and fawns (adj) and how many fawns survive (fawn). Left to find their own
+         level from 1.0 they take a dozen years, and meanwhile the herd swells 40% past capacity and falls back.
+         So a new game starts them where they settle and runs the whole map for `years` silent seasons before year
+         one, which also gives the herd the ages and sexes it really ends up with. own: seasons each property's herd is
+         aged by itself first (the old way; it leaves too many old bucks, so a new game does none).
+         level / gain: the controls answer in proportion each year: at `level` times what the land carries they sit at
+         adj and fawn; 10% over that and does are hunted about 20% harder and 20% fewer fawns make it (gain 2). */
+      settle: { adj: 1.44, fawn: 0.72, level: 1.03, gain: 2, years: 8, own: 0 },
       weights: {
         buck: { 0.5: [60, 95], 1.5: [125, 165], 2.5: [155, 200], 3.5: [185, 230], 4.5: [205, 285] },
         doe:  { 0.5: [55, 85], 1.5: [105, 135], 2.5: [120, 150], 3.5: [125, 160], 4.5: [125, 165] },

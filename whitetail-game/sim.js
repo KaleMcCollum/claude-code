@@ -1132,7 +1132,7 @@
   }
   WT.carryingCapacity = carryingCapacity;
 
-  function initHerd(prop, rng) {
+  function initHerd(prop, rng, ownYears = 6) {
     prop.capacity = carryingCapacity(prop);
     prop.herd = [];
     prop.huntingPressure = prop.type === 'public' ? (prop.pressFloor ?? (prop.bowOnly ? D().pressure.bowOnlyFloor : D().pressure.publicFloor)) : 0.05;
@@ -1145,8 +1145,10 @@
       else { sex = 'b'; age = rng.pick([1.5, 1.5, 1.5, 2.5, 2.5, 3.5, 4.5, 5.5]); }
       prop.herd.push(makeDeer(rng, sex, age, prop));
     }
-    // burn in so age structure and scores settle
-    for (let y = 0; y < 6; y++) yearCycle(prop, rng, { winter: rng.range(0.2, 0.6), yearFactor: 1 + rng.range(-0.05, 0.05), seasonMortalityApplied: false });
+    // burn in so age structure and scores settle, under the map-wide controls where they come to rest
+    { const S0 = D().settle; if (S0) { prop.harvestAdj = S0.adj; prop.fawnAdj = S0.fawn; } }
+    for (let y = 0; y < ownYears; y++) yearCycle(prop, rng, { winter: rng.range(0.2, 0.6), yearFactor: 1 + rng.range(-0.05, 0.05), seasonMortalityApplied: false });
+    delete prop.harvestAdj; delete prop.fawnAdj;
   }
   WT.initHerd = initHerd;
 
@@ -1357,12 +1359,16 @@
         for (let k = 0; k < n; k++) p.herd.push(makeDeer(rng, rng.chance(0.55) ? 'b' : 'd', rng.pick([1.5, 1.5, 2.5]), p));
       }
     }
-    // stabilizer: nudge NPC harvest when the world drifts outside 0.8-1.15 of capacity for several years
-    const ratio = total / Math.max(1, cap);
-    world.drift = ratio > 1.1 ? Math.max(1, world.drift + 1) : ratio < 0.85 ? Math.min(-1, world.drift - 1) : 0;
-    if (world.drift >= 2) { world.adj = Math.min(1.6, world.adj * 1.06); world.fawn = Math.max(0.6, world.fawn * 0.95); }
-    else if (world.drift <= -2) { world.adj = Math.max(0.6, world.adj / 1.06); world.fawn = Math.min(1.25, world.fawn / 0.95); }
-    else { world.adj += (1 - world.adj) * 0.1; world.fawn += (1 - world.fawn) * 0.1; }
+    // stabilizer: the more deer the map holds over what the land can carry, the harder the neighbours hunt does and the
+    // fewer fawns make it; under it, the reverse. It answers the same year, in proportion, and rests at the settled values.
+    const ratio = total / Math.max(1, cap), S0 = D().settle;
+    if (S0 && S0.gain) { const e = Math.pow(clamp(ratio / S0.level, 0.6, 1.6), S0.gain), ta = clamp(S0.adj * e, 0.6, 2.4), tf = clamp(S0.fawn / e, 0.35, 1.25);
+      world.adj += (ta - world.adj) * 0.6; world.fawn += (tf - world.fawn) * 0.6; world.drift = 0; }
+    else { // the old way: wait for two years outside the band, then creep
+      world.drift = ratio > 1.1 ? Math.max(1, world.drift + 1) : ratio < 0.85 ? Math.min(-1, world.drift - 1) : 0;
+      if (world.drift >= 2) { world.adj = Math.min(1.6, world.adj * 1.06); world.fawn = Math.max(0.6, world.fawn * 0.95); }
+      else if (world.drift <= -2) { world.adj = Math.max(0.6, world.adj / 1.06); world.fawn = Math.min(1.25, world.fawn / 0.95); }
+      else { world.adj += (1 - world.adj) * 0.1; world.fawn += (1 - world.fawn) * 0.1; } }
     return { world, moved, lost, ratio, logs };
   }
   WT.worldYear = worldYear;
