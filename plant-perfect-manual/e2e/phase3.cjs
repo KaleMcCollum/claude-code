@@ -931,6 +931,13 @@ async function main() {
   await kale.getByRole("heading", { level: 1, name: "3.1 Store Hours" }).waitFor();
   check("the section shows the old text again, approved by Kale", (await kale.locator(".official-box .rich p").allInnerTexts()).join("|") === HOURS_V1.join("|") && (await kale.locator(".approval").innerText()) === approvedKale());
 
+  // A section that never had official text: no link to its history, and the page itself says so.
+  await goToSection(kale, "Company Overview", "1.1 Ownership and Roles");
+  const emptyHistoryLinks = await kale.getByRole("link", { name: "Version history" }).count();
+  await kale.goto(`${kale.url()}/history`);
+  await kale.getByRole("heading", { level: 1, name: "Version history" }).waitFor();
+  check("a section with no official text has no versions to show", emptyHistoryLinks === 0 && (await kale.getByText("No official text has been saved for this section yet.").isVisible()) && (await kale.locator(".version-list").count()) === 0);
+
   await goToSection(karen, "Hours and Daily Operations", "3.1 Store Hours");
   await karen.getByRole("link", { name: "Version history" }).click();
   await karen.getByRole("heading", { level: 1, name: "Version history" }).waitFor();
@@ -1259,9 +1266,13 @@ async function main() {
   await formatForm.getByLabel("Title", { exact: true }).fill(TICK_TITLE);
   await formatBox.waitFor();
   await formatBox.locator('input[type="checkbox"]').check();
+  // The link box is left open with an address typed the way the app's own example shows
+  // it (no https://). The browser's own check of that box must not hold the proposal back.
+  await formatForm.getByRole("button", { name: "Add or change a link" }).click();
+  await formatForm.getByLabel("Link address").fill("plantperfect.example.com");
   await formatForm.getByRole("button", { name: "Propose", exact: true }).click();
-  await kale.waitForURL(/\/proposals\/[0-9a-f-]{36}$/);
-  await kale.getByRole("heading", { level: 1, name: TICK_TITLE }).waitFor();
+  const tickSent = await eventually(() => /\/proposals\/[0-9a-f-]{36}$/.test(kale.url()), 15000);
+  check("Propose goes through with the link box left open", tickSent && (await eventually(() => kale.getByRole("heading", { level: 1, name: TICK_TITLE }).isVisible())), kale.url());
   const tickUrl = kale.url();
   check("a ticked checkbox is said in words", (await diffNote(kale).innerText().catch(() => "missing")) === "The words are the same. A checkbox was ticked or unticked.", await diffNote(kale).innerText().catch(() => "missing"));
   await kale.getByText("Full proposed text").click();
@@ -1451,8 +1462,9 @@ async function main() {
   const groupedRow = mobileFlagged.filter({ hasText: "Edited directly: 7.1 Vendor Contacts (version 3)" });
   const groupedLinks = groupedRow.locator(".earlier-changes").getByRole("link");
   check("on a phone the earlier changes to a section are listed under the newest, each easy to tap", (await groupedRow.locator(".earlier-changes").innerText()).startsWith("Earlier one-person changes to this section:") && (await groupedLinks.count()) === 2 && (await height(groupedLinks.first())) >= 36 && (await height(groupedLinks.last())) >= 36, `${await height(groupedLinks.first())} and ${await height(groupedLinks.last())}`);
-  await groupedRow.scrollIntoViewIfNeeded();
+  await groupedRow.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await shot(mobile, "p3-phone-17-today-grouped");
+  check("a tap flashes light gray, not the browser's blue", (await mobile.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("-webkit-tap-highlight-color"))) === "rgba(0, 0, 0, 0.08)", await mobile.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("-webkit-tap-highlight-color")));
   // Kale's second direct save of Benefits: replaced since by the approved proposal, and still flagged.
   const replacedRow = mobileFlagged.filter({ hasText: "Edited directly: 2.2 Benefits" });
   const mobileApproveToo = replacedRow.getByRole("button", { name: "I approve too: Edited directly: 2.2 Benefits (version 3)", exact: true });
@@ -1515,7 +1527,38 @@ async function main() {
   const kaleOverflow = await sidewaysOverflow(kaleMobile);
   check("on a phone the other Owner is told who has to check it, and has no Approve", (await kaleMobile.locator(".notice").filter({ hasText: "has changed since" }).innerText()) === "The official text of this section has changed since Casey proposed this. Casey needs to check the proposal against the new text and save it again before it can be approved." && (await approveButton(kaleMobile).count()) === 0 && kaleOverflow <= 0, `overflow ${kaleOverflow}px`);
   await shot(kaleMobile, "p3-phone-15-outdated-proposal-other", { fullPage: true });
+  // Kale starts changing a proposal of his on the computer and leaves it; then he saves
+  // a change to it from his phone. The copy on the computer is older than the proposal now.
+  await kale.goto(`${tickUrl}/edit`);
+  await kale.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
+  const tickEdit = kale.getByRole("form", { name: "Edit proposal" });
+  const tickBox = tickEdit.getByRole("textbox", { name: "Proposed official text" });
+  await tickBox.waitFor();
+  await tickBox.locator("p").first().click();
+  await kale.keyboard.press("End");
+  await kale.keyboard.type(" Typed on the computer.");
+  await eventually(async () => (await draftKeys(kale, "ppf:draft:proposal:")).length === 1);
+  await tickEdit.getByRole("link", { name: "Cancel" }).click();
+  await kale.waitForURL(tickUrl);
+  await kaleMobile.goto(`${tickUrl}/edit`);
+  await kaleMobile.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
+  const phoneEdit = kaleMobile.getByRole("form", { name: "Edit proposal" });
+  await phoneEdit.getByRole("textbox", { name: "Proposed official text" }).waitFor();
+  await phoneEdit.getByLabel("Title", { exact: true }).fill(`${TICK_TITLE} today`);
+  await phoneEdit.getByRole("button", { name: "Save changes" }).tap();
+  await kaleMobile.getByRole("heading", { level: 1, name: `${TICK_TITLE} today` }).waitFor();
   await kalePhone.close();
+  await kale.goto(`${tickUrl}/edit`);
+  await kale.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
+  await tickBox.waitFor();
+  const editOutdated = tickEdit.locator(".editor-outdated p");
+  check("a copy of an edit that is older than the proposal says so, and shows the proposal as saved", new RegExp(`^You typed this on ${DAY_TIME}, before this proposal was last changed\\. It does not include that change\\.$`).test(await editOutdated.innerText().catch(() => "missing")) && (await tickEdit.locator(".editor-current").getByRole("heading", { name: "The proposed text as it was last saved" }).isVisible()) && (await tickBox.innerText()).includes("Typed on the computer.") && (await tickEdit.getByLabel("Title", { exact: true }).inputValue()) === `${TICK_TITLE} today`, await editOutdated.innerText().catch(() => "missing"));
+  const sentEdit = await sentWhile(kale, () => tickEdit.getByRole("button", { name: "Save changes" }).click());
+  check("Save changes waits for his choice as well", sentEdit === 0 && (await tickEdit.getByRole("alert").innerText().catch(() => "missing")) === CHOOSE_FIRST, `${sentEdit} sent`);
+  await tickEdit.getByRole("button", { name: "Start over from the current text" }).click();
+  check("Start over from the current text drops the older copy of the edit", (await eventually(async () => !(await tickBox.innerText()).includes("Typed on the computer."))) && (await tickEdit.locator(".editor-outdated").count()) === 0 && (await draftKeys(kale, "ppf:draft:proposal:")).length === 0);
+  await tickEdit.getByRole("link", { name: "Cancel" }).click();
+  await kale.waitForURL(tickUrl);
   await mobileCheckLink.tap();
   await mobile.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
   const mobileEdit = mobile.getByRole("form", { name: "Edit proposal" });
