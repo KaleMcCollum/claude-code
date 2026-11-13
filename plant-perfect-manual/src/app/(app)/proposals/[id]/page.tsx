@@ -205,7 +205,8 @@ export default async function ProposalPage({ params, searchParams }: PageProps) 
                   {proposerName} needs to check the proposal against the new text and save it again
                   before it can be approved.
                 </p>
-              ) : mine ? (
+              ) : mine && can(user, "propose") ? (
+                // (Their own, with someone else's name on it already: Withdraw is theirs to press.)
                 <p className="notice">
                   The official text of this section has changed since you proposed this, and you can
                   no longer change it. Withdraw it and make a new proposal.

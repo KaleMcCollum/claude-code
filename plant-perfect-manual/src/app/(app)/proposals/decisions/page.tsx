@@ -167,14 +167,14 @@ export default async function DecisionsLogPage({ searchParams }: { searchParams:
                   {PROPOSAL_TYPE_LABELS[view.type]}
                   {view.businessTag && ` · ${BUSINESS_LABELS[view.businessTag]}`}
                 </p>
+                {/* On a line of its own, as on Today. */}
+                {view.superseded && <p className="muted small">No longer the current text</p>}
                 {approved && <p className="approved">{approved}</p>}
                 {view.endorsements.map((endorsement) => (
                   <p key={endorsement.userId} className="endorsements">
                     {endorsementLine(endorsement)}
                   </p>
                 ))}
-                {/* On a line of its own, as on Today. */}
-                {view.superseded && <p className="muted small">No longer the current text</p>}
               </li>
             );
           })}

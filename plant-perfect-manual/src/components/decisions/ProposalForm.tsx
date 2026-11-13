@@ -40,7 +40,12 @@ type Props = {
    * something older.
    */
   baseId?: string | null;
-  /** A new text proposal: the section's official text as it is now, for reading. */
+  /**
+   * The saved text the editor starts from, drawn for reading: the section's
+   * official text as it is now (a new proposal), or the proposed text as it
+   * was last saved (editing). Shown next to a copy from this device that was
+   * typed against something older.
+   */
   currentText?: React.ReactNode;
   /**
    * Editing a text proposal: the section's official version when the page
@@ -281,6 +286,17 @@ export function ProposalForm({
     </div>
   );
 
+  // The note this proposal comes from, word for word. It is drawn by the page
+  // and handed over ready-made, and it sits alone in its wrapper: next to
+  // other lines, React's development build can take a piece handed over
+  // like this for an item of a list and complain that it has no key.
+  const noteBlock = fromNote ? (
+    <div className="field">
+      <p className="field-label">From this note</p>
+      <div>{fromNote}</div>
+    </div>
+  ) : null;
+
   /** When editing, what cannot be changed is shown as plain words. */
   const fixed = (label: string, value: string) => (
     <div className="field">
@@ -346,12 +362,7 @@ export function ProposalForm({
       )}
 
       {/* Coming from a note with no section chosen yet: the note is shown here already. */}
-      {isText && needsSection && fromNote && (
-        <div className="field">
-          <p className="field-label">From this note</p>
-          {fromNote}
-        </div>
-      )}
+      {needsSection && noteBlock}
 
       {isText && needsSection && (
         <div className="section-picker">
@@ -434,7 +445,8 @@ export function ProposalForm({
             />
           </div>
 
-          {aboveText}
+          {/* (Alone in its wrapper, for the same reason as the note above.) */}
+          {aboveText && <div>{aboveText}</div>}
 
           <div className="field">
             <p className="field-label">Proposed official text</p>
@@ -451,7 +463,9 @@ export function ProposalForm({
                 onReady={editorReady}
                 baseId={baseId}
                 currentText={currentText}
-                baseName={editing ? "this proposal" : undefined}
+                // Editing: a copy on this device can only be older than the
+                // proposal as it was last saved (from another device).
+                baseWords={editing ? { name: "this proposal", heading: "The proposed text as it was last saved" } : undefined}
               />
             )}
           </div>
@@ -536,7 +550,7 @@ export function ProposalForm({
                 })}
               {action === "move" && destinationGone && (
                 <p className="hint">
-                  The section it was going to move under is no longer there (it may have been
+                  The section it was going to move under can no longer be chosen (it may have been
                   archived). Choose where it should go.
                 </p>
               )}
@@ -564,12 +578,7 @@ export function ProposalForm({
             />
           </div>
 
-          {fromNote && (
-            <div className="field">
-              <p className="field-label">From this note</p>
-              {fromNote}
-            </div>
-          )}
+          {noteBlock}
 
           {error && (
             <p className="notice error" role="alert">

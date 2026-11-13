@@ -80,6 +80,13 @@ export default async function EditProposalPage({ params }: { params: Promise<{ i
           // it was saved then. If the proposal has been saved since (from
           // another device), the editor says so before that copy is used.
           baseId={`rev:${view.revision}`}
+          currentText={
+            view.proposedOfficial && (
+              <div className="official-box">
+                <RichText doc={view.proposedOfficial} />
+              </div>
+            )
+          }
           seenVersionId={official?.id ?? null}
           checking={view.outOfDate}
           aboveText={

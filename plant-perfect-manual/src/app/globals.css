@@ -814,6 +814,13 @@ p {
   margin-bottom: 16px;
 }
 
+/* It is there to be read: the buttons under official text, and the lines
+   about waiting proposals, are left out of it. */
+.editor-current .official-actions,
+.editor-current .official-notices {
+  display: none;
+}
+
 .editor-current > h3 {
   margin: 0 0 6px;
   font-size: 14px;
@@ -1192,8 +1199,8 @@ mark {
   /* The small gray links above a heading: easier to tap, without moving anything. */
   .crumbs a {
     display: inline-block;
-    margin: -13px 0;
-    padding: 13px 0;
+    margin: -14px 0;
+    padding: 14px 0;
   }
 
   .editor-outdated > .row {

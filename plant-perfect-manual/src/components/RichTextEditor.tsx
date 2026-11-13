@@ -110,8 +110,12 @@ type Shared = {
   baseId?: string | null;
   /** The saved text as it is now, drawn for reading, shown next to an out-of-date copy. */
   currentText?: React.ReactNode;
-  /** What the saved text is called in the out-of-date notice. Usually "the official text". */
-  baseName?: string;
+  /**
+   * What the saved text is called, where it is not the official text (a
+   * proposal being changed): `name` in the out-of-date notice ("before this
+   * proposal was last changed"), `heading` above `currentText`.
+   */
+  baseWords?: { name: string; heading: string };
 };
 
 /** The usual way: the editor has its own Save and Cancel buttons. */
@@ -160,6 +164,20 @@ function normalizeLink(input: string): string {
 }
 
 /**
+ * The editor's document as plain data, ready to be sent to the app.
+ *
+ * The editor hands out the settings of a block or of a link (a link's
+ * address, whether a checkbox is ticked, the size of a heading, where a
+ * numbered list starts) as objects of a special kind. Those are silently left
+ * out when a document is sent to the app as it is: the link would be saved
+ * as plain words, the checkbox unticked, a small heading as a large one.
+ * Copying the document through text turns them into ordinary data.
+ */
+function docOf(editor: { getJSON: () => unknown }): RichDoc {
+  return JSON.parse(JSON.stringify(editor.getJSON())) as RichDoc;
+}
+
+/**
  * Keep the unsaved text on this device (or drop the copy when there is
  * nothing to keep). `base` is what it was typed against.
  */
@@ -167,6 +185,8 @@ function keepCopy(draftKey: string, doc: RichDoc, dropIfEmpty: boolean, base: st
   if (dropIfEmpty && isEmptyDoc(doc)) clearDraft(draftKey);
   else writeDraft(draftKey, doc, base);
 }
+
+const OFFICIAL_TEXT_WORDS = { name: "the official text", heading: "The official text now" };
 
 /** Said when Save is pressed while an out-of-date copy is waiting for a choice. */
 const CHOOSE_FIRST = "Choose first: start over from the current text, or keep what you typed.";
@@ -193,7 +213,7 @@ export default function RichTextEditor({
   onReady,
   baseId,
   currentText,
-  baseName = "the official text",
+  baseWords = OFFICIAL_TEXT_WORDS,
 }: Props) {
   // Inside a form: the form has the button, this is only the text.
   const insideForm = onReady !== undefined;
@@ -261,7 +281,7 @@ export default function RichTextEditor({
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         timer.current = null;
-        keepCopy(draftKey, current.getJSON() as RichDoc, startsEmpty, baseRef.current);
+        keepCopy(draftKey, docOf(current), startsEmpty, baseRef.current);
       }, 400);
     },
   });
@@ -273,7 +293,7 @@ export default function RichTextEditor({
       if (!timer.current) return;
       clearTimeout(timer.current);
       timer.current = null;
-      keepCopy(draftKey, editor.getJSON() as RichDoc, startsEmpty, baseRef.current);
+      keepCopy(draftKey, docOf(editor), startsEmpty, baseRef.current);
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
@@ -336,9 +356,9 @@ export default function RichTextEditor({
         if (timer.current) {
           clearTimeout(timer.current);
           timer.current = null;
-          keepCopy(draftKey, editor.getJSON() as RichDoc, startsEmpty, baseRef.current);
+          keepCopy(draftKey, docOf(editor), startsEmpty, baseRef.current);
         }
-        return editor.getJSON() as RichDoc;
+        return docOf(editor);
       },
       getBase: () => baseRef.current ?? null,
       problem: () => (outOfDate ? CHOOSE_FIRST : null),
@@ -357,7 +377,7 @@ export default function RichTextEditor({
       setError(CHOOSE_FIRST);
       return;
     }
-    const doc = editor.getJSON() as RichDoc;
+    const doc = docOf(editor);
     // As in getDoc above: only what was typed a moment ago is written.
     if (timer.current) {
       stopTimer();
@@ -435,7 +455,7 @@ export default function RichTextEditor({
     stopTimer();
     setBase(baseId);
     setError(null);
-    keepCopy(draftKey, editor.getJSON() as RichDoc, startsEmpty, baseId);
+    keepCopy(draftKey, docOf(editor), startsEmpty, baseId);
   };
 
   const openLink = () => {
@@ -494,8 +514,8 @@ export default function RichTextEditor({
         <>
           <div className="notice editor-outdated">
             <p>
-              You typed this on {timeFormat.format(new Date(restoredAt ?? openedAt))}, before {baseName}{" "}
-              was last changed. It does not include that change.
+              You typed this on {timeFormat.format(new Date(restoredAt ?? openedAt))}, before{" "}
+              {baseWords.name} was last changed. It does not include that change.
             </p>
             <div className="row">
               <button type="button" className="btn-text" onClick={startOver}>
@@ -508,8 +528,9 @@ export default function RichTextEditor({
           </div>
           {currentText && (
             <div className="editor-current">
-              <h3>The official text now</h3>
-              {currentText}
+              <h3>{baseWords.heading}</h3>
+              {/* (Alone in its wrapper: it is handed over ready-made by the page.) */}
+              <div>{currentText}</div>
             </div>
           )}
         </>
@@ -647,7 +668,7 @@ export default function RichTextEditor({
             className="btn"
             disabled={saving}
             onClick={() => {
-              const nothingTyped = startsEmpty && isEmptyDoc(editor.getJSON() as RichDoc);
+              const nothingTyped = startsEmpty && isEmptyDoc(docOf(editor));
               if (changed && !nothingTyped) setConfirmDiscard(true);
               else discard();
             }}
