@@ -4,9 +4,26 @@
 <meta charset="utf-8">
 <title>Whitetail Country</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<!--pwa-->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Whitetail">
+<meta name="theme-color" content="#1c1410">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<!--/pwa-->
+<style>
+  /* The two fonts travel with the game (fonts/, SIL Open Font License), so it needs nothing from the internet. */
+  @font-face { font-family: 'Press Start 2P'; font-style: normal; font-weight: 400; font-display: swap; src: url(fonts/press-start-2p.woff2) format('woff2'); }
+  @font-face { font-family: 'VT323'; font-style: normal; font-weight: 400; font-display: swap; src: url(fonts/vt323.woff2) format('woff2'); }
+  @media (display-mode: standalone) {
+    body { padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+    body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: #1c1410; z-index: 40; }
+    #top { top: env(safe-area-inset-top, 0px) !important; }
+  }
+</style>
 <style>
   /* Layout: a lodge-wall dark wood frame; one pixel "stage" (16:9 canvas) on top, a text panel under it. */
   :root {
@@ -154,5 +171,11 @@
 <script src="ui-hunt.js"></script>
 <script src="ui-books.js"></script>
 <script>WTUI.boot();</script>
+<!--pwa-->
+<script>
+  // Installed to a phone's home screen, the game keeps a copy of itself so it opens with no signal.
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+</script>
+<!--/pwa-->
 </body>
 </html>
