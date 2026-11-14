@@ -1,0 +1,4 @@
+dist/
+# the owner's style reference is someone else's artwork: kept locally for comparison, not checked in
+art/style-reference.png
+tests/gallery/vs-reference.png
