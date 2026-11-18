@@ -11,6 +11,7 @@ import {
   approveAlone,
   approveProposal,
   createProposal,
+  declineProposal,
   describeStructure,
   displayTitle,
   endorseProposal,
@@ -21,9 +22,11 @@ import {
   sectionText,
   storedSectionNames,
   titleFieldsFor,
+  withdrawProposal,
 } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
-import { archiveSection, createSection, flattenTree, loadTree, renameSection, restoreSection } from "@/lib/sections";
+import { archiveSection, createSection, flattenTree, loadTree, moveSection, renameSection, restoreSection } from "@/lib/sections";
+import { changeUserRole, removeUser } from "@/lib/users";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
 withTestDatabase();
@@ -421,19 +424,126 @@ describe("activity log lines about a direct edit or a restore", () => {
       "Added their approval: Go with Holly Lumber",
     ]);
 
-    // A section proposal too: the log goes by the title it was proposed
-    // under, so its lines can be matched with one another, also after the
-    // section got another name.
+  });
+});
+
+describe("activity log lines about a section change", () => {
+  /** Karen endorses and comments while it is open; it is approved; then one more approval (if one person approved) and a comment. */
+  async function story(id: string, twoPeople: boolean): Promise<void> {
+    await endorseProposal(karen, id, { revision: 1 });
+    await addProposalComment(karen, id, doc("Looks right to me."));
+    if (twoPeople) await approveProposal(casey, id, { revision: 1 });
+    else {
+      await approveAlone(kale, id, { revision: 1 });
+      await addApproval(casey, id);
+    }
+    await addProposalComment(casey, id, doc("Agreed."));
+  }
+
+  it("read as the proposal read on screen at that moment, after the section got another name", async () => {
+    // Kale proposes to archive a section. Casey corrects the section's name
+    // on the Edit sections page. Kale approves on his own; Casey adds "I approve too".
+    const contacts = await sectionId("Vendor Contacts");
+    const place = (await numbered("Vendor Contacts")).split(" ")[0];
+    const archive = await createProposal(kale, { kind: "structure", change: { action: "archive", sectionId: contacts } });
+    expect((await view(archive)).title).toBe(`Archive ${place} Vendor Contacts`);
+    await renameSection(casey, contacts, "Vendor Contact List");
+    expect(await shown(archive)).toBe(`Archive ${place} Vendor Contact List`);
+    await story(archive, false);
+    // In lists it goes by the sentence it was approved under, and so does every line after "Proposed".
+    expect(await shown(archive)).toBe(`Archive ${place} Vendor Contact List`);
+    expect(await logLines(archive)).toEqual([
+      `Proposed: Archive ${place} Vendor Contacts`,
+      `Endorsed: Archive ${place} Vendor Contact List`,
+      `Commented on the proposal: Archive ${place} Vendor Contact List`,
+      `Approved by Kale: Archive ${place} Vendor Contact List`,
+      `Added their approval: Archive ${place} Vendor Contact List`,
+      `Commented on the proposal: Archive ${place} Vendor Contact List`,
+    ]);
+  });
+
+  it("and after the section got another number", async () => {
+    // A rename proposal; the section is moved up one place in the meantime.
+    const scheduling = await sectionId("Scheduling");
+    const before = await numbered("Scheduling");
+    const rename = await createProposal(kale, { kind: "structure", change: { action: "rename", sectionId: scheduling, title: "Schedules" } });
+    await moveSection(casey, scheduling, "up");
+    const after = await numbered("Scheduling");
+    expect(after).not.toBe(before);
+    expect(await shown(rename)).toBe(`Rename ${after} to "Schedules"`);
+    await story(rename, true);
+    // The section is called Schedules now. The lines written after the
+    // approval still carry the sentence that was approved.
+    expect(await numbered("Schedules")).toBe(after.replace("Scheduling", "Schedules"));
+    expect(await logLines(rename)).toEqual([
+      `Proposed: Rename ${before} to "Schedules"`,
+      `Endorsed: Rename ${after} to "Schedules"`,
+      `Commented on the proposal: Rename ${after} to "Schedules"`,
+      `Approved by Kale and Casey: Rename ${after} to "Schedules"`,
+      `Commented on the proposal: Rename ${after} to "Schedules"`,
+    ]);
+  });
+
+  it("all agree when nothing changed in between", async () => {
+    const deadlines = await sectionId("Order Deadlines");
+    const sentence = `Archive ${await numbered("Order Deadlines")}`;
+    const archive = await createProposal(kale, { kind: "structure", change: { action: "archive", sectionId: deadlines } });
+    await story(archive, false);
+    expect(await logLines(archive)).toEqual([
+      `Proposed: ${sentence}`,
+      `Endorsed: ${sentence}`,
+      `Commented on the proposal: ${sentence}`,
+      `Approved by Kale: ${sentence}`,
+      `Added their approval: ${sentence}`,
+      `Commented on the proposal: ${sentence}`,
+    ]);
+  });
+
+  it("an approval that leaves it waiting reads the same way", async () => {
+    // Three Owners, and the proposer has been made an Advisor: the first approval waits for a second.
+    const dana = await insertUser("Dana", "dana@example.com", "owner");
+    const robin = await insertUser("Robin", "robin@example.com", "owner");
+    const payments = await sectionId("Payments Log");
+    const place = (await numbered("Payments Log")).split(" ")[0];
+    const archive = await createProposal(robin, { kind: "structure", change: { action: "archive", sectionId: payments } });
+    await changeUserRole(kale, robin.id, "advisor");
+    await renameSection(casey, payments, "Payments");
+    await approveProposal(dana, archive, { revision: 1 });
+    expect(await logLines(archive)).toEqual([
+      `Proposed: Archive ${place} Payments Log`,
+      `Approved, waiting for Casey or Kale: Archive ${place} Payments`,
+    ]);
+    await removeUser(kale, dana.id);
+    await removeUser(kale, robin.id);
+  });
+
+  it("a declined or withdrawn one stays on the title it was proposed under, as it does in lists", async () => {
+    const quotes = await sectionId("Quotes");
     const place = await numbered("Quotes");
     const rename = await createProposal(kale, { kind: "structure", change: { action: "rename", sectionId: quotes, title: "Bids" } });
+    const archive = await createProposal(kale, { kind: "structure", change: { action: "archive", sectionId: quotes } });
     await renameSection(casey, quotes, "Quotes and Offers");
+    // While they are open, the lines read as the screen does.
+    expect(await shown(rename)).toBe(`Rename ${place} and Offers to "Bids"`);
     await endorseProposal(karen, rename, { revision: 1 });
     await addProposalComment(karen, rename, doc("Bids is shorter."));
-    expect(await shown(rename)).toBe(`Rename ${place} and Offers to "Bids"`);
+    await declineProposal(casey, rename, "Keep the longer name.");
+    await withdrawProposal(kale, archive);
+    await addProposalComment(karen, rename, doc("Fair enough."));
+    await addProposalComment(karen, archive, doc("Good, we still need it."));
+    expect(await shown(rename)).toBe(`Rename ${place} to "Bids"`);
+    expect(await shown(archive)).toBe(`Archive ${place}`);
     expect(await logLines(rename)).toEqual([
       `Proposed: Rename ${place} to "Bids"`,
-      `Endorsed: Rename ${place} to "Bids"`,
+      `Endorsed: Rename ${place} and Offers to "Bids"`,
+      `Commented on the proposal: Rename ${place} and Offers to "Bids"`,
+      `Declined: Rename ${place} to "Bids"`,
       `Commented on the proposal: Rename ${place} to "Bids"`,
+    ]);
+    expect(await logLines(archive)).toEqual([
+      `Proposed: Archive ${place}`,
+      `Withdrew their proposal: Archive ${place}`,
+      `Commented on the proposal: Archive ${place}`,
     ]);
   });
 });

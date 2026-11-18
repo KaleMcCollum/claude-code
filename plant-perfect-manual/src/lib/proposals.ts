@@ -1455,14 +1455,21 @@ async function addStamp(
 }
 
 /**
- * The title an activity log line about a proposal carries. A direct edit or
- * a restore has no written title of its own ("Edited directly"), so the line
- * names its section and version, in the same words lists use
- * (`displayTitle`): "Edited directly: 2.1 Wages (version 3)". Anything else
- * goes by its stored title.
+ * The title an activity log line about a proposal carries: what the
+ * proposal read as on screen at that moment (`displayTitle`).
+ *  - A direct edit or a restore has no written title of its own ("Edited
+ *    directly"), so the line names its section and version: "Edited
+ *    directly: 2.1 Wages (version 3)".
+ *  - A section change that is still open is described from the sections as
+ *    they are named and numbered now; an approved one goes by the sentence
+ *    it was approved under. So "Endorsed: Archive 2.2 Staff Benefits" says
+ *    what the person endorsing was shown, also when the section had another
+ *    name on the day the change was proposed. A declined or withdrawn one
+ *    goes by its stored title, as it does in lists.
+ *  - A written text proposal goes by its stored title.
  */
 async function titleForLog(tx: Tx, row: ProposalRow): Promise<string> {
-  if (!row.direct) return row.title;
+  if (!row.direct && row.type !== "structure") return row.title;
   const fields = (await titleFieldsFor(tx, [row.id])).get(row.id);
   return fields ? displayTitle(fields, await loadTree(tx)) : row.title;
 }
@@ -1881,7 +1888,7 @@ export async function approveProposal(
         entityType: "proposal",
         entityId: id,
         // One more approval is needed, and any one of these people can give it.
-        summary: `Approved, waiting for ${waitingFor.length > 0 ? orNames(waitingFor) : "another Owner"}: ${row.title}`,
+        summary: `Approved, waiting for ${waitingFor.length > 0 ? orNames(waitingFor) : "another Owner"}: ${await titleForLog(tx, row)}`,
       });
     }
     return { approved: false, waitingFor };
