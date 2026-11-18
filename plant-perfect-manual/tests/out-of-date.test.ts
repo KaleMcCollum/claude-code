@@ -36,8 +36,10 @@ withTestDatabase();
  * A waiting text proposal goes out of date when the official text of its
  * section changes: its proposer's approval was given on top of the older
  * text. Two people cannot approve it until the proposer has checked it
- * against the new text and saved it again. One person can still approve it
- * alone, which is flagged for the other Owner like any one-person decision.
+ * against the new text and saved it again. It can still be approved by one
+ * person alone (flagged for the other Owner like any one-person decision),
+ * but only while nobody else's approval is on it: in practice, only by its
+ * own proposer. (The stories behind that rule: tests/out-of-date-alone.test.ts.)
  */
 
 const doc = (...paragraphs: string[]): RichDoc => ({
@@ -299,7 +301,7 @@ describe("approving an out-of-date proposal on your own", () => {
     expect((await loadToday(casey)).decidedAlone.map((p) => p.id)).toContain(id);
   });
 
-  it("is the only way left when its proposer can no longer change it", async () => {
+  it("is not possible for anyone else, also when its proposer can no longer change it", async () => {
     const perennials = await section("Perennials");
     const annuals = await section("Annuals");
     const sam = await insertUser("Sam", "sam@example.com", "owner");
@@ -315,14 +317,20 @@ describe("approving an out-of-date proposal on your own", () => {
     expect(p).toMatchObject({ outOfDate: true, proposerCanChange: false });
     expect(waitingOn(p, await owners())).toEqual({ step: "stuck", ids: [casey.id, kale.id], names: ["Casey", "Kale"], needed: 0 });
     expect(waitingText(p, await owners(), casey.id)).toBe("The official text changed and it can no longer be approved. Decline it.");
-    expect(approveChoices(p, casey, await owners())).toEqual({ approve: false, alone: true });
-    await expect(approveProposal(casey, fromSam, (await page(fromSam)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
-    // One person can still make it official, which is flagged for the other.
-    await approveAlone(casey, fromSam, (await page(fromSam)).seen);
+    // Sam's approval is on it, and Sam never saw the newer text: nobody is
+    // offered either button, and neither press goes through.
+    for (const who of [casey, kale]) {
+      expect(approveChoices(p, who, await owners())).toEqual({ approve: false, alone: false });
+      await expect(approveProposal(who, fromSam, (await page(fromSam)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
+      await expect(approveAlone(who, fromSam, (await page(fromSam)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
+    }
     p = await view(fromSam);
-    expect(p).toMatchObject({ status: "approved", decidedAlone: true, soloOpen: true });
-    expect(await flaggedIds()).toContain(fromSam);
-    expect(canApproveToo(p, kale)).toBe(true);
+    expect(p.status).toBe("open");
+    expect(p.approvals.map((a) => a.name)).toEqual(["Sam"]);
+    expect(await officialText(perennials)).toBe("Perennials: to be decided.");
+    expect(await flaggedIds()).not.toContain(fromSam);
+    // The way forward is the one the message names.
+    await declineProposal(casey, fromSam, "The text has moved on.");
 
     // Karen endorsed Kale's proposal, so he can no longer change it either.
     p = await view(endorsed);

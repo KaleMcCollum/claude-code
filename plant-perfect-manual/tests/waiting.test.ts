@@ -219,10 +219,33 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
       expect(waitingOn(view, owners)).toEqual({ step: "stuck", ids: ids(KALE, CASEY), names: names(KALE, CASEY), needed: 0 });
       const STUCK = "The official text changed and it can no longer be approved. Decline it.";
       expect(reads(view, owners, KALE, CASEY, KAREN)).toEqual([STUCK, STUCK, STUCK]);
-      // One person can still make it official alone, never two.
-      expect(buttons(view, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: - / on my own"]);
+      // Sam's approval is on it, given before the official text changed. Sam
+      // cannot approve right now, but may be an Owner again tomorrow: nobody
+      // else may make it official alone, or it would read "approved by two".
+      expect(buttons(view, owners, KALE, CASEY, SAM)).toEqual(["Kale: - / -", "Casey: - / -", "Sam: - / -"]);
       const oneApproved = open(SAM, [SAM, CASEY], { outOfDate: true, proposerCanChange: false });
-      expect(buttons(oneApproved, owners, KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / on my own"]);
+      expect(buttons(oneApproved, owners, KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / -"]);
+    });
+
+    it("only its own proposer is offered Approve on my own, and only while nobody else's approval is on it", () => {
+      // Kale proposed it and is still an Owner; Karen (an Advisor) endorsed it, so he can no longer change it.
+      const endorsed = open(KALE, [KALE], {
+        outOfDate: true,
+        proposerCanChange: false,
+        endorsements: [{ userId: KAREN.id, name: KAREN.name, at: new Date("2026-11-11T18:00:00Z") }],
+      });
+      expect(buttons(endorsed, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: - / -"]);
+      // The same while it waits for his check.
+      const waitingForCheck = open(KALE, [KALE], { outOfDate: true, proposerCanChange: true });
+      expect(buttons(waitingForCheck, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: - / -"]);
+      // Someone else's approval is on it, whoever they are: not for him either.
+      for (const other of [CASEY, SAM]) {
+        const twoNames = open(KALE, [KALE, other], { outOfDate: true, proposerCanChange: false });
+        expect(buttons(twoNames, owners, KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / -"]);
+      }
+      // Not out of date: as before, only the people who can approve right now count.
+      const upToDate = open(SAM, [SAM]);
+      expect(buttons(upToDate, owners, KALE, CASEY)).toEqual(["Kale: Approve / on my own", "Casey: Approve / on my own"]);
     });
   });
 

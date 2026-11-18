@@ -62,8 +62,12 @@ import { addDays, centralDateKey, formatDate } from "./time";
  *    waits, the proposal is out of date: the proposer's approval was never
  *    given on top of the newer text, so two people cannot approve it until
  *    the proposer has checked it against the new text and saved it again
- *    (`editProposal` with the version their page showed). One person can
- *    still approve it alone, which is flagged like any one-person decision.
+ *    (`editProposal` with the version their page showed). It can still be
+ *    approved by one person alone, flagged like any one-person decision,
+ *    but only while nobody else's approval is on it, whoever they are and
+ *    whatever their role is now. The proposer's own approval is always on a
+ *    proposal, so in practice only its proposer can approve it alone;
+ *    everyone else declines it and proposes again in their own name.
  *  - Only the proposer can change or withdraw a proposal, and can change it
  *    only until someone else has approved or endorsed it. Another Owner
  *    declines it instead.
@@ -710,7 +714,10 @@ export async function changesNotApprovedBy(
  *  - `alone` ("Approve on my own"): nobody else who can approve has
  *    approved it, so they may make it official without waiting, as a
  *    one-person decision. For the proposer, and for a single Owner, this is
- *    the only one of the two.
+ *    the only one of the two. On a proposal that is out of date the test
+ *    is stricter: nobody else's approval may be on it at all, whether or
+ *    not that person can approve right now. An approval given before the
+ *    official text changed must never turn up later as the second one.
  */
 export function approveChoices(
   view: ProposalView,
@@ -724,7 +731,7 @@ export function approveChoices(
   const othersApproved = otherOwners.filter((owner) => approved.has(owner.id)).length;
   return {
     approve: !view.outOfDate && (mine ? othersApproved >= 1 : otherOwners.length >= 1),
-    alone: othersApproved === 0,
+    alone: view.outOfDate ? !view.approvals.some((a) => a.userId !== actor.id) : othersApproved === 0,
   };
 }
 
@@ -1885,10 +1892,17 @@ export async function approveProposal(
  * "Approve on my own": make it official now with this Owner's approval,
  * without waiting. It is flagged on Today so the other Owner sees it.
  *
- * On a proposal that is out of date this is allowed only when the result is
- * a one-person decision (which is flagged): if someone else who can approve
- * right now has approved it too, it would be recorded as approved by two
- * people, one of whom never saw the newer official text, so it is refused.
+ * On a proposal that is out of date this is allowed only while nobody
+ * else's approval is on it, whoever they are and whatever their role is
+ * now. Someone who cannot approve at this moment (made an Advisor, or
+ * removed) may be an Owner again tomorrow, and their approval from before
+ * the official text changed would then read as the second one. The
+ * proposer's own approval is always on a proposal, so in practice only its
+ * proposer can approve an out-of-date proposal alone.
+ *
+ * (This half is a rule of the app. The database refuses two people's
+ * approval of an out-of-date proposal, counting the people who can approve
+ * at that moment.)
  */
 export async function approveAlone(
   actor: Actor,
@@ -1904,12 +1918,8 @@ export async function approveAlone(
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
     const ifOutOfDate = await outOfDateWords(tx, row);
-    if (await isOutOfDate(tx, row)) {
-      const owners = await activeApprovers(tx);
-      const approvedBy = new Set((await approvalsOf(tx, id)).map((a) => a.userId));
-      // (Counted as it will stand once this person's own approval is on it.)
-      const counted = owners.filter((owner) => owner.id === actor.id || approvedBy.has(owner.id));
-      if (counted.length >= 2) throw new AppError(ifOutOfDate);
+    if ((await isOutOfDate(tx, row)) && (await approvalsOf(tx, id)).some((a) => a.userId !== actor.id)) {
+      throw new AppError(ifOutOfDate);
     }
     await recordApproval(tx, actor, row, seen.revision, now);
     await finalize(tx, actor, row, now, ifOutOfDate);

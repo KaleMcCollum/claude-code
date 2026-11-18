@@ -98,7 +98,11 @@ These hold whatever the app code does (see `drizzle/0007`, `0009` and
   approve right then. The app cannot set it.
 - Two people cannot approve a text proposal that is out of date: the
   official version it was written against (`base_version_id`) must still be
-  the newest version of its section. One person can approve it alone.
+  the newest version of its section. That is all the database refuses here:
+  it counts the people who can approve at that moment, so for the database
+  one person can approve an out-of-date proposal alone. "One person alone
+  only when nobody else's approval is on it" is a rule of the app
+  (`approveAlone`, `approveChoices`), not of the database.
 - An official version can only be added for an approved, non-structure
   proposal of the same section with the same words, by the person who
   decided it, in the same transaction that approved it. Each proposal
@@ -132,8 +136,10 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   official version any other way.
 - A waiting text proposal is out of date when its `baseVersionId` is not
   the section's current official version (`ProposalView.outOfDate`).
-  `approveProposal` refuses it; `approveAlone` goes through only when the
-  result is a one-person decision. Its proposer brings it up to date by
+  `approveProposal` refuses it; `approveAlone` goes through only while
+  nobody else's approval is on it, whoever they are and whatever their role
+  is now (so in practice only for its proposer; everyone else declines it
+  and proposes again). Its proposer brings it up to date by
   saving it again from an edit page that showed the current official text:
   `editProposal(actor, id, input, { currentVersionId })`. Without that last
   argument an edit leaves "written against" exactly as it was. A new
