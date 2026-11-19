@@ -1002,6 +1002,24 @@ export function canEndorse(view: ProposalView, actor: Actor): boolean {
 }
 
 /**
+ * What someone who can approve is asked, in place, before their endorsement
+ * is recorded. Endorsing cannot be undone and is not a softer kind of
+ * approval, so they are told. (Advisors, who cannot approve, endorse with
+ * one tap and are not asked.)
+ *
+ * For an open proposal the question ends by saying what else endorsing
+ * does: its proposer can no longer change it (`canEditProposal`), named so
+ * that the person knows whose proposal they are fixing in place. That
+ * sentence is left out for an approved proposal, where nothing can be
+ * changed anyway.
+ */
+export function endorseQuestion(view: Pick<ProposalView, "status" | "proposedByName">): string {
+  const question = "Endorse this? It adds your name in support. It does not approve it, and it cannot be taken back.";
+  if (view.status !== "open") return question;
+  return `${question} ${view.proposedByName ?? "The person who proposed it"} will no longer be able to change the proposal.`;
+}
+
+/**
  * True while the proposer may still change it: open, and nobody else has
  * approved or endorsed. Not while its section is gone: every change would
  * be refused.

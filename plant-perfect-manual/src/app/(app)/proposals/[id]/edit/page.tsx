@@ -9,7 +9,7 @@ import { requireUser } from "@/lib/auth/session";
 import { loadOfficial } from "@/lib/official";
 import { PROPOSAL_TYPE_LABELS, canEditProposal, loadProposal, sectionText } from "@/lib/proposals";
 import { docToLines, isEmptyDoc } from "@/lib/richtext";
-import { findNode, loadTree } from "@/lib/sections";
+import { loadTree } from "@/lib/sections";
 
 export const metadata: Metadata = { title: "Edit proposal" };
 
@@ -18,6 +18,8 @@ export const metadata: Metadata = { title: "Edit proposal" };
  * until someone else has approved or endorsed it. Anyone else is sent to the
  * proposal's page. So is the proposer when the section it is about is gone:
  * nothing saved from here could go through then (the proposal's page says so).
+ * `canEditProposal` answers all of that. (The form's "Save changes" asks it
+ * too before it has this page drawn again in place, see `redrawFormPage`.)
  */
 export default async function EditProposalPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -36,7 +38,6 @@ export default async function EditProposalPage({ params }: { params: Promise<{ i
   if (!data) notFound();
   const { view, tree, official } = data;
   if (!canEditProposal(view, user)) redirect(`/proposals/${view.id}`);
-  if (view.sectionId && !findNode(tree, view.sectionId)) redirect(`/proposals/${view.id}`);
 
   const change = view.structureChange;
   const why = view.description ? docToLines(view.description) : "";

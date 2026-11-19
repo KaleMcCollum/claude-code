@@ -30,14 +30,29 @@ export type ActionResult<T = never> =
  *
  * `work` may return nothing, a message for the person, or `{ data }` for the
  * screen that asked.
+ *
+ * `afterRefusal` runs when the change did not go through, for whatever
+ * reason, while the person is still signed in. The proposal form uses it to
+ * have its page drawn again in place (see `redrawFormPage` in the proposal
+ * actions). Whatever goes wrong inside it is ignored: the person still gets
+ * the reason the change was refused.
  */
 export async function runAction<T = never>(
   work: (actor: Actor) => Promise<string | void | { message?: string; data: T }>,
+  afterRefusal?: (actor: Actor) => Promise<void>,
 ): Promise<ActionResult<T>> {
   const actor = await getCurrentUser();
   if (!actor) {
     return { ok: false, error: "You have been signed out. Reload the page and sign in again." };
   }
+  const refused = async (error: string): Promise<ActionResult<T>> => {
+    try {
+      await afterRefusal?.(actor);
+    } catch (problem) {
+      console.error(problem);
+    }
+    return { ok: false, error };
+  };
   try {
     const outcome = await work(actor);
     revalidatePath("/", "layout");
@@ -49,9 +64,9 @@ export async function runAction<T = never>(
     }
     return { ok: true };
   } catch (error) {
-    if (error instanceof AppError) return { ok: false, error: error.message };
+    if (error instanceof AppError) return refused(error.message);
     console.error(error);
-    if (sqlState(error) === NOT_THE_CURRENT_TIME) return { ok: false, error: CLOCK_IS_OFF };
-    return { ok: false, error: "Something went wrong and nothing was saved. Please try again." };
+    if (sqlState(error) === NOT_THE_CURRENT_TIME) return refused(CLOCK_IS_OFF);
+    return refused("Something went wrong and nothing was saved. Please try again.");
   }
 }

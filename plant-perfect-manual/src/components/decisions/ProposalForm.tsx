@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useId, useRef, useState, useTransition } from "react";
 import { createProposalAction, editProposalAction } from "@/app/(app)/proposals/actions";
+import { useDraftOwner } from "@/components/DraftOwner";
 import type { EditorControl } from "@/components/RichTextEditor";
 import { BUSINESS_CHOICES, matchesSection } from "@/components/notes/NoteSortForm";
 import type { SectionOption } from "@/components/notes/data";
@@ -128,8 +129,13 @@ export function ProposalForm({
 }: Props) {
   const router = useRouter();
   const ids = useId();
+  const owner = useDraftOwner();
   const editing = mode === "edit";
 
+  // Everything the person fills in is held here, in the open page. When a
+  // press is refused, the app draws this page's data again in place (the
+  // sections, the official text) and hands it to this same form: nothing
+  // typed is lost, and nobody is ever asked to reload.
   const [kind, setKind] = useState<ProposalKind>(startKind);
   const [title, setTitle] = useState(initial.title ?? "");
   const [business, setBusiness] = useState<BusinessTag | "">(initial.businessTag ?? "");
@@ -140,10 +146,10 @@ export function ProposalForm({
   const [target, setTarget] = useState(initial.action !== "add" ? (initial.sectionId ?? "") : "");
   // Sections that can have a section added or moved under them (three levels at most).
   const parents = options.filter((option) => option.depth <= 2);
+  const offered = (list: SectionOption[], id: string) => id === "" || list.some((option) => option.id === id);
   // The stored place to move it under is only kept when it can still be
   // chosen. Otherwise the box would show "Top level" while the old place was sent.
-  const destinationGone =
-    editing && initial.action === "move" && !!initial.parentId && !parents.some((option) => option.id === initial.parentId);
+  const destinationGone = editing && initial.action === "move" && !offered(parents, initial.parentId ?? "");
   const [moveUnder, setMoveUnder] = useState(destinationGone ? "" : (initial.parentId ?? ""));
   const [name, setName] = useState(initial.name ?? "");
   const [query, setQuery] = useState("");
@@ -157,15 +163,27 @@ export function ProposalForm({
   }, []);
 
   const isText = kind !== "structure";
-  // Where the proposed text is kept on this device while typing.
+  // Where the proposed text is kept on this device while typing (for this person only).
   const draftKey =
-    editing && proposalId ? proposalDraftKey(proposalId) : section ? newProposalDraftKey(section.id) : null;
+    editing && proposalId
+      ? proposalDraftKey(owner, proposalId)
+      : section
+        ? newProposalDraftKey(owner, section.id)
+        : null;
   const needsSection = isText && !section;
   const fixedTarget = options.find((option) => option.id === initial.sectionId);
-  // A section cannot be moved under itself. What is offered is what can be
-  // sent: a choice that is not among these counts as "Top level".
-  const moveChoices = parents.filter((option) => option.id !== target);
-  const moveTo = moveChoices.some((option) => option.id === moveUnder) ? moveUnder : "";
+  // What a box shows is what is sent. The list of sections can change under
+  // an open form (it is drawn again after a refusal), and a box whose
+  // choice is no longer in its list shows its first line: so a choice that
+  // is no longer offered counts as that first line ("Top level", "Choose a
+  // section"), and the form says so where a place has gone.
+  const under = offered(parents, addUnder) ? addUnder : "";
+  const chosenTarget = offered(options, target) ? target : "";
+  // A section cannot be moved under itself.
+  const moveChoices = parents.filter((option) => option.id !== chosenTarget);
+  const moveTo = offered(moveChoices, moveUnder) ? moveUnder : "";
+  const placeGone =
+    action === "add" ? !editing && under !== addUnder : action === "move" && (destinationGone || !offered(parents, moveUnder));
 
   /** The address of this form for one section, keeping the kind and the note. */
   const hrefFor = (sectionId: string | null) => {
@@ -205,14 +223,16 @@ export function ProposalForm({
       // one the editor started from, or the one its picked-up copy remembers.
       if (!editing) form.baseVersionId = control.getBase();
     } else {
+      // (When editing, what the proposal is about is fixed: it is sent as it was.)
+      const sectionId = editing ? target : chosenTarget;
       const change =
         action === "add"
-          ? { action, parentId: addUnder, title: name }
+          ? { action, parentId: editing ? addUnder : under, title: name }
           : action === "rename"
-            ? { action, sectionId: target, title: name }
+            ? { action, sectionId, title: name }
             : action === "move"
-              ? { action, sectionId: target, parentId: moveTo }
-              : { action, sectionId: target };
+              ? { action, sectionId, parentId: moveTo }
+              : { action, sectionId };
       form = { kind, change, why };
     }
     if (!editing && noteId) form.noteIds = [noteId];
@@ -519,10 +539,16 @@ export function ProposalForm({
             <>
               {editing
                 ? fixed("Under", fixedTarget ? optionLabel(fixedTarget) : "Top level")
-                : sectionSelect(`${ids}-under`, "Under", addUnder, setAddUnder, parents, {
+                : sectionSelect(`${ids}-under`, "Under", under, setAddUnder, parents, {
                     value: "",
                     text: "Top level",
                   })}
+              {placeGone && (
+                <p className="hint">
+                  The section it was going under can no longer be chosen (it may have been archived).
+                  Choose where it should go.
+                </p>
+              )}
               {nameField("Name")}
             </>
           ) : (
@@ -533,7 +559,7 @@ export function ProposalForm({
                 : sectionSelect(
                     `${ids}-target`,
                     "Section",
-                    target,
+                    chosenTarget,
                     (next) => {
                       setTarget(next);
                       // The section itself is no longer offered as the place to move it under.
@@ -548,7 +574,7 @@ export function ProposalForm({
                   value: "",
                   text: "Top level",
                 })}
-              {action === "move" && destinationGone && (
+              {placeGone && (
                 <p className="hint">
                   The section it was going to move under can no longer be chosen (it may have been
                   archived). Choose where it should go.

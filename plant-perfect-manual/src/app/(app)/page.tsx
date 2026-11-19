@@ -34,13 +34,18 @@ function countdown(days: number): string {
 
 /**
  * What an earlier one-person change of a section is called in the line under
- * the newest one. A direct edit or a restore goes by the version it made and
- * its day ("version 2 (Nov 10)"); a written proposal by its title.
+ * the newest one: what it was, whose it was and its day. A direct edit or a
+ * restore goes by the version it made ("version 2 by Kale (Nov 10)"), a
+ * written proposal by its title ("Vendor contacts in bold by Kale (Nov 10)").
+ * Whose it was matters: the newest change of a section can be one's own,
+ * with an earlier one by the other Owner still waiting for "I approve too".
  */
 function earlierLabel(view: ProposalView): string {
-  if (!view.direct || !view.resultVersion) return view.title;
+  const what = view.direct && view.resultVersion ? `version ${view.resultVersion.version}` : view.title;
+  // (The person who decided it, as in the line above: not always the first name on it.)
+  const by = view.decidedByName ?? view.approvals[0]?.name;
   const day = formatDate(view.decidedAt ?? view.createdAt).replace(/, \d{4}$/, "");
-  return `version ${view.resultVersion.version} (${day})`;
+  return `${what}${by ? ` by ${by}` : ""} (${day})`;
 }
 
 function StaleList({ sections }: { sections: StaleSection[] }) {

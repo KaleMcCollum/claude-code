@@ -5,7 +5,7 @@ import { cache } from "react";
 import { OfficialBlock } from "@/components/OfficialBlock";
 import { RichText } from "@/components/RichText";
 import { ActionButton } from "@/components/decisions/ActionButton";
-import { ENDORSE_QUESTION } from "@/components/decisions/endorse";
+import { endorseConfirm } from "@/components/decisions/endorse";
 import { NoteBlock } from "@/components/notes/NoteBlock";
 import { toNoteBlockData } from "@/components/notes/data";
 import { asUser } from "@/db/client";
@@ -218,7 +218,7 @@ export default async function SectionPage({ params, searchParams }: PageProps) {
                     revision: officialProposal.revision,
                   })}
                   // Someone who can approve is asked first: it is not a softer "I approve too".
-                  confirm={can(user, "approve") ? ENDORSE_QUESTION : undefined}
+                  confirm={can(user, "approve") ? endorseConfirm(officialProposal) : undefined}
                 />
               )}
               <Link href={`/sections/${node.id}/history`}>Version history</Link>

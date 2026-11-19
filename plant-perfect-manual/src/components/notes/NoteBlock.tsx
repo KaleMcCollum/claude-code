@@ -13,6 +13,7 @@ import type { ActionResult } from "@/lib/actions";
 import { BUSINESS_LABELS } from "@/lib/business";
 import { commentDraftKey, noteDraftKey, useHasDraft } from "@/lib/drafts";
 import { EMPTY_DOC } from "@/lib/richtext";
+import { useDraftOwner } from "../DraftOwner";
 import { RichText } from "../RichText";
 import { NOT_SENT, NoteEditor } from "./NoteEditor";
 import { NoteSortForm } from "./NoteSortForm";
@@ -75,9 +76,12 @@ export function NoteBlock({
   const [busy, startWork] = useTransition();
   const [sorted, showSorted] = useOptimistic(note.sorted);
 
-  // Unsaved typing left on this device comes straight back.
-  const editDraft = useHasDraft(noteDraftKey(note.id));
-  const commentDraft = useHasDraft(commentDraftKey(note.id));
+  // Unsaved typing this person left on this device comes straight back.
+  const owner = useDraftOwner();
+  const editKey = noteDraftKey(owner, note.id);
+  const commentKey = commentDraftKey(owner, note.id);
+  const editDraft = useHasDraft(editKey);
+  const commentDraft = useHasDraft(commentKey);
   const open: Open =
     opened ?? (canEdit && editDraft ? "edit" : canComment && commentDraft ? "comment" : null);
 
@@ -133,7 +137,7 @@ export function NoteBlock({
         <NoteEditor
           compact
           initialDoc={note.body}
-          draftKey={noteDraftKey(note.id)}
+          draftKey={editKey}
           label={`Edit ${label}`}
           saveLabel="Save"
           focusRequest={opened === "edit" ? 1 : 0}
@@ -266,7 +270,7 @@ export function NoteBlock({
             <NoteEditor
               compact
               initialDoc={EMPTY_DOC}
-              draftKey={commentDraftKey(note.id)}
+              draftKey={commentKey}
               label={`Comment on ${label}`}
               saveLabel="Save comment"
               focusRequest={opened === "comment" ? 1 : 0}

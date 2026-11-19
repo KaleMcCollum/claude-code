@@ -1,3 +1,4 @@
+import { DraftOwner } from "@/components/DraftOwner";
 import { Sidebar, type TreeItem } from "@/components/Sidebar";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
@@ -24,18 +25,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     waiting: await countAwaiting(tx, user),
   }));
   return (
-    <div className="shell">
-      <Sidebar
-        tree={toItems(tree)}
-        userName={user.name}
-        proposalsWaiting={waiting}
-        canWriteNotes={can(user, "write_notes")}
-        canManageSections={can(user, "structure")}
-        canOpenSettings={can(user, "manage_users") || can(user, "settings")}
-      />
-      <main className="main">
-        <div className="page">{children}</div>
-      </main>
-    </div>
+    // Text typed and not yet saved is kept on the device under this person's
+    // id, so it is only ever offered back to them.
+    <DraftOwner userId={user.id}>
+      <div className="shell">
+        <Sidebar
+          tree={toItems(tree)}
+          userName={user.name}
+          proposalsWaiting={waiting}
+          canWriteNotes={can(user, "write_notes")}
+          canManageSections={can(user, "structure")}
+          canOpenSettings={can(user, "manage_users") || can(user, "settings")}
+        />
+        <main className="main">
+          <div className="page">{children}</div>
+        </main>
+      </div>
+    </DraftOwner>
   );
 }

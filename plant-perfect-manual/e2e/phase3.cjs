@@ -46,6 +46,8 @@ const POS_TITLE = "Line busters use handheld scanners";
 const POS_TEXT = "Line busters use two handheld scanners on busy days.";
 const POS_DIRECT = "Registers run on the point of sale system. Returns need a receipt.";
 const ENDORSE_QUESTION = "Endorse this? It adds your name in support. It does not approve it, and it cannot be taken back.";
+// On a proposal that is still open, an Owner is also told what else endorsing does, with the proposer's name.
+const endorseOpenQuestion = (proposer) => `${ENDORSE_QUESTION} ${proposer} will no longer be able to change the proposal.`;
 const VENDOR_HEADING = "Coffee roaster";
 const VENDOR_LINE = "Order coffee beans by Friday noon.";
 const VENDOR_TASK = "Call the roaster";
@@ -54,7 +56,9 @@ const TICK_TITLE = "The roaster has been called";
 const CLOSING_NOTE = "Closing takes too long on Saturdays -- rename that page?";
 const CHECKLIST_TITLE = "Closing checklist on the back door";
 const CHECKLIST_TEXT = "The closing checklist hangs on the back door.";
-const GONE_NOTICE = "The section this is about no longer exists (it may have been archived). Withdraw or decline this proposal.";
+// A waiting proposal whose section has been archived, as its proposer and as the other Owner read it.
+const GONE_WITHDRAW = "Its section has been archived. Withdraw it.";
+const GONE_DECLINE = "Its section has been archived. Decline it.";
 const ARCHIVE_HINT = "Archiving hides the section and everything under it. Nothing is deleted, and it can be restored.";
 const GRINDER_TITLE = "Buy a second grinder";
 const GRINDER_TEXT = "The coffee shop has two grinders.";
@@ -151,9 +155,20 @@ async function ownerControls(page) {
   );
 }
 
-/** What this device holds of text typed but not saved (the keys it is kept under). */
-function draftKeys(page, prefix = "ppf:draft:") {
-  return page.evaluate((start) => Object.keys(window.localStorage).filter((key) => key.startsWith(start)), prefix);
+/**
+ * What this device holds of text typed but not saved: the keys it is kept
+ * under. Every key names the person who typed it (their id), then what it
+ * is a copy of: "official:", "proposal:new:", "proposal:", "note:",
+ * "comment:". With `what`, only the copies of that kind.
+ */
+function draftKeys(page, what = "") {
+  return page.evaluate(
+    (kind) =>
+      Object.keys(window.localStorage).filter(
+        (key) => key.startsWith("ppf:draft:") && (kind === "" || new RegExp(`^ppf:draft:[0-9a-f-]{36}:${kind}`).test(key)),
+      ),
+    what,
+  );
 }
 
 /**
@@ -195,6 +210,43 @@ async function proposeText(page, { title, text, business, why }) {
   await page.waitForURL(/\/proposals\/[0-9a-f-]{36}$/);
   await page.getByRole("heading", { level: 1, name: title }).waitFor();
   return page.url();
+}
+
+/**
+ * The words on the buttons a person has on a proposal's page, in order,
+ * joined with "|" ("" when they have none). Asking for the whole row keeps a
+ * check from passing while a button nobody thought of is also there.
+ */
+async function actionWords(page) {
+  const row = page.getByRole("region", { name: "Actions" }).locator(".actions");
+  if ((await row.count()) === 0) return "";
+  return (await row.locator("button, a").allInnerTexts()).join("|");
+}
+
+/**
+ * "Edit official" on the section page that is open: put `text` at the end of
+ * what is there (or in place of it) and save. Ends with the saved text showing.
+ */
+async function saveOfficialHere(page, text, { replace = false } = {}) {
+  await page.getByRole("button", { name: "Edit official" }).click();
+  const box = page.getByRole("textbox", { name: "Official text" });
+  await box.waitFor();
+  await box.click();
+  await page.keyboard.press(replace ? "Control+A" : "Control+End");
+  await page.keyboard.type(text);
+  await page.getByRole("button", { name: "Save as official" }).click();
+  await page.getByRole("button", { name: "Edit official" }).waitFor();
+  await page.locator(".official-box .rich").filter({ hasText: text.trim() }).first().waitFor();
+}
+
+/** What a proposal form holds right now: everything a person can type or choose in it. */
+async function heldBy(form) {
+  return JSON.stringify({
+    title: await form.getByLabel("Title", { exact: true }).inputValue(),
+    why: await form.getByLabel("Why (optional)").inputValue(),
+    business: await form.getByRole("group", { name: "Business" }).locator("label").filter({ has: form.page().locator("input:checked") }).innerText(),
+    text: (await form.getByRole("textbox", { name: "Proposed official text" }).innerText()).trim(),
+  });
 }
 
 /** Proposals > New proposal > find a section by typing. Ends on the form for that section. */
@@ -250,6 +302,21 @@ async function main() {
   await karen.goto(linkIn(invite));
   await karen.getByRole("heading", { level: 1, name: "Today" }).waitFor();
 
+  // Casey's phone: part 14, and a phone-sized look at a few states before it.
+  const phone = await phoneContext(browser);
+  const mobile = await phone.newPage();
+  trackErrors(mobile, errors);
+  await signIn(mobile, "casey@example.com");
+  // No sideways scrolling on the phone's own width (390px), nor on a narrower one (360px).
+  const fits = async (name) => {
+    const overflow = await sidewaysOverflow(mobile);
+    const size = mobile.viewportSize();
+    await mobile.setViewportSize({ width: 360, height: size.height });
+    const narrow = await sidewaysOverflow(mobile);
+    await mobile.setViewportSize(size);
+    check(`${name} fits a phone without sideways scrolling`, overflow <= 0 && narrow <= 0, `overflow ${overflow}px at ${size.width}px, ${narrow}px at 360px`);
+  };
+
   // ------------------------------------------------------------------
   section("1. Kale proposes coffee wages at $15/hr, Casey approves");
   check("with nothing proposed, Today says so", await casey.getByRole("region", { name: "Awaiting approval (0)" }).getByText("Nothing is waiting for approval.").isVisible());
@@ -276,7 +343,7 @@ async function main() {
   check("a refused Propose with untouched text leaves no copy on the device", (await draftKeys(kale)).length === 0, (await draftKeys(kale)).join(" "));
   await kaleForm.getByLabel("Title", { exact: true }).fill(WAGES_TITLE);
   await typeProposedText(kale, WAGES_NEW);
-  check("what is typed as proposed text is kept on the device", await eventually(async () => (await draftKeys(kale, "ppf:draft:proposal:new:")).length === 1), (await draftKeys(kale)).join(" "));
+  check("what is typed as proposed text is kept on the device", await eventually(async () => (await draftKeys(kale, "proposal:new:")).length === 1), (await draftKeys(kale)).join(" "));
   // On a phone, Return in a one-line box puts the keyboard away. It must not send the proposal.
   const sentByReturn = await sentWhile(kale, () => kaleForm.getByLabel("Title", { exact: true }).press("Enter"));
   check("Return in the Title box does not send the proposal", sentByReturn === 0 && kale.url().includes("/proposals/new?") && (await kale.getByRole("heading", { level: 1, name: "New proposal" }).isVisible()), `${sentByReturn} sent, ${kale.url()}`);
@@ -632,13 +699,14 @@ async function main() {
   // ------------------------------------------------------------------
   section("4b. Endorse asks an Owner first");
   await casey.getByRole("button", { name: "Endorse" }).click();
-  check("under official text, Endorse asks an Owner first, in place of the row", (await eventually(() => casey.getByText(ENDORSE_QUESTION).isVisible())) && (await casey.getByRole("dialog").count()) === 0 && (await casey.getByRole("button", { name: "I approve too" }).isHidden()));
+  check("under official text, Endorse asks an Owner first, in place of the row", (await eventually(() => casey.getByText(ENDORSE_QUESTION, { exact: true }).isVisible())) && (await casey.getByRole("dialog").count()) === 0 && (await casey.getByRole("button", { name: "I approve too" }).isHidden()));
+  check("for text that is already official the question says nothing about changing the proposal", (await casey.getByText("will no longer be able to change").count()) === 0);
   await casey.getByRole("button", { name: "Cancel" }).click();
   check("Cancel records nothing and brings the row back", (await casey.getByRole("button", { name: "I approve too" }).isVisible()) && (await casey.locator(".official-box .endorsements").count()) === 0 && (await casey.getByText(ENDORSE_QUESTION).count()) === 0);
   await casey.goto(weekendUrl);
   await casey.getByRole("heading", { level: 1, name: WEEKEND_TITLE }).waitFor();
   await casey.getByRole("button", { name: "Endorse" }).click();
-  check("on a proposal, Endorse asks an Owner first too", (await eventually(() => casey.getByText(ENDORSE_QUESTION).isVisible())) && (await approveButton(casey).isHidden()));
+  check("on a proposal that is still open, the question also says its proposer can no longer change it afterwards", (await eventually(() => casey.getByText(endorseOpenQuestion("Kale"), { exact: true }).isVisible())) && (await approveButton(casey).isHidden()), await casey.getByRole("group", { name: "Endorse" }).locator("p").first().innerText().catch(() => "missing"));
   await shot(casey, "p3-desktop-19-endorse-question", { fullPage: true });
   await casey.getByRole("group", { name: "Endorse" }).getByRole("button", { name: "Endorse" }).click();
   const endorsedNote = casey.getByRole("status").filter({ hasText: "Endorsed." });
@@ -721,7 +789,7 @@ async function main() {
   const chooseFirst = kale.getByRole("alert").filter({ hasText: "Choose first" });
   check("Save is refused in place until he chooses, and nothing is sent", sentUnchosen === 0 && (await chooseFirst.innerText().catch(() => "missing")) === CHOOSE_FIRST && (await kaleOfficial.innerText()).trim() === KALE_CLOSING, `${sentUnchosen} sent`);
   await kale.getByRole("button", { name: "Start over from the current text" }).click();
-  check("Start over from the current text puts Casey's text in the editor and drops the copy", (await eventually(async () => (await kaleOfficial.innerText()).trim() === CASEY_CLOSING)) && (await outdated.count()) === 0 && (await chooseFirst.count()) === 0 && (await draftKeys(kale, "ppf:draft:official:")).length === 0, await kaleOfficial.innerText());
+  check("Start over from the current text puts Casey's text in the editor and drops the copy", (await eventually(async () => (await kaleOfficial.innerText()).trim() === CASEY_CLOSING)) && (await outdated.count()) === 0 && (await chooseFirst.count()) === 0 && (await draftKeys(kale, "official:")).length === 0, await kaleOfficial.innerText());
   await kale.getByRole("button", { name: "Cancel" }).click();
   await kale.getByRole("button", { name: "Edit official" }).waitFor();
   check("nothing was saved over her text", (await kale.locator(".official-box .rich").innerText()) === CASEY_CLOSING && (await kale.locator(".approval").innerText()) === `Approved by Casey, ${today().short}` && (await kale.getByRole("button", { name: "Continue editing" }).count()) === 0);
@@ -732,7 +800,7 @@ async function main() {
   await kaleOfficial.click();
   await kale.keyboard.press("Control+End");
   await kale.keyboard.type(KALE_ADDED);
-  await eventually(async () => (await draftKeys(kale, "ppf:draft:official:")).length === 1);
+  await eventually(async () => (await draftKeys(kale, "official:")).length === 1);
   await goTo(kale, "Today");
   await casey.getByRole("button", { name: "Edit official" }).click();
   await caseyOfficial.waitFor();
@@ -753,7 +821,7 @@ async function main() {
   check("Keep what I typed takes the warning away and keeps his text in the editor", (await eventually(async () => (await outdated.count()) === 0)) && (await chooseFirst.count()) === 0 && (await kale.getByText(/^Picked up your unsaved changes from /).isVisible()) && (await kaleOfficial.innerText()).trim() === CASEY_CLOSING + KALE_ADDED);
   await kale.getByRole("button", { name: "Save as official" }).click();
   await kale.getByRole("button", { name: "Edit official" }).waitFor();
-  check("once he has chosen, Save goes through", (await eventually(async () => (await kale.locator(".official-box .rich").innerText()) === CASEY_CLOSING + KALE_ADDED)) && (await kale.locator(".approval").innerText()) === approvedKale() && (await draftKeys(kale, "ppf:draft:official:")).length === 0, await kale.locator(".official-box .rich").innerText());
+  check("once he has chosen, Save goes through", (await eventually(async () => (await kale.locator(".official-box .rich").innerText()) === CASEY_CLOSING + KALE_ADDED)) && (await kale.locator(".approval").innerText()) === approvedKale() && (await draftKeys(kale, "official:")).length === 0, await kale.locator(".official-box .rich").innerText());
   await goTo(casey, "Today");
   const closingFlag = flagged.getByRole("listitem").filter({ hasText: "Edited directly: 3.3 Closing Procedures (version 3)" });
   check("Casey sees his change flagged on Today", (await eventually(() => closingFlag.isVisible())) && (await closingFlag.getByText(`Decided by Kale alone, ${today().short}`).isVisible()));
@@ -776,7 +844,7 @@ async function main() {
   await kale.getByRole("heading", { level: 1, name: POS_TITLE }).waitFor();
   const staleNotice = (page) => page.locator(".notice").filter({ hasText: "The official text of this section has changed since" });
   check("the other Owner is told the proposal is out of date and who has to act", (await staleNotice(kale).innerText().catch(() => "missing")) === "The official text of this section has changed since Casey proposed this. Casey needs to check the proposal against the new text and save it again before it can be approved.", await staleNotice(kale).innerText().catch(() => "missing"));
-  check("an out-of-date proposal has no Approve for the other Owner; Decline and Endorse stay", (await approveButton(kale).count()) === 0 && (await kale.getByRole("button", { name: "Approve on my own" }).count()) === 0 && (await kale.getByRole("button", { name: "Decline" }).isVisible()) && (await kale.getByRole("button", { name: "Endorse" }).isVisible()));
+  check("an out-of-date proposal has no Approve and no Endorse for the other Owner; only Decline stays", (await actionWords(kale)) === "Decline", await actionWords(kale));
   check("its Approvals list says what it is waiting for", await kale.getByRole("region", { name: "Approvals" }).getByText("Waiting for Casey to check it against the new official text", { exact: true }).isVisible());
   check("the notice stands above the differences", await kale.evaluate(() => [...document.querySelectorAll(".notice")].find((el) => el.textContent.includes("has changed since")).getBoundingClientRect().bottom <= document.querySelector(".diff-box").getBoundingClientRect().top));
   await shot(kale, "p3-desktop-21-outdated-proposal", { fullPage: true });
@@ -1101,14 +1169,14 @@ async function main() {
   const earlierLine = benefitRows.locator(".earlier-changes");
   await eventually(async () => (await benefitRows.count()) === 1 && (await earlierLine.count()) === 1);
   check("Casey's Today shows Kale's two direct saves of one section as one row, named by the newest", (await benefitRows.count()) === 1 && (await benefitRows.getByRole("link", { name: BENEFITS_V3, exact: true }).isVisible()) && (await benefitRows.getByText(`Decided by Kale alone, ${today().short}`).isVisible()) && (await benefitRows.getByText("No longer the current text").count()) === 0, `${await benefitRows.count()} rows`);
-  check("the earlier save is in one line under it, by its version and day, with a link", (await earlierLine.innerText().catch(() => "missing")) === `Earlier one-person changes to this section: version 2 (${today().day})` && (await earlierLine.getByRole("link", { name: `version 2 (${today().day})`, exact: true }).isVisible()), await earlierLine.innerText().catch(() => "missing"));
+  check("the earlier save is in one line under it, by its version, whose it was and its day, with a link", (await earlierLine.innerText().catch(() => "missing")) === `Earlier one-person changes to this section: version 2 by Kale (${today().day})` && (await earlierLine.getByRole("link", { name: `version 2 by Kale (${today().day})`, exact: true }).isVisible()), await earlierLine.innerText().catch(() => "missing"));
   // Nine changes: Opening Procedures, Closing Procedures three times (two of them her own,
   // which Kale has not approved), Point of Sale, the rename, the restore, and Benefits twice.
   // Six rows: the saves of Closing Procedures are one row, and so are those of Benefits.
   const flaggedRows = await flagged.getByRole("listitem").count();
   check("the number in the heading counts every change, not every row", (await casey.getByRole("heading", { level: 2, name: "Decided by one person (9)" }).isVisible()) && flaggedRows === 6, `${flaggedRows} rows under "${await flagged.getByRole("heading", { level: 2 }).innerText()}"`);
   const closingRow = flagged.getByRole("listitem").filter({ hasText: "Edited directly: 3.3 Closing Procedures (version 3)" });
-  check("her own earlier saves are listed under Kale's newer one, and she has no I approve too on her own", (await closingRow.locator(".earlier-changes").innerText()) === `Earlier one-person changes to this section: version 2 (${today().day}), version 1 (${today().day})` && (await closingRow.getByRole("button", { name: /^I approve too/ }).count()) === 1, await closingRow.locator(".earlier-changes").innerText().catch(() => "missing"));
+  check("her own earlier saves are listed under Kale's newer one, each named as hers, and she has no I approve too on her own", (await closingRow.locator(".earlier-changes").innerText()) === `Earlier one-person changes to this section: version 2 by Casey (${today().day}), version 1 by Casey (${today().day})` && (await closingRow.getByRole("button", { name: /^I approve too/ }).count()) === 1, await closingRow.locator(".earlier-changes").innerText().catch(() => "missing"));
   check("she has I approve too for the newest one", await benefitRows.getByRole("button", { name: `I approve too: ${BENEFITS_V3}`, exact: true }).isVisible());
   await shot(casey, "p3-desktop-16-today-two-changes", { fullPage: true });
   await benefitRows.getByRole("link", { name: BENEFITS_V3, exact: true }).click();
@@ -1167,7 +1235,7 @@ async function main() {
 
   // The earlier save has its own page, reached from the line on Today, with its own I approve too.
   await goTo(casey, "Today");
-  await earlierLine.getByRole("link", { name: `version 2 (${today().day})`, exact: true }).click();
+  await earlierLine.getByRole("link", { name: `version 2 by Kale (${today().day})`, exact: true }).click();
   await casey.getByRole("heading", { level: 1, name: BENEFITS_V2, exact: true }).waitFor();
   await casey.getByRole("button", { name: "I approve too" }).click();
   check("I approve too on the earlier save's own page adds her approval to it", await eventually(async () => (await statusOf(casey).innerText()) === approvedBoth()), await statusOf(casey).innerText());
@@ -1279,10 +1347,11 @@ async function main() {
   check("the full proposed text shows the box ticked", await kale.locator('details.full-text .rich input[type="checkbox"]').isChecked());
 
   // On Today these three changes to one section are one row: the newest, then the earlier
-  // ones in one line, a written proposal by its title and a direct save by its version.
+  // ones in one line, a written proposal by its title and a direct save by its version,
+  // each with whose it was and its day.
   await goTo(casey, "Today");
   const vendorRow = flagged.getByRole("listitem").filter({ hasText: "Edited directly: 7.1 Vendor Contacts (version 3)" });
-  check("three one-person changes to one section are one row with the two earlier ones listed", (await eventually(() => vendorRow.isVisible())) && (await vendorRow.locator(".earlier-changes").innerText()) === `Earlier one-person changes to this section: ${FORMAT_TITLE}, version 1 (${today().day})` && (await vendorRow.locator(".earlier-changes").getByRole("link").count()) === 2, await vendorRow.locator(".earlier-changes").innerText().catch(() => "missing"));
+  check("three one-person changes to one section are one row with the two earlier ones listed", (await eventually(() => vendorRow.isVisible())) && (await vendorRow.locator(".earlier-changes").innerText()) === `Earlier one-person changes to this section: ${FORMAT_TITLE} by Kale (${today().day}), version 1 by Kale (${today().day})` && (await vendorRow.locator(".earlier-changes").getByRole("link").count()) === 2, await vendorRow.locator(".earlier-changes").innerText().catch(() => "missing"));
   await vendorRow.locator(".earlier-changes").getByRole("link", { name: FORMAT_TITLE }).click();
   await casey.getByRole("heading", { level: 1, name: FORMAT_TITLE }).waitFor();
   check("each earlier change opens its own page, with its own I approve too", (await casey.getByRole("button", { name: "I approve too" }).isVisible()) && (await statusOf(casey).innerText()) === approvedKale());
@@ -1348,14 +1417,20 @@ async function main() {
   // The text proposal about the archived section: it says so, and offers nothing that cannot work.
   await casey.goto(checklistUrl);
   await casey.getByRole("heading", { level: 1, name: CHECKLIST_TITLE }).waitFor();
-  const goneNotice = (page) => page.locator(".notice").filter({ hasText: "no longer exists" });
-  check("a text proposal about an archived section says so up front", (await goneNotice(casey).innerText().catch(() => "missing")) === GONE_NOTICE, await goneNotice(casey).innerText().catch(() => "missing"));
-  check("the other Owner has no Approve on it, only Decline and Endorse", (await approveButton(casey).count()) === 0 && (await casey.getByRole("button", { name: "Approve on my own" }).count()) === 0 && (await casey.getByRole("button", { name: "Decline" }).isVisible()) && (await casey.getByRole("button", { name: "Endorse" }).isVisible()));
+  const goneNotice = (page) => page.getByRole("region", { name: "What will change" }).locator(".notice").filter({ hasText: "Its section has been archived" });
+  check("a text proposal about an archived section says so up front, and tells the other Owner what she can do", (await goneNotice(casey).innerText().catch(() => "missing")) === GONE_DECLINE, await goneNotice(casey).innerText().catch(() => "missing"));
+  check("the other Owner has no Approve and no Endorse on it, only Decline", (await actionWords(casey)) === "Decline", await actionWords(casey));
+  check("its Approvals line says the same, not that it is waiting for her", (await casey.getByRole("region", { name: "Approvals" }).getByText(GONE_DECLINE, { exact: true }).isVisible()) && (await casey.getByRole("region", { name: "Approvals" }).getByText(/^Waiting for/).count()) === 0);
+  await mobile.goto(checklistUrl);
+  await mobile.getByRole("heading", { level: 1, name: CHECKLIST_TITLE }).waitFor();
+  check("on a phone the same proposal says its section has been archived, with a full-size Decline", (await goneNotice(mobile).innerText().catch(() => "missing")) === GONE_DECLINE && (await actionWords(mobile)) === "Decline" && (await height(mobile.getByRole("button", { name: "Decline" }))) >= 44, `${await goneNotice(mobile).innerText().catch(() => "missing")} / ${await actionWords(mobile)}`);
+  await shot(mobile, "p3-phone-22-archived-section-proposal", { fullPage: true });
+  await fits("A proposal whose section has been archived");
   const goneMeta = casey.locator(".proposal .page-head .meta");
   check("the archived section is named by its stored name, without a link", (await goneMeta.innerText()).startsWith("Decision · Closing Procedures (archived) · Proposed by Kale") && (await goneMeta.getByRole("link").count()) === 0, await goneMeta.innerText());
   await kale.goto(checklistUrl);
   await kale.getByRole("heading", { level: 1, name: CHECKLIST_TITLE }).waitFor();
-  check("its proposer has no Approve on my own or Edit on it, only Withdraw", (await goneNotice(kale).isVisible()) && (await kale.getByRole("button", { name: "Approve on my own" }).count()) === 0 && (await editLink(kale).count()) === 0 && (await kale.getByRole("button", { name: "Withdraw" }).isVisible()));
+  check("its proposer is told to withdraw it, and has no Approve on my own or Edit on it, only Withdraw", (await goneNotice(kale).innerText().catch(() => "missing")) === GONE_WITHDRAW && (await actionWords(kale)) === "Withdraw", `${await goneNotice(kale).innerText().catch(() => "missing")} / ${await actionWords(kale)}`);
   await kale.goto(`${checklistUrl}/edit`);
   await kale.getByRole("heading", { level: 1, name: CHECKLIST_TITLE }).waitFor();
   check("its edit address sends him back to the proposal", kale.url() === checklistUrl);
@@ -1365,12 +1440,24 @@ async function main() {
   const TIMELINE_NOW = "Move 10 Opening Timeline under Closing Procedures (archived)";
   await kale.goto(renameUrl);
   await kale.getByRole("heading", { level: 1, name: RENAME_NOW }).waitFor();
-  check("the rename proposal names the archived section and says it cannot go ahead", (await goneNotice(kale).innerText()) === GONE_NOTICE && (await kale.getByRole("region", { name: "What will change" }).getByText(`${RENAME_NOW}.`, { exact: true }).isVisible()));
+  check("the rename proposal names the archived section and says it cannot go ahead", (await goneNotice(kale).innerText().catch(() => "missing")) === GONE_WITHDRAW && (await kale.getByRole("region", { name: "What will change" }).getByText(`${RENAME_NOW}.`, { exact: true }).isVisible()) && (await actionWords(kale)) === "Withdraw", await actionWords(kale));
   await goTo(kale, "Proposals");
   const openRows = kale.getByRole("region", { name: /^Awaiting approval/ }).getByRole("listitem");
   check("the Proposals page names the archived section in titles and in the line under them", (await openRows.filter({ hasText: RENAME_NOW }).getByText(`Structure · Closing Procedures (archived) · proposed by Kale, ${today().short}`).isVisible()) && (await openRows.filter({ hasText: CHECKLIST_TITLE }).getByText(`Decision · Closing Procedures (archived) · proposed by Kale, ${today().short}`).isVisible()) && (await openRows.filter({ hasText: TIMELINE_NOW }).getByRole("link", { name: TIMELINE_NOW, exact: true }).isVisible()), (await openRows.allInnerTexts()).join(" / "));
+  // In the lists these two no longer read as waiting for somebody's approval.
+  const rowLine = (rows, title) => rows.filter({ hasText: title }).locator("p").last().innerText().catch(() => "missing");
+  check("on the Proposals page, the proposals about the archived section tell their proposer to withdraw them", (await rowLine(openRows, RENAME_NOW)) === GONE_WITHDRAW && (await rowLine(openRows, CHECKLIST_TITLE)) === GONE_WITHDRAW && (await rowLine(openRows, TIMELINE_NOW)) === "Waiting for Casey", `${await rowLine(openRows, RENAME_NOW)} / ${await rowLine(openRows, CHECKLIST_TITLE)} / ${await rowLine(openRows, TIMELINE_NOW)}`);
   await shot(kale, "p3-desktop-23-archived-section-proposals", { fullPage: true });
   await goTo(casey, "Today");
+  const caseyOpenRows = casey.getByRole("region", { name: /^Awaiting approval/ }).getByRole("listitem");
+  check("on the other Owner's Today they say their section has been archived and to decline them, not Waiting for you", (await rowLine(caseyOpenRows, RENAME_NOW)) === GONE_DECLINE && (await rowLine(caseyOpenRows, CHECKLIST_TITLE)) === GONE_DECLINE && (await rowLine(caseyOpenRows, TIMELINE_NOW)) === "Waiting for you", `${await rowLine(caseyOpenRows, RENAME_NOW)} / ${await rowLine(caseyOpenRows, CHECKLIST_TITLE)} / ${await rowLine(caseyOpenRows, TIMELINE_NOW)}`);
+  await karen.goto(`${BASE_URL}/proposals`);
+  await karen.getByRole("heading", { level: 1, name: "Proposals" }).waitFor();
+  const karenOpenRows = karen.getByRole("region", { name: /^Awaiting approval/ }).getByRole("listitem");
+  check("an Advisor reads what happened, with nothing to do", (await rowLine(karenOpenRows, CHECKLIST_TITLE)) === "Its section has been archived." && (await rowLine(karenOpenRows, RENAME_NOW)) === "Its section has been archived.", await rowLine(karenOpenRows, CHECKLIST_TITLE));
+  await karen.goto(checklistUrl);
+  await karen.getByRole("heading", { level: 1, name: CHECKLIST_TITLE }).waitFor();
+  check("and on the proposal itself she has no Endorse", (await goneNotice(karen).innerText().catch(() => "missing")) === "Its section has been archived." && (await actionWords(karen)) === "" && (await ownerControls(karen)) === 0, `${await goneNotice(karen).innerText().catch(() => "missing")} / ${await actionWords(karen)}`);
   check("Today names it too, for a waiting proposal and for a one-person change", (await casey.getByRole("region", { name: /^Awaiting approval/ }).getByRole("link", { name: RENAME_NOW, exact: true }).isVisible()) && (await flagged.getByRole("link", { name: "Edited directly: Closing Procedures (archived) (version 3)", exact: true }).isVisible()));
   await goTo(casey, "Proposals");
   await casey.getByRole("link", { name: "Decisions Log" }).click();
@@ -1429,6 +1516,329 @@ async function main() {
   }
   check("a proposal about an archived section can still be withdrawn", (await statusOf(kale).innerText()) === `Withdrawn by Kale, ${today().short}` && (await kale.getByRole("heading", { level: 1, name: CHECKLIST_TITLE }).isVisible()));
 
+  // ------------------------------------------------------------------
+  section("21. Nothing typed is lost when the official text changes under an open form");
+  const WRITING_REFUSAL = "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown on this page: choose whether to start over from it or keep what you typed, then propose again.";
+  const EDITING_REFUSAL = "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown on this page: read it, then save again.";
+  const BUDGET_TITLE = "Buildout budget capped at $40,000";
+  const BUDGET_WHY = "The bank wants one number.\nSecond line of my reasons,  typed with care.";
+  const BUDGET_TEXT = "The buildout budget is $40,000.";
+  const BUDGET_CASEY = "Casey wrote this meanwhile: every quote goes under Quotes.";
+  const BUDGET_CASEY_MORE = " Receipts too.";
+  const BUDGET_TITLE_LONGER = "Buildout budget capped at $40,000 until opening day";
+  const BUDGET_WHY_LONGER = `${BUDGET_WHY}\nA third line, added while editing.`;
+  const BUDGET_MORE = " Anything above it needs both Owners.";
+  const alertsOf = async (form) => (await form.getByRole("alert").allInnerTexts()).join(" | ");
+  const whyOf = async (page) => (await page.getByRole("region", { name: "Why" }).locator(".rich p").allInnerTexts()).join("\n");
+  const metaOf = (page) => page.locator(".proposal .page-head .meta").innerText();
+
+  // The form for a new proposal.
+  await goToSection(kale, "Finance", "8.1 Budget");
+  await kale.getByRole("link", { name: "Propose a change" }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  const budgetForm = newForm(kale);
+  const budgetBox = budgetForm.getByRole("textbox", { name: "Proposed official text" });
+  await budgetBox.waitFor();
+  await budgetForm.getByLabel("Title", { exact: true }).fill(BUDGET_TITLE);
+  await budgetBox.click();
+  await kale.keyboard.type(BUDGET_TEXT);
+  await budgetForm.getByRole("radio", { name: "Garden Center", exact: true }).check();
+  await budgetForm.getByLabel("Why (optional)").fill(BUDGET_WHY);
+  const budgetFormUrl = kale.url();
+  const typed = await heldBy(budgetForm);
+  // Casey gives that section its first official text while his form is open.
+  await goToSection(casey, "Finance", "8.1 Budget");
+  await saveOfficialHere(casey, BUDGET_CASEY);
+  await budgetForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await budgetForm.getByRole("alert").waitFor();
+  check("Propose from a form opened before the official text changed is refused, and nobody is asked to reload", (await alertsOf(budgetForm)) === WRITING_REFUSAL && kale.url() === budgetFormUrl && (await kale.getByRole("main").getByText(/reload/i).count()) === 0, await alertsOf(budgetForm));
+  const outdatedCopy = budgetForm.locator(".editor-outdated");
+  const officialNowShown = budgetForm.locator(".editor-current");
+  check("the page has drawn the new official text in place, with the two choices", (await eventually(() => outdatedCopy.isVisible())) && new RegExp(`^You typed this on ${DAY_TIME}, before the official text was last changed\\. It does not include that change\\.$`).test(await outdatedCopy.locator("p").innerText()) && (await officialNowShown.getByRole("heading", { name: "The official text now" }).isVisible()) && (await officialNowShown.locator(".official-box .rich").innerText()) === BUDGET_CASEY && (await outdatedCopy.getByRole("button", { name: "Start over from the current text" }).isVisible()) && (await outdatedCopy.getByRole("button", { name: "Keep what I typed" }).isVisible()), await officialNowShown.innerText().catch(() => "missing"));
+  check("everything he typed is still in the form: Title, Why, Business and the text", (await heldBy(budgetForm)) === typed, await heldBy(budgetForm));
+  await shot(kale, "p3-desktop-24-form-official-changed", { fullPage: true });
+  const sentBeforeChoice = await sentWhile(kale, () => budgetForm.getByRole("button", { name: "Propose", exact: true }).click());
+  check("until he chooses, Propose sends nothing and says to choose first, in place of the earlier message", sentBeforeChoice === 0 && (await alertsOf(budgetForm)) === CHOOSE_FIRST, `${sentBeforeChoice} sent, ${await alertsOf(budgetForm)}`);
+  await outdatedCopy.getByRole("button", { name: "Keep what I typed" }).click();
+  check("Keep what I typed takes the notice away and leaves the form as it was", (await eventually(async () => (await outdatedCopy.count()) === 0)) && (await heldBy(budgetForm)) === typed, await heldBy(budgetForm));
+  await budgetForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await kale.waitForURL(/\/proposals\/[0-9a-f-]{36}$/);
+  await kale.getByRole("heading", { level: 1, name: BUDGET_TITLE, exact: true }).waitFor();
+  const budgetUrl = kale.url();
+  check("after his choice Propose goes through with everything intact", (await whyOf(kale)) === BUDGET_WHY && (await metaOf(kale)).startsWith("Decision · 8.1 Budget · Garden Center · Proposed by Kale") && (await kale.locator("details.full-text .rich").textContent()) === BUDGET_TEXT, `${JSON.stringify(await whyOf(kale))} / ${await metaOf(kale)}`);
+  check("the new proposal is compared with the text Casey saved, and is up to date", (await kale.locator(".diff del").innerText()) === BUDGET_CASEY && (await kale.locator(".diff ins").innerText()) === BUDGET_TEXT && (await staleNotice(kale).count()) === 0 && (await kale.getByRole("region", { name: "Approvals" }).getByText("Waiting for Casey", { exact: true }).isVisible()) && (await draftKeys(kale, "proposal:new:")).length === 0, (await kale.locator(".diff").innerText()));
+
+  // The same on the edit page: Casey changes the official text again while he is changing his proposal.
+  await editLink(kale).click();
+  await kale.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
+  const budgetEdit = kale.getByRole("form", { name: "Edit proposal" });
+  const budgetEditBox = budgetEdit.getByRole("textbox", { name: "Proposed official text" });
+  await budgetEditBox.waitFor();
+  await budgetEdit.getByLabel("Title", { exact: true }).fill(BUDGET_TITLE_LONGER);
+  await budgetEdit.getByLabel("Why (optional)").fill(BUDGET_WHY_LONGER);
+  await budgetEdit.getByRole("radio", { name: "Both", exact: true }).check();
+  await budgetEditBox.click();
+  await kale.keyboard.press("Control+End");
+  await kale.keyboard.type(BUDGET_MORE);
+  const budgetEditUrl = kale.url();
+  const changed = await heldBy(budgetEdit);
+  const nowAbove = budgetEdit.locator(".official-now");
+  check("an edit page opened while the proposal is up to date shows no official text above the proposed text", (await nowAbove.count()) === 0 && changed.includes(BUDGET_MORE.trim()));
+  await saveOfficialHere(casey, BUDGET_CASEY_MORE);
+  await budgetEdit.getByRole("button", { name: "Save changes" }).click();
+  await budgetEdit.getByRole("alert").waitFor();
+  check("Save changes from an edit page opened before the official text changed is refused, and nobody is asked to reload", (await alertsOf(budgetEdit)) === EDITING_REFUSAL && kale.url() === budgetEditUrl && (await kale.getByRole("main").getByText(/reload/i).count()) === 0, await alertsOf(budgetEdit));
+  check("the new official text now stands above his proposed text, for reading, with no choice to make", (await eventually(() => nowAbove.isVisible())) && (await nowAbove.locator(".notice").innerText()) === "The official text changed after you wrote this. Read it here, change your proposed text if it should include that change, then press Save changes." && (await nowAbove.locator(".official-box .rich").innerText()) === BUDGET_CASEY + BUDGET_CASEY_MORE && (await budgetEdit.locator(".editor-outdated").count()) === 0, await nowAbove.innerText().catch(() => "missing"));
+  check("every change he made on the edit page is still there", (await heldBy(budgetEdit)) === changed, await heldBy(budgetEdit));
+  await shot(kale, "p3-desktop-25-edit-official-changed", { fullPage: true });
+  await budgetEdit.getByRole("button", { name: "Save changes" }).click();
+  await kale.getByRole("heading", { level: 1, name: BUDGET_TITLE_LONGER, exact: true }).waitFor();
+  check("the next Save changes goes through straight away: checked against the new official text, every change kept", (await eventually(() => kale.getByRole("status").filter({ hasText: "Checked against the new official text. It can be approved now." }).isVisible())) && (await whyOf(kale)) === BUDGET_WHY_LONGER && (await metaOf(kale)).startsWith("Decision · 8.1 Budget · Both · Proposed by Kale") && (await kale.locator("details.full-text .rich").textContent()) === BUDGET_TEXT + BUDGET_MORE && (await kale.getByRole("region", { name: "Approvals" }).getByText("Waiting for Casey", { exact: true }).isVisible()) && kale.url().startsWith(budgetUrl), `${JSON.stringify(await whyOf(kale))} / ${await metaOf(kale)}`);
+  await kale.getByRole("button", { name: "Withdraw" }).click();
+  await kale.getByRole("button", { name: "Withdraw proposal" }).click();
+  await eventually(async () => (await statusOf(kale).innerText()) === `Withdrawn by Kale, ${today().short}`);
+
+  // ------------------------------------------------------------------
+  section("22. Endorsing, and a proposal that is out of date");
+  const QUOTES_TITLE = "Three quotes for anything over $1,000";
+  const QUOTES_TEXT = "Get three quotes for any job over $1,000.";
+  const QUOTES_KALE = "Kale wrote this directly: keep every quote for seven years.";
+  const QUOTES_KALE_MORE = " Paper and email both.";
+  const QUOTES_REASON_START = "Out of date --  propose it again,";
+  const QUOTES_REASON = `${QUOTES_REASON_START} with the *seven years* in it`;
+  const ENDORSE_AFTER_CHECK = "The official text of this section has changed since this was proposed. It can be endorsed once Casey has checked it against the new text.";
+  const CHECK_FIRST = "The official text of this section has changed since Casey proposed this. Casey needs to check the proposal against the new text and save it again before it can be approved.";
+  const STUCK = {
+    proposer: {
+      notice: "The official text of this section has changed since you proposed this, and you can no longer change it. Withdraw it and make a new proposal.",
+      line: "The official text changed and you can no longer change this proposal. Withdraw it and make a new one.",
+    },
+    owner: {
+      notice: "The official text of this section has changed since this was proposed, and the person who proposed it can no longer change it. Decline it and make a new proposal.",
+      line: "The official text changed and it can no longer be approved. Decline it.",
+    },
+    advisor: {
+      notice: "The official text of this section has changed since this was proposed, and the person who proposed it can no longer change it. It has to be proposed again.",
+      line: "The official text changed and it can no longer be approved.",
+    },
+  };
+  const openProposal = async (page, address, title) => {
+    await page.goto(address);
+    await page.getByRole("heading", { level: 1, name: title, exact: true }).waitFor();
+  };
+  const approvalsLine = (page) => page.getByRole("region", { name: "Approvals" }).locator("li.muted").innerText().catch(() => "missing");
+  const changeNotices = async (page) => (await page.getByRole("region", { name: "What will change" }).locator(".notice").allInnerTexts()).join(" | ");
+
+  await startProposalFor(casey, "quotes", "8.2 Quotes");
+  const quotesUrl = await proposeText(casey, { title: QUOTES_TITLE, text: [QUOTES_TEXT] });
+  await openProposal(karen, quotesUrl, QUOTES_TITLE);
+  await openProposal(kale, quotesUrl, QUOTES_TITLE);
+  check("while a proposal is up to date, the Advisor has Endorse and the other Owner has Approve, Decline and Endorse", (await actionWords(karen)) === "Endorse" && (await actionWords(kale)) === "Approve|Decline|Endorse", `${await actionWords(karen)} / ${await actionWords(kale)}`);
+  // Kale changes the section's official text directly. Karen's page was opened before that.
+  await goToSection(kale, "Finance", "8.2 Quotes");
+  await saveOfficialHere(kale, QUOTES_KALE);
+  await karen.getByRole("button", { name: "Endorse" }).click();
+  const karenRefusal = karen.getByRole("region", { name: "Actions" }).getByRole("alert");
+  await karenRefusal.waitFor();
+  check("Endorse from a page opened before the official text changed is refused in place, with what has to happen first", (await karenRefusal.innerText()) === ENDORSE_AFTER_CHECK && (await karen.getByRole("region", { name: "Approvals" }).locator(".endorsements").count()) === 0, await karenRefusal.innerText());
+  await openProposal(karen, quotesUrl, QUOTES_TITLE);
+  check("on an out-of-date proposal the Advisor has no Endorse, and reads who has to check it", (await actionWords(karen)) === "" && (await changeNotices(karen)) === CHECK_FIRST && (await karen.locator(".endorsements").count()) === 0 && (await ownerControls(karen)) === 0, `${await actionWords(karen)} / ${await changeNotices(karen)}`);
+  await openProposal(kale, quotesUrl, QUOTES_TITLE);
+  check("nor has the other Owner: only Decline is left", (await actionWords(kale)) === "Decline" && (await changeNotices(kale)) === CHECK_FIRST, await actionWords(kale));
+  // Casey checks it against the new text and saves it again.
+  await openProposal(casey, quotesUrl, QUOTES_TITLE);
+  await casey.locator(".notice-action").getByRole("link", { name: "Check and save again" }).click();
+  await casey.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
+  const quotesEdit = casey.getByRole("form", { name: "Edit proposal" });
+  await quotesEdit.getByRole("textbox", { name: "Proposed official text" }).waitFor();
+  await quotesEdit.getByRole("button", { name: "Save changes" }).click();
+  await casey.getByRole("status").filter({ hasText: "Checked against the new official text." }).waitFor();
+  await openProposal(karen, quotesUrl, QUOTES_TITLE);
+  await openProposal(kale, quotesUrl, QUOTES_TITLE);
+  check("once its proposer has checked it, Endorse is offered again", (await actionWords(karen)) === "Endorse" && (await actionWords(kale)) === "Approve|Decline|Endorse", `${await actionWords(karen)} / ${await actionWords(kale)}`);
+  await kale.getByRole("button", { name: "Endorse" }).click();
+  check("the question an Owner gets on an open proposal names the person who can then no longer change it", await eventually(() => kale.getByText(endorseOpenQuestion("Casey"), { exact: true }).isVisible()), await kale.getByRole("group", { name: "Endorse" }).locator("p").first().innerText().catch(() => "missing"));
+  await kale.getByRole("group", { name: "Endorse" }).getByRole("button", { name: "Cancel" }).click();
+
+  // Casey starts changing her proposal. While her edit page is open, Karen endorses it.
+  await editLink(casey).click();
+  await casey.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
+  await quotesEdit.getByRole("textbox", { name: "Proposed official text" }).waitFor();
+  await quotesEdit.getByLabel("Title", { exact: true }).fill(`${QUOTES_TITLE}, typed and not saved`);
+  await quotesEdit.getByLabel("Why (optional)").fill("Typed on the edit page.");
+  const quotesEditUrl = casey.url();
+  await karen.getByRole("button", { name: "Endorse" }).click();
+  const quotesEndorsement = karen.getByRole("region", { name: "Approvals" }).locator(".endorsements");
+  check("the Advisor still endorses with one tap", (await eventually(() => quotesEndorsement.isVisible())) && (await quotesEndorsement.innerText()) === `Endorsed by Karen, ${today().short}` && (await karen.getByText(ENDORSE_QUESTION).count()) === 0);
+  // Her Save changes can no longer go through. The page is left as it is, so nothing she typed is taken away.
+  await quotesEdit.getByRole("button", { name: "Save changes" }).click();
+  await quotesEdit.getByRole("alert").waitFor();
+  await casey.waitForTimeout(700);
+  check("a Save changes that can no longer go through leaves the form on screen, with the reason and what she typed", (await alertsOf(quotesEdit)) === "Someone has already approved or endorsed this proposal, so it can no longer be changed. Withdraw it and make a new one." && casey.url() === quotesEditUrl && (await quotesEdit.getByLabel("Title", { exact: true }).inputValue()) === `${QUOTES_TITLE}, typed and not saved` && (await quotesEdit.getByLabel("Why (optional)").inputValue()) === "Typed on the edit page.", `${await alertsOf(quotesEdit).catch(() => "no form")} at ${casey.url()}`);
+
+  // Now Kale fixes the official text directly once more. The proposal is out of date, and
+  // its proposer can no longer change it (Karen endorsed it): each reader is told what they can do.
+  await goToSection(kale, "Finance", "8.2 Quotes");
+  await saveOfficialHere(kale, QUOTES_KALE_MORE);
+  check("the section says where the waiting proposal stands, in words for this reader", (await kale.locator(".official-notices .notice").innerText()) === `Waiting for approval: ${QUOTES_TITLE}. ${STUCK.owner.line}`, await kale.locator(".official-notices .notice").innerText().catch(() => "missing"));
+  await openProposal(casey, quotesUrl, QUOTES_TITLE);
+  check("its proposer is told to withdraw it and make a new one, and has no Edit, Decline or Check and save again", (await changeNotices(casey)) === STUCK.proposer.notice && (await approvalsLine(casey)) === STUCK.proposer.line && (await actionWords(casey)) === "Approve on my own|Withdraw" && (await casey.getByRole("link", { name: "Check and save again" }).count()) === 0 && (await casey.getByRole("region", { name: "Actions" }).getByText("It can no longer be changed because Karen endorsed it. To change it, withdraw it and make a new one.", { exact: true }).isVisible()), `${await changeNotices(casey)} / ${await approvalsLine(casey)} / ${await actionWords(casey)}`);
+  await shot(casey, "p3-desktop-26-stuck-proposal-proposer", { fullPage: true });
+  await openProposal(mobile, quotesUrl, QUOTES_TITLE);
+  check("on a phone she reads the same, with a full-size Withdraw", (await changeNotices(mobile)) === STUCK.proposer.notice && (await height(mobile.getByRole("button", { name: "Withdraw" }))) >= 44, String(await height(mobile.getByRole("button", { name: "Withdraw" }))));
+  await shot(mobile, "p3-phone-20-stuck-proposal-proposer", { fullPage: true });
+  await fits("A proposal that is out of date and can no longer be changed");
+  await openProposal(kale, quotesUrl, QUOTES_TITLE);
+  check("the other Owner is told to decline it, and has only Decline", (await changeNotices(kale)) === STUCK.owner.notice && (await approvalsLine(kale)) === STUCK.owner.line && (await actionWords(kale)) === "Decline", `${await changeNotices(kale)} / ${await approvalsLine(kale)} / ${await actionWords(kale)}`);
+  await openProposal(karen, quotesUrl, QUOTES_TITLE);
+  const karenReads = await karen.getByRole("main").innerText();
+  check("the Advisor is told what happened and is not told to press anything", (await changeNotices(karen)) === STUCK.advisor.notice && (await approvalsLine(karen)) === STUCK.advisor.line && (await actionWords(karen)) === "" && !/Decline it|Withdraw it/.test(karenReads), `${await changeNotices(karen)} / ${await approvalsLine(karen)} / ${await actionWords(karen)}`);
+  await goTo(casey, "Today");
+  await goTo(karen, "Today");
+  check("Today says the same to each of them", (await awaitingRow(casey, QUOTES_TITLE).locator("p").last().innerText()) === STUCK.proposer.line && (await awaitingRow(karen, QUOTES_TITLE).locator("p").last().innerText()) === STUCK.advisor.line, `${await awaitingRow(casey, QUOTES_TITLE).locator("p").last().innerText().catch(() => "missing")} / ${await awaitingRow(karen, QUOTES_TITLE).locator("p").last().innerText().catch(() => "missing")}`);
+
+  // Kale declines it. Return in the one-line reason box must not do that for him.
+  await kale.getByRole("button", { name: "Decline" }).click();
+  const quotesDecline = kale.getByRole("form", { name: "Decline this proposal" });
+  const reasonBox = quotesDecline.getByLabel("Reason (optional)");
+  await reasonBox.fill(QUOTES_REASON_START);
+  const sentByReasonReturn = await sentWhile(kale, () => reasonBox.press("Enter"));
+  check("Return in the Reason box sends nothing: the proposal is still waiting and the reason is still being written", sentByReasonReturn === 0 && (await statusOf(kale).innerText()) === "Waiting for approval" && (await reasonBox.inputValue()) === QUOTES_REASON_START && (await quotesDecline.getByRole("button", { name: "Decline proposal" }).isVisible()), `${sentByReasonReturn} sent, ${await statusOf(kale).innerText()}`);
+  check("Return takes the cursor out of the box, as it does in Title (on a phone that puts the keyboard away)", await reasonBox.evaluate((el) => document.activeElement !== el));
+  await reasonBox.click();
+  await kale.keyboard.press("End");
+  await kale.keyboard.type(QUOTES_REASON.slice(QUOTES_REASON_START.length));
+  await quotesDecline.getByRole("button", { name: "Decline proposal" }).click();
+  check("only the Decline proposal button declines, and the reason is kept word for word", (await eventually(async () => (await statusOf(kale).innerText()) === `Declined by Kale, ${today().short}`)) && (await kale.locator(".proposal-reason").innerText()) === `Reason: ${QUOTES_REASON}`, `${await statusOf(kale).innerText()} / ${await kale.locator(".proposal-reason").innerText().catch(() => "missing")}`);
+
+  // ------------------------------------------------------------------
+  section("23. A waiting proposal whose words have become the official text already");
+  const PAYMENTS_TITLE = "Payments are logged the day they are made";
+  const PAYMENTS_TEXT = "Log every payment the day it is made.";
+  const SAME = "The official text already says this.";
+  await startProposalFor(casey, "payments", "8.3 Payments Log");
+  const paymentsUrl = await proposeText(casey, { title: PAYMENTS_TITLE, text: [PAYMENTS_TEXT] });
+  // Kale saves the very same words directly, instead of approving the proposal.
+  await goToSection(kale, "Finance", "8.3 Payments Log");
+  await saveOfficialHere(kale, PAYMENTS_TEXT);
+  check("the section says the waiting proposal is already what the text says, and what this Owner can do", (await kale.locator(".official-notices .notice").innerText()) === `Waiting for approval: ${PAYMENTS_TITLE}. ${SAME} Casey can withdraw it, or you can decline it.`, await kale.locator(".official-notices .notice").innerText().catch(() => "missing"));
+  await openProposal(casey, paymentsUrl, PAYMENTS_TITLE);
+  check("its proposer reads one sentence in place of the out-of-date notice and its button: withdraw it", (await changeNotices(casey)) === `${SAME} Withdraw it.` && (await casey.locator(".notice-action").count()) === 0 && (await casey.getByRole("link", { name: "Check and save again" }).count()) === 0, await changeNotices(casey));
+  check("she has Edit and Withdraw, and no Approve on my own", (await actionWords(casey)) === "Edit|Withdraw", await actionWords(casey));
+  check("where the differences would be it says there are none, and the Approvals line says the same sentence as the notice", (await casey.locator(".diff-note").innerText()) === "This is what the official text already says." && (await approvalsLine(casey)) === `${SAME} Withdraw it.`, `${await casey.locator(".diff-note").innerText().catch(() => "missing")} / ${await approvalsLine(casey)}`);
+  await shot(casey, "p3-desktop-27-already-official", { fullPage: true });
+  await openProposal(mobile, paymentsUrl, PAYMENTS_TITLE);
+  check("on a phone she reads the same and has no button that cannot work", (await changeNotices(mobile)) === `${SAME} Withdraw it.` && (await actionWords(mobile)) === "Edit|Withdraw", `${await changeNotices(mobile)} / ${await actionWords(mobile)}`);
+  await shot(mobile, "p3-phone-21-already-official", { fullPage: true });
+  await fits("A proposal whose words are already the official text");
+  await openProposal(kale, paymentsUrl, PAYMENTS_TITLE);
+  check("the other Owner reads who can withdraw it or that he can decline it, and has only Decline", (await changeNotices(kale)) === `${SAME} Casey can withdraw it, or you can decline it.` && (await approvalsLine(kale)) === `${SAME} Casey can withdraw it, or you can decline it.` && (await actionWords(kale)) === "Decline", `${await changeNotices(kale)} / ${await actionWords(kale)}`);
+  await openProposal(karen, paymentsUrl, PAYMENTS_TITLE);
+  check("the Advisor reads only that the official text already says it, and has no Endorse", (await changeNotices(karen)) === SAME && (await approvalsLine(karen)) === SAME && (await actionWords(karen)) === "", `${await changeNotices(karen)} / ${await actionWords(karen)}`);
+  await goTo(kale, "Today");
+  await goTo(casey, "Proposals");
+  check("the lists say it too: Today for the other Owner, Proposals for its proposer", (await awaitingRow(kale, PAYMENTS_TITLE).locator("p").last().innerText()) === `${SAME} Casey can withdraw it, or you can decline it.` && (await awaitingRow(casey, PAYMENTS_TITLE).locator("p").last().innerText()) === `${SAME} Withdraw it.`, `${await awaitingRow(kale, PAYMENTS_TITLE).locator("p").last().innerText().catch(() => "missing")} / ${await awaitingRow(casey, PAYMENTS_TITLE).locator("p").last().innerText().catch(() => "missing")}`);
+  await awaitingRow(casey, PAYMENTS_TITLE).getByRole("link", { name: PAYMENTS_TITLE }).click();
+  await casey.getByRole("heading", { level: 1, name: PAYMENTS_TITLE, exact: true }).waitFor();
+  await casey.getByRole("button", { name: "Withdraw" }).click();
+  await casey.getByRole("button", { name: "Withdraw proposal" }).click();
+  check("Casey withdraws it, and the official text stays as Kale saved it", (await eventually(async () => (await statusOf(casey).innerText()) === `Withdrawn by Casey, ${today().short}`)) && (await actionWords(casey)) === "", await statusOf(casey).innerText());
+  await goToSection(kale, "Finance", "8.3 Payments Log");
+  check("the section has no waiting notice left and shows those words, approved by Kale", (await kale.getByText("Waiting for approval:").count()) === 0 && (await kale.locator(".official-box .rich").innerText()) === PAYMENTS_TEXT && (await kale.locator(".approval").innerText()) === approvedKale());
+
+  // ------------------------------------------------------------------
+  section("24. A copy kept on a device belongs to the person who typed it");
+  const KALE_UNSAVED = "Kale's half-written text, not saved.";
+  const KALE_UNSENT_NOTE = "Kale's note, typed and not sent";
+  const KALE_UNSENT_COMMENT = "Kale's comment, typed and not sent";
+  // One browser, used by both Owners one after the other (a shared computer or tablet).
+  const sharedContext = await desktopContext(browser);
+  const shared = await sharedContext.newPage();
+  trackErrors(shared, errors);
+  const signOut = async (page) => {
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL(/\/login$/);
+    await page.getByRole("button", { name: "Email me a sign-in link" }).waitFor();
+  };
+  const sharedOfficial = shared.getByRole("textbox", { name: "Official text" });
+  const sharedNote = shared.getByRole("textbox", { name: "New note" });
+  const sharedComment = shared.getByRole("textbox", { name: "Comment on this proposal" });
+  const openTodaysLog = async (page) => {
+    await goTo(page, "Daily Log");
+    await page.getByRole("link", { name: /^Today.s log$/ }).click();
+    await page.getByRole("heading", { level: 1, name: today().long }).waitFor();
+  };
+  await signIn(shared, "kale@example.com");
+  // Kale types official text and does not save it,
+  await goToSection(shared, "Facility and Buildout", "5.1 Construction");
+  const constructionUrl = shared.url();
+  await shared.getByRole("button", { name: "Edit official" }).click();
+  await sharedOfficial.waitFor();
+  await sharedOfficial.click();
+  await shared.keyboard.type(KALE_UNSAVED);
+  await eventually(async () => (await draftKeys(shared, "official:")).length === 1);
+  // a note he does not send,
+  await navOf(shared).getByRole("link", { name: "New note" }).click();
+  await sharedNote.waitFor();
+  await sharedNote.click();
+  await shared.keyboard.type(KALE_UNSENT_NOTE);
+  await eventually(async () => (await draftKeys(shared, "note:new")).length === 1);
+  // and a comment on a proposal he does not send.
+  await openProposal(shared, wagesUrl, WAGES_TITLE);
+  await shared.getByRole("button", { name: "Add comment", exact: true }).click();
+  await sharedComment.waitFor();
+  await sharedComment.click();
+  await shared.keyboard.type(KALE_UNSENT_COMMENT);
+  await eventually(async () => (await draftKeys(shared, "comment:proposal:")).length === 1);
+  const kaleCopies = (await draftKeys(shared)).sort();
+  check("three unsaved things are kept on the device, each under the id of the person who typed them", kaleCopies.length === 3 && new Set(kaleCopies.map((key) => key.split(":")[2])).size === 1 && /^[0-9a-f-]{36}$/.test(kaleCopies[0].split(":")[2]), kaleCopies.join(" "));
+
+  // He signs out, and Casey signs in on the same browser.
+  await signOut(shared);
+  await signIn(shared, "casey@example.com");
+  check("the copies are still on the device after he signed out and she signed in", (await draftKeys(shared)).sort().join(" ") === kaleCopies.join(" "), (await draftKeys(shared)).join(" "));
+  await shared.goto(constructionUrl);
+  await shared.getByRole("heading", { level: 1, name: "5.1 Construction" }).waitFor();
+  await shared.getByRole("button", { name: "Edit official" }).click();
+  await sharedOfficial.waitFor();
+  check("Casey is not offered Kale's unsaved official text: Edit official opens on the saved text", (await shared.getByText("You have unsaved changes to this text on this device.").count()) === 0 && (await sharedOfficial.innerText()).trim() === "" && (await shared.getByText(/Picked up/).count()) === 0 && (await shared.locator(".editor-outdated").count()) === 0, await sharedOfficial.innerText());
+  await shared.getByRole("button", { name: "Cancel" }).click();
+  await shared.getByRole("button", { name: "Edit official" }).waitFor();
+  check("after Cancel she still has no Continue editing", (await shared.getByRole("button", { name: "Continue editing" }).count()) === 0);
+  await openTodaysLog(shared);
+  await shared.getByRole("button", { name: "Add note" }).click();
+  await sharedNote.waitFor();
+  check("her note box opens empty: his unsent note is not in it", (await sharedNote.innerText()).trim() === "" && (await shared.getByText(/Picked up/).count()) === 0, await sharedNote.innerText());
+  await shared.getByRole("button", { name: "Cancel" }).click();
+  await openProposal(shared, wagesUrl, WAGES_TITLE);
+  await shared.getByRole("button", { name: "Add comment", exact: true }).click();
+  await sharedComment.waitFor();
+  check("her comment box opens empty: his unsent comment is not in it", (await sharedComment.innerText()).trim() === "" && (await shared.getByText(/Picked up/).count()) === 0, await sharedComment.innerText());
+  await shared.getByRole("button", { name: "Cancel" }).click();
+  check("nothing of his was thrown away while she used the device", (await draftKeys(shared)).sort().join(" ") === kaleCopies.join(" "), (await draftKeys(shared)).join(" "));
+
+  // She signs out, he signs in again: all three are back.
+  await signOut(shared);
+  await signIn(shared, "kale@example.com");
+  await shared.goto(constructionUrl);
+  await shared.getByRole("heading", { level: 1, name: "5.1 Construction" }).waitFor();
+  check("signed in again, Kale is told he has unsaved changes to that text", await eventually(() => shared.getByText("You have unsaved changes to this text on this device.").isVisible()));
+  await shared.getByRole("button", { name: "Continue editing" }).click();
+  await sharedOfficial.waitFor();
+  check("and they are word for word what he typed", (await sharedOfficial.innerText()).trim() === KALE_UNSAVED && (await shared.getByText(/^Picked up your unsaved changes from /).isVisible()), await sharedOfficial.innerText());
+  await shared.getByRole("button", { name: "Cancel" }).click();
+  await shared.getByRole("button", { name: "Discard changes" }).click();
+  await openTodaysLog(shared);
+  check("his unsent note is back in the note box, which opens by itself", (await eventually(async () => (await sharedNote.innerText()).trim() === KALE_UNSENT_NOTE)) && (await shared.getByText(/^Picked up what you typed on /).isVisible()), await sharedNote.innerText().catch(() => "no note box"));
+  await shared.getByRole("button", { name: "Cancel" }).click();
+  await shared.getByRole("button", { name: "Throw away" }).click();
+  await openProposal(shared, wagesUrl, WAGES_TITLE);
+  check("his unsent comment is back in the comment box, which opens by itself", (await eventually(async () => (await sharedComment.innerText()).trim() === KALE_UNSENT_COMMENT)) && (await shared.getByText(/^Picked up what you typed on /).isVisible()), await sharedComment.innerText().catch(() => "no comment box"));
+  await shared.getByRole("button", { name: "Cancel" }).click();
+  await shared.getByRole("button", { name: "Throw away" }).click();
+  check("once he has thrown them away, nothing is left on the device", await eventually(async () => (await draftKeys(shared)).length === 0), (await draftKeys(shared)).join(" "));
+  await sharedContext.close();
+
   // For the phone: a proposal of Casey's that goes out of date, and one of Kale's.
   await startProposalFor(casey, "coffee equipment", "6.2 Coffee Equipment");
   const grinderUrl = await proposeText(casey, { title: GRINDER_TITLE, text: [GRINDER_TEXT] });
@@ -1442,19 +1852,9 @@ async function main() {
 
   // ------------------------------------------------------------------
   section("14. Phone");
-  const phone = await phoneContext(browser);
-  const mobile = await phone.newPage();
-  trackErrors(mobile, errors);
-  await signIn(mobile, "casey@example.com");
-  // No sideways scrolling on the phone's own width (390px), nor on a narrower one (360px).
-  const fits = async (name) => {
-    const overflow = await sidewaysOverflow(mobile);
-    const size = mobile.viewportSize();
-    await mobile.setViewportSize({ width: 360, height: size.height });
-    const narrow = await sidewaysOverflow(mobile);
-    await mobile.setViewportSize(size);
-    check(`${name} fits a phone without sideways scrolling`, overflow <= 0 && narrow <= 0, `overflow ${overflow}px at ${size.width}px, ${narrow}px at 360px`);
-  };
+  // (Casey's phone, signed in since the start.)
+  await mobile.goto(`${BASE_URL}/`);
+  await mobile.getByRole("heading", { level: 1, name: "Today" }).waitFor();
   await shot(mobile, "p3-phone-01-today", { fullPage: true });
   await fits("Today");
   const mobileFlagged = mobile.getByRole("region", { name: /^Decided by one person/ }).getByRole("listitem");
@@ -1537,7 +1937,7 @@ async function main() {
   await tickBox.locator("p").first().click();
   await kale.keyboard.press("End");
   await kale.keyboard.type(" Typed on the computer.");
-  await eventually(async () => (await draftKeys(kale, "ppf:draft:proposal:")).length === 1);
+  await eventually(async () => (await draftKeys(kale, "proposal:")).length === 1);
   await tickEdit.getByRole("link", { name: "Cancel" }).click();
   await kale.waitForURL(tickUrl);
   await kaleMobile.goto(`${tickUrl}/edit`);
@@ -1556,7 +1956,7 @@ async function main() {
   const sentEdit = await sentWhile(kale, () => tickEdit.getByRole("button", { name: "Save changes" }).click());
   check("Save changes waits for his choice as well", sentEdit === 0 && (await tickEdit.getByRole("alert").innerText().catch(() => "missing")) === CHOOSE_FIRST, `${sentEdit} sent`);
   await tickEdit.getByRole("button", { name: "Start over from the current text" }).click();
-  check("Start over from the current text drops the older copy of the edit", (await eventually(async () => !(await tickBox.innerText()).includes("Typed on the computer."))) && (await tickEdit.locator(".editor-outdated").count()) === 0 && (await draftKeys(kale, "ppf:draft:proposal:")).length === 0);
+  check("Start over from the current text drops the older copy of the edit", (await eventually(async () => !(await tickBox.innerText()).includes("Typed on the computer."))) && (await tickEdit.locator(".editor-outdated").count()) === 0 && (await draftKeys(kale, "proposal:")).length === 0);
   await tickEdit.getByRole("link", { name: "Cancel" }).click();
   await kale.waitForURL(tickUrl);
   await mobileCheckLink.tap();
@@ -1580,7 +1980,7 @@ async function main() {
   await mobileEndorse.scrollIntoViewIfNeeded();
   await mobileEndorse.tap();
   const endorseGroup = mobile.getByRole("group", { name: "Endorse" });
-  await endorseGroup.getByText(ENDORSE_QUESTION).waitFor();
+  await endorseGroup.getByText(endorseOpenQuestion("Kale"), { exact: true }).waitFor();
   check("on a phone the Endorse question opens in place with full-size answers", (await height(endorseGroup.getByRole("button", { name: "Endorse" }))) >= 44 && (await height(endorseGroup.getByRole("button", { name: "Cancel" }))) >= 44 && (await approveButton(mobile).isHidden()));
   await shot(mobile, "p3-phone-18-endorse-question", { fullPage: true });
   await fits("A proposal with the Endorse question open");
@@ -1595,7 +1995,7 @@ async function main() {
   await mobileOfficial.waitFor();
   await mobileOfficial.click();
   await mobile.keyboard.type(TRAINING_PHONE);
-  await eventually(async () => (await draftKeys(mobile, "ppf:draft:official:")).length === 1);
+  await eventually(async () => (await draftKeys(mobile, "official:")).length === 1);
   await mobile.goto(`${BASE_URL}/`);
   await mobile.getByRole("heading", { level: 1, name: "Today" }).waitFor();
   await goToSection(kale, "People", "2.4 Training");
@@ -1675,6 +2075,40 @@ async function main() {
   await mobileForm.getByRole("radio", { name: "Decision" }).check();
   check("switching kinds keeps what was typed", (await mobileForm.getByLabel("Title", { exact: true }).inputValue()) === "Typed on the phone");
 
+  // On the phone too, nothing typed is lost when the official text changes under the form.
+  // (Wages: Kale saves a change to it directly while her form is open.)
+  const PHONE_WHY = "Typed with two thumbs.\nA second line.";
+  const mobileProposed = mobileForm.getByRole("textbox", { name: "Proposed official text" });
+  await mobileProposed.click();
+  await mobile.keyboard.press("Control+End");
+  await mobile.keyboard.type(" Typed on the phone.");
+  await mobileForm.getByLabel("Why (optional)").fill(PHONE_WHY);
+  const phoneTyped = await heldBy(mobileForm);
+  await goToSection(kale, "People", "2.1 Wages");
+  await saveOfficialHere(kale, " Kale added this meanwhile.");
+  await mobilePropose.scrollIntoViewIfNeeded();
+  await mobilePropose.tap();
+  await mobileForm.getByRole("alert").waitFor();
+  const phoneOutdated = mobileForm.locator(".editor-outdated");
+  check("on a phone a refused Propose keeps Title, Why, Business and the text, and shows the new official text in place", (await mobileForm.getByRole("alert").innerText()) === WRITING_REFUSAL && (await eventually(() => phoneOutdated.isVisible())) && (await heldBy(mobileForm)) === phoneTyped && (await mobileForm.locator(".editor-current .official-box .rich").innerText()).endsWith("Kale added this meanwhile."), await heldBy(mobileForm));
+  check("on a phone the refusal is on screen, right above the Propose button", (await inView(mobileForm.getByRole("alert"))) && (await mobileForm.getByRole("alert").boundingBox()).y < (await mobilePropose.boundingBox()).y);
+  await mobile.evaluate(() => window.scrollTo(0, 0));
+  await shot(mobile, "p3-phone-19-form-official-changed", { fullPage: true });
+  await fits("The new proposal form after the official text changed under it");
+  await phoneOutdated.getByRole("button", { name: "Start over from the current text" }).tap();
+  check("on a phone Start over from the current text loads the new official text and keeps Title and Why", (await eventually(async () => (await mobileProposed.innerText()).trim().endsWith("Kale added this meanwhile."))) && (await phoneOutdated.count()) === 0 && (await mobileForm.getByLabel("Title", { exact: true }).inputValue()) === "Typed on the phone" && (await mobileForm.getByLabel("Why (optional)").inputValue()) === PHONE_WHY, await mobileProposed.innerText());
+  await mobileProposed.click();
+  await mobile.keyboard.press("Control+End");
+  await mobile.keyboard.type(" Typed on the phone again.");
+  await mobilePropose.scrollIntoViewIfNeeded();
+  await mobilePropose.tap();
+  await mobile.waitForURL(/\/proposals\/[0-9a-f-]{36}$/);
+  await mobile.getByRole("heading", { level: 1, name: "Typed on the phone", exact: true }).waitFor();
+  check("on a phone the next Propose goes through with the Title and the Why she typed before the refusal", (await whyOf(mobile)) === PHONE_WHY && (await mobile.locator(".diff ins").innerText()) === "Typed on the phone again." && (await statusOf(mobile).innerText()) === "Waiting for approval", `${JSON.stringify(await whyOf(mobile))} / ${await mobile.locator(".diff").innerText().catch(() => "no differences")}`);
+  await mobile.getByRole("button", { name: "Withdraw" }).tap();
+  await mobile.getByRole("button", { name: "Withdraw proposal" }).tap();
+  await eventually(async () => (await statusOf(mobile).innerText()) === `Withdrawn by Casey, ${today().short}`);
+
   await mobile.getByRole("button", { name: "Open menu" }).click();
   await goToSection(mobile, "Hours and Daily Operations", "3.1 Store Hours");
   await mobile.getByRole("link", { name: "Version history" }).tap();
@@ -1704,6 +2138,22 @@ async function main() {
   await mobile.evaluate(() => window.scrollTo(0, 0));
   await shot(mobile, "p3-phone-11-day", { fullPage: true });
   await fits("A Daily Log day with Propose on the notes");
+
+  // Settings on a phone: the message about a name with a character in it that cannot be
+  // seen (here one that came along with a paste, between "Sam" and "my").
+  await mobile.getByRole("button", { name: "Open menu" }).click();
+  await navOf(mobile).getByRole("link", { name: "Settings" }).click();
+  await mobile.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
+  await mobile.getByLabel("Name or nickname").fill(`Sam${String.fromCodePoint(0x200b)}my`);
+  await mobile.getByLabel("Email", { exact: true }).fill("sammy@example.com");
+  await mobile.getByRole("button", { name: "Create user" }).tap();
+  const nameMessage = mobile.getByRole("alert").filter({ hasText: "cannot be seen" });
+  await nameMessage.waitFor();
+  check("on a phone a name with a character that cannot be seen is refused, with how it may have got there and what to do", (await nameMessage.innerText()) === "That name has a character in it that cannot be seen. It may have come along when the name was pasted, or with a small picture typed on a phone. Type the name by hand and leave pictures out." && (await mobile.getByLabel("Email", { exact: true }).inputValue()) === "sammy@example.com", await nameMessage.innerText());
+  check("on a phone that message is on screen when it appears", await inView(nameMessage), JSON.stringify(await nameMessage.boundingBox()));
+  await nameMessage.scrollIntoViewIfNeeded();
+  await shot(mobile, "p3-phone-23-settings-name-message");
+  await fits("Settings with the message about a name");
   await phone.close();
 
   // ------------------------------------------------------------------

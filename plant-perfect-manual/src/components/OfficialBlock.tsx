@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { saveOfficialAction } from "@/app/(app)/sections/actions";
 import { officialDraftKey, useHasDraft } from "@/lib/drafts";
+import { useDraftOwner } from "./DraftOwner";
 import { EMPTY_DOC, type RichDoc } from "@/lib/richtext";
 
 // The editor is only downloaded when someone presses "Edit official",
@@ -33,7 +34,8 @@ type Props = {
  */
 export function OfficialBlock({ sectionId, doc, versionId, canEdit, canPropose, children }: Props) {
   const [editing, setEditing] = useState(false);
-  const draftKey = officialDraftKey(sectionId);
+  // A copy of unsaved text is kept for the person who typed it, nobody else.
+  const draftKey = officialDraftKey(useDraftOwner(), sectionId);
   const hasDraft = useHasDraft(draftKey);
 
   return (

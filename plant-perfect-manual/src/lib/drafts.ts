@@ -5,6 +5,13 @@ import type { RichDoc } from "./richtext";
  * Unsaved text is kept in the browser while someone types, so nothing is
  * lost if a phone closes the page. It stays on that device only and is
  * cleared as soon as the text is saved or discarded.
+ *
+ * A copy belongs to the person who typed it. The signed-in person's id is
+ * part of every key (`owner` below; the browser-side pieces get it from
+ * `useDraftOwner`), so on a shared computer or tablet the next person to
+ * sign in is never offered someone else's words as their own, and each
+ * person's copies are still there when they sign in again. Nothing is
+ * cleared at sign-out: that would lose typed words.
  */
 export type Draft = {
   doc: RichDoc;
@@ -20,39 +27,46 @@ export type Draft = {
 
 const CHANGE_EVENT = "ppf-draft-change";
 
-export function officialDraftKey(sectionId: string): string {
-  return `ppf:draft:official:${sectionId}`;
+/** Every key: whose copy it is, then what it is a copy of. */
+function draftKey(owner: string, what: string): string {
+  return `ppf:draft:${owner}:${what}`;
+}
+
+export function officialDraftKey(owner: string, sectionId: string): string {
+  return draftKey(owner, `official:${sectionId}`);
 }
 
 /**
- * The note being typed but not saved yet. One per device, whatever the day:
- * a note started late at night is still there in the morning.
+ * The note being typed but not saved yet. One per person and device,
+ * whatever the day: a note started late at night is still there in the morning.
  */
-export const NEW_NOTE_DRAFT_KEY = "ppf:draft:note:new";
+export function newNoteDraftKey(owner: string): string {
+  return draftKey(owner, "note:new");
+}
 
 /** Unsaved changes to the wording of an existing note. */
-export function noteDraftKey(noteId: string): string {
-  return `ppf:draft:note:${noteId}`;
+export function noteDraftKey(owner: string, noteId: string): string {
+  return draftKey(owner, `note:${noteId}`);
 }
 
 /** An unsaved comment on a note. */
-export function commentDraftKey(noteId: string): string {
-  return `ppf:draft:comment:${noteId}`;
+export function commentDraftKey(owner: string, noteId: string): string {
+  return draftKey(owner, `comment:${noteId}`);
 }
 
 /** The proposed official text of a new proposal for a section, not sent yet. */
-export function newProposalDraftKey(sectionId: string): string {
-  return `ppf:draft:proposal:new:${sectionId}`;
+export function newProposalDraftKey(owner: string, sectionId: string): string {
+  return draftKey(owner, `proposal:new:${sectionId}`);
 }
 
 /** Unsaved changes to the proposed text of an existing proposal. */
-export function proposalDraftKey(proposalId: string): string {
-  return `ppf:draft:proposal:${proposalId}`;
+export function proposalDraftKey(owner: string, proposalId: string): string {
+  return draftKey(owner, `proposal:${proposalId}`);
 }
 
 /** An unsaved comment on a proposal. */
-export function proposalCommentDraftKey(proposalId: string): string {
-  return `ppf:draft:comment:proposal:${proposalId}`;
+export function proposalCommentDraftKey(owner: string, proposalId: string): string {
+  return draftKey(owner, `comment:proposal:${proposalId}`);
 }
 
 export function readDraft(key: string): Draft | null {

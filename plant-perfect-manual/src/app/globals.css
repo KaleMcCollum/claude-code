@@ -919,6 +919,13 @@ p {
 
 /* ---------- Tables of records (Settings) ---------- */
 
+/* What the app answered, above the list of users. It is brought on screen
+   when it appears (on a phone the form is far below it): keep a little air
+   above it then. */
+.users-answer {
+  scroll-margin-top: 12px;
+}
+
 .records {
   width: 100%;
   border-collapse: collapse;

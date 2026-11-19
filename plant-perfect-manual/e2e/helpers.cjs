@@ -34,8 +34,30 @@ function section(title) {
   console.log(title);
 }
 
+/**
+ * Wait until the page has finished starting up in the browser (every box
+ * and button on it is in the app's hands). Taking a picture marks every
+ * text box for a moment, to keep the blinking cursor out of it; on a page
+ * that is still starting up, the development build reports that mark as an
+ * error. Left out: boxes inside the text editor's own text, and the unseen
+ * boxes the framework itself puts into a form, neither of which the app holds.
+ */
+async function settled(page) {
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll("input:not([type=hidden]), textarea, select, button")]
+          .filter((el) => !el.closest(".ProseMirror"))
+          .every((el) => Object.keys(el).some((key) => key.startsWith("__reactProps$"))),
+      null,
+      { timeout: 10000 },
+    )
+    .catch(() => {});
+}
+
 async function shot(page, name, options = {}) {
   fs.mkdirSync(OUT, { recursive: true });
+  await settled(page);
   // A whole-page picture is taken from the top, so the bar that stays at the
   // top of the screen is drawn where a person would see it.
   if (options.fullPage) await page.evaluate(() => window.scrollTo(0, 0));

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { addProposalCommentAction } from "@/app/(app)/proposals/actions";
+import { useDraftOwner } from "@/components/DraftOwner";
 import { NoteEditor } from "@/components/notes/NoteEditor";
 import { proposalCommentDraftKey, useHasDraft } from "@/lib/drafts";
 import { EMPTY_DOC } from "@/lib/richtext";
@@ -11,7 +12,7 @@ import { EMPTY_DOC } from "@/lib/richtext";
  * place. Words typed and not saved are kept on the device and come back.
  */
 export function ProposalCommentBox({ proposalId }: { proposalId: string }) {
-  const draftKey = proposalCommentDraftKey(proposalId);
+  const draftKey = proposalCommentDraftKey(useDraftOwner(), proposalId);
   const hasDraft = useHasDraft(draftKey);
   const [opened, setOpened] = useState(false);
   const open = opened || hasDraft;

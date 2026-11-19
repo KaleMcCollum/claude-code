@@ -38,7 +38,7 @@ export default async function NewProposalPage({ searchParams }: { searchParams: 
   const kind: ProposalKind =
     kindParam === "structure" ? "structure" : kindParam === "wording" ? "official_text" : "decision";
 
-  const { options, node, official, note, suggested, others } = await asUser(user.id, async (tx) => {
+  const { options, node, guessed, official, note, suggested, others } = await asUser(user.id, async (tx) => {
     const tree = await loadTree(tx);
     const sectionOptions = toSectionOptions(tree);
     const found = isUuid(noteParam) ? await loadNote(tx, tree, noteParam) : null;
@@ -47,18 +47,27 @@ export default async function NewProposalPage({ searchParams }: { searchParams: 
     const filed = sourceNote
       ? sectionOptions.filter((option) => sourceNote.sections.some((link) => link.id === option.id))
       : [];
-    let chosen = isUuid(sectionParam) ? findNode(tree, sectionParam) : null;
-    // A note filed under exactly one section: that is the section, unless asked otherwise.
-    if (!chosen && params.pick !== "1" && filed.length === 1) chosen = findNode(tree, filed[0].id);
+    const chosen = isUuid(sectionParam) ? findNode(tree, sectionParam) : null;
     return {
       options: sectionOptions,
       node: chosen,
+      // A note filed under exactly one section: that is the section, unless asked otherwise.
+      guessed: !chosen && params.pick !== "1" && filed.length === 1 ? filed[0].id : null,
       official: chosen ? await loadOfficial(tx, chosen.id) : null,
       note: sourceNote,
       suggested: filed,
       others: (await activeApprovers(tx)).filter((owner) => owner.id !== user.id).map((owner) => owner.name),
     };
   });
+  // The address always says which section the form is about. The form's
+  // page is drawn again in place when a proposal is refused, and it must
+  // then show the same section, whatever has happened to the note since.
+  if (guessed) {
+    const query = new URLSearchParams({ section: guessed });
+    if (kindParam === "structure" || kindParam === "wording") query.set("kind", kindParam);
+    if (note) query.set("note", note.id);
+    redirect(`/proposals/new?${query.toString()}`);
+  }
 
   return (
     <>

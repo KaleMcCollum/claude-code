@@ -1,11 +1,17 @@
+import { type ProposalView, endorseQuestion } from "@/lib/proposals";
+
 /**
- * What someone who can approve is asked, in place, before their endorsement
- * is recorded (on a proposal's page and under official text). Endorsing
- * cannot be undone and is not a softer kind of approval, so they are told.
- * Advisors, who cannot approve, endorse with one tap.
+ * The question and its two answers that someone who can approve gets, in
+ * place, before their endorsement is recorded (on a proposal's page and
+ * under official text). The question is worded by the rules layer
+ * (`endorseQuestion`). Advisors, who cannot approve, endorse with one tap.
+ *
+ * Worked out on the server and handed to the button as plain words.
  */
-export const ENDORSE_QUESTION = {
-  question: "Endorse this? It adds your name in support. It does not approve it, and it cannot be taken back.",
-  yes: "Endorse",
-  no: "Cancel",
-};
+export function endorseConfirm(view: Pick<ProposalView, "status" | "proposedByName">): {
+  question: string;
+  yes: string;
+  no: string;
+} {
+  return { question: endorseQuestion(view), yes: "Endorse", no: "Cancel" };
+}

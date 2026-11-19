@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { addUserAction, changeRoleAction, removeUserAction } from "./actions";
 
@@ -23,6 +23,14 @@ export function UsersPanel({ users, roles }: Props) {
   const [removing, setRemoving] = useState<string | null>(null);
   const defaultRole = roles.find((role) => role.key === "advisor")?.key ?? roles[0]?.key ?? "";
   const [form, setForm] = useState({ name: "", email: "", roleKey: defaultRole });
+  // What the app answered is shown above the list. On a phone the "Add user"
+  // form is far below that, so each answer is brought on screen: otherwise a
+  // refusal would look as if nothing had happened.
+  const answer = useRef<HTMLParagraphElement>(null);
+  const [answers, setAnswers] = useState(0);
+  useEffect(() => {
+    if (answers > 0) answer.current?.scrollIntoView({ block: "nearest" });
+  }, [answers]);
 
   const run = (work: () => Promise<ActionResult>, onSuccess?: () => void) => {
     startWork(async () => {
@@ -35,18 +43,19 @@ export function UsersPanel({ users, roles }: Props) {
         setMessage(null);
         setError(result.error);
       }
+      setAnswers((count) => count + 1);
     });
   };
 
   return (
     <>
       {error && (
-        <p className="notice error" role="alert">
+        <p ref={answer} className="notice error users-answer" role="alert">
           {error}
         </p>
       )}
       {message && (
-        <p className="notice" role="status">
+        <p ref={answer} className="notice users-answer" role="status">
           {message}
         </p>
       )}

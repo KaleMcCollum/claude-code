@@ -3,7 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { addNoteAction } from "@/app/(app)/daily-log/actions";
-import { NEW_NOTE_DRAFT_KEY, useHasDraft } from "@/lib/drafts";
+import { useDraftOwner } from "@/components/DraftOwner";
+import { newNoteDraftKey, useHasDraft } from "@/lib/drafts";
 import { EMPTY_DOC, type RichDoc } from "@/lib/richtext";
 import { NoteEditor, preloadNoteEditor } from "./NoteEditor";
 
@@ -25,7 +26,9 @@ type Props = {
 export function NoteEntry({ pageDate, noteCount }: Props) {
   const router = useRouter();
   const asked = useSearchParams().get("new") === "1";
-  const hasDraft = useHasDraft(NEW_NOTE_DRAFT_KEY);
+  // The note this person was typing on this device and has not saved.
+  const draftKey = newNoteDraftKey(useDraftOwner());
+  const hasDraft = useHasDraft(draftKey);
   const [open, setOpen] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
   const [answered, setAnswered] = useState(false);
@@ -78,7 +81,7 @@ export function NoteEntry({ pageDate, noteCount }: Props) {
         <NoteEditor
           compact
           initialDoc={EMPTY_DOC}
-          draftKey={NEW_NOTE_DRAFT_KEY}
+          draftKey={draftKey}
           label="New note"
           saveLabel="Save"
           focusRequest={focusRequest}

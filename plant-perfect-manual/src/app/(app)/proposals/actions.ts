@@ -1,7 +1,9 @@
 "use server";
 
+import { refresh } from "next/cache";
+import { asUser } from "@/db/client";
 import { type ActionResult, runAction } from "@/lib/actions";
-import { AppError } from "@/lib/permissions";
+import { type Actor, AppError, can } from "@/lib/permissions";
 import {
   type ProposalInput,
   type Seen,
@@ -10,14 +12,16 @@ import {
   addProposalComment,
   approveAlone,
   approveProposal,
+  canEditProposal,
   createProposal,
   declineProposal,
   editProposal,
   endorseProposal,
+  loadProposal,
   withdrawProposal,
 } from "@/lib/proposals";
 import { textToDoc } from "@/lib/richtext";
-import { isUuid } from "@/lib/sections";
+import { findNode, isUuid, loadTree } from "@/lib/sections";
 
 // Everything arriving here comes from a browser, so every value is checked
 // before use. The rules in src/lib/proposals.ts check the person's
@@ -138,12 +142,66 @@ function readForm(raw: unknown, mode: "new" | "edit"): ProposalInput {
   return input;
 }
 
-/** Make a proposal. Hands back its id so the screen can go to its page. */
+/**
+ * After the proposal form was refused, for whatever reason: draw the page it
+ * is on again, in place, with the sections and the official text as they
+ * are now. The answer to the form and the redrawn page travel back
+ * together. The form itself is not rebuilt, so everything typed in it
+ * stays: the title, the "Why", the business and the proposed text. (A
+ * reload would lose all but the last of those, so nothing here ever asks
+ * for one.) What the redraw is for: when the official text changed while
+ * the person was writing, the form is handed the new text and shows it,
+ * and its next press is checked against that.
+ *
+ * `stillShown` answers whether the page would still show this form to this
+ * person. Where it would not (the proposal was decided or endorsed in the
+ * meantime, its section was archived), drawing the page again would send
+ * them elsewhere and take the form away with what they typed. Then the page
+ * is left as it is: the refusal says what happened, and their words are
+ * still in front of them to copy.
+ */
+function redrawFormPage(stillShown: (actor: Actor) => Promise<boolean>) {
+  return async (actor: Actor): Promise<void> => {
+    if (await stillShown(actor)) refresh();
+  };
+}
+
+/**
+ * Would the New proposal page still show this form? The same questions the
+ * page asks: may this person propose, and is the section the form is about
+ * (a text proposal) still among the sections. The page's address always
+ * names that section, so it is the one the page would show again.
+ */
+function newFormStillShown(form: unknown) {
+  return async (actor: Actor): Promise<boolean> => {
+    if (!can(actor, "propose")) return false;
+    if (!isRecord(form) || form.kind === "structure") return true;
+    const sectionId = form.sectionId;
+    if (typeof sectionId !== "string" || !isUuid(sectionId)) return false;
+    return asUser(actor.id, async (tx) => findNode(await loadTree(tx), sectionId) !== null);
+  };
+}
+
+/** Would the Edit proposal page still show its form? The page asks `canEditProposal` too. */
+function editFormStillShown(proposalId: unknown) {
+  return async (actor: Actor): Promise<boolean> => {
+    if (typeof proposalId !== "string" || !isUuid(proposalId)) return false;
+    return asUser(actor.id, async (tx) => {
+      const view = await loadProposal(tx, proposalId);
+      return view !== null && canEditProposal(view, actor);
+    });
+  };
+}
+
+/**
+ * Make a proposal. Hands back its id so the screen can go to its page. When
+ * it is refused, the form's page is drawn again in place (`redrawFormPage`).
+ */
 export async function createProposalAction(form: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction<{ id: string }>(async (actor) => {
     const id = await createProposal(actor, readForm(form, "new"));
     return { data: { id } };
-  });
+  }, redrawFormPage(newFormStillShown(form)));
 }
 
 /**
@@ -152,6 +210,11 @@ export async function createProposalAction(form: unknown): Promise<ActionResult<
  * (`{ currentVersionId }`, null for none): saving says "I checked my
  * proposal against that text", which is what brings an out-of-date proposal
  * up to date. A section proposal sends no `seen`.
+ *
+ * When it is refused, the edit page is drawn again in place
+ * (`redrawFormPage`): if the official text changed while the page was open,
+ * the new text appears above the proposed text and the next Save changes
+ * sends that version.
  */
 export async function editProposalAction(proposalId: unknown, form: unknown, seen?: unknown): Promise<ActionResult> {
   return runAction(async (actor) => {
@@ -164,7 +227,7 @@ export async function editProposalAction(proposalId: unknown, form: unknown, see
     await editProposal(actor, requireProposalId(proposalId), input, {
       currentVersionId: versionOrNone(seen.currentVersionId),
     });
-  });
+  }, redrawFormPage(editFormStillShown(proposalId)));
 }
 
 /** "Approve". `data.approved` says whether that made it official. */

@@ -14,6 +14,7 @@ import {
   canEndorse,
   countAwaiting,
   createProposal,
+  endorseQuestion,
   loadProposal,
   waitingFor,
   waitingOn,
@@ -411,6 +412,23 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
       for (const status of ["declined", "withdrawn"] as const) {
         expect(canEndorse(open(KALE, [KALE], { status, decidedAt: at, decidedById: KALE.id }), KAREN)).toBe(false);
       }
+    });
+
+    it("an Owner is asked first, and for an open proposal told that its proposer can no longer change it afterwards", () => {
+      // Open: endorsing fixes the proposal in place for the person who made it, by name.
+      expect(endorseQuestion(open(CASEY, [CASEY]))).toBe(
+        "Endorse this? It adds your name in support. It does not approve it, and it cannot be taken back. Casey will no longer be able to change the proposal.",
+      );
+      expect(endorseQuestion(open(KALE, [KALE]))).toMatch(/ Kale will no longer be able to change the proposal\.$/);
+      // Approved: nothing can be changed anyway, so that sentence is left out.
+      const approved = open(CASEY, [CASEY], { status: "approved", decidedAt: at, decidedById: CASEY.id, decidedAlone: true, soloOpen: true });
+      expect(endorseQuestion(approved)).toBe(
+        "Endorse this? It adds your name in support. It does not approve it, and it cannot be taken back.",
+      );
+      // A proposal whose proposer is not on record still reads as a sentence.
+      expect(endorseQuestion(open(CASEY, [CASEY], { proposedById: null, proposedByName: null }))).toMatch(
+        / The person who proposed it will no longer be able to change the proposal\.$/,
+      );
     });
   });
 

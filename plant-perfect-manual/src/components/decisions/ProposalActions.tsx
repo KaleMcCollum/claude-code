@@ -12,7 +12,6 @@ import {
 } from "@/app/(app)/proposals/actions";
 import type { ActionResult } from "@/lib/actions";
 import { ActionButton } from "./ActionButton";
-import { ENDORSE_QUESTION } from "./endorse";
 
 type Props = {
   proposalId: string;
@@ -35,10 +34,11 @@ type Props = {
   /** The other people who can approve ("Casey"), or "" when there is nobody else. */
   otherApprovers: string;
   /**
-   * Ask before recording an endorsement. For people who can approve, so
-   * that nobody takes Endorse for a softer kind of Approve.
+   * What to ask before recording an endorsement (`endorseConfirm`). For
+   * people who can approve, so that nobody takes Endorse for a softer kind
+   * of Approve. Null: do not ask (Advisors endorse with one tap).
    */
-  endorseAsks: boolean;
+  endorseAsks: { question: string; yes: string; no: string } | null;
   /** What to say in place once this person has endorsed it (null: nothing). */
   afterEndorse: string | null;
   /** A muted line under the buttons, e.g. why the proposer has no Edit any more. */
@@ -113,6 +113,17 @@ export function ProposalActions({ proposalId, seen, show, otherApprovers, endors
               autoComplete="off"
               autoFocus
               onChange={(event) => setReason(event.target.value)}
+              onKeyDown={(event) => {
+                // Return in this one-line box must not decline the proposal:
+                // on a phone it is how the keyboard is put away, and a
+                // decline cannot be taken back. As in the proposal form's
+                // Title box, Return only takes the cursor out of the box.
+                // Only the "Decline proposal" button declines.
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
+              }}
             />
           </label>
           <div className="row">
@@ -204,7 +215,7 @@ export function ProposalActions({ proposalId, seen, show, otherApprovers, endors
               <ActionButton
                 label="Endorse"
                 action={() => endorseProposalAction(proposalId, seen)}
-                confirm={endorseAsks ? ENDORSE_QUESTION : undefined}
+                confirm={endorseAsks ?? undefined}
                 onDone={() => {
                   setError(null);
                   setMessage(afterEndorse);
