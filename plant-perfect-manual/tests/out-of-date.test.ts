@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { asSystem, asUser } from "@/db/client";
 import { activityLog, approvals, officialVersions, proposals, sections } from "@/db/schema";
-import { loadOfficial, saveOfficial } from "@/lib/official";
+import { listVersions, loadOfficial, restoreVersion, saveOfficial } from "@/lib/official";
 import { type Actor, AppError } from "@/lib/permissions";
 import {
   type ProposalView,
@@ -11,6 +11,7 @@ import {
   approveChoices,
   approveProposal,
   canApproveToo,
+  canEditProposal,
   canEndorse,
   countAwaiting,
   createProposal,
@@ -479,6 +480,122 @@ describe("endorsing a proposal that is out of date", () => {
     expect([canEndorse(approved, karen), canEndorse(approved, casey)]).toEqual([true, true]);
     await endorseProposal(karen, id, { revision: 1 });
     expect((await view(id)).endorsements.map((e) => e.name)).toEqual(["Karen"]);
+  });
+});
+
+describe("a waiting proposal whose text the official text already says", () => {
+  const ALREADY = "The official text already says this.";
+  const NOTHING_TO_APPROVE = "The official text of this section already says what this proposes, so there is nothing to approve.";
+  const versionsOf = async (sectionId: string) => (await asSystem((db) => listVersions(db, sectionId))).length;
+  const awaiting = (who: Actor) => asSystem((db) => countAwaiting(db, who));
+
+  it("Kale saves word for word what Casey proposed: nothing is left to approve, and no second copy can be made", async () => {
+    const pos = await section("Point of Sale");
+    await saveOfficial(kale, pos, doc("Registers: two."));
+    const input = { kind: "official_text" as const, sectionId: pos, title: "A third register", proposedOfficial: doc("Registers: three.") };
+    const id = await createProposal(casey, input);
+    expect(await view(id)).toMatchObject({ sameAsOfficial: false, outOfDate: false });
+    const before = [await awaiting(casey), await awaiting(kale)];
+    // Kale makes the same change directly instead of approving it.
+    await saveOfficial(kale, pos, doc("Registers: three."), { baseVersionId: await currentId(pos) });
+    const everyone = await owners();
+    const p = await view(id);
+    expect(p).toMatchObject({ sameAsOfficial: true, outOfDate: true, proposerCanChange: true, proposerCanWithdraw: true });
+    expect(waitingOn(p, everyone)).toEqual({ step: "same", ids: [casey.id, kale.id], names: ["Casey", "Kale"], needed: 0 });
+    expect([casey, kale, karen].map((who) => waitingText(p, everyone, who.id))).toEqual([
+      `${ALREADY} Withdraw it.`,
+      `${ALREADY} Casey can withdraw it, or you can decline it.`,
+      ALREADY,
+    ]);
+    // It was waiting for Kale; now it is on both Owners' lists, because either can clear it away.
+    expect([await awaiting(casey), await awaiting(kale)]).toEqual([before[0] + 1, before[1]]);
+
+    // No approve button for anyone, and no Endorse; its proposer may still change it.
+    for (const who of [casey, kale, karen]) expect(approveChoices(p, who, everyone)).toEqual({ approve: false, alone: false });
+    expect([canEndorse(p, karen), canEndorse(p, kale)]).toEqual([false, false]);
+    expect([canEditProposal(p, casey), canEditProposal(p, kale)]).toEqual([true, false]);
+
+    // Presses that arrive anyway (a page opened earlier would be refused for
+    // being old; these send what a fresh page would, or nothing at all).
+    const seen = (await page(id)).seen;
+    const versions = await versionsOf(pos);
+    for (const sent of [seen, { revision: 1 }]) {
+      await expect(approveAlone(casey, id, sent)).rejects.toThrow(`${NOTHING_TO_APPROVE} Withdraw it.`);
+      await expect(approveProposal(casey, id, sent)).rejects.toThrow(`${NOTHING_TO_APPROVE} Withdraw it.`);
+      await expect(approveAlone(kale, id, sent)).rejects.toThrow(`${NOTHING_TO_APPROVE} Decline it.`);
+      await expect(approveProposal(kale, id, sent)).rejects.toThrow(`${NOTHING_TO_APPROVE} Decline it.`);
+    }
+    await expect(endorseProposal(karen, id, { revision: 1 })).rejects.toThrow("The official text of this section has changed since this was proposed.");
+    expect(await versionsOf(pos)).toBe(versions);
+    expect(await view(id)).toMatchObject({ status: "open", endorsements: [] });
+    expect((await view(id)).approvals.map((a) => a.name)).toEqual(["Casey"]);
+    expect(await logged(id)).toEqual(["proposal.created: Proposed: A third register"]);
+    expect(await flaggedIds()).not.toContain(id);
+    // "Check and save again" could only have ended in this refusal.
+    await expect(editProposal(casey, id, input, { currentVersionId: await currentId(pos) })).rejects.toThrow(
+      "The proposed official text is the same as the current one.",
+    );
+
+    // Its proposer may still change it to say something else: then it is an ordinary proposal again.
+    await editProposal(casey, id, { ...input, proposedOfficial: doc("Registers: four.") }, { currentVersionId: await currentId(pos) });
+    expect(await view(id)).toMatchObject({ sameAsOfficial: false, outOfDate: false, revision: 2 });
+    expect(approveChoices(await view(id), kale, everyone)).toEqual({ approve: true, alone: false });
+    expect(waitingText(await view(id), everyone, kale.id)).toBe("Waiting for you");
+    // The same words in two paragraphs are not "exactly the official text" (as on the proposing form).
+    await saveOfficial(kale, pos, doc("Registers:", "four."), { baseVersionId: await currentId(pos) });
+    expect(await view(id)).toMatchObject({ sameAsOfficial: false, outOfDate: true });
+    expect(waitingOn(await view(id), everyone)?.step).toBe("check");
+    // Kale saves exactly her words again, and this time she withdraws it. A decided proposal is never "the same".
+    await saveOfficial(kale, pos, doc("Registers: four."), { baseVersionId: await currentId(pos) });
+    expect((await view(id)).sameAsOfficial).toBe(true);
+    await withdrawProposal(casey, id);
+    expect(await view(id)).toMatchObject({ status: "withdrawn", sameAsOfficial: false });
+  });
+
+  it("the same after a restore, and in a section that had no official text", async () => {
+    const coffee = await section("Coffee Equipment");
+    await saveOfficial(kale, coffee, doc("One grinder."));
+    await saveOfficial(kale, coffee, doc("Two grinders."), { baseVersionId: await currentId(coffee) });
+    const back = await createProposal(casey, { kind: "official_text", sectionId: coffee, title: "One grinder is enough", proposedOfficial: doc("One grinder.") });
+    // Kale restores the first version: the same words Casey proposed.
+    const versions = await asSystem((db) => listVersions(db, coffee));
+    await restoreVersion(kale, coffee, versions.at(-1)!.id, { currentVersionId: versions[0].id });
+    expect(await officialText(coffee)).toBe("One grinder.");
+    expect(await view(back)).toMatchObject({ sameAsOfficial: true, outOfDate: true });
+    await expect(approveAlone(casey, back, (await page(back)).seen)).rejects.toThrow(`${NOTHING_TO_APPROVE} Withdraw it.`);
+    // The other way out: Kale declines it.
+    await declineProposal(kale, back, "Done already.");
+    expect(await view(back)).toMatchObject({ status: "declined", sameAsOfficial: false });
+
+    const contacts = await section("Vendor Contacts");
+    expect(await currentId(contacts)).toBeNull();
+    const first = await createProposal(casey, { kind: "decision", sectionId: contacts, title: "Soil vendor", proposedOfficial: doc("Soil: Green Valley.") });
+    expect(await view(first)).toMatchObject({ baseVersionId: null, sameAsOfficial: false });
+    await saveOfficial(kale, contacts, doc("Soil: Green Valley."));
+    expect(await view(first)).toMatchObject({ sameAsOfficial: true, outOfDate: true });
+    await expect(approveAlone(casey, first, (await page(first)).seen)).rejects.toThrow(`${NOTHING_TO_APPROVE} Withdraw it.`);
+    expect(await versionsOf(contacts)).toBe(1);
+    await withdrawProposal(casey, first);
+  });
+
+  it("when its proposer can no longer withdraw it, the other Owner is simply told to decline it", async () => {
+    const deadlines = await section("Order Deadlines");
+    const max = await insertUser("Max", "max@example.com", "owner");
+    const id = await createProposal(max, { kind: "decision", sectionId: deadlines, title: "Order by Tuesday", proposedOfficial: doc("Orders go in by Tuesday.") });
+    await saveOfficial(kale, deadlines, doc("Orders go in by Tuesday."));
+    expect(waitingText(await view(id), await owners(), kale.id)).toBe(`${ALREADY} Max can withdraw it, or you can decline it.`);
+    await changeUserRole(kale, max.id, "advisor");
+    const p = await view(id);
+    expect(p).toMatchObject({ sameAsOfficial: true, proposerCanWithdraw: false });
+    expect([kale, casey, max, karen].map((who) => waitingText(p, [casey, kale], who.id))).toEqual([
+      `${ALREADY} Decline it.`,
+      `${ALREADY} Decline it.`,
+      ALREADY,
+      ALREADY,
+    ]);
+    await expect(approveAlone(kale, id, (await page(id)).seen)).rejects.toThrow(`${NOTHING_TO_APPROVE} Decline it.`);
+    await declineProposal(kale, id, "");
+    await removeUser(kale, max.id);
   });
 });
 

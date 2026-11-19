@@ -165,6 +165,16 @@ export type ProposalView = {
    */
   outOfDate: boolean;
   /**
+   * An open text proposal whose proposed text is exactly the section's
+   * official text as it is now (someone saved the same words in the
+   * meantime, by a direct edit or a restore). There is nothing left to
+   * approve: its proposer withdraws it, or changes it to say something
+   * else; another Owner declines it. The same comparison as the one that
+   * refuses to propose "the same as the current text". False for structure
+   * proposals and for anything that is not open.
+   */
+  sameAsOfficial: boolean;
+  /**
    * Open proposals: its proposer could still change it (and so could still
    * check it against new official text). They have not been removed, are
    * still allowed to propose, and nobody else has approved or endorsed it.
@@ -186,17 +196,19 @@ export type Waiting = {
    * approve: waiting for approvals.
    * check: waiting for the proposer to check it against new official text.
    * stuck: out of date and its proposer can no longer change it.
+   * same: the official text already says what it proposes (`sameAsOfficial`).
    */
-  step: "approve" | "check" | "stuck";
+  step: "approve" | "check" | "stuck" | "same";
   /**
    * The people it is waiting for.
    *  - approve: the people who can approve now and have not. When two of
    *    them have already approved (it only needs one more press of Approve
    *    to become official): everyone who can approve now.
    *  - check: the proposer.
-   *  - stuck: everyone who can approve now (any of them can decline it, or
-   *    withdraw it if it is their own). What each of them, and anyone else,
-   *    is told to do is worded by `waitingText` and `blockedNotice`.
+   *  - stuck, same: everyone who can approve now (any of them can decline
+   *    it, or withdraw it if it is their own). What each of them, and
+   *    anyone else, is told to do is worded by `waitingText` and
+   *    `blockedNotice`.
    */
   ids: string[];
   /** Their names, in the same order. */
@@ -204,7 +216,7 @@ export type Waiting = {
   /**
    * Step "approve": how many more approvals are needed (0, 1 or 2). With a
    * single Owner one approval is all there can be, so it is never more than
-   * the number of people who can approve. 0 for the other two steps.
+   * the number of people who can approve. 0 for every other step.
    */
   needed: number;
 };
@@ -315,17 +327,35 @@ type Joined = {
   destinationTitle: string | null;
 };
 
-/** The id of each of these sections' current official version (sections with no official text are left out). */
-async function currentVersionIds(q: Queryable, sectionIds: string[]): Promise<Map<string, string>> {
-  const current = new Map<string, string>();
+/** Each of these sections' current official version: its id and its text (sections with no official text are left out). */
+async function currentVersions(
+  q: Queryable,
+  sectionIds: string[],
+): Promise<Map<string, { id: string; content: RichDoc }>> {
+  const current = new Map<string, { id: string; content: RichDoc }>();
   if (sectionIds.length === 0) return current;
   const rows = await q
-    .selectDistinctOn([officialVersions.sectionId], { sectionId: officialVersions.sectionId, id: officialVersions.id })
+    .selectDistinctOn([officialVersions.sectionId], {
+      sectionId: officialVersions.sectionId,
+      id: officialVersions.id,
+      content: officialVersions.content,
+    })
     .from(officialVersions)
     .where(inArray(officialVersions.sectionId, sectionIds))
     .orderBy(officialVersions.sectionId, desc(officialVersions.version));
-  for (const { sectionId, id } of rows) current.set(sectionId, id);
+  for (const { sectionId, id, content } of rows) current.set(sectionId, { id, content: content as RichDoc });
   return current;
+}
+
+/**
+ * True when `proposed` says exactly what a section's official text says
+ * now. `current` is that text, null when the section has none (an empty
+ * proposal is then "the same"). The one comparison behind both the refusal
+ * to propose such a text (`prepare`) and `ProposalView.sameAsOfficial`, so
+ * the two can never disagree.
+ */
+function saysWhatIsOfficial(current: RichDoc | null, proposed: RichDoc): boolean {
+  return current ? sameDoc(current, proposed) : isEmptyDoc(proposed);
 }
 
 async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> {
@@ -365,7 +395,8 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
     ? new Set((await activeApprovers(q)).map((owner) => owner.id))
     : new Set<string>();
   // The current official version of each section an open text proposal is
-  // about, to say whether that proposal is out of date.
+  // about, to say whether that proposal is out of date, and whether the
+  // official text already says what it proposes.
   const openTextSections = [
     ...new Set(
       joined
@@ -373,7 +404,7 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
         .map((j) => j.row.sectionId as string),
     ),
   ];
-  const current = await currentVersionIds(q, openTextSections);
+  const current = await currentVersions(q, openTextSections);
 
   return joined.map(({ row, proposedByName, proposerRemovedAt, proposerPermissions, decidedByName, ...names }) => {
     const version = versionRows.find((v) => v.proposalId === row.id);
@@ -424,7 +455,13 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
         row.status === "open" &&
         row.type !== "structure" &&
         row.sectionId !== null &&
-        (current.get(row.sectionId) ?? null) !== row.baseVersionId,
+        (current.get(row.sectionId)?.id ?? null) !== row.baseVersionId,
+      sameAsOfficial:
+        row.status === "open" &&
+        row.type !== "structure" &&
+        row.sectionId !== null &&
+        row.proposedOfficial !== null &&
+        saysWhatIsOfficial(current.get(row.sectionId)?.content ?? null, row.proposedOfficial as RichDoc),
       proposerCanChange:
         proposerCanWithdraw &&
         !approvedBy.some((a) => a.userId !== row.proposedBy) &&
@@ -729,6 +766,10 @@ export async function changesNotApprovedBy(
  *    is stricter: nobody else's approval may be on it at all, whether or
  *    not that person can approve right now. An approval given before the
  *    official text changed must never turn up later as the second one.
+ *
+ * Neither, for anyone, when the official text already says what it proposes
+ * (`sameAsOfficial`): approving it would only add a second copy of the
+ * current version.
  */
 export function approveChoices(
   view: ProposalView,
@@ -736,6 +777,7 @@ export function approveChoices(
   approvers: { id: string }[],
 ): { approve: boolean; alone: boolean } {
   if (view.status !== "open" || !can(actor, "approve")) return { approve: false, alone: false };
+  if (view.sameAsOfficial) return { approve: false, alone: false };
   const approved = new Set(view.approvals.map((a) => a.userId));
   const mine = approved.has(actor.id);
   const otherOwners = approvers.filter((owner) => owner.id !== actor.id);
@@ -756,6 +798,7 @@ export function waitingOn(view: ProposalView, approvers: { id: string; name: str
     ids: list.map((person) => person.id),
     names: list.map((person) => person.name),
   });
+  if (view.sameAsOfficial) return { step: "same", ...people(approvers), needed: 0 };
   if (view.outOfDate) {
     return view.proposerCanChange && view.proposedById
       ? { step: "check", ids: [view.proposedById], names: [view.proposedByName ?? "Someone"], needed: 0 }
@@ -804,6 +847,10 @@ function readerOf(
  * is waiting for its proposer's check (the page has its own notice for
  * that, with the "Check and save again" button).
  *
+ * The official text already says what it proposes (step "same"): the same
+ * sentence as `waitingText`. It takes the place of the out-of-date notice
+ * and its button, which could only lead to a refusal.
+ *
  * Out of date, and its proposer can no longer change it (step "stuck"):
  *  - its proposer: "... has changed since you proposed this, and you can no
  *    longer change it. Withdraw it and make a new proposal."
@@ -818,6 +865,7 @@ export function blockedNotice(
   viewerId: string,
 ): string | null {
   const waiting = waitingOn(view, approvers);
+  if (waiting?.step === "same") return waitingText(view, approvers, viewerId);
   if (waiting?.step !== "stuck") return null;
   const reader = readerOf(view, approvers, viewerId);
   if (reader === "proposer") {
@@ -847,6 +895,11 @@ export function blockedNotice(
  *    who can approve "The official text changed and it can no longer be
  *    approved. Decline it."; anyone else only the first of those two
  *    sentences.
+ *  - The official text already says what it proposes (same): its proposer
+ *    reads "The official text already says this. Withdraw it."; someone
+ *    else who can approve "... Casey can withdraw it, or you can decline
+ *    it." (just "... Decline it." when its proposer can no longer withdraw
+ *    it); anyone else "The official text already says this."
  */
 export function waitingText(
   view: ProposalView,
@@ -855,6 +908,15 @@ export function waitingText(
 ): string | null {
   const waiting = waitingOn(view, approvers);
   if (!waiting) return null;
+  if (waiting.step === "same") {
+    const reader = readerOf(view, approvers, viewerId);
+    const already = "The official text already says this.";
+    if (reader === "proposer") return `${already} Withdraw it.`;
+    if (reader === "other") return already;
+    return view.proposerCanWithdraw && view.proposedByName
+      ? `${already} ${view.proposedByName} can withdraw it, or you can decline it.`
+      : `${already} Decline it.`;
+  }
   if (waiting.step === "stuck") {
     const reader = readerOf(view, approvers, viewerId);
     if (reader === "proposer") {
@@ -1357,7 +1419,7 @@ async function prepare(
   const proposedOfficial = sanitizeDoc(input.proposedOfficial);
   const current = await latestVersionRow(tx, input.sectionId);
   if (shown && (current?.id ?? null) !== shown.versionId) throw new AppError(shown.otherwise);
-  if (current ? sameDoc(current.content as RichDoc, proposedOfficial) : isEmptyDoc(proposedOfficial)) {
+  if (saysWhatIsOfficial((current?.content as RichDoc | undefined) ?? null, proposedOfficial)) {
     throw new AppError(
       "The proposed official text is the same as the current one. Change the text to what it should say if this is approved.",
     );
@@ -1492,6 +1554,23 @@ async function proposerNow(tx: Tx, row: Pick<ProposalRow, "id" | "proposedBy">):
     canWithdraw,
     canChange: canWithdraw && !(await othersHaveSigned(tx, row.id, row.proposedBy)),
   };
+}
+
+/**
+ * Refuse to approve a text proposal when the official text of its section
+ * already says exactly what it proposes: approving it would only add a
+ * second copy of the current version. Call it with the section locked
+ * (`lockSectionOf`), so the answer holds until the transaction ends.
+ */
+async function refuseIfAlreadyOfficial(tx: Tx, actor: Actor, row: ProposalRow): Promise<void> {
+  if (row.type === "structure" || !row.sectionId || !row.proposedOfficial) return;
+  const current = await latestVersionRow(tx, row.sectionId);
+  if (!saysWhatIsOfficial((current?.content as RichDoc | undefined) ?? null, row.proposedOfficial as RichDoc)) return;
+  throw new AppError(
+    `The official text of this section already says what this proposes, so there is nothing to approve. ${
+      row.proposedBy === actor.id ? "Withdraw it." : "Decline it."
+    }`,
+  );
 }
 
 /**
@@ -1970,7 +2049,8 @@ export type ApproveOutcome = { approved: boolean; waitingFor: string[] };
  *    was never given on top of the newer text, so it cannot count as the
  *    second one. The proposer checks it and saves it again first;
  *  - when nobody else can approve right now: there would be no one to wait
- *    for. "Approve on my own" is the way forward then.
+ *    for. "Approve on my own" is the way forward then;
+ *  - when the official text already says exactly what it proposes.
  */
 export async function approveProposal(
   actor: Actor,
@@ -1985,6 +2065,7 @@ export async function approveProposal(
     requireOpen(row);
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
+    await refuseIfAlreadyOfficial(tx, actor, row);
     const standing = await proposerNow(tx, row);
     if (await isOutOfDate(tx, row)) throw new AppError(outOfDateWords(row, standing));
     const owners = await activeApprovers(tx);
@@ -2030,6 +2111,9 @@ export async function approveProposal(
  * (This half is a rule of the app. The database refuses two people's
  * approval of an out-of-date proposal, counting the people who can approve
  * at that moment.)
+ *
+ * Refused for everyone when the official text already says exactly what
+ * the proposal proposes: it would make a second copy of the current version.
  */
 export async function approveAlone(
   actor: Actor,
@@ -2044,6 +2128,7 @@ export async function approveAlone(
     requireOpen(row);
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
+    await refuseIfAlreadyOfficial(tx, actor, row);
     const standing = await proposerNow(tx, row);
     if ((await isOutOfDate(tx, row)) && (await approvalsOf(tx, id)).some((a) => a.userId !== actor.id)) {
       throw new AppError(outOfDateWords(row, standing));

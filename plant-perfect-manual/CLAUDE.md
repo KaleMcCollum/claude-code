@@ -154,6 +154,13 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   `endorseProposal` refuses a press from a page opened earlier): an
   endorsement stops the proposer changing the proposal, and so checking it.
   An approved proposal can still be endorsed.
+- An open text proposal whose text is exactly the section's official text
+  now (someone saved the same words directly) is `sameAsOfficial`, worked
+  out with the comparison that refuses to propose "the same as the current
+  text". Nothing is left to approve: `approveChoices` offers neither button
+  and both approve rules refuse it; `waitingOn` answers the step `same`
+  before `check` and `stuck`. Its proposer withdraws it or changes it to
+  say something else; another Owner declines it.
 - When an open proposal cannot go ahead, the waiting line (`waitingText`)
   and the notice on its page (`blockedNotice(view, approvers, viewerId)`)
   are worded for whoever reads them: its proposer while they can still

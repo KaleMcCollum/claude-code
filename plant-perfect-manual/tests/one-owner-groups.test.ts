@@ -65,6 +65,7 @@ function decided(id: string, more: Partial<ProposalView>): ProposalView {
     soloOpen: true,
     superseded: false,
     outOfDate: false,
+    sameAsOfficial: false,
     proposerCanChange: false,
     proposerCanWithdraw: false,
     ...more,

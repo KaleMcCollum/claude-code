@@ -82,6 +82,7 @@ function open(proposer: Actor, approvedBy: Actor[], more: Partial<ProposalView> 
     soloOpen: false,
     superseded: false,
     outOfDate: false,
+    sameAsOfficial: false,
     proposerCanChange: true,
     // (Sam, who is no longer an Owner, could not withdraw a proposal of his.)
     proposerCanWithdraw: proposer.permissions.includes("propose"),
@@ -302,6 +303,48 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
       expect(notices(open(KALE, [KALE], { outOfDate: true, proposerCanChange: true }), owners, KALE, CASEY, KAREN)).toEqual([null, null, null]);
       const decided = open(KALE, [KALE], { status: "declined", decidedAt: new Date(), decidedById: CASEY.id });
       expect(notices(decided, owners, KALE, CASEY)).toEqual([null, null]);
+    });
+  });
+
+  describe("when the official text already says what it proposes", () => {
+    const owners = [KALE, CASEY];
+    const ALREADY = "The official text already says this.";
+    /** Casey's proposal; the same words were saved directly in the meantime. */
+    const same = (more: Partial<ProposalView> = {}) =>
+      open(CASEY, [CASEY], { outOfDate: true, sameAsOfficial: true, proposerCanChange: true, ...more });
+
+    it("there is nothing to approve: it waits for its proposer to withdraw it or another Owner to decline it", () => {
+      const view = same();
+      expect(waitingOn(view, owners)).toEqual({ step: "same", ids: ids(KALE, CASEY), names: names(KALE, CASEY), needed: 0 });
+      expect(reads(view, owners, CASEY, KALE, KAREN)).toEqual([
+        `${ALREADY} Withdraw it.`,
+        `${ALREADY} Casey can withdraw it, or you can decline it.`,
+        ALREADY,
+      ]);
+      // The page shows the same sentence in place of the out-of-date notice and its button.
+      expect(notices(view, owners, CASEY, KALE, KAREN)).toEqual(reads(view, owners, CASEY, KALE, KAREN));
+      // No approve button for anyone: not even "on my own" for its proposer.
+      expect(buttons(view, owners, CASEY, KALE, KAREN)).toEqual(["Casey: - / -", "Kale: - / -", "Karen: - / -"]);
+      expect(buttons({ ...view, sameAsOfficial: false }, owners, CASEY, KALE)).toEqual(["Casey: - / on my own", "Kale: - / -"]);
+      // With three Owners it is every Owner's to deal with.
+      expect(waitingOn(view, [KALE, CASEY, DANA])).toMatchObject({ step: "same", names: names(KALE, CASEY, DANA) });
+      expect(reads(view, [KALE, CASEY, DANA], DANA)).toEqual([`${ALREADY} Casey can withdraw it, or you can decline it.`]);
+    });
+
+    it("is said before anything about checking it, or about being stuck", () => {
+      // Its proposer could still check it: "check and save again" would only be refused.
+      expect(waitingOn(same({ proposerCanChange: true }), owners)?.step).toBe("same");
+      // Someone endorsed it, so its proposer can no longer change it.
+      expect(waitingOn(same({ proposerCanChange: false }), owners)?.step).toBe("same");
+      expect(waitingOn(same({ sameAsOfficial: false, proposerCanChange: true }), owners)?.step).toBe("check");
+      expect(waitingOn(same({ sameAsOfficial: false, proposerCanChange: false }), owners)?.step).toBe("stuck");
+    });
+
+    it("nobody is pointed to a proposer who can no longer withdraw it", () => {
+      // Sam proposed it and has been made an Advisor since.
+      const view = open(SAM, [SAM], { outOfDate: true, sameAsOfficial: true, proposerCanChange: false });
+      expect(view.proposerCanWithdraw).toBe(false);
+      expect(reads(view, owners, KALE, CASEY, SAM, KAREN)).toEqual([`${ALREADY} Decline it.`, `${ALREADY} Decline it.`, ALREADY, ALREADY]);
     });
   });
 
