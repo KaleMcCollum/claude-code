@@ -171,6 +171,13 @@ export type ProposalView = {
    * False for anything that is not open.
    */
   proposerCanChange: boolean;
+  /**
+   * Open proposals: its proposer could still withdraw it. They have not
+   * been removed and are still allowed to propose. (Someone else's approval
+   * or endorsement does not stop a withdrawal.) False for anything that is
+   * not open.
+   */
+  proposerCanWithdraw: boolean;
 };
 
 /** What an open proposal is waiting for, and for whom. See `waitingOn`. */
@@ -188,7 +195,8 @@ export type Waiting = {
    *    to become official): everyone who can approve now.
    *  - check: the proposer.
    *  - stuck: everyone who can approve now (any of them can decline it, or
-   *    withdraw it if it is their own).
+   *    withdraw it if it is their own). What each of them, and anyone else,
+   *    is told to do is worded by `waitingText` and `blockedNotice`.
    */
   ids: string[];
   /** Their names, in the same order. */
@@ -373,6 +381,11 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
       list.filter((s) => s.proposalId === row.id).map(({ userId, name, at }) => ({ userId, name, at }));
     const approvedBy = pick(approvalRows);
     const endorsedBy = pick(endorsementRows);
+    const proposerCanWithdraw =
+      row.status === "open" &&
+      row.proposedBy !== null &&
+      proposerRemovedAt === null &&
+      (proposerPermissions ?? []).includes("propose");
     return {
       id: row.id,
       type: row.type,
@@ -413,12 +426,10 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
         row.sectionId !== null &&
         (current.get(row.sectionId) ?? null) !== row.baseVersionId,
       proposerCanChange:
-        row.status === "open" &&
-        row.proposedBy !== null &&
-        proposerRemovedAt === null &&
-        (proposerPermissions ?? []).includes("propose") &&
+        proposerCanWithdraw &&
         !approvedBy.some((a) => a.userId !== row.proposedBy) &&
         !endorsedBy.some((e) => e.userId !== row.proposedBy),
+      proposerCanWithdraw,
     };
   });
 }
@@ -768,6 +779,56 @@ function orNames(names: string[]): string {
 }
 
 /**
+ * Who is reading about an open proposal that cannot go ahead, by what they
+ * could do about it. The lines and notices that tell people what to do next
+ * are worded from this, so nobody is told to press a button they do not have.
+ *  - proposer: it is their own, and they can still withdraw it;
+ *  - approver: someone else who can approve right now, so they can decline it;
+ *  - other: anyone else. An Advisor, or a proposer who has since been made
+ *    an Advisor, can only read it.
+ */
+function readerOf(
+  view: ProposalView,
+  approvers: { id: string }[],
+  viewerId: string,
+): "proposer" | "approver" | "other" {
+  if (viewerId === view.proposedById) return view.proposerCanWithdraw ? "proposer" : "other";
+  return approvers.some((owner) => owner.id === viewerId) ? "approver" : "other";
+}
+
+/**
+ * The notice the proposal page shows above an open proposal that cannot be
+ * approved as it stands, as `viewerId` should read it. `approvers` is
+ * everyone who can approve right now. Null when there is nothing of the
+ * kind to say: the proposal is not open, it is waiting for approvals, or it
+ * is waiting for its proposer's check (the page has its own notice for
+ * that, with the "Check and save again" button).
+ *
+ * Out of date, and its proposer can no longer change it (step "stuck"):
+ *  - its proposer: "... has changed since you proposed this, and you can no
+ *    longer change it. Withdraw it and make a new proposal."
+ *  - someone else who can approve: "... and the person who proposed it can
+ *    no longer change it. Decline it and make a new proposal."
+ *  - anyone else: "... and the person who proposed it can no longer change
+ *    it. It has to be proposed again."
+ */
+export function blockedNotice(
+  view: ProposalView,
+  approvers: { id: string; name: string }[],
+  viewerId: string,
+): string | null {
+  const waiting = waitingOn(view, approvers);
+  if (waiting?.step !== "stuck") return null;
+  const reader = readerOf(view, approvers, viewerId);
+  if (reader === "proposer") {
+    return "The official text of this section has changed since you proposed this, and you can no longer change it. Withdraw it and make a new proposal.";
+  }
+  const cannotChange =
+    "The official text of this section has changed since this was proposed, and the person who proposed it can no longer change it.";
+  return reader === "approver" ? `${cannotChange} Decline it and make a new proposal.` : `${cannotChange} It has to be proposed again.`;
+}
+
+/**
  * One line saying who an open proposal is waiting for, as `viewerId` should
  * read it ("you" for themselves). Null unless it is open.
  *
@@ -779,8 +840,13 @@ function orNames(names: string[]): string {
  *    Owner who has approved it; "Approve on my own" is the way forward).
  *  - "Waiting for you to check it against the new official text" /
  *    "Waiting for Kale to check ...": it is out of date.
- *  - "The official text changed and it can no longer be approved. Decline
- *    it.": it is out of date and its proposer can no longer change it.
+ *  - It is out of date and its proposer can no longer change it (stuck).
+ *    Nobody is told to press a button they do not have (`readerOf`):
+ *    its proposer reads "The official text changed and you can no longer
+ *    change this proposal. Withdraw it and make a new one."; someone else
+ *    who can approve "The official text changed and it can no longer be
+ *    approved. Decline it."; anyone else only the first of those two
+ *    sentences.
  */
 export function waitingText(
   view: ProposalView,
@@ -789,7 +855,15 @@ export function waitingText(
 ): string | null {
   const waiting = waitingOn(view, approvers);
   if (!waiting) return null;
-  if (waiting.step === "stuck") return "The official text changed and it can no longer be approved. Decline it.";
+  if (waiting.step === "stuck") {
+    const reader = readerOf(view, approvers, viewerId);
+    if (reader === "proposer") {
+      return "The official text changed and you can no longer change this proposal. Withdraw it and make a new one.";
+    }
+    return reader === "approver"
+      ? "The official text changed and it can no longer be approved. Decline it."
+      : "The official text changed and it can no longer be approved.";
+  }
   if (waiting.step === "check") {
     const who = waiting.ids.includes(viewerId) ? "you" : waiting.names[0];
     return `Waiting for ${who} to check it against the new official text`;
@@ -805,10 +879,17 @@ export function waitingFor(view: ProposalView, approvers: { id: string; name: st
   return waitingOn(view, approvers)?.names ?? [];
 }
 
-/** True when this person could endorse it: allowed to, and has neither approved nor endorsed it. */
+/**
+ * True when this person could endorse it: allowed to, and has neither
+ * approved nor endorsed it. Never while an open proposal is out of date: an
+ * endorsement stops its proposer changing it, and so checking it against
+ * the new official text, which would leave it stuck. (An approved proposal
+ * can still be endorsed.)
+ */
 export function canEndorse(view: ProposalView, actor: Actor): boolean {
   return (
     (view.status === "open" || view.status === "approved") &&
+    !(view.status === "open" && view.outOfDate) &&
     can(actor, "endorse") &&
     !view.approvals.some((a) => a.userId === actor.id) &&
     !view.endorsements.some((e) => e.userId === actor.id)
@@ -2057,6 +2138,13 @@ export async function withdrawProposal(actor: Actor, id: string, options: { now?
 /**
  * "Endorse": a visible sign of support that never changes the proposal's
  * status. For Advisors, and for Owners who have not approved it.
+ *
+ * Refused on an open proposal that is out of date (a page opened before the
+ * official text changed still shows the button): an endorsement would stop
+ * its proposer checking it against the new text. An Advisor cannot lock the
+ * section, so an endorsement given at the very moment the official text
+ * changes can still land just before it; that is the same as having
+ * endorsed first, which is allowed.
  */
 export async function endorseProposal(
   actor: Actor,
@@ -2086,6 +2174,14 @@ export async function endorseProposal(
     // again under a lock (see addStamp), which is what holds if the proposer
     // saves a change at this very moment.
     await checkSeen(tx, row, { revision: seen.revision }, "endorse");
+    if (row.status === "open" && (await isOutOfDate(tx, row))) {
+      const standing = await proposerNow(tx, row);
+      throw new AppError(
+        standing.canChange
+          ? `The official text of this section has changed since this was proposed. It can be endorsed once ${standing.name} has checked it against the new text.`
+          : "The official text of this section has changed since this was proposed, and it can no longer be approved. It cannot be endorsed.",
+      );
+    }
     const added = await addStamp(tx, endorsements, row, { userId: actor.id, revision: seen.revision, now }, "endorse");
     // Pressed twice at the same moment, and the other press got there first:
     // their endorsement is on it, once, and the log says so once.

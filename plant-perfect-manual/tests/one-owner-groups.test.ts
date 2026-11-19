@@ -66,6 +66,7 @@ function decided(id: string, more: Partial<ProposalView>): ProposalView {
     superseded: false,
     outOfDate: false,
     proposerCanChange: false,
+    proposerCanWithdraw: false,
     ...more,
   };
 }

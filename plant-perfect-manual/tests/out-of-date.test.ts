@@ -11,6 +11,7 @@ import {
   approveChoices,
   approveProposal,
   canApproveToo,
+  canEndorse,
   countAwaiting,
   createProposal,
   declineProposal,
@@ -391,6 +392,93 @@ describe("approving an out-of-date proposal on your own", () => {
     expect(await officialText(hardGoods)).toBe("Hard goods: to be decided.");
     await withdrawProposal(kale, id);
     await removeUser(kale, jo.id);
+  });
+});
+
+describe("endorsing a proposal that is out of date", () => {
+  const ONCE_CHECKED = (name: string) =>
+    `The official text of this section has changed since this was proposed. It can be endorsed once ${name} has checked it against the new text.`;
+  const NEVER =
+    "The official text of this section has changed since this was proposed, and it can no longer be approved. It cannot be endorsed.";
+
+  it("is refused while it waits for its proposer's check, so that the check stays possible", async () => {
+    const closing = await section("Closing Procedures");
+    const input = { kind: "decision" as const, sectionId: closing, title: "Lock the gate", proposedOfficial: doc("The gate is locked at closing.") };
+    const id = await createProposal(casey, input);
+    // Karen's and Kale's pages, opened now, show Endorse.
+    const before = await view(id);
+    expect([canEndorse(before, karen), canEndorse(before, kale)]).toEqual([true, true]);
+    await saveOfficial(kale, closing, doc("Closing: to be decided."));
+    const p = await view(id);
+    expect(p).toMatchObject({ outOfDate: true, proposerCanChange: true });
+    expect([canEndorse(p, karen), canEndorse(p, kale)]).toEqual([false, false]);
+    // A press from the page opened earlier, by an Advisor or an Owner.
+    await expect(endorseProposal(karen, id, { revision: 1 })).rejects.toThrow(ONCE_CHECKED("Casey"));
+    await expect(endorseProposal(kale, id, { revision: 1 })).rejects.toThrow(ONCE_CHECKED("Casey"));
+    // The checks that were there before still come first.
+    await expect(endorseProposal(casey, id, { revision: 1 })).rejects.toThrow("You have already approved this, which says more than an endorsement.");
+    await expect(endorseProposal(karen, id, { revision: 7 })).rejects.toThrow("Casey changed this proposal after you opened it.");
+    expect((await view(id)).endorsements).toEqual([]);
+    expect(await logged(id)).toEqual(["proposal.created: Proposed: Lock the gate"]);
+
+    // Nothing stands in the way of Casey's check. Once it is up to date it can be endorsed.
+    expect((await view(id)).proposerCanChange).toBe(true);
+    await editProposal(casey, id, { ...input, proposedOfficial: doc("Closing: to be decided.", "The gate is locked at closing.") }, { currentVersionId: await currentId(closing) });
+    expect(await view(id)).toMatchObject({ outOfDate: false, revision: 2 });
+    expect(canEndorse(await view(id), karen)).toBe(true);
+    await endorseProposal(karen, id, { revision: 2 });
+    expect((await view(id)).endorsements.map((e) => e.name)).toEqual(["Karen"]);
+    await withdrawProposal(casey, id);
+  });
+
+  it("is refused in other words when nobody can bring the proposal up to date any more", async () => {
+    // Its proposer has been made an Advisor.
+    const opening = await section("Opening Procedures");
+    const lee = await insertUser("Lee", "lee@example.com", "owner");
+    const fromLee = await createProposal(lee, { kind: "decision", sectionId: opening, title: "Lights on at 7", proposedOfficial: doc("Lights go on at 7.") });
+    await saveOfficial(kale, opening, doc("Opening: to be decided."));
+    await changeUserRole(kale, lee.id, "advisor");
+    expect(waitingOn(await view(fromLee), await owners())?.step).toBe("stuck");
+    expect([canEndorse(await view(fromLee), karen), canEndorse(await view(fromLee), casey)]).toEqual([false, false]);
+    await expect(endorseProposal(karen, fromLee, { revision: 1 })).rejects.toThrow(NEVER);
+    await expect(endorseProposal(casey, fromLee, { revision: 1 })).rejects.toThrow(NEVER);
+    expect((await view(fromLee)).endorsements).toEqual([]);
+    await declineProposal(casey, fromLee, "The text has moved on.");
+    await removeUser(kale, lee.id);
+
+    // Someone endorsed it before the official text changed: that stays as
+    // decided (its proposer can no longer change it), and nobody else can
+    // add their name afterwards.
+    const policies = await section("Policies and Expectations");
+    const endorsed = await createProposal(casey, { kind: "decision", sectionId: policies, title: "Name tags", proposedOfficial: doc("Staff wear name tags.") });
+    await endorseProposal(karen, endorsed, { revision: 1 });
+    await saveOfficial(kale, policies, doc("Policies: to be decided."));
+    expect(await view(endorsed)).toMatchObject({ outOfDate: true, proposerCanChange: false, proposerCanWithdraw: true });
+    await expect(endorseProposal(kale, endorsed, { revision: 1 })).rejects.toThrow(NEVER);
+    // Karen pressing Endorse a second time is still quietly not needed.
+    await expect(endorseProposal(karen, endorsed, { revision: 1 })).resolves.toBeUndefined();
+    expect((await view(endorsed)).endorsements.map((e) => e.name)).toEqual(["Karen"]);
+    expect((await logged(endorsed)).filter((line) => line.startsWith("proposal.endorsed"))).toHaveLength(1);
+    // What each of them reads, and that it can be followed.
+    const p = await view(endorsed);
+    expect([casey, kale, karen].map((who) => waitingText(p, [casey, kale], who.id))).toEqual([
+      "The official text changed and you can no longer change this proposal. Withdraw it and make a new one.",
+      "The official text changed and it can no longer be approved. Decline it.",
+      "The official text changed and it can no longer be approved.",
+    ]);
+    await withdrawProposal(casey, endorsed);
+  });
+
+  it("an approved proposal can still be endorsed, also after the official text has moved on", async () => {
+    const legal = await section("Legal Entities");
+    const id = await createProposal(kale, { kind: "decision", sectionId: legal, title: "One company", proposedOfficial: doc("One company owns both businesses.") });
+    await approveAlone(kale, id, (await page(id)).seen);
+    await saveOfficial(casey, legal, doc("Two companies, one owner."));
+    const approved = await view(id);
+    expect(approved).toMatchObject({ status: "approved", superseded: true, outOfDate: false });
+    expect([canEndorse(approved, karen), canEndorse(approved, casey)]).toEqual([true, true]);
+    await endorseProposal(karen, id, { revision: 1 });
+    expect((await view(id)).endorsements.map((e) => e.name)).toEqual(["Karen"]);
   });
 });
 

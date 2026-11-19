@@ -19,6 +19,7 @@ import {
   PROPOSAL_TYPE_LABELS,
   activeApprovers,
   approveChoices,
+  blockedNotice,
   canApproveToo,
   canEditProposal,
   canEndorse,
@@ -205,17 +206,9 @@ export default async function ProposalPage({ params, searchParams }: PageProps) 
                   {proposerName} needs to check the proposal against the new text and save it again
                   before it can be approved.
                 </p>
-              ) : mine && can(user, "propose") ? (
-                // (Their own, with someone else's name on it already: Withdraw is theirs to press.)
-                <p className="notice">
-                  The official text of this section has changed since you proposed this, and you can
-                  no longer change it. Withdraw it and make a new proposal.
-                </p>
               ) : (
-                <p className="notice">
-                  The official text of this section has changed since this was proposed, and the
-                  person who proposed it can no longer change it. Decline it and make a new proposal.
-                </p>
+                // Its proposer can no longer change it. What to do next depends on who is reading.
+                <p className="notice">{blockedNotice(view, approvers, user.id)}</p>
               ))}
             {justChecked && (
               <p className="notice" role="status">

@@ -9,6 +9,8 @@ import {
   approveAlone,
   approveChoices,
   approveProposal,
+  blockedNotice,
+  canEndorse,
   countAwaiting,
   createProposal,
   loadProposal,
@@ -81,6 +83,8 @@ function open(proposer: Actor, approvedBy: Actor[], more: Partial<ProposalView> 
     superseded: false,
     outOfDate: false,
     proposerCanChange: true,
+    // (Sam, who is no longer an Owner, could not withdraw a proposal of his.)
+    proposerCanWithdraw: proposer.permissions.includes("propose"),
     ...more,
   };
 }
@@ -89,6 +93,9 @@ const names = (...people: Actor[]) => people.map((p) => p.name);
 /** What each of these people reads. */
 const reads = (view: ProposalView, approvers: Actor[], ...viewers: Actor[]) =>
   viewers.map((viewer) => waitingText(view, approvers, viewer.id));
+/** The notice each of these people reads on the proposal's own page. */
+const notices = (view: ProposalView, approvers: Actor[], ...viewers: Actor[]) =>
+  viewers.map((viewer) => blockedNotice(view, approvers, viewer.id));
 const buttons = (view: ProposalView, approvers: Actor[], ...people: Actor[]) =>
   people.map((who) => {
     const { approve, alone } = approveChoices(view, who, approvers);
@@ -217,8 +224,10 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
     it("and its proposer can no longer change it: it is stuck, for every Owner to see", () => {
       const view = open(SAM, [SAM], { outOfDate: true, proposerCanChange: false });
       expect(waitingOn(view, owners)).toEqual({ step: "stuck", ids: ids(KALE, CASEY), names: names(KALE, CASEY), needed: 0 });
-      const STUCK = "The official text changed and it can no longer be approved. Decline it.";
-      expect(reads(view, owners, KALE, CASEY, KAREN)).toEqual([STUCK, STUCK, STUCK]);
+      const STUCK = "The official text changed and it can no longer be approved.";
+      // The Owners can decline it. Karen, an Advisor, and Sam, who proposed
+      // it and is an Advisor now, have no button: they are not told to press one.
+      expect(reads(view, owners, KALE, CASEY, KAREN, SAM)).toEqual([`${STUCK} Decline it.`, `${STUCK} Decline it.`, STUCK, STUCK]);
       // Sam's approval is on it, given before the official text changed. Sam
       // cannot approve right now, but may be an Owner again tomorrow: nobody
       // else may make it official alone, or it would read "approved by two".
@@ -249,11 +258,84 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
     });
   });
 
+  describe("a stuck proposal tells each reader what they themselves can do", () => {
+    const owners = [KALE, CASEY];
+    const karenEndorsed = [{ userId: KAREN.id, name: KAREN.name, at: new Date("2026-11-11T18:00:00Z") }];
+    const SINCE = "The official text of this section has changed since";
+    const NOT_BY_ITS_PROPOSER = `${SINCE} this was proposed, and the person who proposed it can no longer change it.`;
+
+    it("its proposer withdraws it, another Owner declines it, an Advisor is told no more than what happened", () => {
+      // Kale's proposal; Karen endorsed it, so he can no longer change it; then the official text changed.
+      const view = open(KALE, [KALE], { outOfDate: true, proposerCanChange: false, endorsements: karenEndorsed });
+      expect(waitingOn(view, owners)?.step).toBe("stuck");
+      expect(reads(view, owners, KALE, CASEY, KAREN)).toEqual([
+        "The official text changed and you can no longer change this proposal. Withdraw it and make a new one.",
+        "The official text changed and it can no longer be approved. Decline it.",
+        "The official text changed and it can no longer be approved.",
+      ]);
+      expect(notices(view, owners, KALE, CASEY, KAREN)).toEqual([
+        `${SINCE} you proposed this, and you can no longer change it. Withdraw it and make a new proposal.`,
+        `${NOT_BY_ITS_PROPOSER} Decline it and make a new proposal.`,
+        `${NOT_BY_ITS_PROPOSER} It has to be proposed again.`,
+      ]);
+    });
+
+    it("a proposer who can no longer withdraw it is not told to", () => {
+      // Sam proposed it and has been made an Advisor since.
+      const view = open(SAM, [SAM], { outOfDate: true, proposerCanChange: false });
+      expect(notices(view, owners, SAM, KALE, KAREN)).toEqual([
+        `${NOT_BY_ITS_PROPOSER} It has to be proposed again.`,
+        `${NOT_BY_ITS_PROPOSER} Decline it and make a new proposal.`,
+        `${NOT_BY_ITS_PROPOSER} It has to be proposed again.`,
+      ]);
+      // The same proposer while still able to withdraw (someone else's approval is on it).
+      const stillHere = open(KALE, [KALE, SAM], { outOfDate: true, proposerCanChange: false });
+      expect(reads(stillHere, owners, KALE)).toEqual([
+        "The official text changed and you can no longer change this proposal. Withdraw it and make a new one.",
+      ]);
+      expect(reads({ ...stillHere, proposerCanWithdraw: false }, owners, KALE)).toEqual(["The official text changed and it can no longer be approved."]);
+    });
+
+    it("the notice is only for a stuck proposal", () => {
+      // Waiting for approvals; waiting for its proposer's check (the page has its own notice, with a button); not open.
+      expect(notices(open(KALE, [KALE]), owners, KALE, CASEY, KAREN)).toEqual([null, null, null]);
+      expect(notices(open(KALE, [KALE], { outOfDate: true, proposerCanChange: true }), owners, KALE, CASEY, KAREN)).toEqual([null, null, null]);
+      const decided = open(KALE, [KALE], { status: "declined", decidedAt: new Date(), decidedById: CASEY.id });
+      expect(notices(decided, owners, KALE, CASEY)).toEqual([null, null]);
+    });
+  });
+
+  describe("endorsing", () => {
+    const at = new Date("2026-11-11T18:00:00Z");
+
+    it("is not offered while an open proposal is out of date, to an Advisor or to an Owner", () => {
+      const upToDate = open(KALE, [KALE]);
+      expect([KAREN, CASEY, KALE].map((who) => canEndorse(upToDate, who))).toEqual([true, true, false]);
+      // Waiting for its proposer's check: an endorsement now would stop that check.
+      const waitingForCheck = open(KALE, [KALE], { outOfDate: true, proposerCanChange: true });
+      expect([KAREN, CASEY].map((who) => canEndorse(waitingForCheck, who))).toEqual([false, false]);
+      // Stuck: there is nothing left to support.
+      const stuck = open(SAM, [SAM], { outOfDate: true, proposerCanChange: false });
+      expect([KAREN, CASEY].map((who) => canEndorse(stuck, who))).toEqual([false, false]);
+    });
+
+    it("is still offered on an approved proposal, and never twice or after approving", () => {
+      const approved = open(KALE, [KALE], { status: "approved", decidedAt: at, decidedById: KALE.id, decidedAlone: true, soloOpen: true });
+      expect([KAREN, CASEY, KALE].map((who) => canEndorse(approved, who))).toEqual([true, true, false]);
+      const endorsed = open(KALE, [KALE], { endorsements: [{ userId: KAREN.id, name: KAREN.name, at }] });
+      expect([KAREN, CASEY].map((who) => canEndorse(endorsed, who))).toEqual([false, true]);
+      for (const status of ["declined", "withdrawn"] as const) {
+        expect(canEndorse(open(KALE, [KALE], { status, decidedAt: at, decidedById: KALE.id }), KAREN)).toBe(false);
+      }
+    });
+  });
+
   it("has nothing to say about a proposal that is not open", () => {
     for (const status of ["approved", "declined", "withdrawn"] as const) {
       const view = open(KALE, [KALE], { status, decidedAt: new Date(), decidedById: KALE.id });
       expect(waitingOn(view, [KALE, CASEY])).toBeNull();
       expect(waitingText(view, [KALE, CASEY], CASEY.id)).toBeNull();
+      expect(blockedNotice(view, [KALE, CASEY], CASEY.id)).toBeNull();
       expect(waitingFor(view, [KALE, CASEY])).toEqual([]);
       expect(buttons(view, [KALE, CASEY], KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / -"]);
     }

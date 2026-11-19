@@ -150,6 +150,16 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   waiting for (`waitingOn`, `waitingText`; `countAwaiting` for the sidebar),
   and send back exactly the `seen` values they rendered. Never work any of
   that out on a screen.
+- Nobody can endorse an open proposal that is out of date (`canEndorse`;
+  `endorseProposal` refuses a press from a page opened earlier): an
+  endorsement stops the proposer changing the proposal, and so checking it.
+  An approved proposal can still be endorsed.
+- When an open proposal cannot go ahead, the waiting line (`waitingText`)
+  and the notice on its page (`blockedNotice(view, approvers, viewerId)`)
+  are worded for whoever reads them: its proposer while they can still
+  withdraw it (`proposerCanWithdraw`), someone else who can approve and so
+  can decline it, or anyone else. Nobody is told to press a button they do
+  not have. Never write those sentences on a screen.
 - Lists outside a section show `displayTitle(view, tree)`: a direct edit
   or restore has no written title, so it is named by its section and the
   version it produced ("Edited directly: 2.1 Wages (version 3)"); an open
