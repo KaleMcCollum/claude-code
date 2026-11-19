@@ -143,12 +143,79 @@ function byFewestChanges(a: string[], b: string[], limit: number): Kept | null {
 }
 
 /**
- * The parts that stayed, were removed, and were added, in reading order.
- * Where words were replaced, what was removed comes before what was added.
- * Returns null when the two texts differ too much to compare word by word
- * (see `MAX_DIFF_WORDS`); the screen then shows both texts in full instead.
+ * White space that stays on one line: spaces, with no line break in it (a
+ * new line, the next paragraph, list item or table row) and no tab (the
+ * next table cell, in the plain-text copy of official text).
+ */
+const SPACES_ON_ONE_LINE = /^[^\S\t\n\v\f\r\u2028\u2029]+$/;
+
+/**
+ * Make a reworded sentence read as one change. Comparing piece by piece
+ * matches the single spaces of two quite different sentences, so the result
+ * takes turns: an old word crossed out, a new word, a space, the next old
+ * word. Here, wherever nothing but unchanged spaces on one line lies
+ * between two changes, they become one: everything removed, then
+ * everything added. The spaces in between go into both, so each text can
+ * still be put back together exactly from the parts.
+ *
+ * Never across a line break or a tab: a change at the end of one paragraph,
+ * list item or table cell stays apart from one at the start of the next.
+ * And only where words were both removed and added: additions alone (or
+ * removals alone) are left as they are, because joining them would mark a
+ * space that did not change as removed (or added).
+ */
+function joinRewording(parts: DiffPart[]): DiffPart[] {
+  const joined: DiffPart[] = [];
+  let i = 0;
+  while (i < parts.length) {
+    // A run of changes with nothing but spaces on one line between them.
+    let end = i;
+    while (
+      end < parts.length &&
+      (parts[end].kind !== "same" ||
+        (end > i && end + 1 < parts.length && parts[end + 1].kind !== "same" && SPACES_ON_ONE_LINE.test(parts[end].text)))
+    ) {
+      end += 1;
+    }
+    const run = parts.slice(i, end);
+    const gaps = run.filter((part) => part.kind === "same").length;
+    if (gaps > 0 && run.some((part) => part.kind === "removed") && run.some((part) => part.kind === "added")) {
+      const text = (side: "removed" | "added") =>
+        run
+          .filter((part) => part.kind === side || part.kind === "same")
+          .map((part) => part.text)
+          .join("");
+      joined.push({ kind: "removed", text: text("removed") }, { kind: "added", text: text("added") });
+    } else {
+      joined.push(...run);
+    }
+    i = end;
+    // The unchanged part that ended the run (or stood where one would start).
+    if (i < parts.length) joined.push(parts[i++]);
+  }
+  return joined;
+}
+
+/**
+ * The parts that stayed, were removed, and were added, in reading order,
+ * as screens show them. Where words were replaced, what was removed comes
+ * before what was added, and a run of replaced words with only spaces
+ * between them is one change (`joinRewording`). Returns null when the two
+ * texts differ too much to compare word by word (see `MAX_DIFF_WORDS`); the
+ * screen then shows both texts in full instead.
  */
 export function diffWords(before: string, after: string): DiffPart[] | null {
+  const parts = diffPieces(before, after);
+  return parts && joinRewording(parts);
+}
+
+/**
+ * The comparison itself, before neighbouring changes are joined: every
+ * unchanged piece is its own part, a lone space between two changed words
+ * included. Screens use `diffWords`. This one is exported for the tests
+ * that count how few changes each of the two methods finds.
+ */
+export function diffPieces(before: string, after: string): DiffPart[] | null {
   const a = tokens(before);
   const b = tokens(after);
 

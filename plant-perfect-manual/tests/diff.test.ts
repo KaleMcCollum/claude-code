@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type DiffPart, MAX_DIFF_WORDS, compareDocs, diffWords } from "@/lib/diff";
+import { type DiffPart, MAX_DIFF_WORDS, compareDocs, diffPieces, diffWords } from "@/lib/diff";
 import { type RichDoc, type RichNode, sanitizeDoc } from "@/lib/richtext";
 
 const show = (before: string, after: string) =>
@@ -47,8 +47,86 @@ describe("word-by-word difference", () => {
     expect(show("Open 9 to 6 on weekdays.", "Open 8 to 6 on weekdays.")).toBe("Open [-9][+8] to 6 on weekdays.");
     expect(show("We open at 9.", "They open at 9.")).toBe("[-We][+They] open at 9.");
     expect(show("Pay is $13", "Pay is $15")).toBe("Pay is [-$13][+$15]");
-    // Where words were replaced, the removed ones come first.
-    expect(show("one two three", "uno dos three")).toBe("[-one][+uno] [-two][+dos] three");
+    // Where words were replaced, the removed ones come first; and words
+    // replaced next to each other are one change, not two taking turns.
+    expect(show("one two three", "uno dos three")).toBe("[-one two][+uno dos] three");
+  });
+
+  it("a reworded sentence reads as one change: the whole old run, then the whole new run", () => {
+    const before = "Hire two baristas by February 1. They start with a paid training week.";
+    const after = "We will bring on two baristas before February. Their first week is paid training.";
+    expect(show(before, after)).toBe(
+      "[-Hire ][+We will bring on ]two baristas [-by February 1. They start with a][+before February. Their first week is] paid [-training week.][+training.]",
+    );
+    const shown = expectExact(diffWords(before, after), before, after);
+    // The comparison underneath matches the lone spaces of the two
+    // sentences, which read as old and new words taking turns: 17 changed
+    // pieces, against 6 once neighbours are joined.
+    const pieces = expectExact(diffPieces(before, after), before, after);
+    expect(pieces.filter((part) => part.kind !== "same")).toHaveLength(17);
+    expect(pieces.filter((part) => part.kind === "same" && part.text === " ")).toHaveLength(6);
+    expect(shown.filter((part) => part.kind !== "same")).toHaveLength(6);
+    // Never an added run before the removed run it replaces.
+    shown.forEach((part, index) => {
+      if (part.kind === "removed" && index > 0) expect(shown[index - 1].kind).toBe("same");
+    });
+
+    // One sentence replaced by another.
+    expect(show("The schedule is posted on Fridays. Swaps need an OK from a lead.", "The schedule is posted on Fridays. It covers two weeks.")).toBe(
+      "The schedule is posted on Fridays. [-Swaps need an OK from a lead.][+It covers two weeks.]",
+    );
+  });
+
+  it("changes are never joined across a line break or from one table cell to the next", () => {
+    const apart: [string, string, string][] = [
+      // The last word of one paragraph and the first of the next.
+      ["Close the till at nine.\n\nThen lock the gate.", "Close the till at ten.\n\nAfterwards lock the gate.", "Close the till at [-nine.][+ten.]\n\n[-Then][+Afterwards] lock the gate."],
+      // Two list lines (or a line break inside a paragraph).
+      ["Open at 7\nClose", "Open at 8\nShut", "Open at [-7][+8]\n[-Close][+Shut]"],
+      // A space before the line break does not make it one line.
+      ["Open at 7 \nClose", "Open at 8 \nShut", "Open at [-7][+8] \n[-Close][+Shut]"],
+      // Two cells of a table row (the plain-text copy puts a tab between cells).
+      ["Garden\t$15\nCoffee\t$13", "Yard\t$16\nCoffee\t$13", "[-Garden][+Yard]\t[-$15][+$16]\nCoffee\t$13"],
+    ];
+    for (const [before, after, expected] of apart) {
+      expect(show(before, after)).toBe(expected);
+      expect(diffWords(before, after)).toEqual(diffPieces(before, after));
+    }
+    // Other kinds of space on one line are still just spaces.
+    const nbsp = String.fromCodePoint(0xa0);
+    expect(show(`one${nbsp}two three`, `uno${nbsp}dos three`)).toBe(`[-one${nbsp}two][+uno${nbsp}dos] three`);
+  });
+
+  it("small changes read exactly as before", () => {
+    const unchanged: [string, string, string][] = [
+      // A changed number.
+      ["Coffee Shop starting wage is $14.00/hr. Raises are reviewed in June.", "Coffee Shop starting wage is $15.00/hr. Raises are reviewed in June.", "Coffee Shop starting wage is [-$14.00/hr.][+$15.00/hr.] Raises are reviewed in June."],
+      // An added sentence.
+      ["Open 9 to 6. Closed Mondays.", "Open 9 to 6. Closed Sundays too. Closed Mondays.", "Open 9 to 6. Closed [+Sundays too. Closed ]Mondays."],
+      // Two changed words far apart.
+      ["Staff get a paid break of ten minutes every four hours on busy days.", "Staff get a paid rest of ten minutes every four hours on quiet days.", "Staff get a paid [-break][+rest] of ten minutes every four hours on [-busy][+quiet] days."],
+    ];
+    for (const [before, after, expected] of unchanged) {
+      expect(show(before, after)).toBe(expected);
+      expect(diffWords(before, after)).toEqual(diffPieces(before, after));
+    }
+  });
+
+  it("words only added, or only removed, around a space that stayed are left alone", () => {
+    // Joining these would cross out (or underline) a space that did not change.
+    const added = diffWords("north south", "north  far east  south");
+    expect(added).toEqual([
+      { kind: "same", text: "north" },
+      { kind: "added", text: "  far" },
+      { kind: "same", text: " " },
+      { kind: "added", text: "east  " },
+      { kind: "same", text: "south" },
+    ]);
+    const removed = expectExact(diffWords("north  far east  south", "north south"), "north  far east  south", "north south");
+    expect(removed.map((part) => part.kind)).toEqual(["same", "removed", "same", "removed", "same"]);
+    for (const parts of [added!, removed]) {
+      expect(parts.filter((part) => part.kind !== "same" && part.text.trim() === "")).toEqual([]);
+    }
   });
 
   it("puts both texts back together exactly", () => {
@@ -226,6 +304,7 @@ describe("long texts", () => {
     const vocabulary = ["the", "store", "opens", "at", "nine", "and", "closes", "six", "on", "weekdays", "only"];
     const gaps = [" ", " ", " ", "\n", "  "];
     const filler = words("filler", 1400);
+    let joinedSomewhere = false;
     for (let round = 0; round < 60; round += 1) {
       const length = 20 + roll(60);
       const beforeWords = Array.from({ length }, () => vocabulary[roll(vocabulary.length)]);
@@ -240,17 +319,37 @@ describe("long texts", () => {
       const join = (list: string[]) => list.map((word, i) => (i === 0 ? word : gaps[(i * 7 + word.length) % gaps.length] + word)).join("");
       const before = join(beforeWords);
       const after = join(afterWords);
+      // Counted in the comparison itself, before neighbouring changes are
+      // joined for showing (a joined space counts on both sides).
       // Short: compared with the table.
-      const short = expectExact(diffWords(before, after), before, after);
+      const short = expectExact(diffPieces(before, after), before, after);
       // The same two texts after a long stretch that is the same on both
       // sides, with one more difference in front of it: too much is left for
       // the table, so the other method is used. It must find exactly as few
       // changes (the two extra pieces are the word in front).
       const longBefore = `first ${filler}\n${before}`;
       const longAfter = `changed ${filler}\n${after}`;
-      const long = expectExact(diffWords(longBefore, longAfter), longBefore, longAfter);
+      const long = expectExact(diffPieces(longBefore, longAfter), longBefore, longAfter);
       expect([round, piecesChanged(long)]).toEqual([round, piecesChanged(short) + 2]);
+
+      // What the screen shows, with neighbouring changes joined: both texts
+      // are still put back together exactly, there are never more changes
+      // to read than before, and every line break and tab that stayed is
+      // still its own unchanged part (nothing was joined across one).
+      const apartAt = (parts: DiffPart[]) => parts.filter((part) => part.kind === "same" && /[\n\t]/.test(part.text)).length;
+      const changes = (parts: DiffPart[]) => parts.filter((part) => part.kind !== "same").length;
+      for (const [was, is, pieces] of [
+        [before, after, short],
+        [longBefore, longAfter, long],
+      ] as const) {
+        const shown = expectExact(diffWords(was, is), was, is);
+        expect([round, apartAt(shown)]).toEqual([round, apartAt(pieces)]);
+        expect(changes(shown)).toBeLessThanOrEqual(changes(pieces));
+        joinedSomewhere ||= changes(shown) < changes(pieces);
+      }
     }
+    // (The rounds really do have changes next to each other in them.)
+    expect(joinedSomewhere).toBe(true);
   });
 });
 

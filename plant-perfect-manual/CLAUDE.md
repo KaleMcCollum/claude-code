@@ -330,7 +330,13 @@ cannot. Tests of what happens "at the same moment"
   when a link's address or a ticked checkbox differs, which is more than
   layout. `diffWords` drops the unchanged start and end first; read the
   comment on `MAX_DIFF_WORDS` before touching the limit, it is what keeps
-  one comparison to about 13 MB.
+  one comparison to about 13 MB. Its last step joins changes that have only
+  unchanged spaces on one line between them, so a reworded sentence reads
+  as one removed run and one added run (never across a line break or a
+  tab, which is the next paragraph, list item or table cell; never where
+  words were only added or only removed). The spaces go into both runs:
+  both texts are still rebuilt exactly from the parts. `diffPieces` is the
+  comparison before that step, for tests that count changes.
 - A button press can arrive twice (a lost answer, a second device). Saving
   official text that is already exactly the official text answers "no
   changes" before anything else is checked, and a second endorsement by the
