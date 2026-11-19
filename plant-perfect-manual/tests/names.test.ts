@@ -198,8 +198,13 @@ describe("a name as it is typed", () => {
     ]) {
       await expect(add(name)).rejects.toThrow(UNSEEN_CHARACTER_MESSAGE);
     }
+    // A small picture as a phone keyboard sends it (the sun, then a
+    // character that draws nothing), and two pictures joined into one.
+    for (const name of [`Sunny ${String.fromCodePoint(0x2600)}${VARIATION_SELECTOR}`, `Farmer Jo ${String.fromCodePoint(0x1f469)}${ZERO_WIDTH_JOINER}${String.fromCodePoint(0x1f33e)}`]) {
+      await expect(add(name)).rejects.toThrow(UNSEEN_CHARACTER_MESSAGE);
+    }
     expect(UNSEEN_CHARACTER_MESSAGE).toBe(
-      "That name has a character in it that cannot be seen (it may have come along when the name was pasted). Type the name by hand.",
+      "That name has a character in it that cannot be seen. It may have come along when the name was pasted, or with a small picture typed on a phone. Type the name by hand and leave pictures out.",
     );
     // The same letters in another form, or with another kind of space.
     for (const name of [FULL_WIDTH_CASEY, `Casey${NO_BREAK_SPACE}`, `${IDEOGRAPHIC_SPACE}casey`]) {

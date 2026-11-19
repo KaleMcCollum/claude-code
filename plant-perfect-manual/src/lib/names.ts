@@ -133,9 +133,15 @@ export function hasUnseenCharacter(name: string): boolean {
   return false;
 }
 
-/** What the person adding a name is told when it has such a character in it. */
+/**
+ * What the person adding a name is told when it has such a character in it.
+ * It names the two ways one gets in without being typed on purpose: pasting
+ * a name, and a phone keyboard's small pictures, several of which are sent
+ * as a picture plus a character that draws nothing (the sun, a heart), or
+ * as two pictures held together by one.
+ */
 export const UNSEEN_CHARACTER_MESSAGE =
-  "That name has a character in it that cannot be seen (it may have come along when the name was pasted). Type the name by hand.";
+  "That name has a character in it that cannot be seen. It may have come along when the name was pasted, or with a small picture typed on a phone. Type the name by hand and leave pictures out.";
 
 /**
  * What two names are compared by, the same way the database's

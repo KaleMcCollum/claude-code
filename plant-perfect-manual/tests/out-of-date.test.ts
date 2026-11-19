@@ -149,15 +149,19 @@ describe("an old proposal, after both Owners agreed on newer text", () => {
 
   it("is refused from an edit page that showed older official text", async () => {
     const input = { kind: "decision" as const, sectionId: benefits, title: "Staff discount: 10%", proposedOfficial: doc("Staff discount: 10%.") };
-    // Her edit page was opened when the section had no official text.
-    await expect(editProposal(casey, old, input, { currentVersionId: null })).rejects.toThrow(
-      "The official text of this section changed after you opened this page. Reload the page and read it again, then save.",
-    );
+    // Her edit page was opened when the section had no official text. The
+    // page draws itself again in place, with her words still there and the
+    // new official text shown: the message says so, and asks for no reload.
+    const STALE_EDIT_PAGE =
+      "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown on this page: read it, then save again.";
+    await expect(editProposal(casey, old, input, { currentVersionId: null })).rejects.toThrow(STALE_EDIT_PAGE);
     // Something that is not a version of this section at all.
-    await expect(editProposal(casey, old, input, { currentVersionId: "00000000-0000-4000-8000-000000000000" })).rejects.toThrow(
-      "The official text of this section changed after you opened this page.",
-    );
+    await expect(editProposal(casey, old, input, { currentVersionId: "00000000-0000-4000-8000-000000000000" })).rejects.toThrow(STALE_EDIT_PAGE);
     expect(await view(old)).toMatchObject({ revision: 2, outOfDate: true });
+    // The other buttons, where nothing was typed, still ask for the page to be loaded again.
+    await expect(approveAlone(casey, old, { revision: 2, currentVersionId: null })).rejects.toThrow(
+      "The official text of this section changed after you opened this page. Reload the page and read it again, then approve.",
+    );
   });
 
   it("once its proposer has checked it against the new text, the other Owner can approve, and two people decided", async () => {
@@ -256,7 +260,7 @@ describe("a new proposal made from a page that showed older official text", () =
     // Casey's form started from the first text. Kale changes it before she presses Propose.
     await saveOfficial(kale, hours, doc("Open 8 to 6."));
     const STALE_FORM =
-      "The official text of this section changed after you opened this page. Reload the page. What you typed is kept on this device.";
+      "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown on this page: choose whether to start over from it or keep what you typed, then propose again.";
     await expect(make(first)).rejects.toThrow(STALE_FORM);
     // A form that started from "no official text yet", or from something that is not a version.
     await expect(make(null)).rejects.toThrow(STALE_FORM);

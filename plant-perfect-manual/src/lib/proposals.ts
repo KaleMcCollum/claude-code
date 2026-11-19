@@ -1527,6 +1527,18 @@ function officialTextChangedAfterOpening(verb: string): string {
   return `The official text of this section changed after you opened this page. Reload the page and read it again, then ${verb}.`;
 }
 
+/**
+ * The same thing, told to someone who was writing: the form for a new
+ * proposal and the edit page. Those two pages draw themselves again in
+ * place after a refusal, with everything typed still there and the new
+ * official text shown, so these sentences say what is on that screen and
+ * never ask for a reload (which would lose the title and the "Why").
+ */
+const OFFICIAL_TEXT_CHANGED_WHILE_WRITING =
+  "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown on this page: choose whether to start over from it or keep what you typed, then propose again.";
+const OFFICIAL_TEXT_CHANGED_WHILE_EDITING =
+  "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown on this page: read it, then save again.";
+
 /** Refuse to act on a page that no longer shows what would be approved. */
 async function checkSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Promise<void> {
   if (seen.revision !== row.revision) {
@@ -1713,11 +1725,7 @@ export async function createProposal(
       tx,
       input,
       input.kind !== "structure" && input.baseVersionId !== undefined
-        ? {
-            versionId: input.baseVersionId,
-            otherwise:
-              "The official text of this section changed after you opened this page. Reload the page. What you typed is kept on this device.",
-          }
+        ? { versionId: input.baseVersionId, otherwise: OFFICIAL_TEXT_CHANGED_WHILE_WRITING }
         : undefined,
     );
     const noteIds = [...new Set(input.noteIds ?? [])];
@@ -1827,7 +1835,7 @@ export async function editProposal(
       tx,
       input,
       checkedAgainst
-        ? { versionId: seen.currentVersionId as string | null, otherwise: officialTextChangedAfterOpening("save") }
+        ? { versionId: seen.currentVersionId as string | null, otherwise: OFFICIAL_TEXT_CHANGED_WHILE_EDITING }
         : undefined,
     );
     if (prepared.type === "structure") {
