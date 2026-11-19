@@ -1602,6 +1602,38 @@ async function main() {
   await kale.getByRole("button", { name: "Withdraw proposal" }).click();
   await eventually(async () => (await statusOf(kale).innerText()) === `Withdrawn by Kale, ${today().short}`);
 
+  // A form about the sections is drawn again as well, with the sections as they are now.
+  // A box on it never shows one place while another is sent.
+  const PLACE_GONE = "The section it was going under can no longer be chosen (it may have been archived). Choose where it should go.";
+  await goTo(kale, "Proposals");
+  await kale.getByRole("link", { name: "New proposal" }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  const placeForm = newForm(kale);
+  await placeForm.getByRole("radio", { name: "Structure" }).check();
+  const underBox = placeForm.getByLabel("Under");
+  await underBox.selectOption({ label: "1.3 Legal Entities" });
+  await placeForm.getByLabel("Name", { exact: true }).fill("Licenses");
+  await placeForm.getByLabel("Why (optional)").fill("Typed before the section went away.");
+  // Casey archives that section while his form is open.
+  await casey.goto(`${BASE_URL}/sections/manage`);
+  await casey.getByRole("button", { name: "Archive Legal Entities" }).click();
+  await casey.getByRole("button", { name: "Archive section" }).click();
+  await casey.getByRole("button", { name: "Restore Legal Entities" }).waitFor();
+  await placeForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await placeForm.getByRole("alert").waitFor();
+  check("a section proposal whose place was archived meanwhile is refused, and the Under box no longer offers or shows that place", (await alertsOf(placeForm)) === "The section to add it under no longer exists. Choose again." && (await eventually(async () => (await underBox.locator("option").filter({ hasText: "Legal Entities" }).count()) === 0)) && (await underBox.locator("option:checked").innerText()) === "Top level" && (await underBox.inputValue()) === "" && (await placeForm.getByText(PLACE_GONE, { exact: true }).isVisible()), `${await alertsOf(placeForm)} / box shows ${await underBox.locator("option:checked").innerText()}`);
+  check("the name and the Why he typed are still there", (await placeForm.getByLabel("Name", { exact: true }).inputValue()) === "Licenses" && (await placeForm.getByLabel("Why (optional)").inputValue()) === "Typed before the section went away.");
+  await underBox.selectOption({ label: "1 Company Overview" });
+  check("once he chooses another place, the form no longer says a place has gone", (await placeForm.getByText(PLACE_GONE, { exact: true }).count()) === 0);
+  await placeForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await kale.getByRole("heading", { level: 1, name: 'Add a section "Licenses" under 1 Company Overview' }).waitFor();
+  check("what the box showed is what was proposed, with the Why kept", (await whyOf(kale)) === "Typed before the section went away." && (await statusOf(kale).innerText()) === "Waiting for approval");
+  await kale.getByRole("button", { name: "Withdraw" }).click();
+  await kale.getByRole("button", { name: "Withdraw proposal" }).click();
+  await eventually(async () => (await statusOf(kale).innerText()) === `Withdrawn by Kale, ${today().short}`);
+  await casey.getByRole("button", { name: "Restore Legal Entities" }).click();
+  await eventually(async () => (await casey.getByRole("button", { name: "Restore Legal Entities" }).count()) === 0);
+
   // ------------------------------------------------------------------
   section("22. Endorsing, and a proposal that is out of date");
   const QUOTES_TITLE = "Three quotes for anything over $1,000";
