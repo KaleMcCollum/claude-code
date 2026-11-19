@@ -92,6 +92,10 @@ describe("word-by-word difference", () => {
       expect(show(before, after)).toBe(expected);
       expect(diffWords(before, after)).toEqual(diffPieces(before, after));
     }
+    // Only a space BETWEEN two changes is taken in: one before the first
+    // change or after the last stays unmarked.
+    expect(show(" one two ", " uno dos ")).toBe(" [-one two][+uno dos] ");
+    expect(show("x  one two  y", "x  uno dos  y")).toBe("x  [-one two][+uno dos]  y");
     // Other kinds of space on one line are still just spaces.
     const nbsp = String.fromCodePoint(0xa0);
     expect(show(`one${nbsp}two three`, `uno${nbsp}dos three`)).toBe(`[-one${nbsp}two][+uno${nbsp}dos] three`);

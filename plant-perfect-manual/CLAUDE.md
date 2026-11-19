@@ -148,30 +148,33 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
 - Screens ask the helpers which buttons to show (`approveChoices`,
   `canApproveToo`, `canEndorse`, `canEditProposal`) and who a proposal is
   waiting for (`waitingOn`, `waitingText`; `countAwaiting` for the sidebar),
-  and send back exactly the `seen` values they rendered. Never work any of
-  that out on a screen.
+  take the notice above a proposal that cannot go ahead from
+  `blockedNotice(view, approvers, viewerId)`, and send back exactly the
+  `seen` values they rendered. Never work any of that out on a screen, and
+  never write those sentences there.
+- `waitingOn` answers one step, asked in this order: `gone` (its section
+  has been archived, `view.sectionGone`), `same` (the official text already
+  says what it proposes, `view.sameAsOfficial`), `check` (out of date,
+  waiting for its proposer), `stuck` (out of date, and its proposer can no
+  longer change it), `approve`. For `gone` and `same` nothing can be
+  approved or endorsed: the helpers say no and the rules refuse. `gone`
+  cannot be changed either. The way out is always to withdraw it (its
+  proposer) or decline it (another Owner).
+- `sectionGone` has one definition (`sectionIsGone`), the one approving
+  refuses on: the proposal's own section (for "add a section", the one it
+  would go under) is not among the sections in use. `sameAsOfficial` uses
+  the comparison that refuses to propose "the same as the current text"
+  (`saysWhatIsOfficial`).
 - Nobody can endorse an open proposal that is out of date (`canEndorse`;
   `endorseProposal` refuses a press from a page opened earlier): an
   endorsement stops the proposer changing the proposal, and so checking it.
   An approved proposal can still be endorsed.
-- An open text proposal whose text is exactly the section's official text
-  now (someone saved the same words directly) is `sameAsOfficial`, worked
-  out with the comparison that refuses to propose "the same as the current
-  text". Nothing is left to approve: `approveChoices` offers neither button
-  and both approve rules refuse it; `waitingOn` answers the step `same`
-  before `check` and `stuck`. Its proposer withdraws it or changes it to
-  say something else; another Owner declines it.
-- An open proposal whose own section is no longer among the sections in
-  use (archived, or under an archived one; for "add a section" the one it
-  would go under) is `sectionGone`: one definition, the one approving
-  refuses on. It can only be withdrawn or declined: no approve button, no
-  Endorse, no Edit, and `waitingOn` answers the step `gone` first of all.
-- When an open proposal cannot go ahead, the waiting line (`waitingText`)
-  and the notice on its page (`blockedNotice(view, approvers, viewerId)`)
-  are worded for whoever reads them: its proposer while they can still
-  withdraw it (`proposerCanWithdraw`), someone else who can approve and so
-  can decline it, or anyone else. Nobody is told to press a button they do
-  not have. Never write those sentences on a screen.
+- What `waitingText` and `blockedNotice` tell someone to do depends on who
+  reads it: the proposer while they can still withdraw
+  (`view.proposerCanWithdraw`), someone else who can approve and so can
+  decline, or anyone else. Nobody is told to press a button they do not
+  have. The same holds for the refusal when a section change can no longer
+  be carried out (`cannotBeDoneNow`).
 - Lists outside a section show `displayTitle(view, tree)`: a direct edit
   or restore has no written title, so it is named by its section and the
   version it produced ("Edited directly: 2.1 Wages (version 3)"); an open
@@ -307,7 +310,8 @@ change, run the tests, and see that at least one fails; then the next rule.
 The scripts used so far are kept on the build machine, outside the
 repository, in `.data/probes/r3hmut/` (the first review) and
 `.data/probes/r5a/` and `r5b/` (the second: database rules, then readers
-and wording): `list.sh` has one line per rule, `all.sh` runs them all, and
+and wording) and `.data/probes/r6c/` (the third: rules layer): `list.sh`
+has one line per rule, `all.sh` runs them all, and
 from `r5a` on `syntax.ts` first checks that a change has not simply broken
 the file, which would look like "noticed" for the wrong reason. Where two layers refuse the same thing with the same words (the app
 first, the database behind it), taking one away cannot be seen from

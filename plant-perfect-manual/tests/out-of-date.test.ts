@@ -582,6 +582,18 @@ describe("a waiting proposal whose text the official text already says", () => {
     await withdrawProposal(casey, first);
   });
 
+  it("is only ever said of a proposal that is open: a direct edit that emptied a section is not one", async () => {
+    const payments = await section("Payments Log");
+    await saveOfficial(kale, payments, doc("Paid: the deposit."));
+    await saveOfficial(kale, payments, { type: "doc", content: [{ type: "paragraph" }] }, { baseVersionId: await currentId(payments) });
+    expect(await officialText(payments)).toBe("");
+    const behind = await asSystem((db) => db.select().from(proposals).where(eq(proposals.sectionId, payments)));
+    expect(behind).toHaveLength(2);
+    for (const row of behind) {
+      expect(await view(row.id)).toMatchObject({ status: "approved", sameAsOfficial: false, outOfDate: false, sectionGone: false });
+    }
+  });
+
   it("when its proposer can no longer withdraw it, the other Owner is simply told to decline it", async () => {
     const deadlines = await section("Order Deadlines");
     const max = await insertUser("Max", "max@example.com", "owner");

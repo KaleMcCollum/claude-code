@@ -71,6 +71,12 @@ import { addDays, centralDateKey, formatDate } from "./time";
  *  - Only the proposer can change or withdraw a proposal, and can change it
  *    only until someone else has approved or endorsed it. Another Owner
  *    declines it instead.
+ *  - An open proposal that is out of date cannot be endorsed: that would
+ *    stop its proposer checking it against the new text.
+ *  - Nothing is approved or endorsed while a proposal's section is gone
+ *    (archived), and nothing is approved when the official text already
+ *    says exactly what it proposes. Those can only be withdrawn or
+ *    declined (`sectionGone`, `sameAsOfficial`).
  *  - A decided proposal never changes again.
  */
 
