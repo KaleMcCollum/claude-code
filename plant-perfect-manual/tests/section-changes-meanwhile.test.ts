@@ -10,7 +10,9 @@ import {
   createProposal,
   declineProposal,
   editProposal,
+  endorseProposal,
   loadProposal,
+  withdrawProposal,
 } from "@/lib/proposals";
 import {
   archiveSection,
@@ -23,7 +25,7 @@ import {
   renameSection,
   restoreSection,
 } from "@/lib/sections";
-import { removeUser } from "@/lib/users";
+import { changeUserRole, removeUser } from "@/lib/users";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
 withTestDatabase();
@@ -142,8 +144,9 @@ describe("approving an add or a rename that can no longer be made", () => {
     const coffee = await sectionId("Coffee Equipment");
     const id = await createProposal(kale, { kind: "structure", change: { action: "add", parentId: pos, title: "Scanners" } });
     await moveSectionTo(casey, pos, coffee);
+    // (Nobody is told to change an "add": see "what the person is told to do next".)
     await expect(approveProposal(casey, id, { revision: 1 })).rejects.toThrow(
-      asProposed("it would put the new section more than three levels deep"),
+      asProposed("it would put the new section more than three levels deep", "Decline it, or ask Kale to withdraw it."),
     );
     await expectUntouched(id);
     expect(await children(pos)).toEqual([]);
@@ -190,7 +193,12 @@ describe("what the person is told to do next", () => {
     // Someone else's: decline it, or ask them by name.
     await expect(approveAlone(casey, own, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it, or ask Kale to change or withdraw it."));
     await expect(approveAlone(casey, sams, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it, or ask Sam to change or withdraw it."));
-    // The proposer has been removed: there is nobody to ask.
+    // The proposer has been made an Advisor: they are still here, but can
+    // neither change nor withdraw it any more, so there is nobody to ask.
+    await changeUserRole(kale, sam.id, "advisor");
+    await expect(approveAlone(casey, sams, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it."));
+    await expect(withdrawProposal(await actorFor("sam@example.com"), sams)).rejects.toThrow("You don't have permission to do that.");
+    // The same once the proposer has been removed.
     await removeUser(kale, sam.id);
     await expect(approveAlone(casey, sams, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it."));
     await expectUntouched(sams);
@@ -201,6 +209,65 @@ describe("what the person is told to do next", () => {
     await declineProposal(casey, sams, "Facility and Buildout was archived.");
     expect((await view(sams)).status).toBe("declined");
     await restoreSection(casey, facility);
+  });
+
+  it("an add cannot be put right by changing it: withdraw it and propose it again in another place", async () => {
+    const opening = await sectionId("Opening Procedures");
+    const closing = await sectionId("Closing Procedures");
+    const robin = await insertUser("Robin", "robin@example.com", "owner");
+    const own = await createProposal(kale, { kind: "structure", change: { action: "add", parentId: opening, title: "Checklists" } });
+    const robins = await createProposal(robin, { kind: "structure", change: { action: "add", parentId: opening, title: "Keys" } });
+    // A move that two Owners approve puts Opening Procedures one level down.
+    const move = await createProposal(casey, { kind: "structure", change: { action: "move", sectionId: opening, parentId: closing } });
+    await expect(approveProposal(kale, move, { revision: 1 })).resolves.toEqual({ approved: true, waitingFor: [] });
+    const reason = "it would put the new section more than three levels deep";
+
+    await expect(approveAlone(kale, own, { revision: 1 })).rejects.toThrow(asProposed(reason, "Withdraw it and propose it again in another place."));
+    await expect(approveProposal(casey, own, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it, or ask Kale to withdraw it."));
+    await expect(approveAlone(casey, robins, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it, or ask Robin to withdraw it."));
+    await expectUntouched(own);
+    // Why "change it" would be no advice: only the name of the new section
+    // can be typed again, never where it goes.
+    await expect(
+      editProposal(kale, own, { kind: "structure", change: { action: "add", parentId: opening, title: "Daily checklists" } }),
+    ).rejects.toThrow("Sections can go three levels deep at most (for example 1.1.1).");
+    await expect(
+      editProposal(kale, own, { kind: "structure", change: { action: "add", parentId: closing, title: "Checklists" } }),
+    ).rejects.toThrow("What a structure proposal is about cannot be changed. Withdraw it and make a new one.");
+
+    // Robin is made an Advisor and can no longer withdraw hers: nobody to ask.
+    await changeUserRole(kale, robin.id, "advisor");
+    await expect(approveAlone(casey, robins, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it."));
+    await expectUntouched(robins);
+
+    // The advice works: withdraw it, propose it again in another place, and it is approved.
+    await withdrawProposal(kale, own);
+    const again = await createProposal(kale, { kind: "structure", change: { action: "add", parentId: closing, title: "Checklists" } });
+    await expect(approveProposal(casey, again, { revision: 1 })).resolves.toEqual({ approved: true, waitingFor: [] });
+    expect(await children(closing)).toEqual(["Opening Procedures", "Checklists"]);
+    await declineProposal(casey, robins, "");
+    await removeUser(kale, robin.id);
+  });
+
+  it("a move or a rename that someone else has endorsed can no longer be changed, so nobody is told to change it", async () => {
+    const karen = await insertUser("Karen", "karen@example.com", "advisor");
+    const benefits = await sectionId("Benefits");
+    const timeline = await sectionId("Opening Timeline");
+    const id = await createProposal(kale, { kind: "structure", change: { action: "move", sectionId: benefits, parentId: timeline } });
+    await endorseProposal(karen, id, { revision: 1 });
+    await archiveSection(casey, timeline);
+    const reason = "the section it would go under no longer exists (it may have been archived)";
+    await expect(approveAlone(kale, id, { revision: 1 })).rejects.toThrow(asProposed(reason, "Withdraw it and make a new one."));
+    await expect(approveProposal(casey, id, { revision: 1 })).rejects.toThrow(asProposed(reason, "Decline it, or ask Kale to withdraw it."));
+    // Changing it really is refused, in the same words.
+    await expect(
+      editProposal(kale, id, { kind: "structure", change: { action: "move", sectionId: benefits, parentId: await sectionId("Finance") } }),
+    ).rejects.toThrow("Someone has already approved or endorsed this proposal, so it can no longer be changed. Withdraw it and make a new one.");
+    const now = await view(id);
+    expect(now.status).toBe("open");
+    expect(now.approvals.map((a) => a.name)).toEqual(["Kale"]);
+    await withdrawProposal(kale, id);
+    await restoreSection(casey, timeline);
   });
 
   it("is still the older message when the section itself is gone", async () => {

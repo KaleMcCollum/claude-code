@@ -1381,17 +1381,23 @@ async function isOutOfDate(tx: Tx, row: ProposalRow): Promise<boolean> {
 }
 
 /**
- * What a person is told when they try to approve a proposal that is out of
- * date. It depends on whether the proposer could still check it against the
- * new text: they have not been removed, may still propose, and nobody else
- * has approved or endorsed it (the same test as `proposerCanChange`).
- *
- * Worked out before anything is written, because once the database has
- * refused a row nothing more can be read in that transaction.
+ * Where a proposal's proposer stands right now, for telling someone else
+ * what they can ask of them.
+ *  - `canWithdraw`: they have not been removed and may still propose, so
+ *    they can still withdraw it (the same test as `proposerCanWithdraw`).
+ *  - `canChange`: and nobody else has approved or endorsed it, so they can
+ *    still change it, or check it against new official text (the same test
+ *    as `proposerCanChange`).
  */
-async function outOfDateWords(tx: Tx, row: ProposalRow): Promise<string> {
-  // (Only a text proposal can be out of date.)
-  if (row.type === "structure") return "";
+type ProposerNow = { name: string; canWithdraw: boolean; canChange: boolean };
+
+/**
+ * Read it before anything is written in the transaction, for two reasons:
+ * the acting person's own approval, recorded a moment later, must not count
+ * as "someone else's"; and once the database has refused a row nothing more
+ * can be read in that transaction.
+ */
+async function proposerNow(tx: Tx, row: Pick<ProposalRow, "id" | "proposedBy">): Promise<ProposerNow> {
   const [who] = row.proposedBy
     ? await tx
         .select({ name: users.name, removedAt: users.removedAt, permissions: roles.permissions })
@@ -1399,13 +1405,24 @@ async function outOfDateWords(tx: Tx, row: ProposalRow): Promise<string> {
         .innerJoin(roles, eq(roles.key, users.roleKey))
         .where(eq(users.id, row.proposedBy))
     : [];
-  const canStillChange =
-    who !== undefined &&
-    who.removedAt === null &&
-    who.permissions.includes("propose") &&
-    !(await othersHaveSigned(tx, row.id, row.proposedBy));
-  return canStillChange
-    ? `The official text of this section has changed since ${who.name} proposed this. ${who.name} needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.`
+  const canWithdraw = who !== undefined && who.removedAt === null && who.permissions.includes("propose");
+  return {
+    name: who?.name ?? "Someone",
+    canWithdraw,
+    canChange: canWithdraw && !(await othersHaveSigned(tx, row.id, row.proposedBy)),
+  };
+}
+
+/**
+ * What a person is told when they try to approve a proposal that is out of
+ * date. It depends on whether the proposer could still check it against the
+ * new text.
+ */
+function outOfDateWords(row: ProposalRow, standing: ProposerNow): string {
+  // (Only a text proposal can be out of date.)
+  if (row.type === "structure") return "";
+  return standing.canChange
+    ? `The official text of this section has changed since ${standing.name} proposed this. ${standing.name} needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.`
     : "The official text of this section has changed since this was proposed, and the person who proposed it can no longer change it. Decline it and make a new proposal.";
 }
 
@@ -1702,18 +1719,38 @@ function noLongerPossible(tree: SectionNode[], sectionId: string | null, change:
  * What the person approving is told when a section change can no longer be
  * carried out: why, and what they can do about it. They cannot choose again
  * (that was the proposer's form), so the way forward is to decline it, or
- * for its proposer to change or withdraw it.
+ * for its proposer to change or withdraw it. Only advice that can be
+ * followed is given:
+ *  - changing it helps for a move or a rename (another place, another
+ *    name), never for an "add": where a new section goes cannot be changed
+ *    afterwards, only its name. That one is withdrawn and proposed again;
+ *  - nor can it be changed once someone else has approved or endorsed it;
+ *  - the proposer is named only while they can still act on it: they have
+ *    not been removed and may still propose.
  */
-async function cannotBeDoneNow(tx: Tx, actor: Actor, row: ProposalRow, reason: string): Promise<string> {
-  const [who] = row.proposedBy
-    ? await tx.select({ name: users.name, removedAt: users.removedAt }).from(users).where(eq(users.id, row.proposedBy))
-    : [];
-  const whatNow =
-    row.proposedBy === actor.id
-      ? "Change it, or withdraw it."
-      : who && who.removedAt === null
-        ? `Decline it, or ask ${who.name} to change or withdraw it.`
-        : "Decline it.";
+function cannotBeDoneNow(
+  actor: Actor,
+  row: ProposalRow,
+  change: StructureChange,
+  reason: string,
+  standing: ProposerNow,
+): string {
+  const canBeChanged = change.action !== "add" && standing.canChange;
+  let whatNow: string;
+  if (row.proposedBy === actor.id) {
+    whatNow =
+      change.action === "add"
+        ? "Withdraw it and propose it again in another place."
+        : canBeChanged
+          ? "Change it, or withdraw it."
+          : "Withdraw it and make a new one.";
+  } else if (!standing.canWithdraw) {
+    whatNow = "Decline it.";
+  } else {
+    whatNow = canBeChanged
+      ? `Decline it, or ask ${standing.name} to change or withdraw it.`
+      : `Decline it, or ask ${standing.name} to withdraw it.`;
+  }
   return `This can no longer be done as proposed: ${reason}. ${whatNow}`;
 }
 
@@ -1722,12 +1759,14 @@ async function cannotBeDoneNow(tx: Tx, actor: Actor, row: ProposalRow, reason: s
  * is already open. If the change cannot be applied, the error undoes
  * everything, including the approval just recorded.
  *
- * `ifOutOfDate` is what to tell the person if the database refuses a text
- * proposal as out of date (see `outOfDateWords`). The callers check that
- * themselves first, with the section locked, so the database should never
- * have to; if it ever does, the person still gets plain words.
+ * `standing` is where its proposer stood before anything was written
+ * (`proposerNow`). It words two refusals: a section change that can no
+ * longer be carried out, and a text proposal the database refuses as out of
+ * date (see `outOfDateWords`). The callers check that last one themselves
+ * first, with the section locked, so the database should never have to; if
+ * it ever does, the person still gets plain words.
  */
-async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, ifOutOfDate: string): Promise<void> {
+async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, standing: ProposerNow): Promise<void> {
   const decided = { status: "approved" as const, decidedAt: now, decidedBy: actor.id };
   // The title this decision is recorded under in the activity log.
   let recordedTitle = row.title;
@@ -1751,7 +1790,7 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, ifOut
     // And the sections must not have changed, while it waited, in a way
     // that leaves nothing to carry out.
     const reason = noLongerPossible(tree, row.sectionId, change);
-    if (reason) throw new AppError(await cannotBeDoneNow(tx, actor, row, reason));
+    if (reason) throw new AppError(cannotBeDoneNow(actor, row, change, reason, standing));
     if (change.action === "add") {
       const createdSectionId = await createSectionIn(tx, actor, { parentId: row.sectionId, title: change.title });
       await tx.update(proposals).set({ ...decided, decidedTitle, createdSectionId }).where(eq(proposals.id, row.id));
@@ -1786,7 +1825,7 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, ifOut
       .set(decided)
       .where(eq(proposals.id, row.id))
       .catch((error: unknown) => {
-        if (sqlState(error) === OUT_OF_DATE) throw new AppError(ifOutOfDate);
+        if (sqlState(error) === OUT_OF_DATE) throw new AppError(outOfDateWords(row, standing));
         throw error;
       });
     await addVersion(tx, actor, {
@@ -1865,8 +1904,8 @@ export async function approveProposal(
     requireOpen(row);
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
-    const ifOutOfDate = await outOfDateWords(tx, row);
-    if (await isOutOfDate(tx, row)) throw new AppError(ifOutOfDate);
+    const standing = await proposerNow(tx, row);
+    if (await isOutOfDate(tx, row)) throw new AppError(outOfDateWords(row, standing));
     const owners = await activeApprovers(tx);
     if (!owners.some((owner) => owner.id !== actor.id)) {
       throw new AppError("There is no other Owner to wait for right now. Use Approve on my own.");
@@ -1875,7 +1914,7 @@ export async function approveProposal(
     const approvedBy = new Set((await approvalsOf(tx, id)).map((a) => a.userId));
     const counted = owners.filter((owner) => approvedBy.has(owner.id));
     if (counted.length >= 2) {
-      await finalize(tx, actor, row, now, ifOutOfDate);
+      await finalize(tx, actor, row, now, standing);
       return { approved: true, waitingFor: [] };
     }
     const waitingFor = owners.filter((owner) => !approvedBy.has(owner.id)).map((owner) => owner.name);
@@ -1924,12 +1963,12 @@ export async function approveAlone(
     requireOpen(row);
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
-    const ifOutOfDate = await outOfDateWords(tx, row);
+    const standing = await proposerNow(tx, row);
     if ((await isOutOfDate(tx, row)) && (await approvalsOf(tx, id)).some((a) => a.userId !== actor.id)) {
-      throw new AppError(ifOutOfDate);
+      throw new AppError(outOfDateWords(row, standing));
     }
     await recordApproval(tx, actor, row, seen.revision, now);
-    await finalize(tx, actor, row, now, ifOutOfDate);
+    await finalize(tx, actor, row, now, standing);
   });
 }
 
