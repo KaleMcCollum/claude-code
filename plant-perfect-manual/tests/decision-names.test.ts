@@ -423,7 +423,6 @@ describe("activity log lines about a direct edit or a restore", () => {
       "Approved by Kale: Go with Holly Lumber",
       "Added their approval: Go with Holly Lumber",
     ]);
-
   });
 });
 

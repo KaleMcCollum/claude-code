@@ -155,8 +155,11 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   version it produced ("Edited directly: 2.1 Wages (version 3)"); an open
   section change is described from the sections as they are named and
   numbered now; an approved one shows the sentence it was approved under
-  (`decidedTitle`). Activity log lines about a direct edit use the same
-  words. The section line next to a proposal is `sectionText(view, tree)`.
+  (`decidedTitle`). Activity log lines about a direct edit or a section
+  change use the same words, as the proposal read on screen at that moment
+  (`titleForLog`); only "Proposed", "Declined" and "Withdrew" carry the
+  stored title. The section line next to a proposal is
+  `sectionText(view, tree)`.
 - A section that is no longer among the sections (archived, or under an
   archived one) is named by its stored name, "Hiring (archived)". Every
   reader hands that name back with the proposal (`sectionTitle`, and
