@@ -177,7 +177,7 @@ function newFormStillShown(form: unknown) {
     if (!can(actor, "propose")) return false;
     if (!isRecord(form) || form.kind === "structure") return true;
     const sectionId = form.sectionId;
-    if (typeof sectionId !== "string" || !isUuid(sectionId)) return false;
+    if (typeof sectionId !== "string") return false;
     return asUser(actor.id, async (tx) => findNode(await loadTree(tx), sectionId) !== null);
   };
 }
@@ -185,8 +185,9 @@ function newFormStillShown(form: unknown) {
 /** Would the Edit proposal page still show its form? The page asks `canEditProposal` too. */
 function editFormStillShown(proposalId: unknown) {
   return async (actor: Actor): Promise<boolean> => {
-    if (typeof proposalId !== "string" || !isUuid(proposalId)) return false;
+    if (typeof proposalId !== "string") return false;
     return asUser(actor.id, async (tx) => {
+      // (Anything that is not a proposal's id is simply not found.)
       const view = await loadProposal(tx, proposalId);
       return view !== null && canEditProposal(view, actor);
     });

@@ -138,10 +138,12 @@ describe("the New proposal form, when Propose is refused", () => {
     const gone = await press(() => createProposalAction(newForm(signage, "One sign at the gate.", null)));
     expect(gone.result).toEqual({ ok: false, error: "That section no longer exists. Reload the page and choose again." });
     expect(gone.redrawn).toBe(false);
-    // The same for a section the form could never have had.
+    // The same for a section the form could never have had (which is no reason for a mishap).
+    const mishaps = vi.mocked(console.error).mock.calls.length;
     const nonsense = await press(() => createProposalAction(newForm("not-a-section", "One sign.", null)));
     expect(nonsense.result.ok).toBe(false);
     expect(nonsense.redrawn).toBe(false);
+    expect(vi.mocked(console.error).mock.calls.length).toBe(mishaps);
   });
 
   it("the person may no longer propose, or is signed out: the page is left alone", async () => {
@@ -259,9 +261,11 @@ describe("the Edit proposal form, when Save changes is refused", () => {
     expect(afterArchive.result.ok).toBe(false);
     expect(afterArchive.redrawn).toBe(false);
 
-    // Not a proposal at all, and somebody else's proposal.
+    // Not a proposal at all (which is no reason for a mishap), and somebody else's proposal.
+    const mishaps = vi.mocked(console.error).mock.calls.length;
     const nonsense = await press(() => editProposalAction("nonsense", archived.form, { currentVersionId: null }));
     expect([nonsense.result.ok, nonsense.redrawn]).toEqual([false, false]);
+    expect(vi.mocked(console.error).mock.calls.length).toBe(mishaps);
     const theirs = await make("Scheduling");
     signedIn.actor = casey;
     const notMine = await press(() => editProposalAction(theirs.id, theirs.form, { currentVersionId: null }));

@@ -161,6 +161,10 @@ export function ProposalForm({
   const editorReady = useCallback((control: EditorControl | null) => {
     editor.current = control;
   }, []);
+  // A refusal stays on screen until the next press. Choosing what to do
+  // with text typed before the official text changed is such a press: the
+  // message that asked for the choice has done its work.
+  const choiceMade = useCallback(() => setError(null), []);
 
   const isText = kind !== "structure";
   // Where the proposed text is kept on this device while typing (for this person only).
@@ -481,6 +485,7 @@ export function ProposalForm({
                 draftKey={draftKey}
                 label="Proposed official text"
                 onReady={editorReady}
+                onChosen={choiceMade}
                 baseId={baseId}
                 currentText={currentText}
                 // Editing: a copy on this device can only be older than the

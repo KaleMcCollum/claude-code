@@ -36,7 +36,7 @@ const TRAINING_TITLE = "Barista training lasts two weeks";
 const TRAINING_TEXT = "New baristas train for two weeks before working alone.";
 const DECLINE_REASON = "Too long -- one week is enough, ask *Sam* at the roaster";
 const POLICY_TITLE = "Phones stay in the break room";
-const POLICY_TEXT = "Personal phones stay in the break room during a shift.";
+const POLICY_TEXT = ["Personal phones stay in the break room during a shift.", "Breaks are for  phones, tills are not."];
 const KALE_CLOSING = "Kale typed this: count the till, then lock the back door.";
 const CASEY_CLOSING = "Casey saved this first: lock the gate at close.";
 const KALE_ADDED = " Then count the till.";
@@ -736,7 +736,11 @@ async function main() {
   check("declining leaves the official text unchanged", await casey.getByText("No official text yet.").isVisible());
 
   await startProposalFor(kale, "policies", "2.5 Policies and Expectations");
-  await proposeText(kale, { title: POLICY_TITLE, text: [POLICY_TEXT] });
+  await proposeText(kale, { title: POLICY_TITLE, text: POLICY_TEXT });
+  // Two paragraphs added at once, the second with two spaces in a row: one underlined run
+  // that shows the line break and both spaces exactly as typed.
+  const addedRun = await kale.locator(".diff ins").evaluateAll((els) => els.map((el) => `${JSON.stringify(el.innerText)} ${getComputedStyle(el).whiteSpace}`));
+  check("an added run with a line break or two spaces in a row keeps every one of them", addedRun.join(" | ") === `${JSON.stringify(POLICY_TEXT.join("\n"))} pre-wrap`, addedRun.join(" | "));
   await kale.getByRole("button", { name: "Withdraw" }).click();
   await kale.getByText("Withdraw this proposal? Nothing will change.").waitFor();
   await kale.getByRole("button", { name: "Keep it" }).click();
@@ -1560,7 +1564,7 @@ async function main() {
   const sentBeforeChoice = await sentWhile(kale, () => budgetForm.getByRole("button", { name: "Propose", exact: true }).click());
   check("until he chooses, Propose sends nothing and says to choose first, in place of the earlier message", sentBeforeChoice === 0 && (await alertsOf(budgetForm)) === CHOOSE_FIRST, `${sentBeforeChoice} sent, ${await alertsOf(budgetForm)}`);
   await outdatedCopy.getByRole("button", { name: "Keep what I typed" }).click();
-  check("Keep what I typed takes the notice away and leaves the form as it was", (await eventually(async () => (await outdatedCopy.count()) === 0)) && (await heldBy(budgetForm)) === typed, await heldBy(budgetForm));
+  check("Keep what I typed takes the notice and the message away and leaves the form as it was", (await eventually(async () => (await outdatedCopy.count()) === 0)) && (await budgetForm.getByRole("alert").count()) === 0 && (await officialNowShown.count()) === 0 && (await heldBy(budgetForm)) === typed, `${await alertsOf(budgetForm)} / ${await heldBy(budgetForm)}`);
   await budgetForm.getByRole("button", { name: "Propose", exact: true }).click();
   await kale.waitForURL(/\/proposals\/[0-9a-f-]{36}$/);
   await kale.getByRole("heading", { level: 1, name: BUDGET_TITLE, exact: true }).waitFor();
@@ -1926,6 +1930,11 @@ async function main() {
   await kaleMobile.getByRole("heading", { level: 1, name: GRINDER_TITLE }).waitFor();
   const kaleOverflow = await sidewaysOverflow(kaleMobile);
   check("on a phone the other Owner is told who has to check it, and has no Approve", (await kaleMobile.locator(".notice").filter({ hasText: "has changed since" }).innerText()) === "The official text of this section has changed since Casey proposed this. Casey needs to check the proposal against the new text and save it again before it can be approved." && (await approveButton(kaleMobile).count()) === 0 && kaleOverflow <= 0, `overflow ${kaleOverflow}px`);
+  // One sentence replaced by another: the old one crossed out in one run, then the new one
+  // underlined in one run. Each run is laid out as ordinary words, so where one of its
+  // lines ends on the phone no stray crossed-out or underlined space is left behind.
+  const runs = await kaleMobile.locator(".diff del, .diff ins").evaluateAll((els) => els.map((el) => `${el.tagName.toLowerCase()}: ${el.textContent} (${getComputedStyle(el).whiteSpace})`));
+  check("on a phone a reworded sentence reads as one crossed-out run followed by one underlined run, each wrapping as ordinary words", runs.join(" | ") === "del: espresso machine is cleaned every night. (normal) | ins: coffee shop has two grinders. (normal)" && (await kaleMobile.locator(".diff").innerText()) === "The espresso machine is cleaned every night.coffee shop has two grinders.", `${runs.join(" | ")} / ${JSON.stringify(await kaleMobile.locator(".diff").innerText())}`);
   await shot(kaleMobile, "p3-phone-15-outdated-proposal-other", { fullPage: true });
   // Kale starts changing a proposal of his on the computer and leaves it; then he saves
   // a change to it from his phone. The copy on the computer is older than the proposal now.
@@ -2096,7 +2105,7 @@ async function main() {
   await shot(mobile, "p3-phone-19-form-official-changed", { fullPage: true });
   await fits("The new proposal form after the official text changed under it");
   await phoneOutdated.getByRole("button", { name: "Start over from the current text" }).tap();
-  check("on a phone Start over from the current text loads the new official text and keeps Title and Why", (await eventually(async () => (await mobileProposed.innerText()).trim().endsWith("Kale added this meanwhile."))) && (await phoneOutdated.count()) === 0 && (await mobileForm.getByLabel("Title", { exact: true }).inputValue()) === "Typed on the phone" && (await mobileForm.getByLabel("Why (optional)").inputValue()) === PHONE_WHY, await mobileProposed.innerText());
+  check("on a phone Start over from the current text loads the new official text and keeps Title and Why", (await eventually(async () => (await mobileProposed.innerText()).trim().endsWith("Kale added this meanwhile."))) && (await phoneOutdated.count()) === 0 && (await mobileForm.getByRole("alert").count()) === 0 && (await mobileForm.getByLabel("Title", { exact: true }).inputValue()) === "Typed on the phone" && (await mobileForm.getByLabel("Why (optional)").inputValue()) === PHONE_WHY, await mobileProposed.innerText());
   await mobileProposed.click();
   await mobile.keyboard.press("Control+End");
   await mobile.keyboard.type(" Typed on the phone again.");

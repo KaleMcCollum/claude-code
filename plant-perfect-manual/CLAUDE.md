@@ -168,7 +168,10 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
 - Nobody can endorse an open proposal that is out of date (`canEndorse`;
   `endorseProposal` refuses a press from a page opened earlier): an
   endorsement stops the proposer changing the proposal, and so checking it.
-  An approved proposal can still be endorsed.
+  An approved proposal can still be endorsed. What someone who can approve
+  is asked before their endorsement is recorded is `endorseQuestion(view)`:
+  for an open proposal it names the proposer, who can no longer change it
+  afterwards. (Advisors endorse with one tap.)
 - What `waitingText` and `blockedNotice` tell someone to do depends on who
   reads it: the proposer while they can still withdraw
   (`view.proposerCanWithdraw`), someone else who can approve and so can
@@ -202,6 +205,54 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   can no longer be carried out, the approver is told so in approval-time
   words (`noLongerPossible`), not in the words of the proposing form
   (`moveProblem`). Both read the same check, `moveProblemKind`.
+
+## The proposal form never loses what was typed
+
+The form for a new proposal and the edit page (`ProposalForm`) hold the
+title, the "Why", the business and the proposed text in the open page. A
+reload would lose all but the text, so these two forms should never be
+answered with "Reload the page". The two refusals about official text that
+changed meanwhile no longer are. A few rarer ones still say it (the section
+was archived, the note the proposal comes from was removed, the proposal
+was decided meanwhile, the person was signed out): following that advice
+loses the title and the "Why". Reword them when they are next touched.
+
+- When a press of the form is refused, for whatever reason, its page is
+  drawn again in place, in the same answer: `createProposalAction` and
+  `editProposalAction` hand `runAction` an `afterRefusal` that calls
+  `refresh()` from `next/cache` (`redrawFormPage` in
+  `src/app/(app)/proposals/actions.ts`). The form is not rebuilt, so it
+  keeps everything; it is handed the sections and the official text as they
+  are now. For a new proposal the editor then sees that its text was typed
+  against an older version and shows its notice with "The official text
+  now" and the two choices; on the edit page the new official text appears
+  above the proposed text and the next Save changes sends that version.
+- The redraw must never take the form away. Where the page would no longer
+  show the form (the proposal was decided or endorsed meanwhile, the
+  section archived, the person may no longer propose), drawing it again
+  would send the person elsewhere, and their typed words with it. So the
+  action asks first, with the same helpers the pages use
+  (`newFormStillShown`, `editFormStillShown`), and otherwise leaves the page
+  as it is with the refusal on it. `tests/form-redraw.test.ts` holds every
+  case; the browser tests check what the person then sees.
+- For the same reason the address of the New proposal page always names
+  the section the form is about (a note filed under one section leads there
+  by a redirect), and the edit page decides with `canEditProposal` alone.
+- What a box on the form shows is what is sent. The list of sections can
+  change under an open form, so a choice that is no longer offered counts
+  as the first line of its box (`offered` in `ProposalForm`), and the form
+  says so where a place has gone.
+
+## Text kept on a device belongs to the person who typed it
+
+Unsaved text (official text, a proposal's text, a note, a comment) is kept
+in the browser under a key that starts with the signed-in person's id
+(`src/lib/drafts.ts`; `tests/drafts.test.ts`). The id comes from one small
+context, `DraftOwner`, set in the layout of the signed-in pages and read
+with `useDraftOwner()`. A piece that keeps such a copy must sit under that
+layout (it throws otherwise, rather than fall back to a key shared by
+everyone). Nothing is cleared at sign-out: on a shared device the next
+person is simply never offered it, and its owner finds it again.
 
 ## What the database guarantees for people and sections
 
@@ -303,6 +354,13 @@ Add tests for new rules in `tests/` and new screens in `e2e/` (one
 starting data into the fresh database). Look at the phone screenshots
 yourself before showing them to the owner.
 
+In a browser test, take pictures with `shot()` from `e2e/helpers.cjs`. It
+first waits until the page has finished starting up in the browser
+(`settled`). Taking a picture marks every text box for a moment, and on a
+page that is still starting up the development build reports that as an
+error ("A tree hydrated but some attributes ... didn't match"), which the
+test would then count as an error of the app.
+
 For each database rule, and each check in `src/lib`, make sure a test fails
 when the rule is taken away. The way to check: copy `src`, `tests` and
 `drizzle` to a scratch folder, take ONE rule away there with a one-line
@@ -310,7 +368,8 @@ change, run the tests, and see that at least one fails; then the next rule.
 The scripts used so far are kept on the build machine, outside the
 repository, in `.data/probes/r3hmut/` (the first review) and
 `.data/probes/r5a/` and `r5b/` (the second: database rules, then readers
-and wording) and `.data/probes/r6c/` (the third: rules layer): `list.sh`
+and wording) and `.data/probes/r6c/` and `r6d/` (the third: rules layer,
+then what the screens' actions decide): `list.sh`
 has one line per rule, `all.sh` runs them all, and
 from `r5a` on `syntax.ts` first checks that a change has not simply broken
 the file, which would look like "noticed" for the wrong reason. Where two layers refuse the same thing with the same words (the app
@@ -341,6 +400,12 @@ cannot. Tests of what happens "at the same moment"
   words were only added or only removed). The spaces go into both runs:
   both texts are still rebuilt exactly from the parts. `diffPieces` is the
   comparison before that step, for tests that count changes.
+- Drawing it (`DiffView`): a changed run made only of words and single
+  spaces is laid out as ordinary text (`run-plain`), so that where one of
+  its lines ends on a phone the space there is not crossed out or
+  underlined. A run with a line break, a tab or two spaces in a row keeps
+  the layout that shows every one of them. Two changes get a little air
+  between them only where no space separates them (`touching`).
 - A button press can arrive twice (a lost answer, a second device). Saving
   official text that is already exactly the official text answers "no
   changes" before anything else is checked, and a second endorsement by the

@@ -137,6 +137,7 @@ type WithButtons = Shared & {
    */
   onSaved?: () => void;
   onReady?: undefined;
+  onChosen?: undefined;
 };
 
 /**
@@ -146,6 +147,12 @@ type WithButtons = Shared & {
  */
 type InsideForm = Shared & {
   onReady: (control: EditorControl | null) => void;
+  /**
+   * Called when the person has chosen what to do with text typed against
+   * something older (start over, or keep what they typed). The form takes
+   * its own message about that away then.
+   */
+  onChosen?: () => void;
   saveLabel?: undefined;
   note?: undefined;
   onSave?: undefined;
@@ -211,6 +218,7 @@ export default function RichTextEditor({
   onSaved,
   focusRequest = 0,
   onReady,
+  onChosen,
   baseId,
   currentText,
   baseWords = OFFICIAL_TEXT_WORDS,
@@ -443,6 +451,7 @@ export default function RichTextEditor({
     setChanged(false);
     setError(null);
     if (baseId !== undefined) setBase(baseId);
+    onChosen?.();
   };
 
   /**
@@ -456,6 +465,7 @@ export default function RichTextEditor({
     setBase(baseId);
     setError(null);
     keepCopy(draftKey, docOf(editor), startsEmpty, baseId);
+    onChosen?.();
   };
 
   const openLink = () => {

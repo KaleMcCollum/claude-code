@@ -208,9 +208,17 @@ a.btn-text {
   text-underline-offset: 3px;
 }
 
-/* A little air where an old word meets its replacement ("$13.00/hr." "$15.00/hr."). */
-.diff del + ins,
-.diff ins + del {
+/* A changed run of plain words and single spaces is laid out as ordinary
+   text: where one of its lines ends, the space there is left out by the
+   browser, so it is not crossed out or underlined (which looks like a stray
+   dash). The words and spaces shown are exactly the same. */
+.diff .run-plain {
+  white-space: normal;
+}
+
+/* A little air where an old word meets its replacement with no space
+   between them ("$13.00/hr." "$15.00/hr."). */
+.diff .touching {
   margin-left: 0.35em;
 }
 
