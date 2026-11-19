@@ -175,6 +175,15 @@ export type ProposalView = {
    */
   sameAsOfficial: boolean;
   /**
+   * An open proposal whose own section is no longer among the sections in
+   * use: it has been archived, or a section above it has. For "add a
+   * section" that is the section it would go under. Such a proposal can
+   * only be withdrawn or declined: approving or changing it is refused.
+   * False for a proposal with no section (adding a top-level section) and
+   * for anything that is not open.
+   */
+  sectionGone: boolean;
+  /**
    * Open proposals: its proposer could still change it (and so could still
    * check it against new official text). They have not been removed, are
    * still allowed to propose, and nobody else has approved or endorsed it.
@@ -197,17 +206,18 @@ export type Waiting = {
    * check: waiting for the proposer to check it against new official text.
    * stuck: out of date and its proposer can no longer change it.
    * same: the official text already says what it proposes (`sameAsOfficial`).
+   * gone: its section has been archived (`sectionGone`).
    */
-  step: "approve" | "check" | "stuck" | "same";
+  step: "approve" | "check" | "stuck" | "same" | "gone";
   /**
    * The people it is waiting for.
    *  - approve: the people who can approve now and have not. When two of
    *    them have already approved (it only needs one more press of Approve
    *    to become official): everyone who can approve now.
    *  - check: the proposer.
-   *  - stuck, same: everyone who can approve now (any of them can decline
-   *    it, or withdraw it if it is their own). What each of them, and
-   *    anyone else, is told to do is worded by `waitingText` and
+   *  - stuck, same, gone: everyone who can approve now (any of them can
+   *    decline it, or withdraw it if it is their own). What each of them,
+   *    and anyone else, is told to do is worded by `waitingText` and
    *    `blockedNotice`.
    */
   ids: string[];
@@ -348,6 +358,18 @@ async function currentVersions(
 }
 
 /**
+ * The one definition of "its section is gone", for `ProposalView.sectionGone`
+ * and for refusing to approve or endorse. `tree` is the sections in use
+ * (`loadTree`): a section that has been archived, or that sits under an
+ * archived one, is not in it. `sectionId` is the section a proposal is
+ * about (for "add a section": the one it would go under); with none, there
+ * is nothing that can be gone.
+ */
+function sectionIsGone(tree: SectionNode[], sectionId: string | null): boolean {
+  return sectionId !== null && findNode(tree, sectionId) === null;
+}
+
+/**
  * True when `proposed` says exactly what a section's official text says
  * now. `current` is that text, null when the section has none (an empty
  * proposal is then "the same"). The one comparison behind both the refusal
@@ -405,6 +427,8 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
     ),
   ];
   const current = await currentVersions(q, openTextSections);
+  // The sections in use, read once, to say whether an open proposal's section is gone.
+  const tree = joined.some((j) => j.row.status === "open" && j.row.sectionId) ? await loadTree(q) : [];
 
   return joined.map(({ row, proposedByName, proposerRemovedAt, proposerPermissions, decidedByName, ...names }) => {
     const version = versionRows.find((v) => v.proposalId === row.id);
@@ -462,6 +486,7 @@ async function toViews(q: Queryable, joined: Joined[]): Promise<ProposalView[]> 
         row.sectionId !== null &&
         row.proposedOfficial !== null &&
         saysWhatIsOfficial(current.get(row.sectionId)?.content ?? null, row.proposedOfficial as RichDoc),
+      sectionGone: row.status === "open" && sectionIsGone(tree, row.sectionId),
       proposerCanChange:
         proposerCanWithdraw &&
         !approvedBy.some((a) => a.userId !== row.proposedBy) &&
@@ -767,7 +792,8 @@ export async function changesNotApprovedBy(
  *    not that person can approve right now. An approval given before the
  *    official text changed must never turn up later as the second one.
  *
- * Neither, for anyone, when the official text already says what it proposes
+ * Neither, for anyone, when its section has been archived (`sectionGone`),
+ * or when the official text already says what it proposes
  * (`sameAsOfficial`): approving it would only add a second copy of the
  * current version.
  */
@@ -777,7 +803,7 @@ export function approveChoices(
   approvers: { id: string }[],
 ): { approve: boolean; alone: boolean } {
   if (view.status !== "open" || !can(actor, "approve")) return { approve: false, alone: false };
-  if (view.sameAsOfficial) return { approve: false, alone: false };
+  if (view.sectionGone || view.sameAsOfficial) return { approve: false, alone: false };
   const approved = new Set(view.approvals.map((a) => a.userId));
   const mine = approved.has(actor.id);
   const otherOwners = approvers.filter((owner) => owner.id !== actor.id);
@@ -798,6 +824,7 @@ export function waitingOn(view: ProposalView, approvers: { id: string; name: str
     ids: list.map((person) => person.id),
     names: list.map((person) => person.name),
   });
+  if (view.sectionGone) return { step: "gone", ...people(approvers), needed: 0 };
   if (view.sameAsOfficial) return { step: "same", ...people(approvers), needed: 0 };
   if (view.outOfDate) {
     return view.proposerCanChange && view.proposedById
@@ -847,8 +874,9 @@ function readerOf(
  * is waiting for its proposer's check (the page has its own notice for
  * that, with the "Check and save again" button).
  *
- * The official text already says what it proposes (step "same"): the same
- * sentence as `waitingText`. It takes the place of the out-of-date notice
+ * Its section has been archived (step "gone"), or the official text
+ * already says what it proposes (step "same"): the same sentence as
+ * `waitingText`. For "same" it takes the place of the out-of-date notice
  * and its button, which could only lead to a refusal.
  *
  * Out of date, and its proposer can no longer change it (step "stuck"):
@@ -865,7 +893,7 @@ export function blockedNotice(
   viewerId: string,
 ): string | null {
   const waiting = waitingOn(view, approvers);
-  if (waiting?.step === "same") return waitingText(view, approvers, viewerId);
+  if (waiting?.step === "gone" || waiting?.step === "same") return waitingText(view, approvers, viewerId);
   if (waiting?.step !== "stuck") return null;
   const reader = readerOf(view, approvers, viewerId);
   if (reader === "proposer") {
@@ -900,6 +928,9 @@ export function blockedNotice(
  *    else who can approve "... Casey can withdraw it, or you can decline
  *    it." (just "... Decline it." when its proposer can no longer withdraw
  *    it); anyone else "The official text already says this."
+ *  - Its section has been archived (gone): "Its section has been archived."
+ *    followed by "Withdraw it." for its proposer, "Decline it." for someone
+ *    else who can approve, and nothing more for anyone else.
  */
 export function waitingText(
   view: ProposalView,
@@ -908,6 +939,11 @@ export function waitingText(
 ): string | null {
   const waiting = waitingOn(view, approvers);
   if (!waiting) return null;
+  if (waiting.step === "gone") {
+    const reader = readerOf(view, approvers, viewerId);
+    const archived = "Its section has been archived.";
+    return reader === "proposer" ? `${archived} Withdraw it.` : reader === "approver" ? `${archived} Decline it.` : archived;
+  }
   if (waiting.step === "same") {
     const reader = readerOf(view, approvers, viewerId);
     const already = "The official text already says this.";
@@ -945,23 +981,29 @@ export function waitingFor(view: ProposalView, approvers: { id: string; name: st
  * True when this person could endorse it: allowed to, and has neither
  * approved nor endorsed it. Never while an open proposal is out of date: an
  * endorsement stops its proposer changing it, and so checking it against
- * the new official text, which would leave it stuck. (An approved proposal
- * can still be endorsed.)
+ * the new official text, which would leave it stuck. Nor while its section
+ * is gone: it can only be withdrawn or declined. (An approved proposal can
+ * still be endorsed.)
  */
 export function canEndorse(view: ProposalView, actor: Actor): boolean {
   return (
     (view.status === "open" || view.status === "approved") &&
-    !(view.status === "open" && view.outOfDate) &&
+    !(view.status === "open" && (view.outOfDate || view.sectionGone)) &&
     can(actor, "endorse") &&
     !view.approvals.some((a) => a.userId === actor.id) &&
     !view.endorsements.some((e) => e.userId === actor.id)
   );
 }
 
-/** True while the proposer may still change it: open, and nobody else has approved or endorsed. */
+/**
+ * True while the proposer may still change it: open, and nobody else has
+ * approved or endorsed. Not while its section is gone: every change would
+ * be refused.
+ */
 export function canEditProposal(view: ProposalView, actor: Actor): boolean {
   return (
     view.status === "open" &&
+    !view.sectionGone &&
     can(actor, "propose") &&
     view.proposedById === actor.id &&
     !view.approvals.some((a) => a.userId !== actor.id) &&
@@ -1474,6 +1516,7 @@ const CLOSED_MEANWHILE = "PPF04";
 const BROKE_A_RULE = "42501";
 
 const CLOSED_SO_NOT_ENDORSED = "This proposal was declined or withdrawn, so it can no longer be endorsed.";
+const GONE_SO_NOT_ENDORSED = "The section this proposal is about has been archived, so it can no longer be endorsed.";
 const CLOSED_SO_NOT_APPROVED = "This proposal has already been declined or withdrawn. Reload the page to see it.";
 
 function changedAfterOpening(who: string, verb: string): string {
@@ -1944,7 +1987,7 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, stand
     recordedTitle = decidedTitle;
     // The section it is about must still be there (for "add": the section
     // to add it under, unless it goes to the top level).
-    if (change.action === "add" ? row.sectionId && !findNode(tree, row.sectionId) : !row.sectionId || !findNode(tree, row.sectionId)) {
+    if (sectionIsGone(tree, row.sectionId) || (change.action !== "add" && !row.sectionId)) {
       throw new AppError(SECTION_GONE);
     }
     // And the sections must not have changed, while it waited, in a way
@@ -1976,10 +2019,8 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, stand
       await tx.update(proposals).set({ ...decided, decidedTitle }).where(eq(proposals.id, row.id));
     }
   } else {
-    const [section] = await tx.select().from(sections).where(eq(sections.id, row.sectionId!));
-    if (!section || section.archivedAt || !findNode(await loadTree(tx), section.id)) {
-      throw new AppError(SECTION_GONE);
-    }
+    const sectionId = row.sectionId;
+    if (!sectionId || sectionIsGone(await loadTree(tx), sectionId)) throw new AppError(SECTION_GONE);
     await tx
       .update(proposals)
       .set(decided)
@@ -1989,7 +2030,7 @@ async function finalize(tx: Tx, actor: Actor, row: ProposalRow, now: Date, stand
         throw error;
       });
     await addVersion(tx, actor, {
-      sectionId: section.id,
+      sectionId,
       proposalId: row.id,
       content: row.proposedOfficial as RichDoc,
       now,
@@ -2050,7 +2091,8 @@ export type ApproveOutcome = { approved: boolean; waitingFor: string[] };
  *    second one. The proposer checks it and saves it again first;
  *  - when nobody else can approve right now: there would be no one to wait
  *    for. "Approve on my own" is the way forward then;
- *  - when the official text already says exactly what it proposes.
+ *  - when the official text already says exactly what it proposes;
+ *  - when its section has been archived.
  */
 export async function approveProposal(
   actor: Actor,
@@ -2065,6 +2107,10 @@ export async function approveProposal(
     requireOpen(row);
     await lockSectionOf(tx, row);
     await checkSeen(tx, row, seen, "approve");
+    // Its section is gone: refused before an approval is recorded that
+    // would only wait for a second one. (`finalize` refuses the same when
+    // this press would have made it official.)
+    if (sectionIsGone(await loadTree(tx), row.sectionId)) throw new AppError(SECTION_GONE);
     await refuseIfAlreadyOfficial(tx, actor, row);
     const standing = await proposerNow(tx, row);
     if (await isOutOfDate(tx, row)) throw new AppError(outOfDateWords(row, standing));
@@ -2230,6 +2276,9 @@ export async function withdrawProposal(actor: Actor, id: string, options: { now?
  * section, so an endorsement given at the very moment the official text
  * changes can still land just before it; that is the same as having
  * endorsed first, which is allowed.
+ *
+ * Refused as well on an open proposal whose section has been archived: it
+ * can only be withdrawn or declined.
  */
 export async function endorseProposal(
   actor: Actor,
@@ -2259,6 +2308,7 @@ export async function endorseProposal(
     // again under a lock (see addStamp), which is what holds if the proposer
     // saves a change at this very moment.
     await checkSeen(tx, row, { revision: seen.revision }, "endorse");
+    if (row.status === "open" && sectionIsGone(await loadTree(tx), row.sectionId)) throw new AppError(GONE_SO_NOT_ENDORSED);
     if (row.status === "open" && (await isOutOfDate(tx, row))) {
       const standing = await proposerNow(tx, row);
       throw new AppError(

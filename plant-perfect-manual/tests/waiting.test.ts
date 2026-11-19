@@ -10,6 +10,7 @@ import {
   approveChoices,
   approveProposal,
   blockedNotice,
+  canEditProposal,
   canEndorse,
   countAwaiting,
   createProposal,
@@ -83,6 +84,7 @@ function open(proposer: Actor, approvedBy: Actor[], more: Partial<ProposalView> 
     superseded: false,
     outOfDate: false,
     sameAsOfficial: false,
+    sectionGone: false,
     proposerCanChange: true,
     // (Sam, who is no longer an Owner, could not withdraw a proposal of his.)
     proposerCanWithdraw: proposer.permissions.includes("propose"),
@@ -345,6 +347,45 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
       const view = open(SAM, [SAM], { outOfDate: true, sameAsOfficial: true, proposerCanChange: false });
       expect(view.proposerCanWithdraw).toBe(false);
       expect(reads(view, owners, KALE, CASEY, SAM, KAREN)).toEqual([`${ALREADY} Decline it.`, `${ALREADY} Decline it.`, ALREADY, ALREADY]);
+    });
+  });
+
+  describe("when its section has been archived", () => {
+    const owners = [KALE, CASEY];
+    const ARCHIVED = "Its section has been archived.";
+
+    it("it can only be withdrawn or declined: no approve button, and each reader is told what they can do", () => {
+      const view = open(KALE, [KALE], { sectionGone: true });
+      expect(waitingOn(view, owners)).toEqual({ step: "gone", ids: ids(KALE, CASEY), names: names(KALE, CASEY), needed: 0 });
+      expect(reads(view, owners, KALE, CASEY, KAREN)).toEqual([`${ARCHIVED} Withdraw it.`, `${ARCHIVED} Decline it.`, ARCHIVED]);
+      expect(notices(view, owners, KALE, CASEY, KAREN)).toEqual(reads(view, owners, KALE, CASEY, KAREN));
+      expect(buttons(view, owners, KALE, CASEY, KAREN)).toEqual(["Kale: - / -", "Casey: - / -", "Karen: - / -"]);
+      expect(buttons({ ...view, sectionGone: false }, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: Approve / -"]);
+      // A proposer who has been made an Advisor since cannot withdraw it, and is not told to.
+      const fromSam = open(SAM, [SAM], { sectionGone: true });
+      expect(reads(fromSam, owners, SAM, KALE)).toEqual([ARCHIVED, `${ARCHIVED} Decline it.`]);
+    });
+
+    it("that is said first of all, whatever else is true of it", () => {
+      const also: Partial<ProposalView>[] = [
+        { outOfDate: true, proposerCanChange: true },
+        { outOfDate: true, proposerCanChange: false },
+        { outOfDate: true, sameAsOfficial: true },
+      ];
+      for (const more of also) {
+        const view = open(KALE, [KALE], { sectionGone: true, ...more });
+        expect(waitingOn(view, owners)?.step).toBe("gone");
+        expect(reads(view, owners, CASEY)).toEqual([`${ARCHIVED} Decline it.`]);
+        expect(waitingOn({ ...view, sectionGone: false }, owners)?.step).not.toBe("gone");
+      }
+    });
+
+    it("it can be neither endorsed nor changed while it is open", () => {
+      const view = open(KALE, [KALE], { sectionGone: true });
+      expect([canEndorse(view, KAREN), canEndorse(view, CASEY)]).toEqual([false, false]);
+      expect(canEditProposal(view, KALE)).toBe(false);
+      const there = { ...view, sectionGone: false };
+      expect([canEndorse(there, KAREN), canEndorse(there, CASEY), canEditProposal(there, KALE)]).toEqual([true, true, true]);
     });
   });
 

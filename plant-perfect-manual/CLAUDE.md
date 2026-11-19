@@ -161,6 +161,11 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   and both approve rules refuse it; `waitingOn` answers the step `same`
   before `check` and `stuck`. Its proposer withdraws it or changes it to
   say something else; another Owner declines it.
+- An open proposal whose own section is no longer among the sections in
+  use (archived, or under an archived one; for "add a section" the one it
+  would go under) is `sectionGone`: one definition, the one approving
+  refuses on. It can only be withdrawn or declined: no approve button, no
+  Endorse, no Edit, and `waitingOn` answers the step `gone` first of all.
 - When an open proposal cannot go ahead, the waiting line (`waitingText`)
   and the notice on its page (`blockedNotice(view, approvers, viewerId)`)
   are worded for whoever reads them: its proposer while they can still
