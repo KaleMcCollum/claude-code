@@ -2234,25 +2234,39 @@ async function main() {
   const groupedRow = mobileFlagged.filter({ hasText: "Edited directly: 7.1 Vendor Contacts (version 3)" });
   const groupedLinks = groupedRow.locator(".earlier-changes").getByRole("link");
   check("on a phone the earlier changes to a section are listed under the newest, each easy to tap", (await groupedRow.locator(".earlier-changes").innerText()).startsWith("Earlier one-person changes to this section:") && (await groupedLinks.count()) === 2 && (await height(groupedLinks.first())) >= 36 && (await height(groupedLinks.last())) >= 36, `${await height(groupedLinks.first())} and ${await height(groupedLinks.last())}`);
-  // One link on each line and no commas: with a long title a comma would start a line.
+  // One link on each line and no commas, for every row of the list: with a long title a
+  // comma would start a line, and two short ones would otherwise sit side by side.
   // Looked at on the phone's own width and on a narrower one.
   const earlierLayout = () =>
-    groupedRow.locator(".earlier-changes").evaluate((el) => {
-      const left = el.getBoundingClientRect().left;
-      const boxes = [...el.querySelectorAll("a")].map((a) => a.getBoundingClientRect());
-      return {
-        ownLines: boxes.every((box, i) => Math.abs(box.left - left) < 1 && (i === 0 || box.top >= boxes[i - 1].bottom - 1)),
-        commasDrawn: [...el.querySelectorAll(".sep")].filter((sep) => sep.getBoundingClientRect().width > 0).length,
-        heights: boxes.map((box) => Math.round(box.height)),
-        strayComma: /^\s*,|,\s*$/m.test(el.innerText),
-      };
-    });
+    mobile
+      .getByRole("region", { name: /^Decided by one person/ })
+      .locator(".earlier-changes")
+      .evaluateAll((lines) =>
+        lines.map((el) => {
+          const left = el.getBoundingClientRect().left;
+          const boxes = [...el.querySelectorAll("a")].map((a) => a.getBoundingClientRect());
+          return {
+            ownLines: boxes.every((box, i) => Math.abs(box.left - left) < 1 && (i === 0 || box.top >= boxes[i - 1].bottom - 1)),
+            commasDrawn: [...el.querySelectorAll(".sep")].filter((sep) => sep.getBoundingClientRect().width > 0).length,
+            heights: boxes.map((box) => Math.round(box.height)),
+            strayComma: /^\s*,|,\s*$/m.test(el.innerText),
+            // (Asked of the style itself as well: whether two short links would fit side by
+            // side depends on the names and on how the day's date is written.)
+            blocks: [...el.querySelectorAll("a")].every((a) => getComputedStyle(a).display === "block"),
+          };
+        }),
+      );
+  const rightOnAPhone = (rows) =>
+    rows.every((row) => row.ownLines && row.blocks && row.commasDrawn === 0 && !row.strayComma && row.heights.every((tall) => tall >= 36)) &&
+    // (Vendor Contacts: a title that runs over several lines. Closing Procedures: two short ones.)
+    rows.some((row) => row.heights.length === 2 && row.heights[0] > row.heights[1]) &&
+    rows.some((row) => row.heights.length === 2 && row.heights[0] === row.heights[1]);
   const at390 = await earlierLayout();
   const phoneSize = mobile.viewportSize();
   await mobile.setViewportSize({ width: 360, height: phoneSize.height });
   const at360 = await earlierLayout();
   await mobile.setViewportSize(phoneSize);
-  check("on a phone each earlier change has a line of its own and no comma is drawn, also when a title runs over several lines (390 and 360 wide)", [at390, at360].every((seen) => seen.ownLines && seen.commasDrawn === 0 && !seen.strayComma && seen.heights.length === 2 && seen.heights[0] > seen.heights[1] && seen.heights.every((tall) => tall >= 36)), JSON.stringify([at390, at360]));
+  check("on a phone each earlier change has a line of its own and no comma is drawn, whether its title runs over several lines or is short (390 and 360 wide)", rightOnAPhone(at390) && rightOnAPhone(at360), JSON.stringify([at390, at360]));
   await groupedRow.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await shot(mobile, "p3-phone-17-today-grouped");
   check("a tap flashes light gray, not the browser's blue", (await mobile.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("-webkit-tap-highlight-color"))) === "rgba(0, 0, 0, 0.08)", await mobile.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("-webkit-tap-highlight-color")));
