@@ -793,10 +793,12 @@ export async function changesNotApprovedBy(
  *  - `alone` ("Approve on my own"): nobody else who can approve has
  *    approved it, so they may make it official without waiting, as a
  *    one-person decision. For the proposer, and for a single Owner, this is
- *    the only one of the two. On a proposal that is out of date the test
- *    is stricter: nobody else's approval may be on it at all, whether or
- *    not that person can approve right now. An approval given before the
- *    official text changed must never turn up later as the second one.
+ *    the only one of the two. Never on a proposal that is out of date
+ *    either, its proposer included: its text would replace official text
+ *    it was never checked against. The proposer checks it against the new
+ *    text and saves it again first ("Check and save again"); then it can
+ *    be approved as usual, alone too. One its proposer can no longer
+ *    change can only be withdrawn or declined.
  *
  * Neither, for anyone, when its section has been archived (`sectionGone`),
  * or when the official text already says what it proposes
@@ -816,7 +818,7 @@ export function approveChoices(
   const othersApproved = otherOwners.filter((owner) => approved.has(owner.id)).length;
   return {
     approve: !view.outOfDate && (mine ? othersApproved >= 1 : otherOwners.length >= 1),
-    alone: view.outOfDate ? !view.approvals.some((a) => a.userId !== actor.id) : othersApproved === 0,
+    alone: !view.outOfDate && othersApproved === 0,
   };
 }
 
@@ -873,6 +875,13 @@ function readerOf(
 }
 
 /**
+ * What the proposer of a stuck proposal reads: on its page (`blockedNotice`)
+ * and when they press "Approve on my own" from a page opened earlier.
+ */
+const STUCK_FOR_ITS_PROPOSER =
+  "The official text of this section has changed since you proposed this, and you can no longer change it. Withdraw it and make a new proposal.";
+
+/**
  * The notice the proposal page shows above an open proposal that cannot be
  * approved as it stands, as `viewerId` should read it. `approvers` is
  * everyone who can approve right now. Null when there is nothing of the
@@ -902,9 +911,7 @@ export function blockedNotice(
   if (waiting?.step === "gone" || waiting?.step === "same") return waitingText(view, approvers, viewerId);
   if (waiting?.step !== "stuck") return null;
   const reader = readerOf(view, approvers, viewerId);
-  if (reader === "proposer") {
-    return "The official text of this section has changed since you proposed this, and you can no longer change it. Withdraw it and make a new proposal.";
-  }
+  if (reader === "proposer") return STUCK_FOR_ITS_PROPOSER;
   const cannotChange =
     "The official text of this section has changed since this was proposed, and the person who proposed it can no longer change it.";
   return reader === "approver" ? `${cannotChange} Decline it and make a new proposal.` : `${cannotChange} It has to be proposed again.`;
@@ -1666,6 +1673,21 @@ function outOfDateWords(row: ProposalRow, standing: ProposerNow): string {
 }
 
 /**
+ * The same, for a press of "Approve on my own" (a page opened earlier still
+ * shows the button). Its proposer is told what they themselves can do:
+ * check it and save it again while they can still change it; withdraw it
+ * once they cannot (the sentence `blockedNotice` shows them on the page).
+ * Everyone else reads `outOfDateWords`.
+ */
+function outOfDateWordsAlone(actor: Actor, row: ProposalRow, standing: ProposerNow): string {
+  if (row.proposedBy === actor.id && standing.canChange) {
+    return "The official text of this section has changed since you proposed this. Check your proposal against the new text and save it again. Then it can be approved.";
+  }
+  if (row.proposedBy === actor.id && standing.canWithdraw) return STUCK_FOR_ITS_PROPOSER;
+  return outOfDateWords(row, standing);
+}
+
+/**
  * Record an approval or an endorsement, tied to the proposal revision the
  * person had in front of them. The database checks that number against the
  * proposal while holding a lock on it, so even when the proposer saves a
@@ -2178,17 +2200,17 @@ export async function approveProposal(
  * "Approve on my own": make it official now with this Owner's approval,
  * without waiting. It is flagged on Today so the other Owner sees it.
  *
- * On a proposal that is out of date this is allowed only while nobody
- * else's approval is on it, whoever they are and whatever their role is
- * now. Someone who cannot approve at this moment (made an Advisor, or
- * removed) may be an Owner again tomorrow, and their approval from before
- * the official text changed would then read as the second one. The
- * proposer's own approval is always on a proposal, so in practice only its
- * proposer can approve an out-of-date proposal alone.
+ * Refused for everyone, its proposer included, on a proposal that is out of
+ * date: its text would replace official text it was never checked against.
+ * Its proposer checks it against the new text and saves it again first
+ * (`editProposal` with `currentVersionId`); then it can be approved as
+ * usual, alone too. One its proposer can no longer change can only be
+ * withdrawn or declined. No page offers the button on such a proposal
+ * (`approveChoices`); this is for a press from a page opened earlier.
  *
- * (This half is a rule of the app. The database refuses two people's
- * approval of an out-of-date proposal, counting the people who can approve
- * at that moment.)
+ * (This is a rule of the app. The database refuses two people's approval
+ * of an out-of-date proposal, counting the people who can approve at that
+ * moment; for the database one person could approve it alone.)
  *
  * Refused for everyone when the official text already says exactly what
  * the proposal proposes: it would make a second copy of the current version.
@@ -2208,9 +2230,7 @@ export async function approveAlone(
     await checkSeen(tx, row, seen, "approve");
     await refuseIfAlreadyOfficial(tx, actor, row);
     const standing = await proposerNow(tx, row);
-    if ((await isOutOfDate(tx, row)) && (await approvalsOf(tx, id)).some((a) => a.userId !== actor.id)) {
-      throw new AppError(outOfDateWords(row, standing));
-    }
+    if (await isOutOfDate(tx, row)) throw new AppError(outOfDateWordsAlone(actor, row, standing));
     await recordApproval(tx, actor, row, seen.revision, now);
     await finalize(tx, actor, row, now, standing);
   });

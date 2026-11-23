@@ -100,9 +100,9 @@ These hold whatever the app code does (see `drizzle/0007`, `0009` and
   official version it was written against (`base_version_id`) must still be
   the newest version of its section. That is all the database refuses here:
   it counts the people who can approve at that moment, so for the database
-  one person can approve an out-of-date proposal alone. "One person alone
-  only when nobody else's approval is on it" is a rule of the app
-  (`approveAlone`, `approveChoices`), not of the database.
+  one person can approve an out-of-date proposal alone. That one person
+  cannot approve it alone either, its proposer included, is a rule of the
+  app (`approveAlone`, `approveChoices`), not of the database.
 - An official version can only be added for an approved, non-structure
   proposal of the same section with the same words, by the person who
   decided it, in the same transaction that approved it. Each proposal
@@ -136,15 +136,18 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
   official version any other way.
 - A waiting text proposal is out of date when its `baseVersionId` is not
   the section's current official version (`ProposalView.outOfDate`).
-  `approveProposal` refuses it; `approveAlone` goes through only while
-  nobody else's approval is on it, whoever they are and whatever their role
-  is now (so in practice only for its proposer; everyone else declines it
-  and proposes again). Its proposer brings it up to date by
-  saving it again from an edit page that showed the current official text:
-  `editProposal(actor, id, input, { currentVersionId })`. Without that last
-  argument an edit leaves "written against" exactly as it was. A new
-  proposal made from a form sends `baseVersionId`, the version the form
-  started from, and is refused if the text has changed since.
+  Nobody can approve it then, together or alone, its proposer included:
+  `approveProposal` and `approveAlone` both refuse it, and `approveChoices`
+  offers neither button. Its proposer first brings it up to date ("Check
+  and save again") by saving it again from an edit page that showed the
+  current official text: `editProposal(actor, id, input, {
+  currentVersionId })`. Then it can be approved as usual, alone too. A
+  proposal its proposer can no longer change (someone else approved or
+  endorsed it, or the proposer is no longer an Owner or was removed) can
+  only be withdrawn or declined. Without that last argument an edit leaves
+  "written against" exactly as it was. A new proposal made from a form
+  sends `baseVersionId`, the version the form started from, and is refused
+  if the text has changed since.
 - Screens ask the helpers which buttons to show (`approveChoices`,
   `canApproveToo`, `canEndorse`, `canEditProposal`) and who a proposal is
   waiting for (`waitingOn`, `waitingText`; `countAwaiting` for the sidebar),

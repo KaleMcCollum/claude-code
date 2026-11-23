@@ -37,11 +37,10 @@ withTestDatabase();
 /**
  * A waiting text proposal goes out of date when the official text of its
  * section changes: its proposer's approval was given on top of the older
- * text. Two people cannot approve it until the proposer has checked it
- * against the new text and saved it again. It can still be approved by one
- * person alone (flagged for the other Owner like any one-person decision),
- * but only while nobody else's approval is on it: in practice, only by its
- * own proposer. (The stories behind that rule: tests/out-of-date-alone.test.ts.)
+ * text. Nobody can approve it then, together or alone, its proposer
+ * included, until the proposer has checked it against the new text and
+ * saved it again. After that it can be approved as usual, alone too. (The
+ * stories behind that rule: tests/out-of-date-alone.test.ts.)
  */
 
 const doc = (...paragraphs: string[]): RichDoc => ({
@@ -285,23 +284,44 @@ describe("a new proposal made from a page that showed older official text", () =
 });
 
 describe("approving an out-of-date proposal on your own", () => {
-  it("is still possible for its proposer, and is flagged for the other Owner", async () => {
+  it("is not possible for its proposer either, until they have checked it; then it is, and it is flagged for the other Owner", async () => {
     const wages = await section("Wages");
     await saveOfficial(kale, wages, doc("Garden staff start at $15/hr."));
-    const id = await createProposal(kale, { kind: "decision", sectionId: wages, title: "Coffee wages", proposedOfficial: doc("Garden staff start at $15/hr.", "Coffee staff start at $13/hr.") });
+    const input = { kind: "decision" as const, sectionId: wages, title: "Coffee wages", proposedOfficial: doc("Garden staff start at $15/hr.", "Coffee staff start at $13/hr.") };
+    const id = await createProposal(kale, input);
+    // Casey gives the garden staff a raise, directly.
     await saveOfficial(casey, wages, doc("Garden staff start at $16/hr."), { baseVersionId: await currentId(wages) });
 
     const kalesPage = await page(id);
     expect(kalesPage.view.outOfDate).toBe(true);
-    expect(approveChoices(kalesPage.view, kale, await owners())).toEqual({ approve: false, alone: true });
-    // Plain Approve is refused for him too; "Approve on my own" goes through.
+    expect(approveChoices(kalesPage.view, kale, await owners())).toEqual({ approve: false, alone: false });
+    // Plain Approve is refused for him, and so is "Approve on my own": his
+    // older words would take Casey's raise out again. Nothing is recorded.
     await expect(approveProposal(kale, id, kalesPage.seen)).rejects.toThrow(sinceProposed("Kale"));
-    await approveAlone(kale, id, kalesPage.seen);
+    await expect(approveAlone(kale, id, kalesPage.seen)).rejects.toThrow(
+      "The official text of this section has changed since you proposed this. Check your proposal against the new text and save it again. Then it can be approved.",
+    );
+    expect(await officialText(wages)).toBe("Garden staff start at $16/hr.");
+    expect(await view(id)).toMatchObject({ status: "open", outOfDate: true });
+    expect((await view(id)).approvals.map((a) => a.name)).toEqual(["Kale"]);
+    expect(await logged(id)).toEqual(["proposal.created: Proposed: Coffee wages"]);
+    expect(await flaggedIds()).not.toContain(id);
+
+    // He checks it against her text, keeps her raise, and saves it again. Now he can.
+    await editProposal(
+      kale,
+      id,
+      { ...input, proposedOfficial: doc("Garden staff start at $16/hr.", "Coffee staff start at $13/hr.") },
+      { currentVersionId: await currentId(wages) },
+    );
+    const checked = await page(id);
+    expect(approveChoices(checked.view, kale, await owners())).toEqual({ approve: false, alone: true });
+    await approveAlone(kale, id, checked.seen);
 
     const done = await view(id);
     expect(done).toMatchObject({ status: "approved", decidedAlone: true, soloOpen: true, outOfDate: false });
     expect(statusLine(done)).toMatch(/^Approved by Kale, /);
-    expect(await officialText(wages)).toBe("Garden staff start at $15/hr.\nCoffee staff start at $13/hr.");
+    expect(await officialText(wages)).toBe("Garden staff start at $16/hr.\nCoffee staff start at $13/hr.");
     expect(await flaggedIds()).toContain(id);
     expect(canApproveToo(done, casey)).toBe(true);
     expect((await loadToday(casey)).decidedAlone.map((p) => p.id)).toContain(id);
@@ -339,11 +359,17 @@ describe("approving an out-of-date proposal on your own", () => {
     await declineProposal(casey, fromSam, "The text has moved on.");
 
     // Karen endorsed Kale's proposal, so he can no longer change it either.
+    // "It can no longer be approved" is true for everyone, Kale included.
     p = await view(endorsed);
     expect(p).toMatchObject({ outOfDate: true, proposerCanChange: false });
     expect(waitingOn(p, await owners())?.step).toBe("stuck");
+    for (const who of [casey, kale]) expect(approveChoices(p, who, await owners())).toEqual({ approve: false, alone: false });
     await expect(approveProposal(casey, endorsed, (await page(endorsed)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
     await expect(approveAlone(casey, endorsed, (await page(endorsed)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
+    await expect(approveAlone(kale, endorsed, (await page(endorsed)).seen)).rejects.toThrow(
+      "The official text of this section has changed since you proposed this, and you can no longer change it. Withdraw it and make a new proposal.",
+    );
+    expect(await officialText(annuals)).toBe("Annuals: to be decided.");
     await expect(
       editProposal(kale, endorsed, { kind: "decision", sectionId: annuals, title: "Annuals arrive in May", proposedOfficial: doc("Annuals arrive in May.") }, { currentVersionId: await currentId(annuals) }),
     ).rejects.toThrow("can no longer be changed");
@@ -389,7 +415,12 @@ describe("approving an out-of-date proposal on your own", () => {
     for (const who of [kale, casey, jo]) {
       expect(approveChoices(p, who, await owners())).toEqual({ approve: false, alone: false });
       await expect(approveProposal(who, id, (await page(id)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
-      await expect(approveAlone(who, id, (await page(id)).seen)).rejects.toThrow(CANNOT_BE_CHECKED);
+      // "Approve on my own" tells its proposer what he himself can do: withdraw it.
+      await expect(approveAlone(who, id, (await page(id)).seen)).rejects.toThrow(
+        who === kale
+          ? "The official text of this section has changed since you proposed this, and you can no longer change it. Withdraw it and make a new proposal."
+          : CANNOT_BE_CHECKED,
+      );
     }
     await expect(
       editProposal(kale, id, { kind: "decision", sectionId: hardGoods, title: "Carry hose reels", proposedOfficial: doc("Hard goods include hose reels.") }, { currentVersionId: await currentId(hardGoods) }),

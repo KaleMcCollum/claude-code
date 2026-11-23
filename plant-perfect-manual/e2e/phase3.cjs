@@ -855,12 +855,23 @@ async function main() {
   await goTo(kale, "Today");
   const awaitingRow = (page, title) => page.getByRole("region", { name: /^Awaiting approval/ }).getByRole("listitem").filter({ hasText: title });
   check("Kale's Today says it is waiting for Casey to check it", await awaitingRow(kale, POS_TITLE).getByText("Waiting for Casey to check it against the new official text", { exact: true }).isVisible());
+  // Casey's own page was opened before Kale's change and still shows Approve on my own.
+  await casey.getByRole("button", { name: "Approve on my own" }).click();
+  await casey.getByText("Make this official now with only your approval? Kale will see it flagged on Today.").waitFor();
+  await casey.getByRole("button", { name: "Approve on my own" }).click();
+  const tooLate = casey.getByRole("region", { name: "Actions" }).getByRole("alert");
+  await tooLate.waitFor();
+  check("its proposer's Approve on my own from a page opened before the official text changed is refused in place, and nothing is approved", (await tooLate.innerText()) === "The official text of this section changed after you opened this page. Reload the page and read it again, then approve." && (await statusOf(casey).innerText()) === "Waiting for approval", await tooLate.innerText());
+  await goToSection(casey, "Equipment and Technology", "6.1 Point of Sale");
+  check("Kale's words are still the official text", (await casey.locator(".official-box .rich").innerText()) === POS_DIRECT && (await casey.locator(".approval").innerText()) === approvedKale(), await casey.locator(".official-box .rich").innerText());
   await goTo(casey, "Today");
   check("Casey's Today says it is waiting for her to check it", await awaitingRow(casey, POS_TITLE).getByText("Waiting for you to check it against the new official text", { exact: true }).isVisible());
   await awaitingRow(casey, POS_TITLE).getByRole("link", { name: POS_TITLE }).click();
   await casey.getByRole("heading", { level: 1, name: POS_TITLE }).waitFor();
   const ownNotice = casey.locator(".notice-action");
   check("the proposer is told to check it and save it again", (await ownNotice.locator("p").innerText().catch(() => "missing")) === "The official text of this section has changed since you proposed this. Check your proposal against the new text and save it again. Until then it cannot be approved." && (await approveButton(casey).count()) === 0, await ownNotice.locator("p").innerText().catch(() => "missing"));
+  // "Until then it cannot be approved" holds for her too: nobody has an approve button on it.
+  check("until she has checked it the proposer has Check and save again, Edit and Withdraw, and no Approve on my own", (await ownNotice.getByRole("link", { name: "Check and save again" }).isVisible()) && (await actionWords(casey)) === "Edit|Withdraw", await actionWords(casey));
   await ownNotice.getByRole("link", { name: "Check and save again" }).click();
   await casey.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
   const checkForm = casey.getByRole("form", { name: "Edit proposal" });
@@ -875,6 +886,7 @@ async function main() {
   const checkedNote = casey.getByRole("status").filter({ hasText: "Checked against" });
   check("after saving it again, her page says it was checked and can be approved", (await eventually(() => checkedNote.isVisible())) && (await checkedNote.innerText()) === "Checked against the new official text. It can be approved now." && (await staleNotice(casey).count()) === 0 && (await ownNotice.count()) === 0);
   check("it waits for Kale again", await casey.getByRole("region", { name: "Approvals" }).getByText("Waiting for Kale", { exact: true }).isVisible());
+  check("once it is checked, Approve on my own is back for its proposer", (await actionWords(casey)) === "Approve on my own|Edit|Withdraw", await actionWords(casey));
   await kale.goto(posUrl);
   await kale.getByRole("heading", { level: 1, name: POS_TITLE }).waitFor();
   check("Kale now has Approve, and no out-of-date notice", (await approveButton(kale).isVisible()) && (await staleNotice(kale).count()) === 0);
@@ -1718,10 +1730,10 @@ async function main() {
   await saveOfficialHere(kale, QUOTES_KALE_MORE);
   check("the section says where the waiting proposal stands, in words for this reader", (await kale.locator(".official-notices .notice").innerText()) === `Waiting for approval: ${QUOTES_TITLE}. ${STUCK.owner.line}`, await kale.locator(".official-notices .notice").innerText().catch(() => "missing"));
   await openProposal(casey, quotesUrl, QUOTES_TITLE);
-  check("its proposer is told to withdraw it and make a new one, and has no Edit, Decline or Check and save again", (await changeNotices(casey)) === STUCK.proposer.notice && (await approvalsLine(casey)) === STUCK.proposer.line && (await actionWords(casey)) === "Approve on my own|Withdraw" && (await casey.getByRole("link", { name: "Check and save again" }).count()) === 0 && (await casey.getByRole("region", { name: "Actions" }).getByText("It can no longer be changed because Karen endorsed it. To change it, withdraw it and make a new one.", { exact: true }).isVisible()), `${await changeNotices(casey)} / ${await approvalsLine(casey)} / ${await actionWords(casey)}`);
+  check("its proposer is told to withdraw it and make a new one, and has only Withdraw: no Approve on my own, Edit, Decline or Check and save again", (await changeNotices(casey)) === STUCK.proposer.notice && (await approvalsLine(casey)) === STUCK.proposer.line && (await actionWords(casey)) === "Withdraw" && (await casey.getByRole("link", { name: "Check and save again" }).count()) === 0 && (await casey.getByRole("region", { name: "Actions" }).getByText("It can no longer be changed because Karen endorsed it. To change it, withdraw it and make a new one.", { exact: true }).isVisible()), `${await changeNotices(casey)} / ${await approvalsLine(casey)} / ${await actionWords(casey)}`);
   await shot(casey, "p3-desktop-26-stuck-proposal-proposer", { fullPage: true });
   await openProposal(mobile, quotesUrl, QUOTES_TITLE);
-  check("on a phone she reads the same, with a full-size Withdraw", (await changeNotices(mobile)) === STUCK.proposer.notice && (await height(mobile.getByRole("button", { name: "Withdraw" }))) >= 44, String(await height(mobile.getByRole("button", { name: "Withdraw" }))));
+  check("on a phone she reads the same, with a full-size Withdraw and no other button", (await changeNotices(mobile)) === STUCK.proposer.notice && (await actionWords(mobile)) === "Withdraw" && (await height(mobile.getByRole("button", { name: "Withdraw" }))) >= 44, `${await actionWords(mobile)}, ${await height(mobile.getByRole("button", { name: "Withdraw" }))}`);
   await shot(mobile, "p3-phone-20-stuck-proposal-proposer", { fullPage: true });
   await fits("A proposal that is out of date and can no longer be changed");
   await openProposal(kale, quotesUrl, QUOTES_TITLE);
@@ -1949,6 +1961,9 @@ async function main() {
   await mobile.getByRole("heading", { level: 1, name: GRINDER_TITLE }).waitFor();
   const mobileCheckLink = mobile.getByRole("link", { name: "Check and save again" });
   check("on a phone the proposer is told to check it, with a full-size button for it", (await mobile.locator(".notice-action p").innerText()).startsWith("The official text of this section has changed since you proposed this.") && (await height(mobileCheckLink)) >= 44 && (await approveButton(mobile).count()) === 0, String(await height(mobileCheckLink)));
+  // The other Owner edited the section directly: until she has checked her proposal against
+  // his text, nobody can approve it, and that includes her own Approve on my own.
+  check("on a phone the proposer of an out-of-date proposal has Edit and Withdraw, and no Approve on my own", (await actionWords(mobile)) === "Edit|Withdraw" && (await mobile.locator(".notice-action p").innerText()).endsWith("Until then it cannot be approved."), await actionWords(mobile));
   const crumbLink = mobile.locator(".crumbs a").first();
   check("on a phone the small link back at the top is easy to tap and takes no more room than before", (await height(crumbLink)) >= 43 && (await height(mobile.locator(".crumbs"))) <= 24, `link ${await height(crumbLink)}px, line ${await height(mobile.locator(".crumbs"))}px`);
   await shot(mobile, "p3-phone-14-outdated-proposal-proposer", { fullPage: true });
@@ -2013,6 +2028,19 @@ async function main() {
   await mobileSave.tap();
   await mobile.getByRole("heading", { level: 1, name: GRINDER_TITLE }).waitFor();
   check("on a phone, saving it again says it was checked and can be approved", (await eventually(() => mobile.getByRole("status").filter({ hasText: "Checked against the new official text. It can be approved now." }).isVisible())) && (await mobile.locator(".notice-action").count()) === 0);
+  // After the check the button is back, and it works: her approval alone, flagged for Kale.
+  check("on a phone, once she has checked it, Approve on my own is back", (await actionWords(mobile)) === "Approve on my own|Edit|Withdraw", await actionWords(mobile));
+  const mobileAlone = mobile.getByRole("button", { name: "Approve on my own" });
+  await mobileAlone.scrollIntoViewIfNeeded();
+  await mobileAlone.tap();
+  await mobile.getByText("Make this official now with only your approval? Kale will see it flagged on Today.").waitFor();
+  await mobile.getByRole("button", { name: "Approve on my own" }).tap();
+  check("and it works: approved by Casey alone", await eventually(async () => (await statusOf(mobile).innerText()) === `Approved by Casey, ${today().short}`), await statusOf(mobile).innerText());
+  await goTo(kale, "Today");
+  const grinderFlag = kale.getByRole("region", { name: /^Decided by one person/ }).getByRole("listitem").filter({ hasText: GRINDER_TITLE });
+  check("Kale's Today flags it as decided by Casey alone, with I approve too", (await eventually(() => grinderFlag.isVisible())) && (await grinderFlag.getByText(`Decided by Casey alone, ${today().short}`).isVisible()) && (await grinderFlag.getByRole("button", { name: `I approve too: ${GRINDER_TITLE}`, exact: true }).isVisible()), await grinderFlag.innerText().catch(() => "missing"));
+  await goToSection(kale, "Equipment and Technology", "6.2 Coffee Equipment");
+  check("the section now shows her text, approved by Casey", (await kale.locator(".official-box .rich").innerText()) === GRINDER_TEXT && (await kale.locator(".approval").innerText()) === `Approved by Casey, ${today().short}`, await kale.locator(".official-box .rich").innerText());
 
   // Endorse asks an Owner first.
   await mobile.goto(tickUrl);

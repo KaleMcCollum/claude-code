@@ -220,9 +220,11 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
         "Waiting for Kale to check it against the new official text",
       ]);
       expect(waitingFor(view, owners)).toEqual(["Kale"]);
-      // The proposer can still go ahead alone (flagged). The other Owner's
-      // approval would make it two people's decision, so they get neither.
-      expect(buttons(view, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: - / -"]);
+      // Nobody can approve it until Kale has checked it, together or alone:
+      // not the other Owner, and not Kale himself.
+      expect(buttons(view, owners, KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / -"]);
+      // The same proposal once it is up to date again.
+      expect(buttons({ ...view, outOfDate: false }, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: Approve / -"]);
     });
 
     it("and its proposer can no longer change it: it is stuck, for every Owner to see", () => {
@@ -240,23 +242,29 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
       expect(buttons(oneApproved, owners, KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / -"]);
     });
 
-    it("only its own proposer is offered Approve on my own, and only while nobody else's approval is on it", () => {
+    it("nobody is offered Approve on my own, its own proposer included, with one Owner, two or three", () => {
       // Kale proposed it and is still an Owner; Karen (an Advisor) endorsed it, so he can no longer change it.
       const endorsed = open(KALE, [KALE], {
         outOfDate: true,
         proposerCanChange: false,
         endorsements: [{ userId: KAREN.id, name: KAREN.name, at: new Date("2026-11-11T18:00:00Z") }],
       });
-      expect(buttons(endorsed, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: - / -"]);
       // The same while it waits for his check.
       const waitingForCheck = open(KALE, [KALE], { outOfDate: true, proposerCanChange: true });
-      expect(buttons(waitingForCheck, owners, KALE, CASEY)).toEqual(["Kale: - / on my own", "Casey: - / -"]);
+      for (const view of [endorsed, waitingForCheck]) {
+        expect(buttons(view, owners, KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / -"]);
+        expect(buttons(view, [KALE], KALE)).toEqual(["Kale: - / -"]);
+        expect(buttons(view, [KALE, CASEY, DANA], KALE, CASEY, DANA)).toEqual(["Kale: - / -", "Casey: - / -", "Dana: - / -"]);
+        // Up to date, the proposer has it (and with it the question "only your approval?").
+        expect(buttons({ ...view, outOfDate: false }, owners, KALE)).toEqual(["Kale: - / on my own"]);
+        expect(buttons({ ...view, outOfDate: false }, [KALE], KALE)).toEqual(["Kale: - / on my own"]);
+      }
       // Someone else's approval is on it, whoever they are: not for him either.
       for (const other of [CASEY, SAM]) {
         const twoNames = open(KALE, [KALE, other], { outOfDate: true, proposerCanChange: false });
         expect(buttons(twoNames, owners, KALE, CASEY)).toEqual(["Kale: - / -", "Casey: - / -"]);
       }
-      // Not out of date: as before, only the people who can approve right now count.
+      // Not out of date: only the people who can approve right now count.
       const upToDate = open(SAM, [SAM]);
       expect(buttons(upToDate, owners, KALE, CASEY)).toEqual(["Kale: Approve / on my own", "Casey: Approve / on my own"]);
     });
@@ -328,7 +336,11 @@ describe("who a proposal is waiting for, and which buttons it shows", () => {
       expect(notices(view, owners, CASEY, KALE, KAREN)).toEqual(reads(view, owners, CASEY, KALE, KAREN));
       // No approve button for anyone: not even "on my own" for its proposer.
       expect(buttons(view, owners, CASEY, KALE, KAREN)).toEqual(["Casey: - / -", "Kale: - / -", "Karen: - / -"]);
-      expect(buttons({ ...view, sameAsOfficial: false }, owners, CASEY, KALE)).toEqual(["Casey: - / on my own", "Kale: - / -"]);
+      // (That it is also out of date would be reason enough. Each reason is
+      // asked on its own here: "already says this" alone, then neither.)
+      const onlySame = { ...view, outOfDate: false };
+      expect(buttons(onlySame, owners, CASEY, KALE)).toEqual(["Casey: - / -", "Kale: - / -"]);
+      expect(buttons({ ...onlySame, sameAsOfficial: false }, owners, CASEY, KALE)).toEqual(["Casey: - / on my own", "Kale: Approve / -"]);
       // With three Owners it is every Owner's to deal with.
       expect(waitingOn(view, [KALE, CASEY, DANA])).toMatchObject({ step: "same", names: names(KALE, CASEY, DANA) });
       expect(reads(view, [KALE, CASEY, DANA], DANA)).toEqual([`${ALREADY} Casey can withdraw it, or you can decline it.`]);

@@ -341,11 +341,11 @@ describe("what a text proposal is compared with", () => {
     // The proposal is now out of date. Kale is offered neither button: with
     // Casey's approval on it, his would make it a two-person decision, and
     // hers was never given on top of the new text. A press of either is
-    // refused. Casey herself could still go ahead on her own (flagged).
+    // refused. Casey herself is offered neither until she has checked it.
     let p = await view(id);
     expect(p.outOfDate).toBe(true);
     expect(approveChoices(p, kale, await approvers())).toEqual({ approve: false, alone: false });
-    expect(approveChoices(p, casey, await approvers())).toEqual({ approve: false, alone: true });
+    expect(approveChoices(p, casey, await approvers())).toEqual({ approve: false, alone: false });
     const sinceCasey =
       "The official text of this section has changed since Casey proposed this. Casey needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.";
     await expect(approveProposal(kale, id, { revision: 1, currentVersionId: second.id })).rejects.toThrow(sinceCasey);
@@ -363,6 +363,7 @@ describe("what a text proposal is compared with", () => {
     expect(p).toMatchObject({ outOfDate: false, revision: 2, baseVersionId: second.id });
     expect(await change(id)).toMatchObject({ basis: "now", changedSince: false, currentVersionId: second.id });
     expect(approveChoices(p, kale, await approvers())).toEqual({ approve: true, alone: false });
+    expect(approveChoices(p, casey, await approvers())).toEqual({ approve: false, alone: true });
 
     // Approved: compared with the text it actually replaced.
     await approveProposal(kale, id, { revision: 2, currentVersionId: second.id });
