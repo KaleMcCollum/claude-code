@@ -287,6 +287,17 @@ const MAX_TITLE_LENGTH = 160;
 const MAX_REASON_LENGTH = 500;
 
 const NOT_FOUND = "That proposal could not be found. Reload the page and try again.";
+/**
+ * What the form for a new proposal and the edit page are told. Those two
+ * pages hold what was typed in the open page (the title, the "Why", the
+ * business, the text), and a reload would lose it, so no refusal of
+ * `createProposal` or `editProposal` ever asks for one: each says what
+ * happened and what the person can do on the form as it stands
+ * (tests/form-redraw.test.ts presses every one of them). The buttons on a
+ * proposal's own page, where nothing was typed, keep "Reload the page".
+ */
+const STILL_ON_THIS_PAGE = "What you typed is still on this page: copy it if you want to keep it.";
+const NOT_FOUND_WHILE_EDITING = `That proposal could not be found, so nothing was saved. ${STILL_ON_THIS_PAGE}`;
 const SECTION_GONE =
   "The section this is about no longer exists (it may have been archived). Withdraw or decline this proposal.";
 const UNREADABLE_CHANGE =
@@ -1456,7 +1467,9 @@ async function prepare(
       structureChange = { action: "add", title };
     } else {
       const node = findNode(tree, change.sectionId);
-      if (!node) throw new AppError("That section no longer exists. Reload the page and choose again.");
+      // (The form is drawn again with the sections as they are now, or, when
+      // editing, stays as it is: either way there is nothing to reload.)
+      if (!node) throw new AppError("That section no longer exists. It may have been archived.");
       sectionId = node.id;
       if (change.action === "rename") {
         const title = checkSectionTitle(change.title);
@@ -1487,7 +1500,9 @@ async function prepare(
   const title = cleanTitle(input.title);
   const businessTag = parseBusinessTag(input.businessTag);
   if (!isUuid(input.sectionId) || !findNode(tree, input.sectionId)) {
-    throw new AppError("That section no longer exists. Reload the page and choose again.");
+    throw new AppError(
+      `That section no longer exists. It may have been archived, and nothing can be proposed for it now. ${STILL_ON_THIS_PAGE}`,
+    );
   }
   const proposedOfficial = sanitizeDoc(input.proposedOfficial);
   const current = await latestVersionRow(tx, input.sectionId);
@@ -1511,19 +1526,32 @@ async function prepare(
   };
 }
 
-/** Lock the proposal row so two people acting at the same moment go one after the other. */
-async function lockProposal(tx: Tx, id: string): Promise<ProposalRow> {
-  if (!isUuid(id)) throw new AppError(NOT_FOUND);
+/**
+ * Lock the proposal row so two people acting at the same moment go one after
+ * the other. `notFound` is what to say when there is no such proposal (the
+ * edit page has its own words for it).
+ */
+async function lockProposal(tx: Tx, id: string, notFound = NOT_FOUND): Promise<ProposalRow> {
+  if (!isUuid(id)) throw new AppError(notFound);
   const [row] = await tx.select().from(proposals).where(eq(proposals.id, id)).for("update");
-  if (!row) throw new AppError(NOT_FOUND);
+  if (!row) throw new AppError(notFound);
   return row;
 }
 
-function requireOpen(row: ProposalRow): void {
+/**
+ * Refuse unless the proposal is still open. `from` says where the press
+ * came from: a button on the proposal's own page, where reloading shows how
+ * it was decided; or the edit page, which stays open with what was typed.
+ */
+function requireOpen(row: ProposalRow, from: "page" | "edit form" = "page"): void {
   if (row.status === "open") return;
   const what =
     row.status === "approved" ? "approved" : row.status === "declined" ? "declined" : "withdrawn";
-  throw new AppError(`This proposal has already been ${what}. Reload the page to see it.`);
+  throw new AppError(
+    from === "edit form"
+      ? `This proposal has already been ${what}, so it can no longer be changed. ${STILL_ON_THIS_PAGE}`
+      : `This proposal has already been ${what}. Reload the page to see it.`,
+  );
 }
 
 async function nameOf(tx: Tx, userId: string | null): Promise<string> {
@@ -1548,6 +1576,7 @@ const BROKE_A_RULE = "42501";
 
 const CLOSED_SO_NOT_ENDORSED = "This proposal was declined or withdrawn, so it can no longer be endorsed.";
 const GONE_SO_NOT_ENDORSED = "The section this proposal is about has been archived, so it can no longer be endorsed.";
+const SAME_SO_NOT_ENDORSED = "The official text of this section already says what this proposes, so there is nothing to endorse.";
 const CLOSED_SO_NOT_APPROVED = "This proposal has already been declined or withdrawn. Reload the page to see it.";
 
 function changedAfterOpening(who: string, verb: string): string {
@@ -1643,15 +1672,23 @@ async function proposerNow(tx: Tx, row: Pick<ProposalRow, "id" | "proposedBy">):
 }
 
 /**
+ * True when the official text of a text proposal's section already says
+ * exactly what it proposes (the same test as `ProposalView.sameAsOfficial`).
+ */
+async function isAlreadyOfficial(tx: Tx, row: ProposalRow): Promise<boolean> {
+  if (row.type === "structure" || !row.sectionId || !row.proposedOfficial) return false;
+  const current = await latestVersionRow(tx, row.sectionId);
+  return saysWhatIsOfficial((current?.content as RichDoc | undefined) ?? null, row.proposedOfficial as RichDoc);
+}
+
+/**
  * Refuse to approve a text proposal when the official text of its section
  * already says exactly what it proposes: approving it would only add a
  * second copy of the current version. Call it with the section locked
  * (`lockSectionOf`), so the answer holds until the transaction ends.
  */
 async function refuseIfAlreadyOfficial(tx: Tx, actor: Actor, row: ProposalRow): Promise<void> {
-  if (row.type === "structure" || !row.sectionId || !row.proposedOfficial) return;
-  const current = await latestVersionRow(tx, row.sectionId);
-  if (!saysWhatIsOfficial((current?.content as RichDoc | undefined) ?? null, row.proposedOfficial as RichDoc)) return;
+  if (!(await isAlreadyOfficial(tx, row))) return;
   throw new AppError(
     `The official text of this section already says what this proposes, so there is nothing to approve. ${
       row.proposedBy === actor.id ? "Withdraw it." : "Decline it."
@@ -1776,7 +1813,9 @@ export async function createProposal(
     );
     const noteIds = [...new Set(input.noteIds ?? [])];
     if (noteIds.length > 50 || !noteIds.every(isUuid)) {
-      throw new AppError("The notes for this proposal could not be read. Reload the page and try again.");
+      throw new AppError(
+        `The note this proposal comes from could not be read, so the proposal was not sent. ${STILL_ON_THIS_PAGE}`,
+      );
     }
     if (noteIds.length > 0) {
       const found = await tx
@@ -1784,7 +1823,9 @@ export async function createProposal(
         .from(notes)
         .where(and(inArray(notes.id, noteIds), isNull(notes.removedAt)));
       if (found.length !== noteIds.length) {
-        throw new AppError("A note this proposal comes from was removed. Reload the page and try again.");
+        // The form's page has just been drawn again without the note
+        // (`redrawFormPage`), so the next press sends the proposal without it.
+        throw new AppError("The note this proposal comes from was removed. Press the button again to send it without the note.");
       }
     }
     const [created] = await tx
@@ -1859,8 +1900,8 @@ export async function editProposal(
 ): Promise<void> {
   assertCan(actor, "propose");
   await asUser(actor.id, async (tx) => {
-    const row = await lockProposal(tx, id);
-    requireOpen(row);
+    const row = await lockProposal(tx, id, NOT_FOUND_WHILE_EDITING);
+    requireOpen(row, "edit form");
     if (row.proposedBy !== actor.id) {
       throw new AppError("Only the person who made a proposal can change it. You can comment on it, or decline it.");
     }
@@ -2329,8 +2370,10 @@ export async function withdrawProposal(actor: Actor, id: string, options: { now?
  * changes can still land just before it; that is the same as having
  * endorsed first, which is allowed.
  *
- * Refused as well on an open proposal whose section has been archived: it
- * can only be withdrawn or declined.
+ * Refused as well on an open proposal whose section has been archived, or
+ * whose words the official text already says: it can only be withdrawn or
+ * declined. Each of the three has its own sentence, asked in the order
+ * `waitingOn` asks them.
  */
 export async function endorseProposal(
   actor: Actor,
@@ -2361,6 +2404,10 @@ export async function endorseProposal(
     // saves a change at this very moment.
     await checkSeen(tx, row, { revision: seen.revision }, "endorse");
     if (row.status === "open" && sectionIsGone(await loadTree(tx), row.sectionId)) throw new AppError(GONE_SO_NOT_ENDORSED);
+    // The official text has become exactly what it proposes: it can only be
+    // withdrawn or declined, and "once its proposer has checked it" would
+    // not be true (that check is refused too).
+    if (row.status === "open" && (await isAlreadyOfficial(tx, row))) throw new AppError(SAME_SO_NOT_ENDORSED);
     if (row.status === "open" && (await isOutOfDate(tx, row))) {
       const standing = await proposerNow(tx, row);
       throw new AppError(

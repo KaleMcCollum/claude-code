@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { asSystem } from "@/db/client";
+import { addNote, removeNote } from "@/lib/notes";
 import { loadOfficial, saveOfficial } from "@/lib/official";
 import { type Actor, AppError } from "@/lib/permissions";
-import { createProposal, declineProposal, endorseProposal, loadProposal } from "@/lib/proposals";
+import { approveProposal, createProposal, declineProposal, endorseProposal, loadProposal, withdrawProposal } from "@/lib/proposals";
 import type { RichDoc } from "@/lib/richtext";
-import { archiveSection, flattenTree, loadTree } from "@/lib/sections";
+import { archiveSection, flattenTree, loadTree, restoreSection } from "@/lib/sections";
 import { changeUserRole } from "@/lib/users";
 import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
 
@@ -20,10 +21,14 @@ import { actorFor, insertUser, withTestDatabase } from "./helpers/db";
  * meantime, the section archived, the person signed out), the page is left
  * as it is, with the refusal on it and the typed words still there to copy.
  *
+ * And no refusal of these two forms ever says "reload", whatever it is
+ * about: every refused press in this file is checked for that (see `press`),
+ * and the last group presses the refusals the stories above do not reach.
+ *
  * The framework's "draw this page again" is stood in for by a counter here,
  * as are the signed-in person and the refresh after a successful change.
  * Everything else is the real thing, database included. The browser tests
- * (e2e/phase3.cjs, part 21) check what the person then sees.
+ * (e2e/phase3.cjs, parts 21 and 25) check what the person then sees.
  */
 const signedIn: { actor: Actor | null } = { actor: null };
 const redraws = { count: 0 };
@@ -71,12 +76,26 @@ const editForm = (section: string, text: string, title = "Staff discount") => ({
   why: "",
 });
 
-/** Run one press of the form's button; hand back the answer and whether the page was drawn again. */
-async function press<T>(work: () => Promise<T>): Promise<{ result: T; redrawn: boolean }> {
+/**
+ * Run one press of the form's button; hand back the answer and whether the
+ * page was drawn again. Whatever the press is refused with, it must not ask
+ * for a reload: the form stays open with everything typed, and a reload
+ * would lose the title and the "Why".
+ */
+async function press<T extends { ok: boolean; error?: string }>(work: () => Promise<T>): Promise<{ result: T; redrawn: boolean }> {
   redraws.count = 0;
   const result = await work();
+  if (!result.ok) expect(result.error).not.toMatch(/reload/i);
   return { result, redrawn: redraws.count > 0 };
 }
+
+const STILL_HERE = "What you typed is still on this page: copy it if you want to keep it.";
+const SIGNED_OUT =
+  "You have been signed out, so this was not saved. To keep what you typed, leave this page open, sign in again in a new browser tab, then come back to this page and press the button again.";
+const FORM_UNREADABLE = "That could not be read, so nothing was saved. What you typed is still on this page: press the button again.";
+const SECTION_GONE = "That section no longer exists. It may have been archived.";
+const SECTION_GONE_FOR_TEXT = `That section no longer exists. It may have been archived, and nothing can be proposed for it now. ${STILL_HERE}`;
+const NO_SUCH_PROPOSAL = `That proposal could not be found, so nothing was saved. ${STILL_HERE}`;
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -120,7 +139,7 @@ describe("the New proposal form, when Propose is refused", () => {
     expect(untitled.redrawn).toBe(true);
     // Something that cannot be read at all.
     const unreadable = await press(() => createProposalAction("not a form"));
-    expect(unreadable.result.ok).toBe(false);
+    expect(unreadable.result).toEqual({ ok: false, error: FORM_UNREADABLE });
     expect(unreadable.redrawn).toBe(true);
     // A change to the sections that cannot be made: the list of sections is drawn again.
     const noName = await press(() =>
@@ -136,7 +155,7 @@ describe("the New proposal form, when Propose is refused", () => {
     await archiveSection(kale, signage);
     signedIn.actor = kale;
     const gone = await press(() => createProposalAction(newForm(signage, "One sign at the gate.", null)));
-    expect(gone.result).toEqual({ ok: false, error: "That section no longer exists. Reload the page and choose again." });
+    expect(gone.result).toEqual({ ok: false, error: SECTION_GONE_FOR_TEXT });
     expect(gone.redrawn).toBe(false);
     // The same for a section the form could never have had (which is no reason for a mishap).
     const mishaps = vi.mocked(console.error).mock.calls.length;
@@ -159,7 +178,7 @@ describe("the New proposal form, when Propose is refused", () => {
 
     signedIn.actor = null;
     const signedOut = await press(() => createProposalAction(newForm(hiring, "Hire two baristas.", null)));
-    expect(signedOut.result).toEqual({ ok: false, error: "You have been signed out. Reload the page and sign in again." });
+    expect(signedOut.result).toEqual({ ok: false, error: SIGNED_OUT });
     expect(signedOut.redrawn).toBe(false);
   });
 });
@@ -250,7 +269,7 @@ describe("the Edit proposal form, when Save changes is refused", () => {
     const afterDecline = await press(() => editProposalAction(declined.id, declined.form, { currentVersionId: null }));
     expect(afterDecline.result).toEqual({
       ok: false,
-      error: "This proposal has already been declined. Reload the page to see it.",
+      error: `This proposal has already been declined, so it can no longer be changed. ${STILL_HERE}`,
     });
     expect(afterDecline.redrawn).toBe(false);
 
@@ -258,13 +277,14 @@ describe("the Edit proposal form, when Save changes is refused", () => {
     const archived = await make("Vendor Contacts");
     await archiveSection(casey, archived.section);
     const afterArchive = await press(() => editProposalAction(archived.id, archived.form, { currentVersionId: null }));
-    expect(afterArchive.result.ok).toBe(false);
+    expect(afterArchive.result).toEqual({ ok: false, error: SECTION_GONE_FOR_TEXT });
     expect(afterArchive.redrawn).toBe(false);
 
     // Not a proposal at all (which is no reason for a mishap), and somebody else's proposal.
     const mishaps = vi.mocked(console.error).mock.calls.length;
     const nonsense = await press(() => editProposalAction("nonsense", archived.form, { currentVersionId: null }));
-    expect([nonsense.result.ok, nonsense.redrawn]).toEqual([false, false]);
+    expect(nonsense.result).toEqual({ ok: false, error: NO_SUCH_PROPOSAL });
+    expect(nonsense.redrawn).toBe(false);
     expect(vi.mocked(console.error).mock.calls.length).toBe(mishaps);
     const theirs = await make("Scheduling");
     signedIn.actor = casey;
@@ -274,6 +294,137 @@ describe("the Edit proposal form, when Save changes is refused", () => {
       error: "Only the person who made a proposal can change it. You can comment on it, or decline it.",
     });
     expect(notMine.redrawn).toBe(false);
+  });
+});
+
+describe("no refusal of the two forms asks for a reload", () => {
+  // (Every refused press above is checked for it too, inside `press`. These
+  // are the refusals those stories do not reach, each with what it says.)
+  const structure = (change: Record<string, unknown>) => ({ kind: "structure", why: "Typed with care.", change });
+
+  it("the note a new proposal comes from was removed: the next press sends it without the note", async () => {
+    const kale = await actorFor("kale@example.com");
+    const scheduling = await sectionId("Scheduling");
+    const note = await addNote(kale, { body: doc("Schedules should go up two weeks ahead.") });
+    await removeNote(kale, note.id);
+    signedIn.actor = kale;
+    const form = newForm(scheduling, "Schedules go up two weeks ahead.", null, { noteIds: [note.id] });
+    const removed = await press(() => createProposalAction(form));
+    expect(removed.result).toEqual({
+      ok: false,
+      error: "The note this proposal comes from was removed. Press the button again to send it without the note.",
+    });
+    // The page is drawn again, and it leaves a removed note out: so the form no longer sends it.
+    expect(removed.redrawn).toBe(true);
+    const again = await press(() => createProposalAction({ ...form, noteIds: [] }));
+    expect(again.result.ok).toBe(true);
+    // Notes that are not notes at all. (The form's own reader refuses them
+    // first; the rule behind it has words of its own.)
+    const unreadable = await press(() => createProposalAction({ ...form, noteIds: ["not-a-note"] }));
+    expect(unreadable.result).toEqual({ ok: false, error: FORM_UNREADABLE });
+    await expect(
+      createProposal(kale, { kind: "decision", sectionId: scheduling, title: "Schedules", proposedOfficial: doc("Three weeks ahead."), noteIds: ["not-a-note"] }),
+    ).rejects.toThrow(`The note this proposal comes from could not be read, so the proposal was not sent. ${STILL_HERE}`);
+  });
+
+  it("a section change whose section, or whose new place, was archived meanwhile: the form is drawn again with the sections as they are", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const annuals = await sectionId("Annuals");
+    const perennials = await sectionId("Perennials");
+    await archiveSection(casey, annuals);
+    signedIn.actor = kale;
+    const changes = [
+      { action: "rename", sectionId: annuals, title: "Summer annuals" },
+      { action: "move", sectionId: annuals, parentId: "" },
+      { action: "archive", sectionId: annuals },
+    ];
+    for (const change of changes) {
+      const gone = await press(() => createProposalAction(structure(change)));
+      expect(gone.result).toEqual({ ok: false, error: SECTION_GONE });
+      expect(gone.redrawn).toBe(true);
+    }
+    const placeGone = await press(() => createProposalAction(structure({ action: "move", sectionId: perennials, parentId: annuals })));
+    expect(placeGone.result).toEqual({ ok: false, error: "The section to move it under no longer exists. Choose where it should go." });
+    expect(placeGone.redrawn).toBe(true);
+    const parentGone = await press(() => createProposalAction(structure({ action: "add", parentId: annuals, title: "Petunias" })));
+    expect(parentGone.result).toEqual({ ok: false, error: "The section to add it under no longer exists. Choose again." });
+    expect(parentGone.redrawn).toBe(true);
+    await restoreSection(casey, annuals);
+
+    // The same on the edit page of a section change. Its section archived: the page is left as it is.
+    const rename = await createProposal(kale, { kind: "structure", change: { action: "rename", sectionId: annuals, title: "Summer annuals" } });
+    const move = await createProposal(kale, { kind: "structure", change: { action: "move", sectionId: perennials, parentId: annuals } });
+    await archiveSection(casey, annuals);
+    const renameGone = await press(() => editProposalAction(rename, structure({ action: "rename", sectionId: annuals, title: "Annuals and herbs" })));
+    expect(renameGone.result).toEqual({ ok: false, error: SECTION_GONE });
+    expect(renameGone.redrawn).toBe(false);
+    // The place it would move under archived: the edit page is drawn again, without that place.
+    const moveGone = await press(() => editProposalAction(move, structure({ action: "move", sectionId: perennials, parentId: annuals })));
+    expect(moveGone.result).toEqual({ ok: false, error: "The section to move it under no longer exists. Choose where it should go." });
+    expect(moveGone.redrawn).toBe(true);
+    await restoreSection(casey, annuals);
+    await withdrawProposal(kale, rename);
+    await withdrawProposal(kale, move);
+  });
+
+  it("an edit of a proposal that was approved or withdrawn meanwhile, or that cannot be found: what was typed is still there to copy", async () => {
+    const kale = await actorFor("kale@example.com");
+    const casey = await actorFor("casey@example.com");
+    const houseplants = await sectionId("Houseplants");
+    const hardGoods = await sectionId("Hard Goods");
+    const make = (section: string, title: string) =>
+      createProposal(kale, { kind: "decision", sectionId: section, title, proposedOfficial: doc(`${title}.`) });
+    signedIn.actor = kale;
+
+    const approved = await make(houseplants, "Water on Mondays");
+    await approveProposal(casey, approved, { revision: 1, currentVersionId: null });
+    const afterApproval = await press(() => editProposalAction(approved, editForm(houseplants, "Water on Tuesdays."), { currentVersionId: null }));
+    expect(afterApproval.result).toEqual({
+      ok: false,
+      error: `This proposal has already been approved, so it can no longer be changed. ${STILL_HERE}`,
+    });
+    expect(afterApproval.redrawn).toBe(false);
+
+    // Withdrawn from his other device while this edit page was open.
+    const withdrawn = await make(hardGoods, "Carry hose reels");
+    await withdrawProposal(kale, withdrawn);
+    const afterWithdrawal = await press(() => editProposalAction(withdrawn, editForm(hardGoods, "Carry two hose reels."), { currentVersionId: null }));
+    expect(afterWithdrawal.result).toEqual({
+      ok: false,
+      error: `This proposal has already been withdrawn, so it can no longer be changed. ${STILL_HERE}`,
+    });
+    expect(afterWithdrawal.redrawn).toBe(false);
+
+    // An address that looks like a proposal's and is not one.
+    const unknown = await press(() =>
+      editProposalAction("00000000-0000-4000-8000-000000000000", editForm(hardGoods, "Carry two hose reels."), { currentVersionId: null }),
+    );
+    expect(unknown.result).toEqual({ ok: false, error: NO_SUCH_PROPOSAL });
+    expect(unknown.redrawn).toBe(false);
+  });
+
+  it("a form that cannot be read, or a person who is signed out, on either form", async () => {
+    const kale = await actorFor("kale@example.com");
+    const quotes = await sectionId("Quotes");
+    const id = await createProposal(kale, { kind: "decision", sectionId: quotes, title: "Three quotes", proposedOfficial: doc("Get three quotes.") });
+    signedIn.actor = kale;
+    const unreadable = [
+      () => createProposalAction(newForm(quotes, "Get two quotes.", null, { why: 7 })),
+      () => createProposalAction(newForm(quotes, "Get two quotes.", null, { baseVersionId: "not-a-version" })),
+      () => createProposalAction(newForm(quotes, "Get two quotes.", null, { noteIds: "not-a-list" })),
+      () => editProposalAction(id, "not a form", { currentVersionId: null }),
+      () => editProposalAction(id, editForm(quotes, "Get two quotes."), "not what a page saw"),
+      () => editProposalAction(id, editForm(quotes, "Get two quotes."), { currentVersionId: "not-a-version" }),
+    ];
+    for (const work of unreadable) expect((await press(work)).result).toEqual({ ok: false, error: FORM_UNREADABLE });
+    expect((await asSystem((db) => loadProposal(db, id)))?.revision).toBe(1);
+
+    signedIn.actor = null;
+    const signedOut = await press(() => editProposalAction(id, editForm(quotes, "Get two quotes."), { currentVersionId: null }));
+    expect(signedOut.result).toEqual({ ok: false, error: SIGNED_OUT });
+    expect(signedOut.redrawn).toBe(false);
+    await withdrawProposal(kale, id);
   });
 });
 

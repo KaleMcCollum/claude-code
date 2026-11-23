@@ -325,7 +325,7 @@ export function moveProblemKind(tree: SectionNode[], id: string, parentId: strin
 const MOVE_PROBLEM_WORDS: Record<MoveProblem, string> = {
   gone: GONE,
   already_there: "That section is already there.",
-  destination_gone: "The section to move it under no longer exists. Reload the page and choose again.",
+  destination_gone: "The section to move it under no longer exists. Choose where it should go.",
   under_itself: "A section cannot be moved under itself or under one of its own subsections.",
   too_deep: "That would put sections more than three levels deep (for example 1.1.1.1).",
 };

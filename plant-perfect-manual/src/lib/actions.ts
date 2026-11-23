@@ -15,6 +15,15 @@ export const CLOCK_IS_OFF =
   "Nothing was saved, because the clock on the computer that runs this app is more than an hour off. Whoever looks after the app needs to fix that.";
 
 /**
+ * What every button in the app answers when the person is no longer signed
+ * in. It never asks for a reload: on a form, that would lose what was
+ * typed. Signing in again in a new tab of the same browser signs this page
+ * in as well, and the same press then goes through.
+ */
+export const SIGNED_OUT =
+  "You have been signed out, so this was not saved. To keep what you typed, leave this page open, sign in again in a new browser tab, then come back to this page and press the button again.";
+
+/**
  * What every form or button action sends back to the screen. A few actions
  * also hand back a small piece of `data` (for example the day a new note was
  * saved to).
@@ -42,9 +51,7 @@ export async function runAction<T = never>(
   afterRefusal?: (actor: Actor) => Promise<void>,
 ): Promise<ActionResult<T>> {
   const actor = await getCurrentUser();
-  if (!actor) {
-    return { ok: false, error: "You have been signed out. Reload the page and sign in again." };
-  }
+  if (!actor) return { ok: false, error: SIGNED_OUT };
   const refused = async (error: string): Promise<ActionResult<T>> => {
     try {
       await afterRefusal?.(actor);

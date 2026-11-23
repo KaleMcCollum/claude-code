@@ -289,7 +289,7 @@ describe("the same reasons on the form where a move is chosen", () => {
     const perennials = await sectionId("Perennials");
     const cases: [string | null, ReturnType<typeof moveProblemKind>, string | null][] = [
       [overview, "already_there", "That section is already there."],
-      ["00000000-0000-4000-8000-000000000000", "destination_gone", "The section to move it under no longer exists. Reload the page and choose again."],
+      ["00000000-0000-4000-8000-000000000000", "destination_gone", "The section to move it under no longer exists. Choose where it should go."],
       [mission, "under_itself", "A section cannot be moved under itself or under one of its own subsections."],
       [perennials, null, null],
       [null, null, null],

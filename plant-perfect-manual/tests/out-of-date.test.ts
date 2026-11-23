@@ -509,12 +509,16 @@ describe("endorsing a proposal that is out of date", () => {
     const legal = await section("Legal Entities");
     const id = await createProposal(kale, { kind: "decision", sectionId: legal, title: "One company", proposedOfficial: doc("One company owns both businesses.") });
     await approveAlone(kale, id, (await page(id)).seen);
+    // While its words are the official text (which is what approving it made
+    // them): "the official text already says this" is no reason to refuse here.
+    expect(await view(id)).toMatchObject({ status: "approved", superseded: false, sameAsOfficial: false });
+    await endorseProposal(casey, id, { revision: 1 });
     await saveOfficial(casey, legal, doc("Two companies, one owner."));
     const approved = await view(id);
     expect(approved).toMatchObject({ status: "approved", superseded: true, outOfDate: false });
-    expect([canEndorse(approved, karen), canEndorse(approved, casey)]).toEqual([true, true]);
+    expect([canEndorse(approved, karen), canEndorse(approved, casey)]).toEqual([true, false]);
     await endorseProposal(karen, id, { revision: 1 });
-    expect((await view(id)).endorsements.map((e) => e.name)).toEqual(["Karen"]);
+    expect((await view(id)).endorsements.map((e) => e.name)).toEqual(["Casey", "Karen"]);
   });
 });
 
@@ -560,7 +564,14 @@ describe("a waiting proposal whose text the official text already says", () => {
       await expect(approveAlone(kale, id, sent)).rejects.toThrow(`${NOTHING_TO_APPROVE} Decline it.`);
       await expect(approveProposal(kale, id, sent)).rejects.toThrow(`${NOTHING_TO_APPROVE} Decline it.`);
     }
-    await expect(endorseProposal(karen, id, { revision: 1 })).rejects.toThrow("The official text of this section has changed since this was proposed.");
+    // Endorse from a page opened before Kale's save: there is nothing left to
+    // support, and "once Casey has checked it" would not be true (her check
+    // is refused, a few lines down). The same for an Advisor and an Owner.
+    const NOTHING_TO_ENDORSE = "The official text of this section already says what this proposes, so there is nothing to endorse.";
+    for (const who of [karen, kale]) {
+      const told = await endorseProposal(who, id, { revision: 1 }).then(() => "(it went through)", (error: Error) => error.message);
+      expect(told).toBe(NOTHING_TO_ENDORSE);
+    }
     expect(await versionsOf(pos)).toBe(versions);
     expect(await view(id)).toMatchObject({ status: "open", endorsements: [] });
     expect((await view(id)).approvals.map((a) => a.name)).toEqual(["Casey"]);
@@ -580,6 +591,10 @@ describe("a waiting proposal whose text the official text already says", () => {
     await saveOfficial(kale, pos, doc("Registers:", "four."), { baseVersionId: await currentId(pos) });
     expect(await view(id)).toMatchObject({ sameAsOfficial: false, outOfDate: true });
     expect(waitingOn(await view(id), everyone)?.step).toBe("check");
+    // Out of date only: Endorse is refused in the words for that, which are true here.
+    await expect(endorseProposal(karen, id, { revision: 2 })).rejects.toThrow(
+      "The official text of this section has changed since this was proposed. It can be endorsed once Casey has checked it against the new text.",
+    );
     // Kale saves exactly her words again, and this time she withdraws it. A decided proposal is never "the same".
     await saveOfficial(kale, pos, doc("Registers: four."), { baseVersionId: await currentId(pos) });
     expect((await view(id)).sameAsOfficial).toBe(true);

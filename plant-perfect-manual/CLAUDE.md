@@ -213,12 +213,18 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
 
 The form for a new proposal and the edit page (`ProposalForm`) hold the
 title, the "Why", the business and the proposed text in the open page. A
-reload would lose all but the text, so these two forms should never be
-answered with "Reload the page". The two refusals about official text that
-changed meanwhile no longer are. A few rarer ones still say it (the section
-was archived, the note the proposal comes from was removed, the proposal
-was decided meanwhile, the person was signed out): following that advice
-loses the title and the "Why". Reword them when they are next touched.
+reload would lose all but the text, so these two forms are never answered
+with "Reload the page". Every sentence `createProposal`, `editProposal` and
+their two actions can refuse with says what happened and what the person
+can do on the form as it stands: choose again, press the button again,
+copy what was typed, or (signed out, a sentence shared by every button in
+the app) sign in again in a new tab and come back. Where a button on a
+proposal's own page is refused for the same reason (not found, decided
+meanwhile, could not be read), the form has a sentence of its own
+(`requireOpen(row, "edit form")`, `NOT_FOUND_WHILE_EDITING`,
+`FORM_UNREADABLE`) and the page's buttons keep "Reload the page", which is
+right there. `tests/form-redraw.test.ts` checks every refused press of the
+two forms for the word "reload"; a new refusal gets a case there.
 
 - When a press of the form is refused, for whatever reason, its page is
   drawn again in place, in the same answer: `createProposalAction` and

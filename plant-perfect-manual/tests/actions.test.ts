@@ -86,7 +86,9 @@ describe("what a person is told when an action fails", () => {
     signedIn.actor = null;
     expect(await runAction(async () => "Saved.")).toEqual({
       ok: false,
-      error: "You have been signed out. Reload the page and sign in again.",
+      // No reload is asked for: on a form that would lose what was typed.
+      error:
+        "You have been signed out, so this was not saved. To keep what you typed, leave this page open, sign in again in a new browser tab, then come back to this page and press the button again.",
     });
   });
 });

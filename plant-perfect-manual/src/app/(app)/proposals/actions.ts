@@ -28,15 +28,21 @@ import { findNode, isUuid, loadTree } from "@/lib/sections";
 // permission again, and the database checks it a third time.
 
 const UNREADABLE = "That could not be read. Reload the page and try again.";
+const PROPOSAL_NOT_FOUND = "That proposal could not be found. Reload the page and try again.";
+// The same two, told to the form for a new proposal and to the edit page.
+// Those pages stay open with everything typed, and a reload would lose it,
+// so nothing they are answered with asks for one (tests/form-redraw.test.ts).
+const FORM_UNREADABLE =
+  "That could not be read, so nothing was saved. What you typed is still on this page: press the button again.";
+const PROPOSAL_NOT_FOUND_WHILE_EDITING =
+  "That proposal could not be found, so nothing was saved. What you typed is still on this page: copy it if you want to keep it.";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function requireProposalId(value: unknown): string {
-  if (typeof value !== "string" || !isUuid(value)) {
-    throw new AppError("That proposal could not be found. Reload the page and try again.");
-  }
+function requireProposalId(value: unknown, notFound = PROPOSAL_NOT_FOUND): string {
+  if (typeof value !== "string" || !isUuid(value)) throw new AppError(notFound);
   return value;
 }
 
@@ -66,9 +72,9 @@ function readSeen(value: unknown): Seen {
 }
 
 /** An official version a page showed: its id, or null when there was no official text. */
-function versionOrNone(value: unknown): string | null {
+function versionOrNone(value: unknown, unreadable = UNREADABLE): string | null {
   if (value === null) return null;
-  if (typeof value !== "string" || !isUuid(value)) throw new AppError(UNREADABLE);
+  if (typeof value !== "string" || !isUuid(value)) throw new AppError(unreadable);
   return value;
 }
 
@@ -96,13 +102,13 @@ function anyOf(names: string[]): string {
  * kept exactly as typed, one paragraph per line.
  */
 function readForm(raw: unknown, mode: "new" | "edit"): ProposalInput {
-  if (!isRecord(raw)) throw new AppError(UNREADABLE);
-  const why = raw.why === undefined || raw.why === null ? "" : text(raw.why, UNREADABLE);
+  if (!isRecord(raw)) throw new AppError(FORM_UNREADABLE);
+  const why = raw.why === undefined || raw.why === null ? "" : text(raw.why, FORM_UNREADABLE);
   if (why.length > 20_000) throw new AppError("Keep the explanation shorter, or put the detail in a comment.");
   const description = why.trim().length > 0 ? textToDoc(why) : null;
   const noteIds = raw.noteIds === undefined ? [] : raw.noteIds;
   if (!Array.isArray(noteIds) || noteIds.length > 50 || !noteIds.every((id) => typeof id === "string" && isUuid(id))) {
-    throw new AppError(UNREADABLE);
+    throw new AppError(FORM_UNREADABLE);
   }
 
   if (raw.kind === "structure") {
@@ -138,7 +144,7 @@ function readForm(raw: unknown, mode: "new" | "edit"): ProposalInput {
   // against, so that text typed before someone else's change is not proposed
   // as if it had been written with that change in view. (An edit says what
   // its page showed in `seen` instead.)
-  if (mode === "new") input.baseVersionId = versionOrNone(raw.baseVersionId);
+  if (mode === "new") input.baseVersionId = versionOrNone(raw.baseVersionId, FORM_UNREADABLE);
   return input;
 }
 
@@ -220,13 +226,14 @@ export async function createProposalAction(form: unknown): Promise<ActionResult<
 export async function editProposalAction(proposalId: unknown, form: unknown, seen?: unknown): Promise<ActionResult> {
   return runAction(async (actor) => {
     const input = readForm(form, "edit");
+    const id = requireProposalId(proposalId, PROPOSAL_NOT_FOUND_WHILE_EDITING);
     if (input.kind === "structure") {
-      await editProposal(actor, requireProposalId(proposalId), input);
+      await editProposal(actor, id, input);
       return;
     }
-    if (!isRecord(seen)) throw new AppError(UNREADABLE);
-    await editProposal(actor, requireProposalId(proposalId), input, {
-      currentVersionId: versionOrNone(seen.currentVersionId),
+    if (!isRecord(seen)) throw new AppError(FORM_UNREADABLE);
+    await editProposal(actor, id, input, {
+      currentVersionId: versionOrNone(seen.currentVersionId, FORM_UNREADABLE),
     });
   }, redrawFormPage(editFormStillShown(proposalId)));
 }
