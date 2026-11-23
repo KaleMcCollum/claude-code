@@ -171,6 +171,8 @@ How the rules layer uses this (`src/lib/proposals.ts`, `src/lib/official.ts`):
 - Nobody can endorse an open proposal that is out of date (`canEndorse`;
   `endorseProposal` refuses a press from a page opened earlier): an
   endorsement stops the proposer changing the proposal, and so checking it.
+  (When the official text has become exactly what it proposes, that press
+  gets a sentence of its own: there is nothing to endorse.)
   An approved proposal can still be endorsed. What someone who can approve
   is asked before their endorsement is recorded is `endorseQuestion(view)`:
   for an open proposal it names the proposer, who can no longer change it
@@ -402,7 +404,8 @@ The scripts used so far are kept on the build machine, outside the
 repository, in `.data/probes/r3hmut/` (the first review) and
 `.data/probes/r5a/` and `r5b/` (the second: database rules, then readers
 and wording) and `.data/probes/r6c/` and `r6d/` (the third: rules layer,
-then what the screens' actions decide): `list.sh`
+then what the screens' actions decide) and `.data/probes/r7/` (the fourth):
+`list.sh`
 has one line per rule, `all.sh` runs them all, and
 from `r5a` on `syntax.ts` first checks that a change has not simply broken
 the file, which would look like "noticed" for the wrong reason. Where two layers refuse the same thing with the same words (the app
