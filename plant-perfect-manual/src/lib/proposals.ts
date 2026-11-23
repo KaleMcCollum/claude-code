@@ -1592,7 +1592,10 @@ function officialTextChangedAfterOpening(verb: string): string {
  * proposal and the edit page. Those two pages draw themselves again in
  * place after a refusal, with everything typed still there and the new
  * official text shown, so these sentences say what is on that screen and
- * never ask for a reload (which would lose the title and the "Why").
+ * never ask for a reload (which would lose the title and the "Why"). They
+ * also say where to look: on a phone the new official text, and the two
+ * choices of the form for a new proposal, are more than a screen above the
+ * message, and the page does not move there by itself.
  */
 const OFFICIAL_TEXT_CHANGED_WHILE_WRITING =
   "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown above what you typed: choose there whether to start over from it or keep what you typed, then propose again.";

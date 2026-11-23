@@ -109,8 +109,13 @@ async function signIn(page, address) {
   return { email, link };
 }
 
-function desktopContext(browser) {
-  return browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: SCALE });
+/**
+ * A computer-sized browser. `more` adds to its settings: `{ storageState }`
+ * starts it with the sign-in (and whatever else is kept in the browser) of
+ * another one, for a second browser of someone who is already signed in.
+ */
+function desktopContext(browser, more = {}) {
+  return browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: SCALE, ...more });
 }
 
 function phoneContext(browser) {

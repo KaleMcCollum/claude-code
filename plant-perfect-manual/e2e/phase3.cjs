@@ -42,6 +42,14 @@ const CASEY_CLOSING = "Casey saved this first: lock the gate at close.";
 const KALE_ADDED = " Then count the till.";
 const CASEY_ADDED = " Set the alarm.";
 const CHOOSE_FIRST = "Choose first, above your text: start over from the current text, or keep what you typed.";
+// A place that has gone (the section something was going under was archived) has to be chosen again.
+const CHOOSE_PLACE = "Choose where it should go";
+const CHOOSE_PLACE_FIRST = "Choose where it should go first. Pick Top level if that is where you want it.";
+const PLACE_GONE = "The section it was going under can no longer be chosen (it may have been archived). Choose where it should go.";
+const MOVE_PLACE_GONE = "The section it was going to move under can no longer be chosen (it may have been archived). Choose where it should go.";
+// What every button answers to someone who is no longer signed in.
+const SIGNED_OUT = "You have been signed out, so this was not saved. To keep what you typed, leave this page open, sign in again in a new browser tab, then come back to this page and press the button again.";
+const STILL_ON_THIS_PAGE = "What you typed is still on this page: copy it if you want to keep it.";
 const POS_TITLE = "Line busters use handheld scanners";
 const POS_TEXT = "Line busters use two handheld scanners on busy days.";
 const POS_DIRECT = "Registers run on the point of sale system. Returns need a receipt.";
@@ -51,7 +59,8 @@ const endorseOpenQuestion = (proposer) => `${ENDORSE_QUESTION} ${proposer} will 
 const VENDOR_HEADING = "Coffee roaster";
 const VENDOR_LINE = "Order coffee beans by Friday noon.";
 const VENDOR_TASK = "Call the roaster";
-const FORMAT_TITLE = "Vendor contacts in bold";
+// (Long on purpose: on a phone it runs over several lines in the list of earlier changes on Today.)
+const FORMAT_TITLE = "Vendor contacts in bold so the roaster and the order day are easy to find on a phone";
 const TICK_TITLE = "The roaster has been called";
 const CLOSING_NOTE = "Closing takes too long on Saturdays -- rename that page?";
 const CHECKLIST_TITLE = "Closing checklist on the back door";
@@ -63,6 +72,7 @@ const ARCHIVE_HINT = "Archiving hides the section and everything under it. Nothi
 const GRINDER_TITLE = "Buy a second grinder";
 const GRINDER_TEXT = "The coffee shop has two grinders.";
 const GRINDER_DIRECT = "The espresso machine is cleaned every night.";
+const GRINDER_MORE = " Descale it on the first Monday of the month.";
 const TRAINING_PHONE = "Casey typed this on her phone.";
 const TRAINING_KALE = "Kale saved this in the meantime.";
 const NOTE = "Kale suggests coffee staff at $15/hr, weekends   $16 -- talk to *Casey*";
@@ -249,6 +259,24 @@ async function heldBy(form) {
   });
 }
 
+/** What a box of sections shows right now: the words of its chosen line, and whether that line is a real choice. */
+async function shownIn(box) {
+  const line = box.locator("option:checked");
+  return `${await line.innerText()}${(await line.isDisabled()) ? " (not a choice)" : ""}`;
+}
+
+/** Edit sections: archive a section, or bring it back. */
+async function archiveSectionAs(page, name) {
+  await page.goto(`${BASE_URL}/sections/manage`);
+  await page.getByRole("button", { name: `Archive ${name}` }).click();
+  await page.getByRole("button", { name: "Archive section" }).click();
+  await page.getByRole("button", { name: `Restore ${name}` }).waitFor();
+}
+async function restoreSectionAs(page, name) {
+  await page.getByRole("button", { name: `Restore ${name}` }).click();
+  await eventually(async () => (await page.getByRole("button", { name: `Restore ${name}` }).count()) === 0);
+}
+
 /** Proposals > New proposal > find a section by typing. Ends on the form for that section. */
 async function startProposalFor(page, find, sectionName) {
   await goTo(page, "Proposals");
@@ -273,6 +301,9 @@ async function main() {
   const approvedBoth = () => `Approved by Kale and Casey, ${today().short}`;
   const approvedKale = () => `Approved by Kale, ${today().short}`;
 
+  // (The app emails at most five sign-in links per person in 15 minutes. This file asks for
+  // five for Kale and five for Casey; where one more browser of theirs is needed, it starts
+  // with the sign-in of one that is already open instead of asking for another link.)
   const kaleContext = await desktopContext(browser);
   const kale = await kaleContext.newPage();
   trackErrors(kale, errors);
@@ -385,6 +416,9 @@ async function main() {
   const lineOf = (locator) => locator.evaluate((el) => getComputedStyle(el).textDecorationLine);
   check("the old wage is shown struck through", (await diff.locator("del").innerText()) === "$13.00/hr." && (await lineOf(diff.locator("del"))) === "line-through", await diff.locator("del").allInnerTexts().then((t) => t.join("|")));
   check("the new wage is shown underlined", (await diff.locator("ins").innerText()) === "$15.00/hr." && (await lineOf(diff.locator("ins"))) === "underline");
+  // Letters that hang below the line (g, j, p, q, y) do not break the underline, or "any job" reads like "any_job".
+  const skipInk = (locator) => locator.evaluate((el) => getComputedStyle(el).textDecorationSkipInk);
+  check("the underline of added words is drawn unbroken, and so is the word Underlined in the line that explains the marks", (await skipInk(diff.locator("ins"))) === "none" && (await skipInk(casey.locator(".diff-key ins"))) === "none" && (await casey.locator(".diff-key").innerText()) === "Crossed out was taken out. Underlined was added.", `${await skipInk(diff.locator("ins"))} / ${await skipInk(casey.locator(".diff-key ins"))}`);
   check("the unchanged words are shown plainly, in reading order", (await diff.innerText()) === "Starting wage, Coffee Shop: $13.00/hr.$15.00/hr.\nStarting wage, Garden Center Registers: $15.00/hr.", JSON.stringify(await diff.innerText()));
   check("the page says what it is compared with", await casey.getByText("Compared with the official text now.").isVisible());
   // The text it is compared with was saved by Kale alone (the seeded version), so Casey is told.
@@ -1368,6 +1402,11 @@ async function main() {
   await goTo(casey, "Today");
   const vendorRow = flagged.getByRole("listitem").filter({ hasText: "Edited directly: 7.1 Vendor Contacts (version 3)" });
   check("three one-person changes to one section are one row with the two earlier ones listed", (await eventually(() => vendorRow.isVisible())) && (await vendorRow.locator(".earlier-changes").innerText()) === `Earlier one-person changes to this section: ${FORMAT_TITLE} by Kale (${today().day}), version 1 by Kale (${today().day})` && (await vendorRow.locator(".earlier-changes").getByRole("link").count()) === 2, await vendorRow.locator(".earlier-changes").innerText().catch(() => "missing"));
+  const computerLine = await vendorRow.locator(".earlier-changes").evaluate((el) => ({
+    commas: [...el.querySelectorAll(".sep")].map((sep) => (sep.getBoundingClientRect().width > 0 ? "drawn" : "not drawn")).join(","),
+    links: [...el.querySelectorAll("a")].map((a) => getComputedStyle(a).display).join(","),
+  }));
+  check("on a computer the earlier changes stay in one run of text, with a comma between them", computerLine.commas === "drawn" && computerLine.links === "inline,inline", JSON.stringify(computerLine));
   await vendorRow.locator(".earlier-changes").getByRole("link", { name: FORMAT_TITLE }).click();
   await casey.getByRole("heading", { level: 1, name: FORMAT_TITLE }).waitFor();
   check("each earlier change opens its own page, with its own I approve too", (await casey.getByRole("button", { name: "I approve too" }).isVisible()) && (await statusOf(casey).innerText()) === approvedKale());
@@ -1506,7 +1545,7 @@ async function main() {
   check("searching within the section above still finds proposals about the archived one", await eventually(() => proposalHits.getByRole("link", { name: RENAME_NOW, exact: true }).isVisible()), (await proposalHits.innerText().catch(() => "no proposals found")));
 
   // A move whose destination was archived: approving is refused with the reason, and the
-  // edit form shows "Top level", which is what it would send.
+  // edit form asks for the place again. It does not fall back to "Top level" by itself.
   await casey.goto(timelineUrl);
   await casey.getByRole("heading", { level: 1, name: TIMELINE_NOW }).waitFor();
   await approveButton(casey).click();
@@ -1516,8 +1555,12 @@ async function main() {
   await kale.goto(`${timelineUrl}/edit`);
   await kale.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
   const timelineEdit = kale.getByRole("form", { name: "Edit proposal" });
-  check("on the edit form Move it under shows Top level and says the old place cannot be chosen", (await timelineEdit.getByLabel("Move it under").inputValue()) === "" && (await timelineEdit.getByText("The section it was going to move under can no longer be chosen (it may have been archived). Choose where it should go.").isVisible()));
-  await timelineEdit.getByLabel("Move it under").selectOption({ label: "9 Marketing and Events" });
+  const timelinePlace = timelineEdit.getByLabel("Move it under");
+  check("on the edit form Move it under shows a first line that is not a choice, and says the old place cannot be chosen", (await shownIn(timelinePlace)) === `${CHOOSE_PLACE} (not a choice)` && (await timelinePlace.locator("option").filter({ hasText: "Closing Procedures" }).count()) === 0 && (await timelineEdit.getByText(MOVE_PLACE_GONE, { exact: true }).isVisible()), await shownIn(timelinePlace));
+  const sentUnplacedEdit = await sentWhile(kale, () => timelineEdit.getByRole("button", { name: "Save changes" }).click());
+  check("Save changes with no place chosen sends nothing and says to choose first", sentUnplacedEdit === 0 && (await timelineEdit.getByRole("alert").innerText().catch(() => "missing")) === CHOOSE_PLACE_FIRST && kale.url() === `${timelineUrl}/edit`, `${sentUnplacedEdit} sent, ${await timelineEdit.getByRole("alert").innerText().catch(() => "missing")}`);
+  await timelinePlace.selectOption({ label: "9 Marketing and Events" });
+  check("once a place is chosen, the line that is not a choice, the line about the old place and the message are gone", (await shownIn(timelinePlace)) === "9 Marketing and Events" && (await timelinePlace.locator("option").filter({ hasText: CHOOSE_PLACE }).count()) === 0 && (await timelineEdit.getByText(MOVE_PLACE_GONE, { exact: true }).count()) === 0 && (await timelineEdit.getByRole("alert").count()) === 0, await shownIn(timelinePlace));
   await timelineEdit.getByRole("button", { name: "Save changes" }).click();
   await kale.getByRole("heading", { level: 1, name: "Move 10 Opening Timeline under 9 Marketing and Events" }).waitFor();
   check("after choosing another place the move proposal can be saved", kale.url() === timelineUrl && (await statusOf(kale).innerText()) === "Waiting for approval");
@@ -1616,7 +1659,6 @@ async function main() {
 
   // A form about the sections is drawn again as well, with the sections as they are now.
   // A box on it never shows one place while another is sent.
-  const PLACE_GONE = "The section it was going under can no longer be chosen (it may have been archived). Choose where it should go.";
   await goTo(kale, "Proposals");
   await kale.getByRole("link", { name: "New proposal" }).click();
   await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
@@ -1633,18 +1675,35 @@ async function main() {
   await casey.getByRole("button", { name: "Restore Legal Entities" }).waitFor();
   await placeForm.getByRole("button", { name: "Propose", exact: true }).click();
   await placeForm.getByRole("alert").waitFor();
-  check("a section proposal whose place was archived meanwhile is refused, and the Under box no longer offers or shows that place", (await alertsOf(placeForm)) === "The section to add it under no longer exists. Choose again." && (await eventually(async () => (await underBox.locator("option").filter({ hasText: "Legal Entities" }).count()) === 0)) && (await underBox.locator("option:checked").innerText()) === "Top level" && (await underBox.inputValue()) === "" && (await placeForm.getByText(PLACE_GONE, { exact: true }).isVisible()), `${await alertsOf(placeForm)} / box shows ${await underBox.locator("option:checked").innerText()}`);
+  check("a section proposal whose place was archived meanwhile is refused, and the Under box no longer offers that place: it shows a first line that is not a choice", (await alertsOf(placeForm)) === "The section to add it under no longer exists. Choose again." && (await eventually(async () => (await underBox.locator("option").filter({ hasText: "Legal Entities" }).count()) === 0)) && (await shownIn(underBox)) === `${CHOOSE_PLACE} (not a choice)` && (await placeForm.getByText(PLACE_GONE, { exact: true }).isVisible()), `${await alertsOf(placeForm)} / box shows ${await shownIn(underBox)}`);
   check("the name and the Why he typed are still there", (await placeForm.getByLabel("Name", { exact: true }).inputValue()) === "Licenses" && (await placeForm.getByLabel("Why (optional)").inputValue()) === "Typed before the section went away.");
-  await underBox.selectOption({ label: "1 Company Overview" });
-  check("once he chooses another place, the form no longer says a place has gone", (await placeForm.getByText(PLACE_GONE, { exact: true }).count()) === 0);
+  // The press people make straight after a refusal: Propose again, with nothing chosen.
+  const placeFormUrl = kale.url();
+  const sentUnplaced = await sentWhile(kale, () => placeForm.getByRole("button", { name: "Propose", exact: true }).click());
+  check("Propose again with no place chosen sends nothing, and says to choose first (Top level included)", sentUnplaced === 0 && (await alertsOf(placeForm)) === CHOOSE_PLACE_FIRST && kale.url() === placeFormUrl && (await placeForm.getByLabel("Name", { exact: true }).inputValue()) === "Licenses", `${sentUnplaced} sent, ${await alertsOf(placeForm)}`);
+  await underBox.selectOption({ label: "Top level" });
+  check("Top level picked by hand is a choice: the line about the place and the message go away, and the box shows Top level", (await shownIn(underBox)) === "Top level" && (await underBox.inputValue()) === "" && (await underBox.locator("option").filter({ hasText: CHOOSE_PLACE }).count()) === 0 && (await placeForm.getByText(PLACE_GONE, { exact: true }).count()) === 0 && (await placeForm.getByRole("alert").count()) === 0, await shownIn(underBox));
   await placeForm.getByRole("button", { name: "Propose", exact: true }).click();
-  await kale.getByRole("heading", { level: 1, name: 'Add a section "Licenses" under 1 Company Overview' }).waitFor();
+  await kale.getByRole("heading", { level: 1, name: 'Add a top-level section "Licenses"' }).waitFor();
   check("what the box showed is what was proposed, with the Why kept", (await whyOf(kale)) === "Typed before the section went away." && (await statusOf(kale).innerText()) === "Waiting for approval");
   await kale.getByRole("button", { name: "Withdraw" }).click();
   await kale.getByRole("button", { name: "Withdraw proposal" }).click();
   await eventually(async () => (await statusOf(kale).innerText()) === `Withdrawn by Kale, ${today().short}`);
   await casey.getByRole("button", { name: "Restore Legal Entities" }).click();
   await eventually(async () => (await casey.getByRole("button", { name: "Restore Legal Entities" }).count()) === 0);
+  // An ordinary Add a section at the top level, with nothing archived, is not held up.
+  await goTo(kale, "Proposals");
+  await kale.getByRole("link", { name: "New proposal" }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  await placeForm.getByRole("radio", { name: "Structure" }).check();
+  const plainUnder = await shownIn(underBox);
+  await placeForm.getByLabel("Name", { exact: true }).fill("Seasonal Displays");
+  await placeForm.getByRole("button", { name: "Propose", exact: true }).click();
+  const plainSent = await eventually(() => kale.getByRole("heading", { level: 1, name: 'Add a top-level section "Seasonal Displays"' }).isVisible());
+  check("with nothing archived, the Under box starts on Top level and Propose goes straight through", plainUnder === "Top level" && plainSent, `box showed ${plainUnder}`);
+  await kale.getByRole("button", { name: "Withdraw" }).click();
+  await kale.getByRole("button", { name: "Withdraw proposal" }).click();
+  await eventually(async () => (await statusOf(kale).innerText()) === `Withdrawn by Kale, ${today().short}`);
 
   // ------------------------------------------------------------------
   section("22. Endorsing, and a proposal that is out of date");
@@ -1887,6 +1946,271 @@ async function main() {
   check("once he has thrown them away, nothing is left on the device", await eventually(async () => (await draftKeys(shared)).length === 0), (await draftKeys(shared)).join(" "));
   await sharedContext.close();
 
+  // ------------------------------------------------------------------
+  section("25. No refusal on the proposal form asks for a reload");
+  // Each of these needs something rare to happen while a form is open. The form holds the
+  // Title, the Why and the Business in the open page, and a reload would lose them, so
+  // every message says what happened and what can be done on the form as it stands.
+  const noReload = async (page) => (await page.getByRole("main").getByText(/reload/i).count()) === 0;
+  const withdrawHere = async (page, who) => {
+    await page.getByRole("button", { name: "Withdraw" }).click();
+    await page.getByRole("button", { name: "Withdraw proposal" }).click();
+    await eventually(async () => (await statusOf(page).innerText()) === `Withdrawn by ${who}, ${today().short}`);
+  };
+
+  // (a) The section of a text proposal is archived while he is writing.
+  const LEGAL_TITLE = "One company owns both shops";
+  const LEGAL_WHY = "The lawyer asked for it in writing.\nA second line of reasons.";
+  const LEGAL_TEXT = "Plant Perfect Fargo LLC owns the garden center and the coffee shop.";
+  await startProposalFor(kale, "legal", "1.3 Legal Entities");
+  const legalForm = newForm(kale);
+  await legalForm.getByLabel("Title", { exact: true }).fill(LEGAL_TITLE);
+  await typeProposedText(kale, [LEGAL_TEXT]);
+  await legalForm.getByRole("radio", { name: "Both", exact: true }).check();
+  await legalForm.getByLabel("Why (optional)").fill(LEGAL_WHY);
+  const legalFormUrl = kale.url();
+  const legalTyped = await heldBy(legalForm);
+  await archiveSectionAs(casey, "Legal Entities");
+  await legalForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await legalForm.getByRole("alert").waitFor();
+  check("a text proposal whose section was archived while it was being written is refused with what happened, and nobody is asked to reload", (await alertsOf(legalForm)) === `That section no longer exists. It may have been archived, and nothing can be proposed for it now. ${STILL_ON_THIS_PAGE}` && (await noReload(kale)), await alertsOf(legalForm));
+  await kale.waitForTimeout(700);
+  check("the form stays on screen with everything he typed, as the message says", kale.url() === legalFormUrl && (await heldBy(legalForm).catch(() => "no form")) === legalTyped, await heldBy(legalForm).catch(() => "no form"));
+  // Casey brings the section back. Nothing was lost meanwhile: the same press now goes through.
+  await restoreSectionAs(casey, "Legal Entities");
+  await legalForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await kale.waitForURL(/\/proposals\/[0-9a-f-]{36}$/);
+  await kale.getByRole("heading", { level: 1, name: LEGAL_TITLE, exact: true }).waitFor();
+  check("once the section is back the same press goes through, with the Title, the Why, the Business and the text", (await whyOf(kale)) === LEGAL_WHY && (await metaOf(kale)).startsWith("Decision · 1.3 Legal Entities · Both · Proposed by Kale") && (await kale.locator("details.full-text .rich").textContent()) === LEGAL_TEXT && (await draftKeys(kale, "proposal:new:")).length === 0, `${JSON.stringify(await whyOf(kale))} / ${await metaOf(kale)}`);
+  await withdrawHere(kale, "Kale");
+
+  // (b) The section a rename is about is archived meanwhile.
+  await goTo(kale, "Proposals");
+  await kale.getByRole("link", { name: "New proposal" }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  const renameForm = newForm(kale);
+  await renameForm.getByRole("radio", { name: "Structure" }).check();
+  await renameForm.getByRole("radio", { name: "Rename a section" }).check();
+  const renameWhat = renameForm.getByLabel("Section", { exact: true });
+  await renameWhat.selectOption({ label: "1.3 Legal Entities" });
+  await renameForm.getByLabel("New name").fill("Companies");
+  await renameForm.getByLabel("Why (optional)").fill("Shorter, and it says what is in it.");
+  await archiveSectionAs(casey, "Legal Entities");
+  await renameForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await renameForm.getByRole("alert").waitFor();
+  check("a rename of a section that was archived meanwhile is refused with what happened, and nobody is asked to reload", (await alertsOf(renameForm)) === "That section no longer exists. It may have been archived." && (await noReload(kale)), await alertsOf(renameForm));
+  check("the form has been drawn again: the Section box asks for a section, and the new name and the Why are still there", (await eventually(async () => (await shownIn(renameWhat)) === "Choose a section")) && (await renameWhat.locator("option").filter({ hasText: "Legal Entities" }).count()) === 0 && (await renameForm.getByLabel("New name").inputValue()) === "Companies" && (await renameForm.getByLabel("Why (optional)").inputValue()) === "Shorter, and it says what is in it.", await shownIn(renameWhat));
+  await restoreSectionAs(casey, "Legal Entities");
+
+  // (c) The place a section was going to move under is archived meanwhile.
+  await goTo(kale, "Proposals");
+  await kale.getByRole("link", { name: "New proposal" }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  const moveForm = newForm(kale);
+  await moveForm.getByRole("radio", { name: "Structure" }).check();
+  await moveForm.getByRole("radio", { name: "Move a section" }).check();
+  const moveWhat = moveForm.getByLabel("Section", { exact: true });
+  const moveWhere = moveForm.getByLabel("Move it under");
+  await moveWhat.selectOption({ label: "10 Opening Timeline" });
+  await moveWhere.selectOption({ label: "1.3 Legal Entities" });
+  await moveForm.getByLabel("Why (optional)").fill("It belongs with the company papers.");
+  await archiveSectionAs(casey, "Legal Entities");
+  await moveForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await moveForm.getByRole("alert").waitFor();
+  check("a move under a section that was archived meanwhile is refused with what to do on this form, and nobody is asked to reload", (await alertsOf(moveForm)) === "The section to move it under no longer exists. Choose where it should go." && (await noReload(kale)), await alertsOf(moveForm));
+  check("the form has been drawn again: Move it under shows a first line that is not a choice, and the section and the Why are kept", (await eventually(async () => (await shownIn(moveWhere)) === `${CHOOSE_PLACE} (not a choice)`)) && (await shownIn(moveWhat)) === "10 Opening Timeline" && (await moveForm.getByText(MOVE_PLACE_GONE, { exact: true }).isVisible()) && (await moveForm.getByLabel("Why (optional)").inputValue()) === "It belongs with the company papers.", `${await shownIn(moveWhere)} / ${await shownIn(moveWhat)}`);
+  const sentUnmoved = await sentWhile(kale, () => moveForm.getByRole("button", { name: "Propose", exact: true }).click());
+  check("Propose again with no place chosen sends nothing: it is not taken for a move to the top level", sentUnmoved === 0 && (await alertsOf(moveForm)) === CHOOSE_PLACE_FIRST && (await kale.getByRole("heading", { level: 1, name: "New proposal" }).isVisible()), `${sentUnmoved} sent, ${await alertsOf(moveForm)}`);
+  await moveWhere.selectOption({ label: "1 Company Overview" });
+  await moveForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await kale.getByRole("heading", { level: 1, name: "Move 10 Opening Timeline under 1 Company Overview" }).waitFor();
+  check("the place he then picked is the place that is proposed, with the Why kept", (await whyOf(kale)) === "It belongs with the company papers." && (await statusOf(kale).innerText()) === "Waiting for approval");
+  await withdrawHere(kale, "Kale");
+  await restoreSectionAs(casey, "Legal Entities");
+
+  // (d) The note a proposal comes from is removed while the proposal is being written.
+  const DEADLINE_NOTE = "Soil orders keep arriving late -- move the deadline to Tuesday?";
+  const DEADLINE_TITLE = "Soil orders go in by Tuesday noon";
+  const DEADLINE_TEXT = "Soil orders go in by Tuesday noon.";
+  const DEADLINE_WHY = "Typed before the note went away.";
+  await navOf(kale).getByRole("link", { name: "New note" }).click();
+  await kale.getByRole("heading", { level: 1, name: today().long }).waitFor();
+  await noteBox.waitFor();
+  await noteBox.click();
+  await kale.keyboard.type(DEADLINE_NOTE);
+  await kale.getByRole("button", { name: "Save", exact: true }).click();
+  const deadlineNote = kale.getByRole("article", { name: /^Note by Kale/ }).filter({ hasText: "Soil orders keep arriving late" });
+  await deadlineNote.waitFor();
+  await kale.getByRole("button", { name: "Cancel" }).click();
+  await deadlineNote.getByRole("link", { name: /^Propose from note by Kale/ }).click();
+  await kale.getByRole("heading", { level: 1, name: "New proposal" }).waitFor();
+  const deadlineForm = newForm(kale);
+  await deadlineForm.getByLabel("Find a section").fill("deadlines");
+  await deadlineForm.getByRole("list", { name: "Matching sections" }).getByRole("link", { name: "7.2 Order Deadlines" }).click();
+  await deadlineForm.getByRole("link", { name: "Change the section" }).waitFor();
+  await deadlineForm.getByLabel("Title", { exact: true }).fill(DEADLINE_TITLE);
+  await typeProposedText(kale, [DEADLINE_TEXT]);
+  await deadlineForm.getByLabel("Why (optional)").fill(DEADLINE_WHY);
+  const deadlineTyped = await heldBy(deadlineForm);
+  const noteOnForm = await deadlineForm.locator(".from-note .rich").innerText().catch(() => "missing");
+  // He removes the note from another page of his (his phone, say).
+  const kaleTwo = await kaleContext.newPage();
+  trackErrors(kaleTwo, errors);
+  await kaleTwo.goto(`${BASE_URL}/`);
+  await kaleTwo.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  await goTo(kaleTwo, "Daily Log");
+  await kaleTwo.getByRole("link", { name: /^Today.s log$/ }).click();
+  await kaleTwo.getByRole("heading", { level: 1, name: today().long }).waitFor();
+  const noteTwo = kaleTwo.getByRole("article", { name: /^Note by Kale/ }).filter({ hasText: "Soil orders keep arriving late" });
+  await noteTwo.getByRole("button", { name: /^Remove note/ }).click();
+  await noteTwo.getByRole("button", { name: "Remove note", exact: true }).click();
+  await eventually(async () => (await noteTwo.getByRole("button", { name: /^Remove note/ }).count()) === 0);
+  await kaleTwo.close();
+  await deadlineForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await deadlineForm.getByRole("alert").waitFor();
+  check("Propose from a note that was removed meanwhile is refused with what to do next, and nobody is asked to reload", noteOnForm === DEADLINE_NOTE && (await alertsOf(deadlineForm)) === "The note this proposal comes from was removed. Press the button again to send it without the note." && (await noReload(kale)), `${noteOnForm} / ${await alertsOf(deadlineForm)}`);
+  check("the form has been drawn again without the note, and everything he typed is still there", (await eventually(async () => (await deadlineForm.locator(".from-note").count()) === 0)) && (await heldBy(deadlineForm)) === deadlineTyped, await heldBy(deadlineForm));
+  await deadlineForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await kale.waitForURL(/\/proposals\/[0-9a-f-]{36}$/);
+  await kale.getByRole("heading", { level: 1, name: DEADLINE_TITLE, exact: true }).waitFor();
+  check("pressing the button again sends it without the note, as the message said", (await kale.getByRole("region", { name: "From these notes" }).count()) === 0 && (await whyOf(kale)) === DEADLINE_WHY && (await kale.locator("details.full-text .rich").textContent()) === DEADLINE_TEXT && (await statusOf(kale).innerText()) === "Waiting for approval", `${JSON.stringify(await whyOf(kale))} / ${await statusOf(kale).innerText()}`);
+  await withdrawHere(kale, "Kale");
+
+  // (e) His proposal is declined while he is changing it.
+  const OFFICE_TITLE = "Offices get a coat of white paint";
+  const OFFICE_TEXT = "The offices are painted white before opening.";
+  await startProposalFor(kale, "offices", "5.3 Offices and Finishing");
+  const officeUrl = await proposeText(kale, { title: OFFICE_TITLE, text: [OFFICE_TEXT] });
+  await editLink(kale).click();
+  await kale.getByRole("heading", { level: 1, name: "Edit proposal" }).waitFor();
+  const officeEdit = kale.getByRole("form", { name: "Edit proposal" });
+  await officeEdit.getByRole("textbox", { name: "Proposed official text" }).waitFor();
+  await officeEdit.getByLabel("Title", { exact: true }).fill(`${OFFICE_TITLE}, typed and not saved`);
+  await officeEdit.getByLabel("Why (optional)").fill("Typed on the edit page.");
+  await openProposal(casey, officeUrl, OFFICE_TITLE);
+  await casey.getByRole("button", { name: "Decline" }).click();
+  await casey.getByRole("form", { name: "Decline this proposal" }).getByRole("button", { name: "Decline proposal" }).click();
+  await eventually(async () => (await statusOf(casey).innerText()) === `Declined by Casey, ${today().short}`);
+  await officeEdit.getByRole("button", { name: "Save changes" }).click();
+  await officeEdit.getByRole("alert").waitFor();
+  await kale.waitForTimeout(700);
+  check("Save changes on a proposal that was declined meanwhile says so, keeps the form with what he typed, and asks for no reload", (await alertsOf(officeEdit).catch(() => "no form")) === `This proposal has already been declined, so it can no longer be changed. ${STILL_ON_THIS_PAGE}` && kale.url() === `${officeUrl}/edit` && (await officeEdit.getByLabel("Title", { exact: true }).inputValue()) === `${OFFICE_TITLE}, typed and not saved` && (await officeEdit.getByLabel("Why (optional)").inputValue()) === "Typed on the edit page." && (await noReload(kale)), `${await alertsOf(officeEdit).catch(() => "no form")} at ${kale.url()}`);
+  await officeEdit.getByRole("link", { name: "Cancel" }).click();
+  await kale.waitForURL(officeUrl);
+
+  // (f) No longer signed in while writing. The message says how to keep what was typed:
+  // leave the page open, sign in again in a new tab, come back and press the button again.
+  const AWAY_TITLE = "We grow what we sell";
+  const AWAY_WHY = "Typed just before the sign-in ended.\nA second line.";
+  const AWAY_TEXT = "We grow what we sell, and we say so on the tags.";
+  // (Another browser of Casey's, signed in as her desktop is.)
+  const awayContext = await desktopContext(browser, { storageState: await caseyContext.storageState() });
+  const away = await awayContext.newPage();
+  trackErrors(away, errors);
+  await away.goto(`${BASE_URL}/`);
+  await away.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  await startProposalFor(away, "mission", "1.2 Mission and Culture");
+  const awayForm = newForm(away);
+  await awayForm.getByLabel("Title", { exact: true }).fill(AWAY_TITLE);
+  await typeProposedText(away, [AWAY_TEXT]);
+  await awayForm.getByLabel("Why (optional)").fill(AWAY_WHY);
+  const awayUrl = away.url();
+  const awayTyped = await heldBy(awayForm);
+  // Her sign-in on this browser ends while the form is open (as it does after 30 days unused).
+  await awayContext.clearCookies();
+  await awayForm.getByRole("button", { name: "Propose", exact: true }).click();
+  await awayForm.getByRole("alert").waitFor();
+  await away.waitForTimeout(700);
+  check("Propose after the sign-in has ended is refused with how to keep what was typed, and nobody is asked to reload", (await alertsOf(awayForm).catch(() => "no form")) === SIGNED_OUT && (await noReload(away)), await alertsOf(awayForm).catch(() => "no form"));
+  check("the form stays on screen with everything she typed", away.url() === awayUrl && (await heldBy(awayForm).catch(() => "no form")) === awayTyped, `${away.url()} / ${await heldBy(awayForm).catch(() => "no form")}`);
+  // She does what the message says: signs in again in a new tab, comes back, presses again.
+  let awayLoads = 0;
+  away.on("load", () => (awayLoads += 1));
+  const awayTwo = await awayContext.newPage();
+  trackErrors(awayTwo, errors);
+  await signIn(awayTwo, "casey@example.com");
+  await away.bringToFront();
+  await awayForm.getByRole("button", { name: "Propose", exact: true }).click();
+  const awaySent = await eventually(() => /\/proposals\/[0-9a-f-]{36}$/.test(away.url()), 15000);
+  if (awaySent) await away.getByRole("heading", { level: 1, name: AWAY_TITLE, exact: true }).waitFor();
+  check("after signing in again in another tab, the same press on the page that was left open goes through, with the Title, the Why and the text", awaySent && awayLoads === 0 && (await whyOf(away)) === AWAY_WHY && (await away.locator("details.full-text .rich").textContent()) === AWAY_TEXT, `${awayLoads} loads, ${away.url()}`);
+  if (awaySent) await withdrawHere(away, "Casey");
+  await awayContext.close();
+
+  // ------------------------------------------------------------------
+  section("26. A page left open notices when someone else signs in on the same browser");
+  // One browser holds one sign-in. A page drawn for Casey must not go on saying Casey, and
+  // offering her unsaved text, once Kale has signed in from another page of that browser:
+  // what was saved from it would be recorded under his name.
+  const CASEY_UNSAVED = "Casey's half-written text, left on a page.";
+  const whoIs = (page) => page.getByText(/^Signed in as /).innerText();
+  /** A sign-in link asked for somewhere else (a phone, say), to be opened in the shared browser. */
+  const freshLink = async (address) => {
+    const elsewhere = await desktopContext(browser);
+    const asking = await elsewhere.newPage();
+    const since = Date.now();
+    await asking.goto(`${BASE_URL}/login`);
+    await asking.getByLabel("Email").fill(address);
+    await asking.getByRole("button", { name: "Email me a sign-in link" }).click();
+    await asking.getByRole("heading", { name: "Check your email" }).waitFor();
+    const email = await latestEmail(address, since);
+    await elsewhere.close();
+    if (!email) throw new Error(`No sign-in email arrived for ${address} (at most five links per person in 15 minutes)`);
+    return linkIn(email);
+  };
+  // (The shared browser, with Casey signed in on it as she is on her desktop.)
+  const twoPages = await desktopContext(browser, { storageState: await caseyContext.storageState() });
+  const left = await twoPages.newPage();
+  trackErrors(left, errors);
+  await left.goto(`${BASE_URL}/`);
+  await left.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  await goToSection(left, "Facility and Buildout", "5.1 Construction");
+  await left.getByRole("button", { name: "Edit official" }).click();
+  const leftOfficial = left.getByRole("textbox", { name: "Official text" });
+  await leftOfficial.waitFor();
+  await leftOfficial.click();
+  await left.keyboard.type(CASEY_UNSAVED);
+  await eventually(async () => (await draftKeys(left, "official:")).length === 1);
+  const caseyCopy = (await draftKeys(left)).sort().join(" ");
+  // She leaves it there and goes to another page by the menu. The page is not loaded anew.
+  await goTo(left, "Today");
+  let leftLoads = 0;
+  left.on("load", () => (leftLoads += 1));
+  // A second page of her own changes nothing on the first.
+  const other = await twoPages.newPage();
+  trackErrors(other, errors);
+  await other.goto(`${BASE_URL}/proposals`);
+  await other.getByRole("heading", { level: 1, name: "Proposals" }).waitFor();
+  await left.waitForTimeout(1500);
+  check("a second page opened by the same person does not make the first one load again", leftLoads === 0 && (await whoIs(left)) === "Signed in as Casey" && (await whoIs(other)) === "Signed in as Casey", `${leftLoads} loads`);
+  // Kale opens his own sign-in link in that second page.
+  await other.goto(await freshLink("kale@example.com"));
+  await other.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  const leftIsKale = await eventually(async () => leftLoads === 1 && (await whoIs(left)) === "Signed in as Kale");
+  check("after Kale's link in the second page, the first page loads itself again and says Kale", (await whoIs(other)) === "Signed in as Kale" && leftIsKale, `${leftLoads} loads, first page: ${await whoIs(left).catch(() => "?")}`);
+  await left.waitForTimeout(2500);
+  check("it loads itself once, not round and round", leftLoads === 1, `${leftLoads} loads`);
+  await goToSection(left, "Facility and Buildout", "5.1 Construction");
+  check("Casey's unsaved text is not offered there: no notice and no Continue editing", (await left.getByText("You have unsaved changes to this text on this device.").count()) === 0 && (await left.getByRole("button", { name: "Continue editing" }).count()) === 0 && (await left.getByRole("button", { name: "Edit official" }).isVisible()));
+  await left.getByRole("button", { name: "Edit official" }).click();
+  await leftOfficial.waitFor();
+  check("Edit official opens on the saved text for him, not on her words", (await leftOfficial.innerText()).trim() === "" && (await left.getByText(/Picked up/).count()) === 0, await leftOfficial.innerText());
+  await left.getByRole("button", { name: "Cancel" }).click();
+  await left.getByRole("button", { name: "Edit official" }).waitFor();
+  check("her copy is still on the device, untouched", (await draftKeys(left)).sort().join(" ") === caseyCopy, (await draftKeys(left)).join(" "));
+  // Casey signs in again with her own link, in the second page.
+  await other.goto(await freshLink("casey@example.com"));
+  await other.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  const leftIsCasey = await eventually(async () => leftLoads === 2 && (await whoIs(left)) === "Signed in as Casey");
+  check("when Casey signs in again, the first page loads itself once more and says Casey", leftIsCasey, `${leftLoads} loads, first page: ${await whoIs(left).catch(() => "?")}`);
+  const offeredAgain = await eventually(() => left.getByText("You have unsaved changes to this text on this device.").isVisible());
+  await left.getByRole("button", { name: "Continue editing" }).click();
+  await leftOfficial.waitFor();
+  check("and there her unsaved text is offered to her again, word for word", offeredAgain && (await leftOfficial.innerText()).trim() === CASEY_UNSAVED, await leftOfficial.innerText());
+  await left.getByRole("button", { name: "Cancel" }).click();
+  await left.getByRole("button", { name: "Discard changes" }).click();
+  await twoPages.close();
+
   // For the phone: a proposal of Casey's that goes out of date, and one of Kale's.
   await startProposalFor(casey, "coffee equipment", "6.2 Coffee Equipment");
   const grinderUrl = await proposeText(casey, { title: GRINDER_TITLE, text: [GRINDER_TEXT] });
@@ -1910,6 +2234,25 @@ async function main() {
   const groupedRow = mobileFlagged.filter({ hasText: "Edited directly: 7.1 Vendor Contacts (version 3)" });
   const groupedLinks = groupedRow.locator(".earlier-changes").getByRole("link");
   check("on a phone the earlier changes to a section are listed under the newest, each easy to tap", (await groupedRow.locator(".earlier-changes").innerText()).startsWith("Earlier one-person changes to this section:") && (await groupedLinks.count()) === 2 && (await height(groupedLinks.first())) >= 36 && (await height(groupedLinks.last())) >= 36, `${await height(groupedLinks.first())} and ${await height(groupedLinks.last())}`);
+  // One link on each line and no commas: with a long title a comma would start a line.
+  // Looked at on the phone's own width and on a narrower one.
+  const earlierLayout = () =>
+    groupedRow.locator(".earlier-changes").evaluate((el) => {
+      const left = el.getBoundingClientRect().left;
+      const boxes = [...el.querySelectorAll("a")].map((a) => a.getBoundingClientRect());
+      return {
+        ownLines: boxes.every((box, i) => Math.abs(box.left - left) < 1 && (i === 0 || box.top >= boxes[i - 1].bottom - 1)),
+        commasDrawn: [...el.querySelectorAll(".sep")].filter((sep) => sep.getBoundingClientRect().width > 0).length,
+        heights: boxes.map((box) => Math.round(box.height)),
+        strayComma: /^\s*,|,\s*$/m.test(el.innerText),
+      };
+    });
+  const at390 = await earlierLayout();
+  const phoneSize = mobile.viewportSize();
+  await mobile.setViewportSize({ width: 360, height: phoneSize.height });
+  const at360 = await earlierLayout();
+  await mobile.setViewportSize(phoneSize);
+  check("on a phone each earlier change has a line of its own and no comma is drawn, also when a title runs over several lines (390 and 360 wide)", [at390, at360].every((seen) => seen.ownLines && seen.commasDrawn === 0 && !seen.strayComma && seen.heights.length === 2 && seen.heights[0] > seen.heights[1] && seen.heights.every((tall) => tall >= 36)), JSON.stringify([at390, at360]));
   await groupedRow.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await shot(mobile, "p3-phone-17-today-grouped");
   check("a tap flashes light gray, not the browser's blue", (await mobile.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("-webkit-tap-highlight-color"))) === "rgba(0, 0, 0, 0.08)", await mobile.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("-webkit-tap-highlight-color")));
@@ -2025,6 +2368,19 @@ async function main() {
   const mobileSave = mobileEdit.getByRole("button", { name: "Save changes" });
   await mobileSave.scrollIntoViewIfNeeded();
   check("on a phone Save changes and Cancel are both full size", (await height(mobileSave)) >= 44 && (await height(mobileEdit.getByRole("link", { name: "Cancel" }))) >= 44, `${await height(mobileSave)} and ${await height(mobileEdit.getByRole("link", { name: "Cancel" }))}`);
+  // While her edit page is open, Kale changes the official text once more.
+  await goToSection(kale, "Equipment and Technology", "6.2 Coffee Equipment");
+  await saveOfficialHere(kale, GRINDER_MORE);
+  await mobileSave.tap();
+  const mobileEditAlert = mobileEdit.getByRole("alert");
+  await mobileEditAlert.waitFor();
+  check("on a phone Save changes from an edit page opened before the official text changed again is refused, on screen, with where to look", (await mobileEditAlert.innerText()) === EDITING_REFUSAL && (await inView(mobileEditAlert)), await mobileEditAlert.innerText());
+  // "Above the proposed text" is where it is, on a phone too.
+  const nowAboveProposed = (await eventually(async () => (await mobileEdit.locator(".official-now .official-box .rich").innerText()) === GRINDER_DIRECT + GRINDER_MORE)) && (await mobileEdit.evaluate((form) => form.querySelector(".official-now").getBoundingClientRect().bottom <= form.querySelector(".editor").getBoundingClientRect().top));
+  check("on a phone the new official text is shown above the proposed text, as the message says, and her text is unchanged", nowAboveProposed && (await mobileEdit.getByRole("textbox", { name: "Proposed official text" }).innerText()).trim() === GRINDER_TEXT, await mobileEdit.locator(".official-now .official-box .rich").innerText().catch(() => "missing"));
+  await shot(mobile, "p3-phone-24-edit-official-changed", { fullPage: true });
+  await fits("Edit proposal after the official text changed under it");
+  await mobileSave.scrollIntoViewIfNeeded();
   await mobileSave.tap();
   await mobile.getByRole("heading", { level: 1, name: GRINDER_TITLE }).waitFor();
   check("on a phone, saving it again says it was checked and can be approved", (await eventually(() => mobile.getByRole("status").filter({ hasText: "Checked against the new official text. It can be approved now." }).isVisible())) && (await mobile.locator(".notice-action").count()) === 0);
@@ -2161,9 +2517,20 @@ async function main() {
   const phoneOutdated = mobileForm.locator(".editor-outdated");
   check("on a phone a refused Propose keeps Title, Why, Business and the text, and shows the new official text in place", (await mobileForm.getByRole("alert").innerText()) === WRITING_REFUSAL && (await eventually(() => phoneOutdated.isVisible())) && (await heldBy(mobileForm)) === phoneTyped && (await mobileForm.locator(".editor-current .official-box .rich").innerText()).endsWith("Kale added this meanwhile."), await heldBy(mobileForm));
   check("on a phone the refusal is on screen, right above the Propose button", (await inView(mobileForm.getByRole("alert"))) && (await mobileForm.getByRole("alert").boundingBox()).y < (await mobilePropose.boundingBox()).y);
+  // The message says where the new official text and the two choices are: above what she
+  // typed. On a phone they are more than a screen above the message, so it has to be true.
+  const whereTheyAre = await mobileForm.evaluate((form) => {
+    const box = (selector) => form.querySelector(selector).getBoundingClientRect();
+    return { choices: box(".editor-outdated").bottom <= box(".editor").top, officialNow: box(".editor-current").bottom <= box(".editor").top, screensUp: (box("[role=alert]").top - box(".editor-outdated").bottom) / window.innerHeight };
+  });
+  check("on a phone the new official text and the two choices are above what she typed, as the message says", whereTheyAre.choices && whereTheyAre.officialNow, JSON.stringify(whereTheyAre));
   await mobile.evaluate(() => window.scrollTo(0, 0));
   await shot(mobile, "p3-phone-19-form-official-changed", { fullPage: true });
   await fits("The new proposal form after the official text changed under it");
+  // The press people make straight after a refusal, before they have scrolled up and chosen.
+  await mobilePropose.scrollIntoViewIfNeeded();
+  const sentTooSoon = await sentWhile(mobile, () => mobilePropose.tap());
+  check("on a phone a second press before choosing sends nothing and says where the choice is: above her text", sentTooSoon === 0 && (await mobileForm.getByRole("alert").innerText()) === CHOOSE_FIRST && (await inView(mobileForm.getByRole("alert"))) && (await heldBy(mobileForm)) === phoneTyped, `${sentTooSoon} sent, ${await mobileForm.getByRole("alert").innerText()}`);
   await phoneOutdated.getByRole("button", { name: "Start over from the current text" }).tap();
   check("on a phone Start over from the current text loads the new official text and keeps Title and Why", (await eventually(async () => (await mobileProposed.innerText()).trim().endsWith("Kale added this meanwhile."))) && (await phoneOutdated.count()) === 0 && (await mobileForm.getByRole("alert").count()) === 0 && (await mobileForm.getByLabel("Title", { exact: true }).inputValue()) === "Typed on the phone" && (await mobileForm.getByLabel("Why (optional)").inputValue()) === PHONE_WHY, await mobileProposed.innerText());
   await mobileProposed.click();

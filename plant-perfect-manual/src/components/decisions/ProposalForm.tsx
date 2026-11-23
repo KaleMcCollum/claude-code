@@ -173,7 +173,8 @@ export function ProposalForm({
   }, []);
   // A refusal stays on screen until the next press. Choosing what to do
   // with text typed before the official text changed is such a press: the
-  // message that asked for the choice has done its work.
+  // message that asked for the choice has done its work. So is choosing a
+  // place again after the one it was going to has gone (`placeChosen`).
   const choiceMade = useCallback(() => setError(null), []);
 
   const isText = kind !== "structure";
@@ -203,6 +204,11 @@ export function ProposalForm({
   const moveChoices = parents.filter((option) => option.id !== chosenTarget);
   const moveTo = offered(moveChoices, moveUnder) ? moveUnder : "";
   const placeGone = action === "add" ? !editing && !offered(parents, addUnder) : action === "move" && !offered(parents, moveUnder);
+  /** A place was picked in one of the two place boxes: the message that asked for it goes. */
+  const placeChosen = (set: (next: string) => void) => (next: string) => {
+    setError(null);
+    set(next);
+  };
 
   /** The address of this form for one section, keeping the kind and the note. */
   const hrefFor = (sectionId: string | null) => {
@@ -580,7 +586,7 @@ export function ProposalForm({
                     `${ids}-under`,
                     "Under",
                     under,
-                    setAddUnder,
+                    placeChosen(setAddUnder),
                     parents,
                     { value: "", text: "Top level" },
                     placeGone ? CHOOSE_PLACE : undefined,
@@ -616,7 +622,7 @@ export function ProposalForm({
                   `${ids}-move`,
                   "Move it under",
                   moveTo,
-                  setMoveUnder,
+                  placeChosen(setMoveUnder),
                   moveChoices,
                   { value: "", text: "Top level" },
                   placeGone ? CHOOSE_PLACE : undefined,
