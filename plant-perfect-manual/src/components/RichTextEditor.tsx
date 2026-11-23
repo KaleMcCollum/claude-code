@@ -195,8 +195,12 @@ function keepCopy(draftKey: string, doc: RichDoc, dropIfEmpty: boolean, base: st
 
 const OFFICIAL_TEXT_WORDS = { name: "the official text", heading: "The official text now" };
 
-/** Said when Save is pressed while an out-of-date copy is waiting for a choice. */
-const CHOOSE_FIRST = "Choose first: start over from the current text, or keep what you typed.";
+/**
+ * Said when Save is pressed while an out-of-date copy is waiting for a
+ * choice. It says where the two choices are: in the notice above the text,
+ * which on a phone can be more than a screen above the button.
+ */
+const CHOOSE_FIRST = "Choose first, above your text: start over from the current text, or keep what you typed.";
 
 const timeFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/Chicago",

@@ -202,10 +202,15 @@ a.btn-text {
   text-decoration: line-through;
 }
 
+/* The underline is drawn unbroken, also under letters that hang below the
+   line (g, j, p, q, y): broken there, "any job" reads a little like
+   "any_job". The same for the word "Underlined" in the line that explains
+   the marks. */
 .diff-box ins {
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
 }
 
 /* A changed run of plain words and single spaces is laid out as ordinary
@@ -544,9 +549,15 @@ a.btn-text {
     padding-top: 12px;
   }
 
+  /* One link on each line, easy to tap. The commas are for the one line a
+     computer draws: here a long title would leave one at the start of a line. */
   .earlier-changes a {
-    display: inline-block;
+    display: block;
     padding: 10px 0;
+  }
+
+  .earlier-changes .sep {
+    display: none;
   }
 
   .version-list > li {

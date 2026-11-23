@@ -1595,9 +1595,9 @@ function officialTextChangedAfterOpening(verb: string): string {
  * never ask for a reload (which would lose the title and the "Why").
  */
 const OFFICIAL_TEXT_CHANGED_WHILE_WRITING =
-  "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown on this page: choose whether to start over from it or keep what you typed, then propose again.";
+  "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown above what you typed: choose there whether to start over from it or keep what you typed, then propose again.";
 const OFFICIAL_TEXT_CHANGED_WHILE_EDITING =
-  "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown on this page: read it, then save again.";
+  "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown above the proposed text: read it, then save again.";
 
 /** Refuse to act on a page that no longer shows what would be approved. */
 async function checkSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Promise<void> {

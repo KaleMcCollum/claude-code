@@ -116,7 +116,7 @@ describe("the New proposal form, when Propose is refused", () => {
     expect(stale.result).toEqual({
       ok: false,
       error:
-        "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown on this page: choose whether to start over from it or keep what you typed, then propose again.",
+        "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown above what you typed: choose there whether to start over from it or keep what you typed, then propose again.",
     });
     expect(stale.redrawn).toBe(true);
 
@@ -204,7 +204,7 @@ describe("the Edit proposal form, when Save changes is refused", () => {
     expect(stale.result).toEqual({
       ok: false,
       error:
-        "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown on this page: read it, then save again.",
+        "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown above the proposed text: read it, then save again.",
     });
     expect(stale.redrawn).toBe(true);
     expect((await asSystem((db) => loadProposal(db, id)))?.title).toBe("Staff discount");

@@ -171,7 +171,8 @@ export default async function TodayPage() {
                         Earlier one-person changes to this section:{" "}
                         {earlier.map((change, index) => (
                           <span key={change.id}>
-                            {index > 0 && ", "}
+                            {/* (A piece of its own: on a phone each link has its own line and the commas are not drawn.) */}
+                            {index > 0 && <span className="sep">, </span>}
                             <Link href={`/proposals/${change.id}`}>{earlierLabel(change)}</Link>
                           </span>
                         ))}

@@ -248,9 +248,16 @@ two forms for the word "reload"; a new refusal gets a case there.
   the section the form is about (a note filed under one section leads there
   by a redirect), and the edit page decides with `canEditProposal` alone.
 - What a box on the form shows is what is sent. The list of sections can
-  change under an open form, so a choice that is no longer offered counts
-  as the first line of its box (`offered` in `ProposalForm`), and the form
-  says so where a place has gone.
+  change under an open form, so a section that is no longer offered counts
+  as the first line of its box, "Choose a section" (`offered` in
+  `ProposalForm`), and a press is refused. A place that has gone (where to
+  add a section, where to move one) is different, because the first line of
+  its box, "Top level", is a real place: the app would ask the person to
+  choose and then take no choice for an answer. So that box then shows a
+  first line that is not a choice, "Choose where it should go"
+  (`placeGone`), and a press sends nothing until a place is picked, "Top
+  level" included. The edit page of a move does the same when the place it
+  was going to has been archived since.
 
 ## Text kept on a device belongs to the person who typed it
 
@@ -262,6 +269,23 @@ with `useDraftOwner()`. A piece that keeps such a copy must sit under that
 layout (it throws otherwise, rather than fall back to a key shared by
 everyone). Nothing is cleared at sign-out: on a shared device the next
 person is simply never offered it, and its owner finds it again.
+
+One browser holds one sign-in, and the layout (with the name at the bottom
+of the menu and the id above) is drawn once and kept while a person moves
+between pages. So a page left open would go on showing one person's name,
+and offering their copies, while everything saved from it was recorded for
+whoever signed in last from another page of the same browser. `SamePerson`,
+in the same layout, closes that: each time a page is loaded it writes the
+person's id to the browser's shared storage (`ppf:signed-in`), it listens
+for another page writing a different id, and then loads itself again, once
+(the page that comes back writes the new id, so the pages agree). A second
+page opened by the same person causes no reload, which is what "sign in
+again in a new browser tab" after being signed out relies on. Nothing is
+written at sign-out. Storage access is wrapped, so a browser that blocks it
+changes nothing. The page that loads itself again loses what was typed on
+it and not kept on the device (a proposal's title and "Why"); it could no
+longer have saved that under the right name. Settings and the activity
+log are outside that layout and do not have it.
 
 ## What the database guarantees for people and sections
 

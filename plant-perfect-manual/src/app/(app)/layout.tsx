@@ -1,4 +1,5 @@
 import { DraftOwner } from "@/components/DraftOwner";
+import { SamePerson } from "@/components/SamePerson";
 import { Sidebar, type TreeItem } from "@/components/Sidebar";
 import { asUser } from "@/db/client";
 import { requireUser } from "@/lib/auth/session";
@@ -28,6 +29,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // Text typed and not yet saved is kept on the device under this person's
     // id, so it is only ever offered back to them.
     <DraftOwner userId={user.id}>
+      {/* If someone else signs in from another page of this browser, this page loads itself again. */}
+      <SamePerson userId={user.id} />
       <div className="shell">
         <Sidebar
           tree={toItems(tree)}

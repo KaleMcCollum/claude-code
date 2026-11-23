@@ -104,6 +104,16 @@ const NOT_SENT = "That did not go through. Check your connection and try again. 
 const optionLabel = (option: SectionOption) => `${option.number} ${option.title}`;
 
 /**
+ * A place that has gone (the section something was going under was
+ * archived) has to be chosen again. Until then its box shows a first line
+ * that is not a choice, and a press sends nothing.
+ */
+const CHOOSE_PLACE = "Choose where it should go";
+const CHOOSE_PLACE_FIRST = "Choose where it should go first. Pick Top level if that is where you want it.";
+/** The value of that line. No section has it, and it is never sent. */
+const NOT_CHOSEN = "not-chosen";
+
+/**
  * The proposal form: one page, one button at the bottom. Used for a new
  * proposal and for changing one that is still open. A refusal from the app
  * is shown in place and everything typed stays where it is.
@@ -147,10 +157,10 @@ export function ProposalForm({
   // Sections that can have a section added or moved under them (three levels at most).
   const parents = options.filter((option) => option.depth <= 2);
   const offered = (list: SectionOption[], id: string) => id === "" || list.some((option) => option.id === id);
-  // The stored place to move it under is only kept when it can still be
-  // chosen. Otherwise the box would show "Top level" while the old place was sent.
-  const destinationGone = editing && initial.action === "move" && !offered(parents, initial.parentId ?? "");
-  const [moveUnder, setMoveUnder] = useState(destinationGone ? "" : (initial.parentId ?? ""));
+  // Where to move it ("" = top level). When editing it starts as the stored
+  // place, also when that can no longer be chosen: the box then asks for a
+  // new choice (`placeGone` below) and nothing is sent until one is made.
+  const [moveUnder, setMoveUnder] = useState(initial.parentId ?? "");
   const [name, setName] = useState(initial.name ?? "");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -178,16 +188,21 @@ export function ProposalForm({
   const fixedTarget = options.find((option) => option.id === initial.sectionId);
   // What a box shows is what is sent. The list of sections can change under
   // an open form (it is drawn again after a refusal), and a box whose
-  // choice is no longer in its list shows its first line: so a choice that
-  // is no longer offered counts as that first line ("Top level", "Choose a
-  // section"), and the form says so where a place has gone.
+  // choice is no longer in its list shows its first line. For the section a
+  // change is about that line is "Choose a section", and a press is refused.
+  // For a place (where to add a section, where to move one) the first line
+  // would be "Top level", which is a real place: the app would ask the
+  // person to choose and then take no choice for an answer. So a place that
+  // has gone gets a first line of its own that is not a choice
+  // (`CHOOSE_PLACE`), and nothing is sent until a place is picked, "Top
+  // level" included. The same on the edit page, where the place a move was
+  // going to may have been archived since.
   const under = offered(parents, addUnder) ? addUnder : "";
   const chosenTarget = offered(options, target) ? target : "";
   // A section cannot be moved under itself.
   const moveChoices = parents.filter((option) => option.id !== chosenTarget);
   const moveTo = offered(moveChoices, moveUnder) ? moveUnder : "";
-  const placeGone =
-    action === "add" ? !editing && under !== addUnder : action === "move" && (destinationGone || !offered(parents, moveUnder));
+  const placeGone = action === "add" ? !editing && !offered(parents, addUnder) : action === "move" && !offered(parents, moveUnder);
 
   /** The address of this form for one section, keeping the kind and the note. */
   const hrefFor = (sectionId: string | null) => {
@@ -227,6 +242,11 @@ export function ProposalForm({
       // one the editor started from, or the one its picked-up copy remembers.
       if (!editing) form.baseVersionId = control.getBase();
     } else {
+      // The place it was going to has gone: nothing is sent until one is chosen again.
+      if (placeGone) {
+        setError(CHOOSE_PLACE_FIRST);
+        return;
+      }
       // (When editing, what the proposal is about is fixed: it is sent as it was.)
       const sectionId = editing ? target : chosenTarget;
       const change =
@@ -281,10 +301,22 @@ export function ProposalForm({
     onChange: (next: string) => void,
     list: SectionOption[],
     first: { value: string; text: string },
+    /** Shown first, and not a choice, while a place that has gone has not been chosen again. */
+    ask?: string,
   ) => (
     <div className="field">
       <label htmlFor={id}>{label}</label>
-      <select id={id} className="select" value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        id={id}
+        className="select"
+        value={ask ? NOT_CHOSEN : value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {ask && (
+          <option value={NOT_CHOSEN} disabled>
+            {ask}
+          </option>
+        )}
         <option value={first.value}>{first.text}</option>
         {list.map((option) => (
           <option key={option.id} value={option.id}>
@@ -544,10 +576,15 @@ export function ProposalForm({
             <>
               {editing
                 ? fixed("Under", fixedTarget ? optionLabel(fixedTarget) : "Top level")
-                : sectionSelect(`${ids}-under`, "Under", under, setAddUnder, parents, {
-                    value: "",
-                    text: "Top level",
-                  })}
+                : sectionSelect(
+                    `${ids}-under`,
+                    "Under",
+                    under,
+                    setAddUnder,
+                    parents,
+                    { value: "", text: "Top level" },
+                    placeGone ? CHOOSE_PLACE : undefined,
+                  )}
               {placeGone && (
                 <p className="hint">
                   The section it was going under can no longer be chosen (it may have been archived).
@@ -575,10 +612,15 @@ export function ProposalForm({
                   )}
               {action === "rename" && nameField("New name")}
               {action === "move" &&
-                sectionSelect(`${ids}-move`, "Move it under", moveTo, setMoveUnder, moveChoices, {
-                  value: "",
-                  text: "Top level",
-                })}
+                sectionSelect(
+                  `${ids}-move`,
+                  "Move it under",
+                  moveTo,
+                  setMoveUnder,
+                  moveChoices,
+                  { value: "", text: "Top level" },
+                  placeGone ? CHOOSE_PLACE : undefined,
+                )}
               {placeGone && (
                 <p className="hint">
                   The section it was going to move under can no longer be chosen (it may have been

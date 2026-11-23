@@ -41,7 +41,7 @@ const KALE_CLOSING = "Kale typed this: count the till, then lock the back door."
 const CASEY_CLOSING = "Casey saved this first: lock the gate at close.";
 const KALE_ADDED = " Then count the till.";
 const CASEY_ADDED = " Set the alarm.";
-const CHOOSE_FIRST = "Choose first: start over from the current text, or keep what you typed.";
+const CHOOSE_FIRST = "Choose first, above your text: start over from the current text, or keep what you typed.";
 const POS_TITLE = "Line busters use handheld scanners";
 const POS_TEXT = "Line busters use two handheld scanners on busy days.";
 const POS_DIRECT = "Registers run on the point of sale system. Returns need a receipt.";
@@ -1534,8 +1534,8 @@ async function main() {
 
   // ------------------------------------------------------------------
   section("21. Nothing typed is lost when the official text changes under an open form");
-  const WRITING_REFUSAL = "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown on this page: choose whether to start over from it or keep what you typed, then propose again.";
-  const EDITING_REFUSAL = "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown on this page: read it, then save again.";
+  const WRITING_REFUSAL = "The official text of this section changed while you were writing. Nothing you typed is lost. The new official text is now shown above what you typed: choose there whether to start over from it or keep what you typed, then propose again.";
+  const EDITING_REFUSAL = "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown above the proposed text: read it, then save again.";
   const BUDGET_TITLE = "Buildout budget capped at $40,000";
   const BUDGET_WHY = "The bank wants one number.\nSecond line of my reasons,  typed with care.";
   const BUDGET_TEXT = "The buildout budget is $40,000.";
