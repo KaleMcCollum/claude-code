@@ -896,7 +896,10 @@ async function main() {
   await casey.getByRole("button", { name: "Approve on my own" }).click();
   const tooLate = casey.getByRole("region", { name: "Actions" }).getByRole("alert");
   await tooLate.waitFor();
-  check("its proposer's Approve on my own from a page opened before the official text changed is refused in place, and nothing is approved", (await tooLate.innerText()) === "The official text of this section changed after you opened this page. Reload the page and read it again, then approve." && (await statusOf(casey).innerText()) === "Waiting for approval", await tooLate.innerText());
+  // The answer is one she can act on where she is: the check sentence, with Edit (which does
+  // the check) still on the page. Not "Reload the page ... then approve": after that reload
+  // there is no approve button.
+  check("its proposer's Approve on my own from a page opened before the official text changed is refused in place with what she has to do first, and nothing is approved", (await tooLate.innerText()) === "The official text of this section has changed since you proposed this. Check your proposal against the new text and save it again. Then it can be approved." && (await statusOf(casey).innerText()) === "Waiting for approval" && (await actionWords(casey)).split("|").includes("Edit"), `${await tooLate.innerText()} | buttons ${await actionWords(casey)}`);
   await goToSection(casey, "Equipment and Technology", "6.1 Point of Sale");
   check("Kale's words are still the official text", (await casey.locator(".official-box .rich").innerText()) === POS_DIRECT && (await casey.locator(".approval").innerText()) === approvedKale(), await casey.locator(".official-box .rich").innerText());
   await goTo(casey, "Today");
