@@ -276,6 +276,9 @@ describe("what stays as it was", () => {
     expect(await view(id)).toMatchObject({ revision: 2, outOfDate: true });
     const before = await record(sectionId, id);
     expect(await answer(approveProposal(kale, id, opened))).toBe("Casey changed this proposal after you opened it. Reload the page and read it again, then approve.");
+    // Her own "Approve on my own" from a second page she left open before her edit: the same
+    // answer first, not the out-of-date sentence (which is what would come next).
+    expect(await answer(approveAlone(casey, id, opened))).toBe("Casey changed this proposal after you opened it. Reload the page and read it again, then approve.");
     expect(await answer(endorseProposal(karen, id, opened))).toBe("Casey changed this proposal after you opened it. Reload the page and read it again, then endorse.");
     expect(await record(sectionId, id)).toEqual(before);
   });
