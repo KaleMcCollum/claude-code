@@ -95,12 +95,26 @@ online needs the owner to create a few accounts (hosting, database, email).
   the proposer can change a proposal, and only until someone else has
   approved or endorsed it. Nobody can approve wording that changed after
   they opened the page.
+- **When the official text changes while a proposal waits.** The proposal
+  is then out of date: it was written against text that is no longer the
+  official text. Nobody can approve it, alone or together, until its
+  proposer has looked at it next to the new text and saved it again
+  ("Check and save again"). If the proposer can no longer change it
+  (someone endorsed it, or they are no longer an Owner), it can only be
+  withdrawn or declined and proposed again. The same goes for a waiting
+  proposal whose section has been archived, or whose text the official
+  text already says. Every page tells each reader only what they have a
+  button for.
 - **Endorsements.** Advisors (and Owners who have not approved) can endorse.
   It shows as a faint italic line under the approval and never changes a
-  proposal's status.
+  proposal's status. An endorsement cannot be taken back, and it stops the
+  proposer changing the proposal, so an Owner is asked before theirs is
+  recorded. A proposal that is out of date cannot be endorsed.
 - **"Edit official" is a decision too.** A direct edit is recorded as a
   change approved by the Owner who made it, so it is flagged for the other
   Owner and listed in the Decisions Log like any other one-person decision.
+  Today puts one-person changes to the same section together, and names
+  who made each earlier one.
 - **Decisions Log.** Every approved change, newest first, with who approved
   and endorsed it, filtered by section, business, approver and dates. It is
   not a separate list: it shows the approved proposals themselves.
@@ -113,6 +127,17 @@ online needs the owner to create a few accounts (hosting, database, email).
 - **Notes** can start a proposal ("Propose") and show the proposals made
   from them. **Search** finds proposals. **Settings** has the activity log:
   every change, who made it and when.
+- **Nothing typed is lost.** Unsaved text is kept on the device for the
+  person who typed it, and is never offered to someone else who signs in
+  on the same device. If the official text changes while someone is
+  writing a proposal, the form stays as it is with everything typed, shows
+  the new official text, and offers two choices: start over from the new
+  text, or keep what was typed. No message on the proposal form asks for a
+  reload. A page left open notices when someone else signs in on the same
+  browser and loads itself again, so nothing is saved under the wrong name.
+- **Names.** No two people can have the same name, and a name with a
+  character in it that cannot be seen is refused. Once a person has signed
+  in, their name stays as it is.
 
 To-do and Documents appear in the sidebar but show a "not built yet" page
 until their phase.
@@ -129,6 +154,14 @@ until their phase.
   (Phase 6). Until then the sidebar count and Today show them.
 - There is no single Trash page yet: removed notes are restored from the
   Daily Log, archived sections from Edit sections.
+- Changes made on the Edit sections page (add, rename, reorder, archive)
+  are recorded in the activity log but are not flagged on Today. Only
+  changes to official text and section changes made through a proposal
+  are.
+- While a proposal is being written, the proposed text is kept on the
+  device if the page closes, but its title and "why" are not.
+- Approving is built for two Owners. With three or more, any two approve
+  and the others are not asked.
 
 ## Rules the app is built around
 
