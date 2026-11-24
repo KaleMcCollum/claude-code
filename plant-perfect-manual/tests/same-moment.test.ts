@@ -260,7 +260,11 @@ describe.skipIf(!onServer)("at the same moment (real Postgres only)", () => {
         expect(row.status).toBe("approved");
       } else {
         expect(after[0].contentText).toBe(`Kale's direct edit ${i}.`);
-        expect(shown(approved)).toContain("The official text of this section changed after you opened this page");
+        // Her page was opened before his save, and after it the proposal is out of date: she is
+        // told that, in the words her page shows after a reload, by either button.
+        expect(shown(approved)).toBe(
+          "The official text of this section has changed since Kale proposed this. Kale needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.",
+        );
         // Casey's approval was not recorded on a comparison she never saw.
         expect(row.status).toBe("open");
       }

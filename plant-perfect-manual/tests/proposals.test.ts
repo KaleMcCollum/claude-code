@@ -470,12 +470,15 @@ describe("official text that changes while a proposal is open", () => {
     expect(view.baseVersionId).not.toBe(await currentVersionId(signage));
     expect(view.outOfDate).toBe(true);
 
-    // From her old page she is told to reload; from a fresh page, that Kale
-    // has to look at it again first. Nothing is recorded either time.
-    await expect(approveProposal(casey, id, before)).rejects.toThrow("official text of this section changed after you opened");
-    await expect(approveProposal(casey, id, await seen(id))).rejects.toThrow(
-      "The official text of this section has changed since Kale proposed this. Kale needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.",
-    );
+    // From her old page, which still has the button, and from a fresh one
+    // she is told the same: Kale has to look at it again first. (Not "reload
+    // the page, then approve": after a reload there is no approve button.)
+    // Nothing is recorded either time.
+    for (const sent of [before, await seen(id)]) {
+      await expect(approveProposal(casey, id, sent)).rejects.toThrow(
+        "The official text of this section has changed since Kale proposed this. Kale needs to check the proposal against the new text and save it again before it can be approved. You can comment on it or decline it.",
+      );
+    }
     expect((await proposal(id)).approvals).toHaveLength(1);
 
     // Kale opens his proposal, sees it next to the new text, and saves it again.

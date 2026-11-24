@@ -1602,11 +1602,31 @@ const OFFICIAL_TEXT_CHANGED_WHILE_WRITING =
 const OFFICIAL_TEXT_CHANGED_WHILE_EDITING =
   "The official text of this section changed while you had this page open. Nothing you typed is lost. The new official text is now shown above the proposed text: read it, then save again.";
 
-/** Refuse to act on a page that no longer shows what would be approved. */
-async function checkSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Promise<void> {
+/**
+ * Refuse to act on a page that no longer shows what would be approved. Two
+ * checks, asked at two different moments.
+ *
+ * The first: the page shows the proposal as it was before its proposer
+ * changed it. Reloading shows the new wording.
+ */
+async function checkRevisionSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Promise<void> {
   if (seen.revision !== row.revision) {
     throw new AppError(changedAfterOpening(await nameOf(tx, row.proposedBy), verb));
   }
+}
+
+/**
+ * The second: the page compared a text proposal with official text that is
+ * no longer the newest. The two approve buttons ask this only after they
+ * have asked whether the proposal can be approved at all (its section is
+ * still there, the official text does not say the same already, it is not
+ * out of date): "reload the page, then approve" must be true, and after
+ * that reload a proposal like that has no approve button. For a proposal
+ * whose revision is the one the page showed, an older official version on
+ * the page always means it is out of date, so no real page gets this answer
+ * any more. It stays as the last line of defence.
+ */
+async function checkOfficialSeen(tx: Tx, row: ProposalRow, seen: Seen, verb: string): Promise<void> {
   if (row.type !== "structure" && row.sectionId && seen.currentVersionId !== undefined) {
     const current = await latestVersionRow(tx, row.sectionId);
     if ((current?.id ?? null) !== seen.currentVersionId) {
@@ -2191,6 +2211,14 @@ export type ApproveOutcome = { approved: boolean; waitingFor: string[] };
  *    for. "Approve on my own" is the way forward then;
  *  - when the official text already says exactly what it proposes;
  *  - when its section has been archived.
+ *
+ * The order of the answers: the proposal was changed since the page was
+ * opened; then what the page would show after a reload, in the order
+ * `waitingOn` asks (section archived, the official text says it already,
+ * out of date); and only then that the page compared it with older official
+ * text. A page opened before the official text changed still has the
+ * button, and "reload the page, then approve" would send its reader to a
+ * page with no approve button on it.
  */
 export async function approveProposal(
   actor: Actor,
@@ -2204,7 +2232,7 @@ export async function approveProposal(
     const row = await lockProposal(tx, id);
     requireOpen(row);
     await lockSectionOf(tx, row);
-    await checkSeen(tx, row, seen, "approve");
+    await checkRevisionSeen(tx, row, seen, "approve");
     // Its section is gone: refused before an approval is recorded that
     // would only wait for a second one. (`finalize` refuses the same when
     // this press would have made it official.)
@@ -2212,6 +2240,10 @@ export async function approveProposal(
     await refuseIfAlreadyOfficial(tx, actor, row);
     const standing = await proposerNow(tx, row);
     if (await isOutOfDate(tx, row)) throw new AppError(outOfDateWords(row, standing));
+    // Only now: a press from a page opened before the official text changed
+    // has been answered above with what stands in its way, in the order the
+    // page itself would say it after a reload (`waitingOn`).
+    await checkOfficialSeen(tx, row, seen, "approve");
     const owners = await activeApprovers(tx);
     if (!owners.some((owner) => owner.id !== actor.id)) {
       throw new AppError("There is no other Owner to wait for right now. Use Approve on my own.");
@@ -2250,7 +2282,9 @@ export async function approveProposal(
  * (`editProposal` with `currentVersionId`); then it can be approved as
  * usual, alone too. One its proposer can no longer change can only be
  * withdrawn or declined. No page offers the button on such a proposal
- * (`approveChoices`); this is for a press from a page opened earlier.
+ * (`approveChoices`); this is for a press from a page opened earlier, which
+ * is why it is asked before the check that the page compared the proposal
+ * with the newest official text (see `approveProposal`).
  *
  * (This is a rule of the app. The database refuses two people's approval
  * of an out-of-date proposal, counting the people who can approve at that
@@ -2271,10 +2305,18 @@ export async function approveAlone(
     const row = await lockProposal(tx, id);
     requireOpen(row);
     await lockSectionOf(tx, row);
-    await checkSeen(tx, row, seen, "approve");
+    await checkRevisionSeen(tx, row, seen, "approve");
     await refuseIfAlreadyOfficial(tx, actor, row);
     const standing = await proposerNow(tx, row);
-    if (await isOutOfDate(tx, row)) throw new AppError(outOfDateWordsAlone(actor, row, standing));
+    if (await isOutOfDate(tx, row)) {
+      // Its section has been archived as well: "check it and save it again"
+      // would not be true, because that save is refused too. (For a
+      // proposal that is up to date, `finalize` says this.)
+      if (sectionIsGone(await loadTree(tx), row.sectionId)) throw new AppError(SECTION_GONE);
+      throw new AppError(outOfDateWordsAlone(actor, row, standing));
+    }
+    // Only now, as in `approveProposal`.
+    await checkOfficialSeen(tx, row, seen, "approve");
     await recordApproval(tx, actor, row, seen.revision, now);
     await finalize(tx, actor, row, now, standing);
   });
@@ -2405,7 +2447,12 @@ export async function endorseProposal(
     // The friendly check first; the database then checks the same number
     // again under a lock (see addStamp), which is what holds if the proposer
     // saves a change at this very moment.
-    await checkSeen(tx, row, { revision: seen.revision }, "endorse");
+    // (Only the proposal's own wording: an endorsement is not given on a
+    // comparison with the official text. So a press from a page opened
+    // before the official text changed is answered by the three checks
+    // below, each with a sentence of its own, never with "reload the page,
+    // then endorse", which would not be true after that reload.)
+    await checkRevisionSeen(tx, row, seen, "endorse");
     if (row.status === "open" && sectionIsGone(await loadTree(tx), row.sectionId)) throw new AppError(GONE_SO_NOT_ENDORSED);
     // The official text has become exactly what it proposes: it can only be
     // withdrawn or declined, and "once its proposer has checked it" would

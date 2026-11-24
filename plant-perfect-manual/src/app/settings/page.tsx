@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeftIcon } from "@/components/icons";
+import { SamePerson } from "@/components/SamePerson";
 import { asUser } from "@/db/client";
 import { requirePermission } from "@/lib/auth/session";
 import { formatDate, formatDateTime } from "@/lib/time";
@@ -38,6 +39,8 @@ export default async function SettingsPage({
 
   return (
     <main className="plain-page">
+      {/* As on the other signed-in pages: if someone else signs in from another page of this browser, this page loads itself again. */}
+      <SamePerson userId={user.id} />
       <Link href={backTo} className="btn back-link">
         <ArrowLeftIcon size={18} /> Back
       </Link>

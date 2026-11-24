@@ -157,9 +157,11 @@ describe("an old proposal, after both Owners agreed on newer text", () => {
     // Something that is not a version of this section at all.
     await expect(editProposal(casey, old, input, { currentVersionId: "00000000-0000-4000-8000-000000000000" })).rejects.toThrow(STALE_EDIT_PAGE);
     expect(await view(old)).toMatchObject({ revision: 2, outOfDate: true });
-    // The other buttons, where nothing was typed, still ask for the page to be loaded again.
+    // Approve on my own from a page as old as that edit page says what stands in the way, in
+    // the words of her own page. "Reload the page ... then approve" would not be true: after a
+    // reload there is no approve button. (All of it: tests/page-opened-earlier.test.ts.)
     await expect(approveAlone(casey, old, { revision: 2, currentVersionId: null })).rejects.toThrow(
-      "The official text of this section changed after you opened this page. Reload the page and read it again, then approve.",
+      "The official text of this section has changed since you proposed this. Check your proposal against the new text and save it again. Then it can be approved.",
     );
   });
 

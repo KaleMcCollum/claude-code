@@ -303,7 +303,8 @@ async function main() {
 
   // (The app emails at most five sign-in links per person in 15 minutes. This file asks for
   // five for Kale and five for Casey; where one more browser of theirs is needed, it starts
-  // with the sign-in of one that is already open instead of asking for another link.)
+  // with the sign-in of one that is already open instead of asking for another link. Karen
+  // has her invitation, and one link in part 26b.)
   const kaleContext = await desktopContext(browser);
   const kale = await kaleContext.newPage();
   trackErrors(kale, errors);
@@ -2181,6 +2182,18 @@ async function main() {
   trackErrors(other, errors);
   await other.goto(`${BASE_URL}/proposals`);
   await other.getByRole("heading", { level: 1, name: "Proposals" }).waitFor();
+  // A third page of hers is left on the activity log, which like Settings has no menu and no
+  // name on it. She gets there from the app: Today, Settings, the log.
+  const logPage = await twoPages.newPage();
+  trackErrors(logPage, errors);
+  await logPage.goto(`${BASE_URL}/`);
+  await logPage.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  await navOf(logPage).getByRole("link", { name: "Settings" }).click();
+  await logPage.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
+  await logPage.getByRole("link", { name: "See every change, who made it and when" }).click();
+  await logPage.getByRole("heading", { level: 1, name: "Activity log" }).waitFor();
+  let logLoads = 0;
+  logPage.on("load", () => (logLoads += 1));
   await left.waitForTimeout(1500);
   check("a second page opened by the same person does not make the first one load again", leftLoads === 0 && (await whoIs(left)) === "Signed in as Casey" && (await whoIs(other)) === "Signed in as Casey", `${leftLoads} loads`);
   // Kale opens his own sign-in link in that second page.
@@ -2188,8 +2201,11 @@ async function main() {
   await other.getByRole("heading", { level: 1, name: "Today" }).waitFor();
   const leftIsKale = await eventually(async () => leftLoads === 1 && (await whoIs(left)) === "Signed in as Kale");
   check("after Kale's link in the second page, the first page loads itself again and says Kale", (await whoIs(other)) === "Signed in as Kale" && leftIsKale, `${leftLoads} loads, first page: ${await whoIs(left).catch(() => "?")}`);
+  const logNoticed = await eventually(async () => logLoads === 1 && (await logPage.getByRole("heading", { level: 1, name: "Activity log" }).isVisible()));
   await left.waitForTimeout(2500);
   check("it loads itself once, not round and round", leftLoads === 1, `${leftLoads} loads`);
+  check("the page left on the activity log notices too: it loads itself again, once, and shows the log to Kale, an Owner", logNoticed && logLoads === 1 && /\/settings\/activity$/.test(logPage.url()), `${logLoads} loads, at ${logPage.url()}`);
+  await logPage.close();
   await goToSection(left, "Facility and Buildout", "5.1 Construction");
   check("Casey's unsaved text is not offered there: no notice and no Continue editing", (await left.getByText("You have unsaved changes to this text on this device.").count()) === 0 && (await left.getByRole("button", { name: "Continue editing" }).count()) === 0 && (await left.getByRole("button", { name: "Edit official" }).isVisible()));
   await left.getByRole("button", { name: "Edit official" }).click();
@@ -2198,17 +2214,106 @@ async function main() {
   await left.getByRole("button", { name: "Cancel" }).click();
   await left.getByRole("button", { name: "Edit official" }).waitFor();
   check("her copy is still on the device, untouched", (await draftKeys(left)).sort().join(" ") === caseyCopy, (await draftKeys(left)).join(" "));
-  // Casey signs in again with her own link, in the second page.
+
+  // ------------------------------------------------------------------
+  section("26b. Settings and the activity log notice it too, and a page the browser kept tells nobody");
+  // Settings and the activity log open as pages of their own, outside the menu. They have the
+  // same piece as every other signed-in page, and it must not get in the way of one person.
+  const youOn = (page) => page.getByRole("row").filter({ hasText: "(you)" }).locator("strong").innerText();
+  const openSettings = async (page) => {
+    await navOf(page).getByRole("link", { name: "Settings" }).click();
+    await page.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
+  };
+  let otherLoads = 0;
+  other.on("load", () => (otherLoads += 1));
+  // (a) Kale, the same person on both pages, goes to Settings and back by the page's own Back,
+  // then to Settings and the activity log and back with the browser's Back.
+  const constructionAddress = left.url();
+  await openSettings(left);
+  await left.getByRole("link", { name: "Back" }).click();
+  await left.getByRole("heading", { level: 1, name: "5.1 Construction" }).waitFor();
+  await openSettings(left);
+  await left.getByRole("link", { name: "See every change, who made it and when" }).click();
+  await left.getByRole("heading", { level: 1, name: "Activity log" }).waitFor();
+  await left.goBack();
+  await left.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
+  await left.goBack();
+  await left.getByRole("heading", { level: 1, name: "5.1 Construction" }).waitFor();
+  await left.waitForTimeout(1500);
+  check("the same person going to Settings and the activity log and back loads nothing again, on that page or on the other", leftLoads === 1 && otherLoads === 0 && left.url() === constructionAddress && (await whoIs(left)) === "Signed in as Kale" && (await whoIs(other)) === "Signed in as Kale", `first page ${leftLoads} loads, second ${otherLoads}`);
+
+  // (b) He goes to Settings from the menu and leaves the page there.
+  await openSettings(left);
+  const settingsAddress = left.url();
+  const kaleMarked = await youOn(left);
+  // Casey signs in again with her own link, in the second page, and starts writing a proposal.
   await other.goto(await freshLink("casey@example.com"));
   await other.getByRole("heading", { level: 1, name: "Today" }).waitFor();
-  const leftIsCasey = await eventually(async () => leftLoads === 2 && (await whoIs(left)) === "Signed in as Casey");
-  check("when Casey signs in again, the first page loads itself once more and says Casey", leftIsCasey, `${leftLoads} loads, first page: ${await whoIs(left).catch(() => "?")}`);
+  const settingsIsCasey = await eventually(async () => leftLoads === 2 && (await youOn(left)) === "Casey");
+  check("when Casey signs in again, the first page, left on Settings, loads itself again by itself and marks Casey as you", kaleMarked === "Kale" && settingsIsCasey && left.url() === settingsAddress && (await left.getByRole("heading", { level: 1, name: "Settings" }).isVisible()), `${leftLoads} loads, marked before: ${kaleMarked}, now: ${await youOn(left).catch(() => "?")}`);
+  const SHARED_TITLE = "Typed on the shared computer";
+  const SHARED_WHY = "Casey is in the middle of writing this.\nNothing of it has been sent.";
+  await startProposalFor(other, "mission", "1.2 Mission and Culture");
+  const writing = newForm(other);
+  await writing.getByLabel("Title", { exact: true }).fill(SHARED_TITLE);
+  await writing.getByLabel("Why (optional)").fill(SHARED_WHY);
+  const written = await heldBy(writing);
+  otherLoads = 0;
+  // Someone presses the browser's Back on the first page.
+  await left.goBack();
+  await left.getByRole("heading", { level: 1, name: "5.1 Construction" }).waitFor();
+  await left.waitForTimeout(1500);
+  check("the browser's Back on the first page shows the page before Settings, drawn for Casey", left.url() === constructionAddress && (await whoIs(left)) === "Signed in as Casey", `${left.url()}, ${await whoIs(left).catch(() => "?")}`);
+  check("the second page is not loaded again, and still holds the Title and the Why she was typing", otherLoads === 0 && (await heldBy(writing).catch(() => "no form")) === written && JSON.parse(written).title === SHARED_TITLE && JSON.parse(written).why === SHARED_WHY, `${otherLoads} loads, holds ${await heldBy(writing).catch(() => "no form")}`);
+  await left.waitForTimeout(4000);
+  check("some seconds on nothing has loaded itself again", leftLoads === 2 && otherLoads === 0 && (await heldBy(writing).catch(() => "no form")) === written, `first page ${leftLoads} loads, second ${otherLoads}`);
   const offeredAgain = await eventually(() => left.getByText("You have unsaved changes to this text on this device.").isVisible());
   await left.getByRole("button", { name: "Continue editing" }).click();
   await leftOfficial.waitFor();
   check("and there her unsaved text is offered to her again, word for word", offeredAgain && (await leftOfficial.innerText()).trim() === CASEY_UNSAVED, await leftOfficial.innerText());
   await left.getByRole("button", { name: "Cancel" }).click();
   await left.getByRole("button", { name: "Discard changes" }).click();
+
+  // (c) A copy of a page that the browser kept from before someone else signed in. Casey has
+  // a third page open on Settings. She signs out in the second page (this is her sign-in on
+  // the shared browser, not the one on her desktop). At the next tap in its menu her first
+  // page shows the sign-in page; nothing is loaded, so the browser keeps the page she was on.
+  const third = await twoPages.newPage();
+  trackErrors(third, errors);
+  await third.goto(`${BASE_URL}/settings`);
+  await third.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
+  let thirdLoads = 0;
+  third.on("load", () => (thirdLoads += 1));
+  await other.getByRole("button", { name: "Sign out" }).click();
+  await other.waitForURL(/\/login$/);
+  await other.getByRole("button", { name: "Email me a sign-in link" }).waitFor();
+  await navOf(left).getByRole("link", { name: "Today", exact: true }).click();
+  await left.getByRole("button", { name: "Email me a sign-in link" }).waitFor();
+  await left.waitForTimeout(500);
+  check("after she signed out in another page, the next tap in the first page's menu shows the sign-in page, and nothing was loaded for it", /\/login$/.test(left.url()) && leftLoads === 2 && thirdLoads === 0, `${left.url()}, first page ${leftLoads} loads, third ${thirdLoads}`);
+  // Karen, the Advisor, signs in with her own link in the second page and starts a comment.
+  const KAREN_TYPING = "Karen is typing this on the shared computer.";
+  await other.goto(await freshLink("karen@example.com"));
+  await other.getByRole("heading", { level: 1, name: "Today" }).waitFor();
+  const thirdIsKaren = await eventually(async () => thirdLoads === 1 && (await third.getByRole("heading", { level: 1, name: "Today" }).isVisible()) && (await whoIs(third)) === "Signed in as Karen");
+  check("the page left on Settings loads itself again and shows Karen, who may not open Settings, the Today page instead", thirdIsKaren && third.url() === `${BASE_URL}/`, `${thirdLoads} loads, at ${third.url()}, ${await whoIs(third).catch(() => "no name")}`);
+  await openProposal(other, wagesUrl, WAGES_TITLE);
+  const karenOnShared = other.getByRole("textbox", { name: "Comment on this proposal" });
+  await other.getByRole("button", { name: "Add comment", exact: true }).click();
+  await karenOnShared.waitFor();
+  await karenOnShared.click();
+  await other.keyboard.type(KAREN_TYPING);
+  await eventually(async () => (await draftKeys(other, "comment:proposal:")).length === 1);
+  otherLoads = 0;
+  thirdLoads = 0;
+  // The browser's Back on the first page shows the copy it kept: a page drawn for Casey.
+  await left.goBack().catch(() => {});
+  const leftIsKaren = await eventually(async () => leftLoads === 3 && (await whoIs(left)) === "Signed in as Karen");
+  check("the browser's Back on the first page: the copy the browser kept, drawn for Casey, loads itself again and says Karen", leftIsKaren && left.url() === constructionAddress && (await left.getByRole("heading", { level: 1, name: "5.1 Construction" }).isVisible()), `${leftLoads} loads, at ${left.url()}, ${await whoIs(left).catch(() => "no name")}`);
+  await left.waitForTimeout(4000);
+  check("that copy told nobody it was drawn for Casey: Karen's two pages are not loaded again, and her comment is as she typed it", otherLoads === 0 && thirdLoads === 0 && leftLoads === 3 && (await karenOnShared.innerText()).trim() === KAREN_TYPING && (await other.getByText(/Picked up/).count()) === 0 && (await whoIs(other)) === "Signed in as Karen", `second page ${otherLoads} loads, third ${thirdLoads}, first ${leftLoads}`);
+  await other.getByRole("button", { name: "Cancel" }).click();
+  await other.getByRole("button", { name: "Throw away" }).click();
   await twoPages.close();
 
   // For the phone: a proposal of Casey's that goes out of date, and one of Kale's.

@@ -287,7 +287,13 @@ written at sign-out. Storage access is wrapped, so a browser that blocks it
 changes nothing. The page that loads itself again loses what was typed on
 it and not kept on the device (a proposal's title and "Why"); it could no
 longer have saved that under the right name. Settings and the activity
-log are outside that layout and do not have it.
+log are outside that layout, so each draws `SamePerson` itself; a new page
+outside it needs the same. The id is written when a page is loaded, not
+each time the piece is drawn: it keeps the id it last wrote while the
+loaded page lives, and drawn again for that id it only compares. The
+browser's Back can show a copy kept from before someone else signed in,
+and writing that id again would make the other person's page load itself
+again and lose their title and "Why" (part 26b of `e2e/phase3.cjs`).
 
 ## What the database guarantees for people and sections
 
